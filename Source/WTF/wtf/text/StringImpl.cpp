@@ -26,6 +26,7 @@
 #include "StringImpl.h"
 
 #include "AtomicString.h"
+#include "ExternalStringImpl.h"
 #include "StringBuffer.h"
 #include "StringHash.h"
 #include <wtf/Gigacage.h>
@@ -122,7 +123,10 @@ StringImpl::~StringImpl()
         auto* symbolRegistry = symbol.symbolRegistry();
         if (symbolRegistry)
             symbolRegistry->remove(*symbol.asRegisteredSymbolImpl());
-    }
+	}
+	else if (isExternal()) {
+		static_cast<ExternalStringImpl *>(this)->FreeExternalBuffer(const_cast<LChar *>(m_data8), sizeInBytes());
+	}
 
     BufferOwnership ownership = bufferOwnership();
 
