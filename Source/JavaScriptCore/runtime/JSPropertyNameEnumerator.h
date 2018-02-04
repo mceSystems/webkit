@@ -50,13 +50,20 @@ public:
 
     DECLARE_EXPORT_INFO;
 
+	JSString* propertyNameAtIndexUnsafe(uint32_t index) const
+	{
+		return m_propertyNames[index].get();
+	}
+
     JSString* propertyNameAtIndex(uint32_t index) const
     {
         if (index >= m_propertyNames.size())
             return nullptr;
-        return m_propertyNames[index].get();
+		return propertyNameAtIndexUnsafe(index);
     }
 
+	size_t propertyNamesLength() const { return m_propertyNames.size(); }
+	
     StructureChain* cachedPrototypeChain() const { return m_prototypeChain.get(); }
     void setCachedPrototypeChain(VM& vm, StructureChain* prototypeChain) { return m_prototypeChain.set(vm, this, prototypeChain); }
 
