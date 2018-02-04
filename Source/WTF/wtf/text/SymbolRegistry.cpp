@@ -44,7 +44,7 @@ Ref<RegisteredSymbolImpl> SymbolRegistry::symbolForKey(const String& rep)
         return *static_cast<SymbolImpl*>(addResult.iterator->impl())->asRegisteredSymbolImpl();
     }
 
-    auto symbol = RegisteredSymbolImpl::create(*rep.impl(), *this);
+    auto symbol = RegisteredSymbolImpl::create(*rep.impl(), *this, m_createPrivateSymbols);
     *addResult.iterator = SymbolRegistryKey(&symbol.get());
     return symbol;
 }
