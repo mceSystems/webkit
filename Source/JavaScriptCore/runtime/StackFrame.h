@@ -41,6 +41,8 @@ public:
     StackFrame(VM&, JSCell* owner, JSCell* callee, CodeBlock*, unsigned bytecodeOffset);
     StackFrame(Wasm::IndexOrName);
 
+    CodeBlock * codeBlock() const { return m_codeBlock.get(); }
+
     bool hasLineAndColumnInfo() const { return !!m_codeBlock; }
     
     void computeLineAndColumn(unsigned& line, unsigned& column) const;
