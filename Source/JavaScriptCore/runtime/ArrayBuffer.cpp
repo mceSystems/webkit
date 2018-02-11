@@ -361,7 +361,8 @@ bool ArrayBuffer::transferTo(VM& vm, ArrayBufferContents& result)
 // We allow neutering wasm memory ArrayBuffers even though they are locked.
 void ArrayBuffer::neuter(VM& vm)
 {
-    ASSERT(isWasmMemory());
+	/* TODO: Originally, there was an "ASSERT(isWasmMemory())" here, but 
+     * we need neutering for the ArrayBuffer api. Make sure this is OK. */
     ArrayBufferContents unused;
     m_contents.transferTo(unused);
     notifyIncommingReferencesOfTransfer(vm);
