@@ -861,17 +861,23 @@ JSValue JSONParse(ExecState* exec, const String& json)
     return jsonParser.tryLiteralParse();
 }
 
+String JSONStringify(ExecState* exec, JSValue value, JSValue gap)
+{
+	VM& vm = exec->vm();
+	auto throwScope = DECLARE_THROW_SCOPE(vm);
+	LocalScope scope(vm);
+	Stringifier stringifier(exec, Local<Unknown>(vm, jsNull()), Local<Unknown>(vm, gap));
+	RETURN_IF_EXCEPTION(throwScope, {});
+	Local<Unknown> result = stringifier.stringify(Local<Unknown>(vm, value));
+	if (UNLIKELY(throwScope.exception()) || result.isUndefinedOrNull())
+		return String();
+	return result.getString(exec);
+}
+
+
 String JSONStringify(ExecState* exec, JSValue value, unsigned indent)
 {
-    VM& vm = exec->vm();
-    auto throwScope = DECLARE_THROW_SCOPE(vm);
-    LocalScope scope(vm);
-    Stringifier stringifier(exec, Local<Unknown>(vm, jsNull()), Local<Unknown>(vm, jsNumber(indent)));
-    RETURN_IF_EXCEPTION(throwScope, { });
-    Local<Unknown> result = stringifier.stringify(Local<Unknown>(vm, value));
-    if (UNLIKELY(throwScope.exception()) || result.isUndefinedOrNull())
-        return String();
-    return result.getString(exec);
+	return JSONStringify(exec, value, jsNumber(indent));
 }
 
 } // namespace JSC
