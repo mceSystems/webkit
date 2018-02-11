@@ -115,7 +115,7 @@ void ResourceHandle::applySniffingPoliciesAndStoragePartitionIfNeeded(NSURLReque
     shouldContentEncodingSniff = true;
 #endif
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-    String storagePartition = d->m_context->storageSession().cookieStoragePartition(firstRequest());
+    String storagePartition = d->m_context->storageSession().cookieStoragePartition(firstRequest(), std::nullopt, std::nullopt);
 #else
     String storagePartition;
 #endif
@@ -469,11 +469,6 @@ void ResourceHandle::willSendRequest(ResourceRequest&& request, ResourceResponse
             request.setStorageSession(d->m_storageSession.get());
         completionHandler(WTFMove(request));
     });
-}
-
-void ResourceHandle::continueDidReceiveResponse()
-{
-    [delegate() continueDidReceiveResponse];
 }
 
 void ResourceHandle::didReceiveAuthenticationChallenge(const AuthenticationChallenge& challenge)

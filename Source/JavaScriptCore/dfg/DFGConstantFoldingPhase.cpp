@@ -175,8 +175,13 @@ private:
                 RegisteredStructureSet set;
                 if (node->op() == ArrayifyToStructure)
                     set = node->structure();
-                else
+                else {
                     set = node->structureSet();
+                    if ((SpecCellCheck & SpecEmpty) && node->child1().useKind() == CellUse && m_state.forNode(node->child1()).m_type & SpecEmpty) {
+                        m_insertionSet.insertNode(
+                            indexInBlock, SpecNone, AssertNotEmpty, node->origin, Edge(node->child1().node(), UntypedUse));
+                    }
+                }
                 if (value.m_structure.isSubsetOf(set)) {
                     m_interpreter.execute(indexInBlock); // Catch the fact that we may filter on cell.
                     node->remove();
@@ -293,6 +298,7 @@ private:
                 break;
             }
 
+            case AssertNotEmpty:
             case CheckNotEmpty: {
                 if (m_state.forNode(node->child1()).m_type & SpecEmpty)
                     break;
@@ -342,11 +348,15 @@ private:
             case GetMyArgumentByVal:
             case GetMyArgumentByValOutOfBounds: {
                 JSValue indexValue = m_state.forNode(node->child2()).value();
-                if (!indexValue || !indexValue.isInt32())
+                if (!indexValue || !indexValue.isUInt32())
                     break;
 
-                unsigned index = indexValue.asUInt32() + node->numberOfArgumentsToSkip();
+                Checked<unsigned, RecordOverflow> checkedIndex = indexValue.asUInt32();
+                checkedIndex += node->numberOfArgumentsToSkip();
+                if (checkedIndex.hasOverflowed())
+                    break;
                 
+                unsigned index = checkedIndex.unsafeGet();
                 Node* arguments = node->child1().node();
                 InlineCallFrame* inlineCallFrame = arguments->origin.semantic.inlineCallFrame;
                 

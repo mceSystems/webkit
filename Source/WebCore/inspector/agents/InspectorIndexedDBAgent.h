@@ -34,7 +34,7 @@
 #if ENABLE(INDEXED_DATABASE)
 
 #include "InspectorWebAgentBase.h"
-#include <inspector/InspectorBackendDispatchers.h>
+#include <JavaScriptCore/InspectorBackendDispatchers.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
@@ -48,6 +48,7 @@ class InspectorPageAgent;
 typedef String ErrorString;
 
 class InspectorIndexedDBAgent final : public InspectorAgentBase, public Inspector::IndexedDBBackendDispatcherHandler {
+    WTF_MAKE_NONCOPYABLE(InspectorIndexedDBAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     InspectorIndexedDBAgent(WebAgentContext&, InspectorPageAgent*);

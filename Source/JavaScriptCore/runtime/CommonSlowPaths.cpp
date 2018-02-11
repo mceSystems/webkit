@@ -267,7 +267,13 @@ SLOW_PATH_DECL(slow_path_to_this)
         pc[3].u.toThisStatus = ToThisConflicted;
         pc[2].u.structure.clear();
     }
-    RETURN(v1.toThis(exec, exec->codeBlock()->isStrictMode() ? StrictMode : NotStrictMode));
+    // Note: We only need to do this value profiling here on the slow path. The fast path
+    // just returns the input to to_this if the structure check succeeds. If the structure
+    // check succeeds, doing value profiling here is equivalent to doing it with a potentially
+    // different object that still has the same structure on the fast path since it'll produce
+    // the same SpeculatedType. Therefore, we don't need to worry about value profiling on the
+    // fast path.
+    RETURN_PROFILED(op_to_this, v1.toThis(exec, exec->codeBlock()->isStrictMode() ? StrictMode : NotStrictMode));
 }
 
 SLOW_PATH_DECL(slow_path_throw_tdz_error)
@@ -801,13 +807,6 @@ SLOW_PATH_DECL(slow_path_profile_type_clear_log)
     END();
 }
 
-SLOW_PATH_DECL(slow_path_assert)
-{
-    BEGIN();
-    RELEASE_ASSERT_WITH_MESSAGE(OP(1).jsValue().asBoolean(), "JS assertion failed at line %d in:\n%s\n", pc[2].u.operand, exec->codeBlock()->sourceCodeForTools().data());
-    END();
-}
-
 SLOW_PATH_DECL(slow_path_unreachable)
 {
     BEGIN();
@@ -1072,6 +1071,13 @@ SLOW_PATH_DECL(slow_path_new_array_with_spread)
     }
 
     RETURN(result);
+}
+
+SLOW_PATH_DECL(slow_path_new_array_buffer)
+{
+    BEGIN();
+    auto* fixedArray = jsCast<JSFixedArray*>(OP_C(2).jsValue());
+    RETURN(constructArray(exec, pc[3].u.arrayAllocationProfile, fixedArray->values(), fixedArray->length()));
 }
 
 SLOW_PATH_DECL(slow_path_spread)

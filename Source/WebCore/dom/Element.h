@@ -28,6 +28,7 @@
 #include "Document.h"
 #include "ElementData.h"
 #include "HTMLNames.h"
+#include "KeyframeAnimationOptions.h"
 #include "ScrollToOptions.h"
 #include "ScrollTypes.h"
 #include "ShadowRootMode.h"
@@ -280,7 +281,6 @@ public:
 
     RefPtr<ShadowRoot> userAgentShadowRoot() const;
     WEBCORE_EXPORT ShadowRoot& ensureUserAgentShadowRoot();
-    void removeShadowRoot();
 
     void setIsDefinedCustomElement(JSCustomElementInterface&);
     void setIsFailedCustomElement(JSCustomElementInterface&);
@@ -305,7 +305,7 @@ public:
     bool tabIndexSetExplicitly() const;
     virtual bool supportsFocus() const;
     virtual bool isFocusable() const;
-    virtual bool isKeyboardFocusable(KeyboardEvent&) const;
+    virtual bool isKeyboardFocusable(KeyboardEvent*) const;
     virtual bool isMouseFocusable() const;
 
     virtual bool shouldUseInputMethod();
@@ -369,8 +369,8 @@ public:
     virtual String target() const { return String(); }
 
     static AXTextStateChangeIntent defaultFocusTextStateChangeIntent() { return AXTextStateChangeIntent(AXTextStateChangeTypeSelectionMove, AXTextSelection { AXTextSelectionDirectionDiscontiguous, AXTextSelectionGranularityUnknown, true }); }
-    void updateFocusAppearanceAfterAttachIfNeeded();
     virtual void focus(bool restorePreviousSelection = true, FocusDirection = FocusDirectionNone);
+    virtual RefPtr<Element> focusAppearanceUpdateTarget();
     virtual void updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode = SelectionRevealMode::Reveal);
     virtual void blur();
 
@@ -436,7 +436,8 @@ public:
 
     virtual bool isFormControlElement() const { return false; }
     virtual bool isSpinButtonElement() const { return false; }
-    virtual bool isTextFormControl() const { return false; }
+    virtual bool isTextFormControlElement() const { return false; }
+    virtual bool isTextField() const { return false; }
     virtual bool isOptionalFormControl() const { return false; }
     virtual bool isRequiredFormControl() const { return false; }
     virtual bool isInRange() const { return false; }
@@ -514,7 +515,6 @@ public:
     void clearAfterPseudoElement();
     void resetComputedStyle();
     void resetStyleRelations();
-    void clearStyleDerivedDataBeforeDetachingRenderer();
     void clearHoverAndActiveStatusBeforeDetachingRenderer();
 
     WEBCORE_EXPORT URL absoluteLinkURL() const;
@@ -557,6 +557,7 @@ public:
     AccessibleNode* existingAccessibleNode() const;
     AccessibleNode* accessibleNode();
 
+    ExceptionOr<Ref<WebAnimation>> animate(JSC::ExecState&, JSC::Strong<JSC::JSObject>&&, std::optional<Variant<double, KeyframeAnimationOptions>>&&);
     Vector<RefPtr<WebAnimation>> getAnimations();
 
 protected:
@@ -636,6 +637,8 @@ private:
     // The cloneNode function is private so that non-virtual cloneElementWith/WithoutChildren are used instead.
     Ref<Node> cloneNodeInternal(Document&, CloningOperation) override;
     virtual Ref<Element> cloneElementWithoutAttributesAndChildren(Document&);
+
+    void removeShadowRoot();
 
     const RenderStyle& resolveComputedStyle();
     const RenderStyle& resolvePseudoElementStyle(PseudoId);

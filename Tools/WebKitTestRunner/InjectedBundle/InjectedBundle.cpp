@@ -97,7 +97,7 @@ void InjectedBundle::initialize(WKBundleRef bundle, WKTypeRef initializationUser
         didReceiveMessageToPage
     };
     WKBundleSetClient(m_bundle, &client.base);
-
+    WKBundleSetServiceWorkerProxyCreationCallback(m_bundle, WebCoreTestSupport::setupNewlyCreatedServiceWorker);
     platformInitialize(initializationUserData);
 
     activateFonts();
@@ -245,6 +245,29 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         return;
     }
 
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidSetPartitionOrBlockCookiesForHost")) {
+        m_testRunner->statisticsCallDidSetPartitionOrBlockCookiesForHostCallback();
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "CallDidReceiveAllStorageAccessEntries")) {
+        ASSERT(messageBody);
+        ASSERT(WKGetTypeID(messageBody) == WKArrayGetTypeID());
+
+        WKArrayRef domainsArray = static_cast<WKArrayRef>(messageBody);
+        auto size = WKArrayGetSize(domainsArray);
+        Vector<String> domains;
+        domains.reserveInitialCapacity(size);
+        for (size_t i = 0; i < size; ++i) {
+            WKTypeRef item = WKArrayGetItemAtIndex(domainsArray, i);
+            if (item && WKGetTypeID(item) == WKStringGetTypeID())
+                domains.append(toWTFString(static_cast<WKStringRef>(item)));
+        }
+
+        m_testRunner->callDidReceiveAllStorageAccessEntriesCallback(domains);
+        return;
+    }
+
     if (WKStringIsEqualToUTF8CString(messageName, "CallDidRemoveAllSessionCredentialsCallback")) {
         m_testRunner->callDidRemoveAllSessionCredentialsCallback();
         return;
@@ -295,6 +318,11 @@ void InjectedBundle::didReceiveMessageToPage(WKBundlePageRef page, WKStringRef m
         unsigned top3SubframeUnderTopFrameOrigins = (unsigned)WKUInt64GetValue(static_cast<WKUInt64Ref>(WKDictionaryGetItemForKey(messageBodyDictionary, WKStringCreateWithUTF8CString("Top3SubframeUnderTopFrameOrigins"))));
         
         m_testRunner->statisticsDidRunTelemetryCallback(totalPrevalentResources, totalPrevalentResourcesWithUserInteraction, top3SubframeUnderTopFrameOrigins);
+        return;
+    }
+    
+    if (WKStringIsEqualToUTF8CString(messageName, "DidGetApplicationManifest")) {
+        m_testRunner->didGetApplicationManifest();
         return;
     }
     

@@ -56,7 +56,7 @@ void FEOffset::determineAbsolutePaintRect()
 {
     FloatRect paintRect = inputEffect(0)->absolutePaintRect();
     Filter& filter = this->filter();
-    paintRect.move(filter.applyHorizontalScale(m_dx), filter.applyVerticalScale(m_dy));
+    paintRect.move(filter.scaledByFilterResolution({ m_dx, m_dy }));
     if (clipsToBounds())
         paintRect.intersect(maxEffectRect());
     else
@@ -77,18 +77,18 @@ void FEOffset::platformApplySoftware()
 
     FloatRect drawingRegion = drawingRegionOfInputImage(in->absolutePaintRect());
     Filter& filter = this->filter();
-    drawingRegion.move(filter.applyHorizontalScale(m_dx), filter.applyVerticalScale(m_dy));
+    drawingRegion.move(filter.scaledByFilterResolution({ m_dx, m_dy }));
     resultImage->context().drawImageBuffer(*inBuffer, drawingRegion);
 }
 
-TextStream& FEOffset::externalRepresentation(TextStream& ts) const
+TextStream& FEOffset::externalRepresentation(TextStream& ts, RepresentationType representation) const
 {
     ts << indent << "[feOffset";
-    FilterEffect::externalRepresentation(ts);
+    FilterEffect::externalRepresentation(ts, representation);
     ts << " dx=\"" << dx() << "\" dy=\"" << dy() << "\"]\n";
 
     TextStream::IndentScope indentScope(ts);
-    inputEffect(0)->externalRepresentation(ts);
+    inputEffect(0)->externalRepresentation(ts, representation);
     return ts;
 }
 

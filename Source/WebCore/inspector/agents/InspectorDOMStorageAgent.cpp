@@ -46,11 +46,12 @@
 #include "StorageNamespaceProvider.h"
 #include "StorageType.h"
 #include "VoidCallback.h"
-#include <inspector/InspectorFrontendDispatchers.h>
+#include <JavaScriptCore/InspectorFrontendDispatchers.h>
 #include <wtf/JSONValues.h>
 
 
 namespace WebCore {
+
 using namespace Inspector;
 
 InspectorDOMStorageAgent::InspectorDOMStorageAgent(WebAgentContext& context, InspectorPageAgent* pageAgent)
@@ -87,7 +88,7 @@ void InspectorDOMStorageAgent::disable(ErrorString&)
     m_enabled = false;
 }
 
-void InspectorDOMStorageAgent::getDOMStorageItems(ErrorString& errorString, const JSON::Object& storageId, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::Array<String>>>& items)
+void InspectorDOMStorageAgent::getDOMStorageItems(ErrorString& errorString, const JSON::Object& storageId, RefPtr<JSON::ArrayOf<JSON::ArrayOf<String>>>& items)
 {
     Frame* frame;
     RefPtr<StorageArea> storageArea = findStorageArea(errorString, storageId, frame);
@@ -96,13 +97,13 @@ void InspectorDOMStorageAgent::getDOMStorageItems(ErrorString& errorString, cons
         return;
     }
 
-    auto storageItems = Inspector::Protocol::Array<Inspector::Protocol::Array<String>>::create();
+    auto storageItems = JSON::ArrayOf<JSON::ArrayOf<String>>::create();
 
     for (unsigned i = 0; i < storageArea->length(); ++i) {
         String key = storageArea->key(i);
         String value = storageArea->item(key);
 
-        auto entry = Inspector::Protocol::Array<String>::create();
+        auto entry = JSON::ArrayOf<String>::create();
         entry->addItem(key);
         entry->addItem(value);
         storageItems->addItem(WTFMove(entry));

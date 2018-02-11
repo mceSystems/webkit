@@ -119,6 +119,11 @@ DocumentThreadableLoader::DocumentThreadableLoader(Document& document, Threadabl
     if (m_async && m_options.mode == FetchOptions::Mode::Cors)
         m_originalHeaders = request.httpHeaderFields();
 
+#if ENABLE(SERVICE_WORKER)
+    if (m_options.serviceWorkersMode == ServiceWorkersMode::All && m_async && (m_options.serviceWorkerRegistrationIdentifier || document.activeServiceWorker()))
+        m_options.httpHeadersToKeep = httpHeadersToKeepFromCleaning(request.httpHeaderFields());
+#endif
+
     if (document.page() && document.page()->isRunningUserScripts() && SchemeRegistry::isUserExtensionScheme(request.url().protocol().toStringWithoutCopying())) {
         m_options.mode = FetchOptions::Mode::NoCors;
         m_options.filteringPolicy = ResponseFilteringPolicy::Disable;
@@ -128,7 +133,7 @@ DocumentThreadableLoader::DocumentThreadableLoader(Document& document, Threadabl
     if (request.url().protocolIsData())
         m_sameOriginRequest = options.sameOriginDataURLFlag == SameOriginDataURLFlag::Set;
 
-    if (m_sameOriginRequest || m_options.mode == FetchOptions::Mode::NoCors) {
+    if (m_sameOriginRequest || m_options.mode == FetchOptions::Mode::NoCors || m_options.mode == FetchOptions::Mode::Navigate) {
         loadRequest(WTFMove(request), DoSecurityCheck);
         return;
     }
@@ -150,7 +155,7 @@ void DocumentThreadableLoader::makeCrossOriginAccessRequest(ResourceRequest&& re
     else {
 #if ENABLE(SERVICE_WORKER)
         if (m_options.serviceWorkersMode == ServiceWorkersMode::All && m_async) {
-            if (m_options.serviceWorkerIdentifier || document().activeServiceWorker()) {
+            if (m_options.serviceWorkerRegistrationIdentifier || document().activeServiceWorker()) {
                 ASSERT(!m_bypassingPreflightForServiceWorkerRequest);
                 m_bypassingPreflightForServiceWorkerRequest = WTFMove(request);
                 m_options.serviceWorkersMode = ServiceWorkersMode::Only;
@@ -288,6 +293,10 @@ void DocumentThreadableLoader::redirectReceived(CachedResource& resource, Resour
         m_originalHeaders->remove(HTTPHeaderName::Authorization);
     request.setHTTPHeaderFields(*m_originalHeaders);
 
+#if ENABLE(SERVICE_WORKER)
+    if (redirectResponse.source() != ResourceResponse::Source::ServiceWorker && redirectResponse.source() != ResourceResponse::Source::MemoryCache)
+        m_options.serviceWorkersMode = ServiceWorkersMode::None;
+#endif
     makeCrossOriginAccessRequest(ResourceRequest(request));
     completionHandler(WTFMove(request));
 }
@@ -329,7 +338,7 @@ void DocumentThreadableLoader::didReceiveResponse(unsigned long identifier, cons
         }
         return;
     }
-    ASSERT(response.type() == ResourceResponse::Type::Opaqueredirect || response.source() == ResourceResponse::Source::ServiceWorker);
+    ASSERT(response.type() == ResourceResponse::Type::Opaqueredirect || response.source() == ResourceResponse::Source::ServiceWorker || response.source() == ResourceResponse::Source::MemoryCache);
     m_client->didReceiveResponse(identifier, response);
 }
 
@@ -405,9 +414,13 @@ void DocumentThreadableLoader::didFail(unsigned long, const ResourceError& error
 {
     ASSERT(m_client);
 #if ENABLE(SERVICE_WORKER)
-    if (m_bypassingPreflightForServiceWorkerRequest) {
+    if (m_bypassingPreflightForServiceWorkerRequest && error.isCancellation()) {
+        clearResource();
+
         m_options.serviceWorkersMode = ServiceWorkersMode::None;
-        makeCrossOriginAccessRequest(WTFMove(m_bypassingPreflightForServiceWorkerRequest.value()));
+        makeCrossOriginAccessRequestWithPreflight(WTFMove(m_bypassingPreflightForServiceWorkerRequest.value()));
+        ASSERT(m_bypassingPreflightForServiceWorkerRequest->isNull());
+        m_bypassingPreflightForServiceWorkerRequest = std::nullopt;
         return;
     }
 #endif
@@ -469,7 +482,7 @@ void DocumentThreadableLoader::loadRequest(ResourceRequest&& request, SecurityCh
         }
 
         auto cachedResource = m_document.cachedResourceLoader().requestRawResource(WTFMove(newRequest));
-        m_resource = cachedResource.valueOr(nullptr);
+        m_resource = cachedResource.value_or(nullptr);
         if (m_resource)
             m_resource->addClient(*this);
         else

@@ -302,6 +302,15 @@ class AbsoluteAddress
     end
 end
 
+class LabelReference
+    def intMemRef
+        "*CAST<intptr_t*>(&#{cLabel})"
+    end
+    def cloopEmitLea(destination, type)
+        $asm.putc "#{destination.clValue(:voidPtr)} = CAST<void*>(&#{cLabel});"
+    end
+end
+
 
 #
 # Lea support.

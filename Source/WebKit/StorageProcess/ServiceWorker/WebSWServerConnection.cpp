@@ -56,6 +56,9 @@ using namespace WebCore;
 
 namespace WebKit {
 
+#define SWSERVERCONNECTION_RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(m_sessionID.isAlwaysOnLoggingAllowed(), ServiceWorker, "%p - WebSWServerConnection::" fmt, this, ##__VA_ARGS__)
+#define SWSERVERCONNECTION_RELEASE_LOG_ERROR_IF_ALLOWED(fmt, ...) RELEASE_LOG_ERROR_IF(m_sessionID.isAlwaysOnLoggingAllowed(), ServiceWorker, "%p - WebSWServerConnection::" fmt, this, ##__VA_ARGS__)
+
 WebSWServerConnection::WebSWServerConnection(SWServer& server, IPC::Connection& connection, SessionID sessionID)
     : SWServer::Connection(server)
     , m_sessionID(sessionID)
@@ -68,7 +71,7 @@ WebSWServerConnection::~WebSWServerConnection()
 {
     StorageProcess::singleton().unregisterSWServerConnection(*this);
     for (auto keyValue : m_clientOrigins)
-        server().unregisterServiceWorkerClient(keyValue.value, ServiceWorkerClientIdentifier { identifier(), keyValue.key });
+        server().unregisterServiceWorkerClient(keyValue.value, keyValue.key);
 }
 
 void WebSWServerConnection::disconnectedFromWebProcess()
@@ -76,24 +79,24 @@ void WebSWServerConnection::disconnectedFromWebProcess()
     notImplemented();
 }
 
-void WebSWServerConnection::rejectJobInClient(const ServiceWorkerJobDataIdentifier& jobDataIdentifier, const ExceptionData& exceptionData)
+void WebSWServerConnection::rejectJobInClient(ServiceWorkerJobIdentifier jobIdentifier, const ExceptionData& exceptionData)
 {
-    send(Messages::WebSWClientConnection::JobRejectedInServer(jobDataIdentifier, exceptionData));
+    send(Messages::WebSWClientConnection::JobRejectedInServer(jobIdentifier, exceptionData));
 }
 
-void WebSWServerConnection::resolveRegistrationJobInClient(const ServiceWorkerJobDataIdentifier& jobDataIdentifier, const ServiceWorkerRegistrationData& registrationData, ShouldNotifyWhenResolved shouldNotifyWhenResolved)
+void WebSWServerConnection::resolveRegistrationJobInClient(ServiceWorkerJobIdentifier jobIdentifier, const ServiceWorkerRegistrationData& registrationData, ShouldNotifyWhenResolved shouldNotifyWhenResolved)
 {
-    send(Messages::WebSWClientConnection::RegistrationJobResolvedInServer(jobDataIdentifier, registrationData, shouldNotifyWhenResolved));
+    send(Messages::WebSWClientConnection::RegistrationJobResolvedInServer(jobIdentifier, registrationData, shouldNotifyWhenResolved));
 }
 
-void WebSWServerConnection::resolveUnregistrationJobInClient(const ServiceWorkerJobDataIdentifier& jobDataIdentifier, const ServiceWorkerRegistrationKey& registrationKey, bool unregistrationResult)
+void WebSWServerConnection::resolveUnregistrationJobInClient(ServiceWorkerJobIdentifier jobIdentifier, const ServiceWorkerRegistrationKey& registrationKey, bool unregistrationResult)
 {
-    send(Messages::WebSWClientConnection::UnregistrationJobResolvedInServer(jobDataIdentifier, unregistrationResult));
+    send(Messages::WebSWClientConnection::UnregistrationJobResolvedInServer(jobIdentifier, unregistrationResult));
 }
 
-void WebSWServerConnection::startScriptFetchInClient(const ServiceWorkerJobDataIdentifier& jobDataIdentifier)
+void WebSWServerConnection::startScriptFetchInClient(ServiceWorkerJobIdentifier jobIdentifier, const ServiceWorkerRegistrationKey& registrationKey, FetchOptions::Cache cachePolicy)
 {
-    send(Messages::WebSWClientConnection::StartScriptFetchForServer(jobDataIdentifier));
+    send(Messages::WebSWClientConnection::StartScriptFetchForServer(jobIdentifier, registrationKey, cachePolicy));
 }
 
 void WebSWServerConnection::updateRegistrationStateInClient(ServiceWorkerRegistrationIdentifier identifier, ServiceWorkerRegistrationState state, const std::optional<ServiceWorkerData>& serviceWorkerData)
@@ -106,6 +109,16 @@ void WebSWServerConnection::fireUpdateFoundEvent(ServiceWorkerRegistrationIdenti
     send(Messages::WebSWClientConnection::FireUpdateFoundEvent(identifier));
 }
 
+void WebSWServerConnection::setRegistrationLastUpdateTime(ServiceWorkerRegistrationIdentifier identifier, WallTime lastUpdateTime)
+{
+    send(Messages::WebSWClientConnection::SetRegistrationLastUpdateTime(identifier, lastUpdateTime));
+}
+
+void WebSWServerConnection::setRegistrationUpdateViaCache(ServiceWorkerRegistrationIdentifier identifier, ServiceWorkerUpdateViaCache updateViaCache)
+{
+    send(Messages::WebSWClientConnection::SetRegistrationUpdateViaCache(identifier, updateViaCache));
+}
+
 void WebSWServerConnection::notifyClientsOfControllerChange(const HashSet<DocumentIdentifier>& contextIdentifiers, const ServiceWorkerData& newController)
 {
     send(Messages::WebSWClientConnection::NotifyClientsOfControllerChange(contextIdentifiers, newController));
@@ -116,16 +129,90 @@ void WebSWServerConnection::updateWorkerStateInClient(ServiceWorkerIdentifier wo
     send(Messages::WebSWClientConnection::UpdateWorkerState(worker, state));
 }
 
-void WebSWServerConnection::startFetch(uint64_t fetchIdentifier, std::optional<ServiceWorkerIdentifier> serviceWorkerIdentifier, const ResourceRequest& request, const FetchOptions& options, const IPC::FormDataReference& formData)
+void WebSWServerConnection::startFetch(uint64_t fetchIdentifier, ServiceWorkerRegistrationIdentifier serviceWorkerRegistrationIdentifier, ResourceRequest&& request, FetchOptions&& options, IPC::FormDataReference&& formData, String&& referrer)
 {
-    sendToContextProcess(Messages::WebSWContextManagerConnection::StartFetch { identifier(), fetchIdentifier, serviceWorkerIdentifier, request, options, formData });
+    auto* worker = server().activeWorkerFromRegistrationID(serviceWorkerRegistrationIdentifier);
+    if (!worker) {
+        SWSERVERCONNECTION_RELEASE_LOG_ERROR_IF_ALLOWED("startFetch: fetchIdentifier: %llu -> DidNotHandle because no active worker", fetchIdentifier);
+        m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidNotHandle { }, fetchIdentifier);
+        return;
+    }
+    auto serviceWorkerIdentifier = worker->identifier();
+
+    auto runServerWorkerAndStartFetch = [weakThis = makeWeakPtr(this), this, fetchIdentifier, serviceWorkerIdentifier, request = WTFMove(request), options = WTFMove(options), formData = WTFMove(formData), referrer = WTFMove(referrer)](bool success) mutable {
+        if (!weakThis)
+            return;
+
+        if (!success) {
+            SWSERVERCONNECTION_RELEASE_LOG_ERROR_IF_ALLOWED("startFetch: fetchIdentifier: %llu -> DidNotHandle because worker did not become activated", fetchIdentifier);
+            m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidNotHandle { }, fetchIdentifier);
+            return;
+        }
+
+        if (!StorageProcess::singleton().globalServerToContextConnection())
+            StorageProcess::singleton().createServerToContextConnection(server().sessionID());
+
+        server().runServiceWorkerIfNecessary(serviceWorkerIdentifier, [weakThis = WTFMove(weakThis), this, fetchIdentifier, serviceWorkerIdentifier, request = WTFMove(request), options = WTFMove(options), formData = WTFMove(formData), referrer = WTFMove(referrer)](bool success, auto& contextConnection) {
+            if (!weakThis)
+                return;
+
+            if (success) {
+                SWSERVERCONNECTION_RELEASE_LOG_IF_ALLOWED("startFetch: Starting fetch %llu via service worker %llu", fetchIdentifier, serviceWorkerIdentifier.toUInt64());
+                sendToContextProcess(contextConnection, Messages::WebSWContextManagerConnection::StartFetch { identifier(), fetchIdentifier, serviceWorkerIdentifier, request, options, formData, referrer });
+            } else {
+                SWSERVERCONNECTION_RELEASE_LOG_ERROR_IF_ALLOWED("startFetch: fetchIdentifier: %llu -> DidNotHandle because failed to run service worker", fetchIdentifier);
+                m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidNotHandle { }, fetchIdentifier);
+            }
+        });
+    };
+
+    if (worker->state() == ServiceWorkerState::Activating) {
+        worker->whenActivated(WTFMove(runServerWorkerAndStartFetch));
+        return;
+    }
+    ASSERT(worker->state() == ServiceWorkerState::Activated);
+    runServerWorkerAndStartFetch(true);
 }
 
-void WebSWServerConnection::postMessageToServiceWorkerGlobalScope(ServiceWorkerIdentifier destinationServiceWorkerIdentifier, const IPC::DataReference& message, DocumentIdentifier sourceContextIdentifier, ServiceWorkerClientData&& sourceData)
+void WebSWServerConnection::postMessageToServiceWorker(ServiceWorkerIdentifier destinationIdentifier, MessageWithMessagePorts&& message, const ServiceWorkerOrClientIdentifier& sourceIdentifier)
 {
-    ServiceWorkerClientIdentifier sourceIdentifier { identifier(), sourceContextIdentifier };
-    sendToContextProcess(Messages::WebSWContextManagerConnection::PostMessageToServiceWorkerGlobalScope { destinationServiceWorkerIdentifier, message, sourceIdentifier, WTFMove(sourceData) });
+    std::optional<ServiceWorkerOrClientData> sourceData;
+    WTF::switchOn(sourceIdentifier, [&](ServiceWorkerIdentifier identifier) {
+        if (auto* sourceWorker = server().workerByID(identifier))
+            sourceData = ServiceWorkerOrClientData { sourceWorker->data() };
+    }, [&](ServiceWorkerClientIdentifier identifier) {
+        auto* destinationWorker = server().workerByID(destinationIdentifier);
+        if (!destinationWorker)
+            return;
+
+        if (auto clientData = destinationWorker->findClientByIdentifier(identifier))
+            sourceData = ServiceWorkerOrClientData { *clientData };
+    });
+
+    if (!sourceData)
+        return;
+
+    if (!StorageProcess::singleton().globalServerToContextConnection())
+        StorageProcess::singleton().createServerToContextConnection(server().sessionID());
+
+    // It's possible this specific worker cannot be re-run (e.g. its registration has been removed)
+    server().runServiceWorkerIfNecessary(destinationIdentifier, [destinationIdentifier, message = WTFMove(message), sourceData = WTFMove(*sourceData)](bool success, auto& contextConnection) mutable {
+        if (success)
+            sendToContextProcess(contextConnection, Messages::WebSWContextManagerConnection::PostMessageToServiceWorker { destinationIdentifier, WTFMove(message), WTFMove(sourceData) });
+    });
 }
+
+void WebSWServerConnection::scheduleJobInServer(ServiceWorkerJobData&& jobData)
+{
+    if (!StorageProcess::singleton().globalServerToContextConnection())
+        StorageProcess::singleton().createServerToContextConnection(server().sessionID());
+
+    SWSERVERCONNECTION_RELEASE_LOG_IF_ALLOWED("Scheduling ServiceWorker job %s in server", jobData.identifier().loggingString().utf8().data());
+    ASSERT(identifier() == jobData.connectionIdentifier());
+
+    server().scheduleJob(WTFMove(jobData));
+}
+
 
 void WebSWServerConnection::didReceiveFetchResponse(uint64_t fetchIdentifier, const ResourceResponse& response)
 {
@@ -144,26 +231,29 @@ void WebSWServerConnection::didReceiveFetchFormData(uint64_t fetchIdentifier, co
 
 void WebSWServerConnection::didFinishFetch(uint64_t fetchIdentifier)
 {
+    SWSERVERCONNECTION_RELEASE_LOG_IF_ALLOWED("didFinishFetch: fetchIdentifier: %llu", fetchIdentifier);
     m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidFinish { }, fetchIdentifier);
 }
 
 void WebSWServerConnection::didFailFetch(uint64_t fetchIdentifier)
 {
+    SWSERVERCONNECTION_RELEASE_LOG_ERROR_IF_ALLOWED("didFailFetch: fetchIdentifier: %llu", fetchIdentifier);
     m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidFail { }, fetchIdentifier);
 }
 
 void WebSWServerConnection::didNotHandleFetch(uint64_t fetchIdentifier)
 {
+    SWSERVERCONNECTION_RELEASE_LOG_IF_ALLOWED("didNotHandleFetch: fetchIdentifier: %llu", fetchIdentifier);
     m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidNotHandle { }, fetchIdentifier);
 }
 
-void WebSWServerConnection::postMessageToServiceWorkerClient(DocumentIdentifier destinationContextIdentifier, const IPC::DataReference& message, ServiceWorkerIdentifier sourceIdentifier, const String& sourceOrigin)
+void WebSWServerConnection::postMessageToServiceWorkerClient(DocumentIdentifier destinationContextIdentifier, MessageWithMessagePorts&& message, ServiceWorkerIdentifier sourceIdentifier, const String& sourceOrigin)
 {
     auto* sourceServiceWorker = server().workerByID(sourceIdentifier);
     if (!sourceServiceWorker)
         return;
 
-    send(Messages::WebSWClientConnection::PostMessageToServiceWorkerClient { destinationContextIdentifier, message, sourceServiceWorker->data(), sourceOrigin });
+    send(Messages::WebSWClientConnection::PostMessageToServiceWorkerClient { destinationContextIdentifier, WTFMove(message), sourceServiceWorker->data(), sourceOrigin });
 }
 
 void WebSWServerConnection::matchRegistration(uint64_t registrationMatchRequestIdentifier, const SecurityOriginData& topOrigin, const URL& clientURL)
@@ -175,26 +265,31 @@ void WebSWServerConnection::matchRegistration(uint64_t registrationMatchRequestI
     send(Messages::WebSWClientConnection::DidMatchRegistration { registrationMatchRequestIdentifier, std::nullopt });
 }
 
+void WebSWServerConnection::registrationReady(uint64_t registrationReadyRequestIdentifier, ServiceWorkerRegistrationData&& registrationData)
+{
+    send(Messages::WebSWClientConnection::RegistrationReady { registrationReadyRequestIdentifier, WTFMove(registrationData) });
+}
+
 void WebSWServerConnection::getRegistrations(uint64_t registrationMatchRequestIdentifier, const SecurityOriginData& topOrigin, const URL& clientURL)
 {
     auto registrations = server().getRegistrations(topOrigin, clientURL);
     send(Messages::WebSWClientConnection::DidGetRegistrations { registrationMatchRequestIdentifier, registrations });
 }
 
-void WebSWServerConnection::registerServiceWorkerClient(SecurityOriginData&& topOrigin, DocumentIdentifier contextIdentifier, ServiceWorkerClientData&& data)
+void WebSWServerConnection::registerServiceWorkerClient(SecurityOriginData&& topOrigin, ServiceWorkerClientData&& data, const std::optional<ServiceWorkerIdentifier>& controllingServiceWorkerIdentifier)
 {
     auto clientOrigin = ClientOrigin { WTFMove(topOrigin), SecurityOriginData::fromSecurityOrigin(SecurityOrigin::create(data.url)) };
-    m_clientOrigins.add(contextIdentifier, clientOrigin);
-    server().registerServiceWorkerClient(WTFMove(clientOrigin), ServiceWorkerClientIdentifier { this->identifier(), contextIdentifier } , WTFMove(data));
+    m_clientOrigins.add(data.identifier, clientOrigin);
+    server().registerServiceWorkerClient(WTFMove(clientOrigin), WTFMove(data), controllingServiceWorkerIdentifier);
 }
 
-void WebSWServerConnection::unregisterServiceWorkerClient(DocumentIdentifier contextIdentifier)
+void WebSWServerConnection::unregisterServiceWorkerClient(const ServiceWorkerClientIdentifier& clientIdentifier)
 {
-    auto iterator = m_clientOrigins.find(contextIdentifier);
+    auto iterator = m_clientOrigins.find(clientIdentifier);
     if (iterator == m_clientOrigins.end())
         return;
 
-    server().unregisterServiceWorkerClient(iterator->value, ServiceWorkerClientIdentifier { this->identifier(), contextIdentifier });
+    server().unregisterServiceWorkerClient(iterator->value, clientIdentifier);
     m_clientOrigins.remove(iterator);
 }
 
@@ -202,6 +297,11 @@ template<typename U> void WebSWServerConnection::sendToContextProcess(U&& messag
 {
     if (auto* connection = StorageProcess::singleton().globalServerToContextConnection())
         connection->send(WTFMove(message));
+}
+
+template<typename U> void WebSWServerConnection::sendToContextProcess(WebCore::SWServerToContextConnection& connection, U&& message)
+{
+    static_cast<WebSWServerToContextConnection&>(connection).send(WTFMove(message));
 }
 
 } // namespace WebKit

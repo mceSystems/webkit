@@ -41,6 +41,9 @@
 
 namespace WebCore {
 
+#if ENABLE(APPLICATION_MANIFEST)
+class CachedApplicationManifest;
+#endif
 class CachedCSSStyleSheet;
 class CachedSVGDocument;
 class CachedFont;
@@ -96,6 +99,9 @@ public:
 #if ENABLE(VIDEO_TRACK)
     ResourceErrorOr<CachedResourceHandle<CachedTextTrack>> requestTextTrack(CachedResourceRequest&&);
 #endif
+#if ENABLE(APPLICATION_MANIFEST)
+    ResourceErrorOr<CachedResourceHandle<CachedApplicationManifest>> requestApplicationManifest(CachedResourceRequest&&);
+#endif
 
     // Logs an access denied message to the console for the specified URL.
     void printAccessDeniedMessage(const URL& url) const;
@@ -142,6 +148,7 @@ public:
     void stopUnusedPreloadsTimer();
 
     bool updateRequestAfterRedirection(CachedResource::Type, ResourceRequest&, const ResourceLoaderOptions&);
+    bool allowedByContentSecurityPolicy(CachedResource::Type, const URL&, const ResourceLoaderOptions&, ContentSecurityPolicy::RedirectResponseReceived) const;
 
     static const ResourceLoaderOptions& defaultCachedResourceOptions();
 
@@ -165,7 +172,6 @@ private:
 
     void prepareFetch(CachedResource::Type, CachedResourceRequest&);
     void updateHTTPRequestHeaders(CachedResource::Type, CachedResourceRequest&);
-    void updateReferrerOriginAndUserAgentHeaders(CachedResourceRequest&);
 
     bool canRequest(CachedResource::Type, const URL&, const CachedResourceRequest&, ForPreload);
 
@@ -177,7 +183,6 @@ private:
 
     bool shouldContinueAfterNotifyingLoadedFromMemoryCache(const CachedResourceRequest&, CachedResource&, ResourceError&);
     bool checkInsecureContent(CachedResource::Type, const URL&) const;
-    bool allowedByContentSecurityPolicy(CachedResource::Type, const URL&, const ResourceLoaderOptions&, ContentSecurityPolicy::RedirectResponseReceived) const;
 
     void performPostLoadActions();
 

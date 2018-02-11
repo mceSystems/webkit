@@ -27,6 +27,7 @@
 #define StringConcatenate_h
 
 #include <string.h>
+#include <wtf/FastCopy.h>
 
 #ifndef AtomicString_h
 #include <wtf/text/AtomicString.h>
@@ -44,13 +45,13 @@
 
 namespace WTF {
 
-template<typename StringType>
+template<typename StringType, typename>
 class StringTypeAdapter;
 
 template<>
-class StringTypeAdapter<char> {
+class StringTypeAdapter<char, void> {
 public:
-    StringTypeAdapter<char>(char character)
+    StringTypeAdapter(char character)
         : m_character(character)
     {
     }
@@ -75,9 +76,9 @@ private:
 };
 
 template<>
-class StringTypeAdapter<UChar> {
+class StringTypeAdapter<UChar, void> {
 public:
-    StringTypeAdapter<UChar>(UChar character)
+    StringTypeAdapter(UChar character)
         : m_character(character)
     {
     }
@@ -103,7 +104,7 @@ private:
 };
 
 template<>
-class StringTypeAdapter<const LChar*> {
+class StringTypeAdapter<const LChar*, void> {
 public:
     StringTypeAdapter(const LChar* characters)
         : m_characters(characters)
@@ -132,7 +133,7 @@ private:
 };
 
 template<>
-class StringTypeAdapter<const UChar*> {
+class StringTypeAdapter<const UChar*, void> {
 public:
     StringTypeAdapter(const UChar* characters)
         : m_characters(characters)
@@ -157,7 +158,7 @@ public:
 
     void writeTo(UChar* destination) const
     {
-        memcpy(destination, m_characters, m_length * sizeof(UChar));
+        fastCopy(destination, m_characters, m_length);
     }
 
     String toString() const { return String(m_characters, m_length); }
@@ -168,34 +169,34 @@ private:
 };
 
 template<>
-class StringTypeAdapter<const char*> : public StringTypeAdapter<const LChar*> {
+class StringTypeAdapter<const char*, void> : public StringTypeAdapter<const LChar*, void> {
 public:
     StringTypeAdapter(const char* characters)
-        : StringTypeAdapter<const LChar*>(reinterpret_cast<const LChar*>(characters))
+        : StringTypeAdapter<const LChar*, void>(reinterpret_cast<const LChar*>(characters))
     {
     }
 };
 
 template<>
-class StringTypeAdapter<char*> : public StringTypeAdapter<const char*> {
+class StringTypeAdapter<char*, void> : public StringTypeAdapter<const char*, void> {
 public:
     StringTypeAdapter(const char* characters)
-        : StringTypeAdapter<const char*>(characters)
+        : StringTypeAdapter<const char*, void>(characters)
     {
     }
 };
 
 template<>
-class StringTypeAdapter<ASCIILiteral> : public StringTypeAdapter<const char*> {
+class StringTypeAdapter<ASCIILiteral, void> : public StringTypeAdapter<const char*, void> {
 public:
     StringTypeAdapter(ASCIILiteral characters)
-        : StringTypeAdapter<const char*>(characters)
+        : StringTypeAdapter<const char*, void>(characters)
     {
     }
 };
 
 template<>
-class StringTypeAdapter<Vector<char>> {
+class StringTypeAdapter<Vector<char>, void> {
 public:
     StringTypeAdapter(const Vector<char>& vector)
         : m_vector(vector)
@@ -222,9 +223,9 @@ private:
 };
 
 template<>
-class StringTypeAdapter<String> {
+class StringTypeAdapter<String, void> {
 public:
-    StringTypeAdapter<String>(const String& string)
+    StringTypeAdapter(const String& string)
         : m_string(string)
     {
     }
@@ -251,10 +252,10 @@ private:
 };
 
 template<>
-class StringTypeAdapter<AtomicString> : public StringTypeAdapter<String> {
+class StringTypeAdapter<AtomicString, void> : public StringTypeAdapter<String, void> {
 public:
     StringTypeAdapter(const AtomicString& string)
-        : StringTypeAdapter<String>(string.string())
+        : StringTypeAdapter<String, void>(string.string())
     {
     }
 };

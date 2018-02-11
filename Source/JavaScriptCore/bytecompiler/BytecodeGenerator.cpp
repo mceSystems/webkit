@@ -36,10 +36,13 @@
 #include "BuiltinNames.h"
 #include "BytecodeGeneratorification.h"
 #include "BytecodeLivenessAnalysis.h"
+#include "CatchScope.h"
 #include "DefinePropertyAttributes.h"
 #include "Interpreter.h"
 #include "JSAsyncGeneratorFunction.h"
+#include "JSBigInt.h"
 #include "JSCInlines.h"
+#include "JSFixedArray.h"
 #include "JSFunction.h"
 #include "JSGeneratorFunction.h"
 #include "JSLexicalEnvironment.h"
@@ -586,11 +589,7 @@ BytecodeGenerator::BytecodeGenerator(VM& vm, FunctionNode* functionNode, Unlinke
 
         // FIXME: Emit to_this only when Generator uses it.
         // https://bugs.webkit.org/show_bug.cgi?id=151586
-        m_codeBlock->addPropertyAccessInstruction(instructions().size());
-        emitOpcode(op_to_this);
-        instructions().append(kill(&m_thisRegister));
-        instructions().append(0);
-        instructions().append(0);
+        emitToThis();
 
         emitMove(m_generatorRegister, &m_calleeRegister);
         emitCreateThis(m_generatorRegister);
@@ -608,11 +607,7 @@ BytecodeGenerator::BytecodeGenerator(VM& vm, FunctionNode* functionNode, Unlinke
         if (parseMode != SourceParseMode::AsyncArrowFunctionMode) {
             // FIXME: Emit to_this only when AsyncFunctionBody uses it.
             // https://bugs.webkit.org/show_bug.cgi?id=151586
-            m_codeBlock->addPropertyAccessInstruction(instructions().size());
-            emitOpcode(op_to_this);
-            instructions().append(kill(&m_thisRegister));
-            instructions().append(0);
-            instructions().append(0);
+            emitToThis();
         }
 
         emitNewObject(m_generatorRegister);
@@ -674,13 +669,8 @@ BytecodeGenerator::BytecodeGenerator(VM& vm, FunctionNode* functionNode, Unlinke
                     shouldEmitToThis = true;
                 }
 
-                if (shouldEmitToThis) {
-                    m_codeBlock->addPropertyAccessInstruction(instructions().size());
-                    emitOpcode(op_to_this);
-                    instructions().append(kill(&m_thisRegister));
-                    instructions().append(0);
-                    instructions().append(0);
-                }
+                if (shouldEmitToThis)
+                    emitToThis();
             }
         }
         break;
@@ -1781,6 +1771,14 @@ RegisterID* BytecodeGenerator::emitEqualityOp(OpcodeID opcodeID, RegisterID* dst
                 instructions().append(dst->index());
                 instructions().append(srcIndex);
                 instructions().append(SymbolType);
+                return dst;
+            }
+            if (Options::useBigInt() && value == "bigint") {
+                rewindUnaryOp();
+                emitOpcode(op_is_cell_with_type);
+                instructions().append(dst->index());
+                instructions().append(srcIndex);
+                instructions().append(BigIntType);
                 return dst;
             }
             if (value == "object") {
@@ -2962,14 +2960,6 @@ RegisterID* BytecodeGenerator::emitPutByIndex(RegisterID* base, unsigned index, 
     return value;
 }
 
-RegisterID* BytecodeGenerator::emitAssert(RegisterID* condition, int line)
-{
-    emitOpcode(op_assert);
-    instructions().append(condition->index());
-    instructions().append(line);
-    return condition;
-}
-
 void BytecodeGenerator::emitSuperSamplerBegin()
 {
     emitOpcode(op_super_sampler_begin);
@@ -3120,9 +3110,19 @@ RegisterID* BytecodeGenerator::emitNewObject(RegisterID* dst)
     return dst;
 }
 
-unsigned BytecodeGenerator::addConstantBuffer(unsigned length)
+JSValue BytecodeGenerator::addBigIntConstant(const Identifier& identifier, uint8_t radix)
 {
-    return m_codeBlock->addConstantBuffer(length);
+    return m_bigIntMap.ensure(BigIntMapEntry(identifier.impl(), radix), [&] {
+        auto scope = DECLARE_CATCH_SCOPE(*vm());
+        JSBigInt* bigIntInMap = JSBigInt::parseInt(nullptr, *vm(), identifier.string(), radix);
+        // FIXME: [ESNext] Enables a way to throw an error on ByteCodeGenerator step
+        // https://bugs.webkit.org/show_bug.cgi?id=180139
+        scope.assertNoException();
+        RELEASE_ASSERT(bigIntInMap);
+        addConstantValue(bigIntInMap);
+
+        return bigIntInMap;
+    }).iterator->value;
 }
 
 JSString* BytecodeGenerator::addStringConstant(const Identifier& identifier)
@@ -3165,17 +3165,15 @@ RegisterID* BytecodeGenerator::emitNewArray(RegisterID* dst, ElementNode* elemen
         }
         if (!hadVariableExpression) {
             ASSERT(length == checkLength);
-            unsigned constantBufferIndex = addConstantBuffer(length);
-            JSValue* constantBuffer = m_codeBlock->constantBuffer(constantBufferIndex).data();
+            auto* array = JSFixedArray::create(*m_vm, length);
             unsigned index = 0;
             for (ElementNode* n = elements; index < length; n = n->next()) {
                 ASSERT(n->value()->isConstant());
-                constantBuffer[index++] = static_cast<ConstantNode*>(n->value())->jsValue(*this);
+                array->set(*m_vm, index++, static_cast<ConstantNode*>(n->value())->jsValue(*this));
             }
             emitOpcode(op_new_array_buffer);
             instructions().append(dst->index());
-            instructions().append(constantBufferIndex);
-            instructions().append(length);
+            instructions().append(addConstantValue(array)->index());
             instructions().append(newArrayAllocationProfile());
             return dst;
         }
@@ -5213,6 +5211,16 @@ void IndexedForInContext::finalize(BytecodeGenerator& generator)
         // not the indexed one.
         generator.instructions()[instIndex + 3].u.operand = propertyRegIndex;
     }
+}
+
+void BytecodeGenerator::emitToThis()
+{
+    m_codeBlock->addPropertyAccessInstruction(instructions().size());
+    UnlinkedValueProfile profile = emitProfiledOpcode(op_to_this);
+    instructions().append(kill(&m_thisRegister));
+    instructions().append(0);
+    instructions().append(0);
+    instructions().append(profile);
 }
 
 } // namespace JSC

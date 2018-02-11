@@ -30,10 +30,10 @@ namespace WebCore {
 class WEBCORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
     Ref<DocumentLoader> createDocumentLoader(const ResourceRequest&, const SubstituteData&) override;
 
-    void frameLoaderDestroyed() final { }
+    void frameLoaderDestroyed() override { }
 
-    uint64_t frameID() const override { return 0; }
-    uint64_t pageID() const override { return 0; }
+    std::optional<uint64_t> frameID() const override { return std::nullopt; }
+    std::optional<uint64_t> pageID() const override { return std::nullopt; }
     PAL::SessionID sessionID() const override;
 
     bool hasWebView() const final { return true; } // mainly for assertions
@@ -52,7 +52,7 @@ class WEBCORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
     void convertMainResourceLoadToDownload(DocumentLoader*, PAL::SessionID, const ResourceRequest&, const ResourceResponse&) final { }
 
     void assignIdentifierToInitialRequest(unsigned long, DocumentLoader*, const ResourceRequest&) final { }
-    bool shouldUseCredentialStorage(DocumentLoader*, unsigned long) final { return false; }
+    bool shouldUseCredentialStorage(DocumentLoader*, unsigned long) override { return false; }
     void dispatchWillSendRequest(DocumentLoader*, unsigned long, ResourceRequest&, const ResourceResponse&) final { }
     void dispatchDidReceiveAuthenticationChallenge(DocumentLoader*, unsigned long, const AuthenticationChallenge&) final { }
 #if USE(PROTECTION_SPACE_AUTH_CALLBACK)
@@ -149,7 +149,7 @@ class WEBCORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
     void updateCachedDocumentLoader(DocumentLoader&) final { }
     void setTitle(const StringWithDirection&, const URL&) final { }
 
-    String userAgent(const URL&) final { return emptyString(); }
+    String userAgent(const URL&) override { return emptyString(); }
 
     void savePlatformDataToCachedFrame(CachedFrame*) final { }
     void transitionToCommittedFromCachedFrame(CachedFrame*) final { }
@@ -199,6 +199,10 @@ class WEBCORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
 
 #if USE(QUICK_LOOK)
     RefPtr<PreviewLoaderClient> createPreviewLoaderClient(const String&, const String&) final { return nullptr; }
+#endif
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+    bool hasFrameSpecificStorageAccess() final { return false; }
+    void setHasFrameSpecificStorageAccess(bool) final { }
 #endif
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,6 +24,8 @@
  */
 
 #pragma once
+
+#include "BCompiler.h"
 
 #ifdef __APPLE__
 #include <Availability.h>
@@ -50,15 +52,23 @@
 #define BOS_WINDOWS 1
 #endif
 
-#if BOS(DARWIN) && ((defined(TARGET_OS_EMBEDDED) && TARGET_OS_EMBEDDED) \
-    || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) \
-    || (defined(TARGET_IPHONE_SIMULATOR) && TARGET_IPHONE_SIMULATOR))
+#if BOS(DARWIN)
+#if TARGET_OS_IPHONE
 #define BPLATFORM_IOS 1
-#if (defined(TARGET_IPHONE_SIMULATOR) && TARGET_IPHONE_SIMULATOR)
+#if TARGET_OS_SIMULATOR
 #define BPLATFORM_IOS_SIMULATOR 1
 #endif
-#elif BOS(DARWIN) && defined(TARGET_OS_MAC) && TARGET_OS_MAC
+#elif TARGET_OS_MAC
 #define BPLATFORM_MAC 1
+#endif
+#endif
+
+#if BPLATFORM(MAC) || BPLATFORM(IOS)
+#define BPLATFORM_COCOA 1
+#endif
+
+#if defined(TARGET_OS_WATCH) && TARGET_OS_WATCH
+#define BPLATFORM_WATCHOS 1
 #endif
 
 /* ==== Policy decision macros: these define policy choices for a particular port. ==== */
@@ -215,6 +225,10 @@
 
 #if (BPLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200) || BPLATFORM(IOS)
 #define BUSE_OS_LOG 1
+#endif
+
+#if !defined(BUSE_EXPORT_MACROS) && (BPLATFORM(MAC) || BPLATFORM(IOS))
+#define BUSE_EXPORT_MACROS 1
 #endif
 
 /* BUNUSED_PARAM */

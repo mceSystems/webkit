@@ -63,6 +63,7 @@ class RenderLayer;
 class RenderLayerModelObject;
 class RenderFragmentContainer;
 class RenderTheme;
+class RenderTreeBuilder;
 class SelectionRangeData;
 class TransformState;
 class VisiblePosition;
@@ -282,6 +283,9 @@ public:
     virtual bool isRenderMultiColumnSet() const { return false; }
     virtual bool isRenderMultiColumnFlow() const { return false; }
     virtual bool isRenderMultiColumnSpannerPlaceholder() const { return false; }
+
+    virtual bool isRenderLinesClampFlow() const { return false; }
+    virtual bool isRenderLinesClampSet() const { return false; }
 
     virtual bool isRenderScrollbarPart() const { return false; }
 
@@ -749,8 +753,7 @@ public:
     void imageChanged(CachedImage*, const IntRect* = nullptr) override;
     virtual void imageChanged(WrappedImagePtr, const IntRect* = nullptr) { }
 
-    void removeFromParentAndDestroy();
-    void removeFromParentAndDestroyCleaningUpAnonymousWrappers();
+    void removeFromParentAndDestroy(RenderTreeBuilder&);
 
     CSSAnimationController& animation() const;
 
@@ -785,7 +788,7 @@ protected:
 
     void adjustRectForOutlineAndShadow(LayoutRect&) const;
 
-    virtual void willBeDestroyed();
+    virtual void willBeDestroyed(RenderTreeBuilder&);
 
     virtual void insertedIntoTree();
     virtual void willBeRemovedFromTree();

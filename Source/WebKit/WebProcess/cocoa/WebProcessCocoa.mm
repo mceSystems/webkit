@@ -28,6 +28,7 @@
 #import "WebProcessCocoa.h"
 
 #import "LegacyCustomProtocolManager.h"
+#import "LogInitialization.h"
 #import "Logging.h"
 #import "ObjCObjectGraph.h"
 #import "SandboxExtension.h"
@@ -46,6 +47,7 @@
 #import "WebProcessCreationParameters.h"
 #import "WebProcessProxyMessages.h"
 #import "WebsiteDataStoreParameters.h"
+#import <JavaScriptCore/ConfigFile.h>
 #import <JavaScriptCore/Options.h>
 #import <WebCore/AXObjectCache.h>
 #import <WebCore/CPUMonitor.h>
@@ -66,11 +68,20 @@
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <pal/spi/cocoa/pthreadSPI.h>
 #import <pal/spi/mac/NSAccessibilitySPI.h>
-#import <runtime/ConfigFile.h>
+#import <pal/spi/mac/NSApplicationSPI.h>
 #import <stdio.h>
 
 #if PLATFORM(IOS)
+#import <UIKit/UIAccessibility.h>
 #import <pal/spi/ios/GraphicsServicesSPI.h>
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <AXRuntime/AXDefines.h>
+#import <AXRuntime/AXNotificationConstants.h>
+#else
+#define kAXPidStatusChangedNotification 0
+#endif
+
 #endif
 
 #if USE(OS_STATE)
@@ -104,6 +115,7 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
 {
 #if !LOG_DISABLED || !RELEASE_LOG_DISABLED
     WebCore::initializeLogChannelsIfNecessary(parameters.webCoreLoggingChannels);
+    WebKit::initializeLogChannelsIfNecessary(parameters.webKitLoggingChannels);
 #endif
 
     WebCore::setApplicationBundleIdentifier(parameters.uiProcessBundleIdentifier);
@@ -157,6 +169,15 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters&& par
     Method methodToPatch = class_getInstanceMethod([NSApplication class], @selector(accessibilityFocusedUIElement));
     method_setImplementation(methodToPatch, (IMP)NSApplicationAccessibilityFocusedUIElement);
 #endif
+    
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+    // Need to initialize accessibility for VoiceOver to work when the WebContent process is using NSRunLoop.
+    // Currently, it is also needed to allocate and initialize an NSApplication object.
+    // FIXME: Remove the following line when rdar://problem/36323569 is fixed.
+    [NSApplication sharedApplication];
+    [NSApplication _accessibilityInitialize];
+#endif
+    
     _CFNetworkSetATSContext(parameters.networkATSContext.get());
 
 #if TARGET_OS_IPHONE
@@ -234,7 +255,7 @@ void WebProcess::registerWithStateDumper()
                 if (page->usesEphemeralSession())
                     continue;
 
-                NSDate* date = [NSDate dateWithTimeIntervalSince1970:std::chrono::system_clock::to_time_t(page->loadCommitTime())];
+                NSDate* date = [NSDate dateWithTimeIntervalSince1970:page->loadCommitTime().secondsSinceEpoch().seconds()];
                 [pageLoadTimes addObject:date];
             }
 
@@ -522,5 +543,12 @@ void _WKSetCrashReportApplicationSpecificInformation(NSString *infoString)
 {
     return setCrashReportApplicationSpecificInformation((__bridge CFStringRef)infoString);
 }
+
+#if PLATFORM(IOS)
+void WebProcess::accessibilityProcessSuspendedNotification(bool suspended)
+{
+    UIAccessibilityPostNotification(kAXPidStatusChangedNotification, @{ @"pid" : @(getpid()), @"suspended" : @(suspended) });
+}
+#endif
 
 } // namespace WebKit

@@ -226,7 +226,7 @@ void BytecodeDumper<CodeBlock>::dumpProfilesForBytecodeOffset(PrintStream& out, 
     }
 
 #if ENABLE(DFG_JIT)
-    Vector<DFG::FrequentExitSite> exitSites = block()->exitProfile().exitSitesFor(location);
+    Vector<DFG::FrequentExitSite> exitSites = block()->unlinkedCodeBlock()->exitProfile().exitSitesFor(location);
     if (!exitSites.isEmpty()) {
         out.print(" !! frequent exits: ");
         CommaPrinter comma;
@@ -705,6 +705,7 @@ void BytecodeDumper<Block>::dumpBytecode(PrintStream& out, const typename Block:
         if (structure)
             out.print(", cache(struct = ", RawPointer(structure), ")");
         out.print(", ", getToThisStatus(*(++it)));
+        dumpValueProfiling(out, it, hasPrintedProfiling);
         break;
     }
     case op_check_tdz: {
@@ -763,10 +764,9 @@ void BytecodeDumper<Block>::dumpBytecode(PrintStream& out, const typename Block:
     }
     case op_new_array_buffer: {
         int dst = (++it)->u.operand;
-        int argv = (++it)->u.operand;
-        int argc = (++it)->u.operand;
+        int array = (++it)->u.operand;
         printLocationAndOp(out, location, it, "new_array_buffer");
-        out.printf("%s, %d, %d", registerName(dst).data(), argv, argc);
+        out.printf("%s, %s", registerName(dst).data(), registerName(array).data());
         ++it; // Skip array allocation profile.
         break;
     }
@@ -1593,13 +1593,6 @@ void BytecodeDumper<Block>::dumpBytecode(PrintStream& out, const typename Block:
         int hasBreakpointFlag = (++it)->u.operand;
         printLocationAndOp(out, location, it, "debug");
         out.printf("%s, %d", debugHookName(debugHookType), hasBreakpointFlag);
-        break;
-    }
-    case op_assert: {
-        int condition = (++it)->u.operand;
-        int line = (++it)->u.operand;
-        printLocationAndOp(out, location, it, "assert");
-        out.printf("%s, %d", registerName(condition).data(), line);
         break;
     }
     case op_identity_with_profile: {

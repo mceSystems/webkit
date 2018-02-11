@@ -42,6 +42,7 @@
 #include <wtf/Deque.h>
 #include <wtf/Lock.h>
 #include <wtf/RefCounted.h>
+#include <wtf/Seconds.h>
 #include <wtf/StreamBuffer.h>
 #include <wtf/Threading.h>
 
@@ -55,10 +56,10 @@ public:
 
     virtual ~SocketStreamHandleImpl();
 
-    void platformSend(const char* data, size_t length, Function<void(bool)>&&) final;
-    void platformClose() final;
+    WEBCORE_EXPORT void platformSend(const char* data, size_t length, Function<void(bool)>&&) final;
+    WEBCORE_EXPORT void platformClose() final;
 private:
-    SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&);
+    WEBCORE_EXPORT SocketStreamHandleImpl(const URL&, SocketStreamHandleClient&);
 
     size_t bufferedAmount() final;
     std::optional<size_t> platformSendInternal(const char*, size_t);
@@ -66,7 +67,7 @@ private:
 
     bool readData(CURL*);
     bool sendData(CURL*);
-    bool waitForAvailableData(CURL*, std::chrono::milliseconds selectTimeout);
+    bool waitForAvailableData(CURL*, Seconds selectTimeout);
 
     void startThread();
     void stopThread();

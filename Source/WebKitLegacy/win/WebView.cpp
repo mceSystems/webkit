@@ -165,7 +165,6 @@
 #include <WebCore/UserStyleSheet.h>
 #include <WebCore/WindowMessageBroadcaster.h>
 #include <WebCore/WindowsTouch.h>
-#include <bindings/ScriptValue.h>
 #include <comdef.h>
 #include <d2d1.h>
 #include <wtf/MainThread.h>
@@ -2345,11 +2344,11 @@ bool WebView::handleEditingKeyboardEvent(KeyboardEvent* evt)
     auto* frame = downcast<Node>(evt->target())->document().frame();
     ASSERT(frame);
 
-    const PlatformKeyboardEvent* keyEvent = evt->keyEvent();
+    auto* keyEvent = evt->underlyingPlatformEvent();
     if (!keyEvent || keyEvent->isSystemKey())  // do not treat this as text input if it's a system key event
         return false;
 
-    Editor::Command command = frame->editor().command(interpretKeyEvent(evt));
+    auto command = frame->editor().command(interpretKeyEvent(evt));
 
     if (keyEvent->type() == PlatformEvent::RawKeyDown) {
         // WebKit doesn't have enough information about mode to decide how commands that just insert text if executed via Editor should be treated,
@@ -2358,14 +2357,14 @@ bool WebView::handleEditingKeyboardEvent(KeyboardEvent* evt)
         return !command.isTextInsertion() && command.execute(evt);
     }
 
-     if (command.execute(evt))
+    if (command.execute(evt))
         return true;
 
     // Don't insert null or control characters as they can result in unexpected behaviour
     if (evt->charCode() < ' ')
         return false;
 
-    return frame->editor().insertText(evt->keyEvent()->text(), evt);
+    return frame->editor().insertText(keyEvent->text(), evt);
 }
 
 bool WebView::keyDown(WPARAM virtualKeyCode, LPARAM keyData, bool systemKeyDown)
@@ -5233,6 +5232,11 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
         return hr;
     RuntimeEnabledFeatures::sharedFeatures().setLinkPreloadEnabled(!!enabled);
 
+    hr = prefsPrivate->fetchAPIKeepAliveEnabled(&enabled);
+    if (FAILED(hr))
+        return hr;
+    RuntimeEnabledFeatures::sharedFeatures().setFetchAPIKeepAliveEnabled(!!enabled);
+
     hr = prefsPrivate->mediaPreloadingEnabled(&enabled);
     if (FAILED(hr))
         return hr;
@@ -7301,7 +7305,7 @@ HRESULT WebView::nextDisplayIsSynchronous()
     return S_OK;
 }
 
-void WebView::notifyAnimationStarted(const GraphicsLayer*, double)
+void WebView::notifyAnimationStarted(const GraphicsLayer*, const String&, double)
 {
     // We never set any animations on our backing layer.
     ASSERT_NOT_REACHED();
@@ -7312,7 +7316,7 @@ void WebView::notifyFlushRequired(const GraphicsLayer*)
     flushPendingGraphicsLayerChangesSoon();
 }
 
-void WebView::paintContents(const GraphicsLayer*, GraphicsContext& context, GraphicsLayerPaintingPhase, const FloatRect& inClipPixels)
+void WebView::paintContents(const GraphicsLayer*, GraphicsContext& context, GraphicsLayerPaintingPhase, const FloatRect& inClipPixels, GraphicsLayerPaintBehavior)
 {
     Frame* frame = core(m_mainFrame);
     if (!frame)

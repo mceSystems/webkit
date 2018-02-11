@@ -67,6 +67,7 @@
 #import <WebCore/HTMLElement.h>
 #import <WebCore/HTMLFormElement.h>
 #import <WebCore/HTMLPlugInElement.h>
+#import <WebCore/LegacyNSPasteboardTypes.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/MainFrame.h>
 #import <WebCore/MouseEvent.h>
@@ -1161,7 +1162,7 @@ bool PDFPlugin::initialize(const Parameters& parameters)
     return true;
 }
 
-void PDFPlugin::willDetatchRenderer()
+void PDFPlugin::willDetachRenderer()
 {
     if (webFrame()) {
         if (FrameView* frameView = webFrame()->coreFrame()->view())
@@ -1804,7 +1805,7 @@ void PDFPlugin::writeItemsToPasteboard(NSString *pasteboardName, NSArray *items,
         if (!data.length)
             continue;
 
-        if ([type isEqualToString:NSStringPboardType] || [type isEqualToString:NSPasteboardTypeString]) {
+        if ([type isEqualToString:legacyStringPasteboardType()] || [type isEqualToString:NSPasteboardTypeString]) {
             RetainPtr<NSString> plainTextString = adoptNS([[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
             webProcess.parentProcessConnection()->sendSync(Messages::WebPasteboardProxy::SetPasteboardStringForType(pasteboardName, type, plainTextString.get()), Messages::WebPasteboardProxy::SetPasteboardStringForType::Reply(newChangeCount), 0);
         } else {
@@ -2016,7 +2017,7 @@ static NSPoint pointInLayoutSpaceForPointInWindowSpace(PDFLayerController* pdfLa
     return NSPointFromCGPoint(newPoint);
 }
 
-std::tuple<String, RetainPtr<PDFSelection>, RetainPtr<NSDictionary>> PDFPlugin::lookupTextAtLocation(const WebCore::FloatPoint& locationInViewCoordinates, WebHitTestResultData& data) const
+std::tuple<String, PDFSelection *, NSDictionary *> PDFPlugin::lookupTextAtLocation(const WebCore::FloatPoint& locationInViewCoordinates, WebHitTestResultData& data) const
 {
     auto selection = [m_pdfLayerController currentSelection];
     if (existingSelectionContainsPoint(locationInViewCoordinates))
@@ -2052,13 +2053,13 @@ std::tuple<String, RetainPtr<PDFSelection>, RetainPtr<NSDictionary>> PDFPlugin::
         return { selection.string, selection, nil };
     }
 
-    RetainPtr<NSDictionary> options;
+    NSDictionary *options = nil;
     NSString *lookupText = DictionaryLookup::stringForPDFSelection(selection, &options);
     if (!lookupText.length)
         return { emptyString(), selection, nil };
 
     [m_pdfLayerController setCurrentSelection:selection];
-    return { lookupText, selection, WTFMove(options) };
+    return { lookupText, selection, options };
 }
 
 static NSRect rectInViewSpaceForRectInLayoutSpace(PDFLayerController* pdfLayerController, NSRect layoutSpaceRect)

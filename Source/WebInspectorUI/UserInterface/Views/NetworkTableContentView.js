@@ -82,17 +82,16 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._typeFilterScopeBar = new WI.ScopeBar("network-type-filter-scope-bar", typeFilterScopeBarItems, typeFilterScopeBarItems[0]);
         this._typeFilterScopeBar.addEventListener(WI.ScopeBar.Event.SelectionChanged, this._typeFilterScopeBarSelectionChanged, this);
 
-        this._textFilterSearchId = 0;
-        this._textFilterSearchText = null;
-        this._textFilterIsActive = false;
+        this._urlFilterSearchText = null;
+        this._urlFilterSearchRegex = null;
+        this._urlFilterIsActive = false;
 
-        this._textFilterNavigationItem = new WI.FilterBarNavigationItem;
-        this._textFilterNavigationItem.filterBar.incremental = false;
-        this._textFilterNavigationItem.filterBar.addEventListener(WI.FilterBar.Event.FilterDidChange, this._textFilterDidChange, this);
-        this._textFilterNavigationItem.filterBar.placeholder = WI.UIString("Filter Full URL and Text");
+        this._urlFilterNavigationItem = new WI.FilterBarNavigationItem;
+        this._urlFilterNavigationItem.filterBar.addEventListener(WI.FilterBar.Event.FilterDidChange, this._urlFilterDidChange, this);
+        this._urlFilterNavigationItem.filterBar.placeholder = WI.UIString("Filter Full URL");
 
         this._activeTypeFilters = this._generateTypeFilter();
-        this._activeTextFilterResources = new Set;
+        this._activeURLFilterResources = new Set;
 
         this._emptyFilterResultsMessageElement = null;
 
@@ -201,11 +200,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
     get filterNavigationItems()
     {
-        let items = [];
-        if (window.PageAgent)
-            items.push(this._textFilterNavigationItem);
-        items.push(this._typeFilterScopeBar);
-        return items;
+        return [this._urlFilterNavigationItem, this._typeFilterScopeBar];
     }
 
     get supportsSave()
@@ -349,7 +344,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         WI.appendContextMenuItemsForSourceCode(contextMenu, entry.resource);
 
         contextMenu.appendSeparator();
-        contextMenu.appendItem(WI.UIString("Export HAR"), this._exportHAR);
+        contextMenu.appendItem(WI.UIString("Export HAR"), () => { this._exportHAR(); });
     }
 
     tableSelectedRowChanged(table, rowIndex)
@@ -910,41 +905,10 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this.needsLayout();
     }
 
-    _checkTextFilterAgainstFinishedResource(resource)
+    _checkURLFilterAgainstResource(resource)
     {
-        let frame = resource.parentFrame;
-        if (!frame)
-            return;
-
-        let searchQuery = this._textFilterSearchText;
-        if (resource.url.includes(searchQuery)) {
-            this._activeTextFilterResources.add(resource);
-            return;
-        }
-
-        let searchId = this._textFilterSearchId;
-
-        const isCaseSensitive = true;
-        const isRegex = false;
-        PageAgent.searchInResource(frame.id, resource.url, searchQuery, isCaseSensitive, isRegex, resource.requestIdentifier, (error, searchResults) => {
-            if (searchId !== this._textFilterSearchId)
-                return;
-
-            if (error || !searchResults || !searchResults.length)
-                return;
-
-            this._activeTextFilterResources.add(resource);
-
-            this._pendingFilter = true;
-            this.needsLayout();
-        });
-    }
-
-    _checkTextFilterAgainstFailedResource(resource)
-    {
-        let searchQuery = this._textFilterSearchText;
-        if (resource.url.includes(searchQuery))
-            this._activeTextFilterResources.add(resource);
+        if (this._urlFilterSearchRegex.test(resource.url))
+            this._activeURLFilterResources.add(resource);
     }
 
     _rowIndexForResource(resource)
@@ -988,6 +952,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._resourceDetailView = null;
 
         this._table.resize();
+        this._table.reloadVisibleColumnCells(this._waterfallColumn);
     }
 
     _showResourceDetailView(resource)
@@ -1026,9 +991,9 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._table.scrollContainer.style.width = this._nameColumn.width + "px";
     }
 
-    _updateTextFilterActiveIndicator()
+    _updateURLFilterActiveIndicator()
     {
-        this._textFilterNavigationItem.filterBar.indicatingActive = this._hasTextFilter();
+        this._urlFilterNavigationItem.filterBar.indicatingActive = this._hasURLFilter();
     }
 
     _updateEmptyFilterResultsMessage()
@@ -1042,17 +1007,12 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
     _showEmptyFilterResultsMessage()
     {
         if (!this._emptyFilterResultsMessageElement) {
-            let message = WI.UIString("No Filter Results");
             let buttonElement = document.createElement("button");
             buttonElement.textContent = WI.UIString("Clear filters");
             buttonElement.addEventListener("click", () => { this._resetFilters(); });
 
-            this._emptyFilterResultsMessageElement = document.createElement("div");
-            this._emptyFilterResultsMessageElement.className = "empty-content-placeholder";
-
-            let messageElement = this._emptyFilterResultsMessageElement.appendChild(document.createElement("div"));
-            messageElement.className = "message";
-            messageElement.append(message, document.createElement("br"), buttonElement);
+            this._emptyFilterResultsMessageElement = WI.createMessageTextView(WI.UIString("No Filter Results"));
+            this._emptyFilterResultsMessageElement.appendChild(buttonElement);
         }
 
         this.element.appendChild(this._emptyFilterResultsMessageElement);
@@ -1117,8 +1077,8 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         if (resource.timingData.responseEnd > this._waterfallEndTime)
             this._waterfallEndTime = resource.timingData.responseEnd;
 
-        if (this._hasTextFilter())
-            this._checkTextFilterAgainstFinishedResource(resource);
+        if (this._hasURLFilter())
+            this._checkURLFilterAgainstResource(resource);
 
         this.needsLayout();
     }
@@ -1133,8 +1093,8 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         if (resource.timingData.responseEnd > this._waterfallEndTime)
             this._waterfallEndTime = resource.timingData.responseEnd;
 
-        if (this._hasTextFilter())
-            this._checkTextFilterAgainstFailedResource(resource);
+        if (this._hasURLFilter())
+            this._checkURLFilterAgainstResource(resource);
 
         this.needsLayout();
     }
@@ -1236,7 +1196,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             cached: resource.cached,
             resourceSize: resource.size,
             transferSize: !isNaN(resource.networkTotalTransferSize) ? resource.networkTotalTransferSize : resource.estimatedTotalTransferSize,
-            time: resource.duration,
+            time: resource.totalDuration,
             protocol: resource.protocol,
             priority: resource.priority,
             remoteAddress: resource.remoteAddress,
@@ -1250,15 +1210,15 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         return !!this._activeTypeFilters;
     }
 
-    _hasTextFilter()
+    _hasURLFilter()
     {
-        return this._textFilterIsActive;
+        return this._urlFilterIsActive;
     }
 
     _hasActiveFilter()
     {
         return this._hasTypeFilter()
-            || this._hasTextFilter();
+            || this._hasURLFilter();
     }
 
     _passTypeFilter(entry)
@@ -1268,17 +1228,17 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         return this._activeTypeFilters.some((checker) => checker(entry.resource.type));
     }
 
-    _passTextFilter(entry)
+    _passURLFilter(entry)
     {
-        if (!this._hasTextFilter())
+        if (!this._hasURLFilter())
             return true;
-        return this._activeTextFilterResources.has(entry.resource);
+        return this._activeURLFilterResources.has(entry.resource);
     }
 
     _passFilter(entry)
     {
         return this._passTypeFilter(entry)
-            && this._passTextFilter(entry);
+            && this._passURLFilter(entry);
     }
 
     _updateSortAndFilteredEntries()
@@ -1296,7 +1256,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
 
         this._restoreSelectedRow();
 
-        this._updateTextFilterActiveIndicator();
+        this._updateURLFilterActiveIndicator();
         this._updateEmptyFilterResultsMessage();
     }
 
@@ -1313,14 +1273,13 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
     {
         console.assert(this._hasActiveFilter());
 
-        // Clear text filter.
-        this._textFilterSearchId++;
-        this._textFilterNavigationItem.filterBar.indicatingProgress = false;
-        this._textFilterSearchText = null;
-        this._textFilterIsActive = false;
-        this._activeTextFilterResources.clear();
-        this._textFilterNavigationItem.filterBar.clear();
-        console.assert(!this._hasTextFilter());
+        // Clear url filter.
+        this._urlFilterSearchText = null;
+        this._urlFilterSearchRegex = null;
+        this._urlFilterIsActive = false;
+        this._activeURLFilterResources.clear();
+        this._urlFilterNavigationItem.filterBar.clear();
+        console.assert(!this._hasURLFilter());
 
         // Clear type filter.
         this._typeFilterScopeBar.resetToDefault();
@@ -1366,87 +1325,38 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         this._table.reloadData();
     }
 
-    _textFilterDidChange(event)
+    _urlFilterDidChange(event)
     {
-        let searchQuery = this._textFilterNavigationItem.filterBar.filters.text;
-        if (searchQuery === this._textFilterSearchText)
+        let searchQuery = this._urlFilterNavigationItem.filterBar.filters.text;
+        if (searchQuery === this._urlFilterSearchText)
             return;
 
         // Even if the selected resource would still be visible, lets close the detail view if a filter changes.
         this._hideResourceDetailView();
 
-        let searchId = ++this._textFilterSearchId;
-
         // Search cleared.
         if (!searchQuery) {
-            this._textFilterNavigationItem.filterBar.indicatingProgress = false;
-            this._textFilterSearchText = null;
-            this._textFilterIsActive = false;
-            this._activeTextFilterResources.clear();
+            this._urlFilterSearchText = null;
+            this._urlFilterSearchRegex = null;
+            this._urlFilterIsActive = false;
+            this._activeURLFilterResources.clear();
 
             this._updateFilteredEntries();
             this._table.reloadData();
             return;
         }
 
-        this._textFilterSearchText = searchQuery;
-        this._textFilterNavigationItem.filterBar.indicatingProgress = true;
+        this._urlFilterIsActive = true;
+        this._urlFilterSearchText = searchQuery;
+        this._urlFilterSearchRegex = new RegExp(searchQuery.escapeForRegExp(), "i");
 
-        // NetworkTable text filter currently searches:
-        //   - Resource URL
-        //   - Resource Text Content
-        // It does not search all the content in the table (like mimeType, headers, etc).
-        // For those we should provide more custom filters.
+        this._activeURLFilterResources.clear();
 
-        const isCaseSensitive = true;
-        const isRegex = false;
-        PageAgent.searchInResources(searchQuery, isCaseSensitive, isRegex, (error, searchResults) => {
-            if (searchId !== this._textFilterSearchId)
-                return;
+        for (let entry of this._entries)
+            this._checkURLFilterAgainstResource(entry.resource);
 
-            this._textFilterIsActive = true;
-            this._activeTextFilterResources.clear();
-            this._textFilterNavigationItem.filterBar.indicatingProgress = false;
-
-            // Add resources based on URL.
-            for (let entry of this._entries) {
-                let resource = entry.resource;
-                if (resource.url.includes(searchQuery))
-                    this._activeTextFilterResources.add(resource);
-            }
-
-            // Add resources based on content.
-            if (!error) {
-                for (let {url, frameId, requestId} of searchResults) {
-                    if (requestId) {
-                        let resource = WI.frameResourceManager.resourceForRequestIdentifier(requestId);
-                        if (resource) {
-                            this._activeTextFilterResources.add(resource);
-                            continue;
-                        }
-                    }
-
-                    if (frameId && url) {
-                        let frame = WI.frameResourceManager.frameForIdentifier(frameId);
-                        if (frame) {
-                            if (frame.mainResource.url === url) {
-                                this._activeTextFilterResources.add(frame.mainResource);
-                                continue;
-                            }
-                            let resource = frame.resourceForURL(url);
-                            if (resource) {
-                                this._activeTextFilterResources.add(resource);
-                                continue;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Apply.
-            this._updateFilteredEntries();
-            this._table.reloadData();
-        });
+        this._updateFilteredEntries();
+        this._table.reloadData();
     }
 
     _restoreSelectedRow()
@@ -1501,7 +1411,7 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
             return contentElement;
         }
 
-        let breakdownView = new WI.ResourceTimingBreakdownView(resource);
+        let breakdownView = new WI.ResourceTimingBreakdownView(resource, 300);
         contentElement.appendChild(breakdownView.element);
         breakdownView.updateLayout();
 
@@ -1536,6 +1446,8 @@ WI.NetworkTableContentView = class NetworkTableContentView extends WI.ContentVie
         };
 
         let targetFrame = calculateTargetFrame();
+        if (!targetFrame)
+            return;
         if (!targetFrame.size.width && !targetFrame.size.height)
             return;
 

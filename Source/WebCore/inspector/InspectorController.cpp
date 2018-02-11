@@ -69,14 +69,14 @@
 #include "Settings.h"
 #include "WebInjectedScriptHost.h"
 #include "WebInjectedScriptManager.h"
-#include <inspector/IdentifiersFactory.h>
-#include <inspector/InspectorBackendDispatcher.h>
-#include <inspector/InspectorBackendDispatchers.h>
-#include <inspector/InspectorFrontendDispatchers.h>
-#include <inspector/InspectorFrontendRouter.h>
-#include <inspector/agents/InspectorAgent.h>
-#include <inspector/agents/InspectorScriptProfilerAgent.h>
-#include <runtime/JSLock.h>
+#include <JavaScriptCore/IdentifiersFactory.h>
+#include <JavaScriptCore/InspectorAgent.h>
+#include <JavaScriptCore/InspectorBackendDispatcher.h>
+#include <JavaScriptCore/InspectorBackendDispatchers.h>
+#include <JavaScriptCore/InspectorFrontendDispatchers.h>
+#include <JavaScriptCore/InspectorFrontendRouter.h>
+#include <JavaScriptCore/InspectorScriptProfilerAgent.h>
+#include <JavaScriptCore/JSLock.h>
 #include <wtf/Stopwatch.h>
 
 #if ENABLE(REMOTE_INSPECTOR)
@@ -387,7 +387,7 @@ void InspectorController::getHighlight(Highlight& highlight, InspectorOverlay::C
     m_overlay->getHighlight(highlight, coordinateSystem);
 }
 
-Ref<Inspector::Protocol::Array<Inspector::Protocol::OverlayTypes::NodeHighlightData>> InspectorController::buildObjectForHighlightedNodes() const
+Ref<JSON::ArrayOf<Inspector::Protocol::OverlayTypes::NodeHighlightData>> InspectorController::buildObjectForHighlightedNodes() const
 {
     return m_overlay->buildObjectForHighlightedNodes();
 }

@@ -22,8 +22,10 @@
 
 import logging
 import os
+import json
 import sys
 
+from multiprocessing import Process, Queue
 from webkitpy.common.system.filesystem import FileSystem
 from webkitpy.common.webkit_finder import WebKitFinder
 import webkitpy.thirdparty.autoinstalled.mozlog
@@ -36,14 +38,19 @@ w3c_tools_dir = WebKitFinder(FileSystem()).path_from_webkit_base('WebDriverTests
 def _ensure_directory_in_path(directory):
     if not directory in sys.path:
         sys.path.insert(0, directory)
-_ensure_directory_in_path(os.path.join(w3c_tools_dir, 'pytest'))
 _ensure_directory_in_path(os.path.join(w3c_tools_dir, 'webdriver'))
 _ensure_directory_in_path(os.path.join(w3c_tools_dir, 'wptrunner'))
-_ensure_directory_in_path(os.path.join(w3c_tools_dir, "webdriver"))
 
-import webkitpy.thirdparty.autoinstalled.pytest_timeout
 from wptrunner.executors.base import WdspecExecutor, WebDriverProtocol
 from wptrunner.webdriver_server import WebDriverServer
+
+pytest_runner = None
+
+
+def do_delayed_imports():
+    global pytest_runner
+    import webkitpy.webdriver_tests.pytest_runner as pytest_runner
+
 
 _log = logging.getLogger(__name__)
 
@@ -123,19 +130,54 @@ class WebKitDriverProtocol(WebDriverProtocol):
 class WebDriverW3CExecutor(WdspecExecutor):
     protocol_cls = WebKitDriverProtocol
 
-    def __init__(self, driver, server, display_driver):
-        WebKitDriverServer.test_env = display_driver._setup_environ_for_test()
+    def __init__(self, driver, server, env, timeout, expectations):
+        WebKitDriverServer.test_env = env
         WebKitDriverServer.test_env.update(driver.browser_env())
-        server_config = {'host': server.host(), 'ports': {'http': [str(server.port())]}}
+        server_config = {'host': server.host(), 'domains': {'': server.host()}, 'ports': {'http': [str(server.port())]}}
         WdspecExecutor.__init__(self, driver.browser_name(), server_config, driver.binary_path(), None, capabilities=driver.capabilities())
+
+        self._timeout = timeout
+        self._expectations = expectations
+        self._test_queue = Queue()
+        self._result_queue = Queue()
 
     def setup(self):
         self.runner = TestRunner()
         self.protocol.setup(self.runner)
+        args = (self._test_queue,
+                self._result_queue,
+                self.protocol.session_config['host'],
+                str(self.protocol.session_config['port']),
+                json.dumps(self.protocol.session_config['capabilities']),
+                json.dumps(self.server_config),
+                self._timeout,
+                self._expectations)
+        self._process = Process(target=WebDriverW3CExecutor._runner, args=args)
+        self._process.start()
 
     def teardown(self):
         self.protocol.teardown()
+        self._test_queue.put('TEARDOWN')
+        self._process = None
 
-    def run(self, path):
-        # Timeout here doesn't really matter because it's ignored, so we pass 0.
-        return self.do_wdspec(self.protocol.session_config, path, 0)
+    @staticmethod
+    def _runner(test_queue, result_queue, host, port, capabilities, server_config, timeout, expectations):
+        if pytest_runner is None:
+            do_delayed_imports()
+
+        while True:
+            test = test_queue.get()
+            if test == 'TEARDOWN':
+                break
+
+            env = {'WD_HOST': host,
+                   'WD_PORT': port,
+                   'WD_CAPABILITIES': capabilities,
+                   'WD_SERVER_CONFIG': server_config}
+            env.update(WebKitDriverServer.test_env)
+            args = ['--strict', '-p', 'no:mozlog']
+            result_queue.put(pytest_runner.run(test, args, timeout, env, expectations))
+
+    def run(self, test):
+        self._test_queue.put(test)
+        return self._result_queue.get()

@@ -36,10 +36,10 @@
 #include "ImageBitmap.h"
 #include "ImageData.h"
 #include "Path2D.h"
-#include <runtime/ArrayBuffer.h>
-#include <runtime/ArrayBufferView.h>
-#include <runtime/Float32Array.h>
-#include <runtime/Int32Array.h>
+#include <JavaScriptCore/ArrayBuffer.h>
+#include <JavaScriptCore/ArrayBufferView.h>
+#include <JavaScriptCore/Float32Array.h>
+#include <JavaScriptCore/Int32Array.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Variant.h>
 #include <wtf/Vector.h>
@@ -67,6 +67,7 @@ typedef Variant<
     DOMMatrix2DInit,
     Element*,
     HTMLImageElement*,
+    ImageBitmap*,
     ImageData*,
     ImageSmoothingQuality,
     Path2D*,

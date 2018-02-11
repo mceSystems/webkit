@@ -58,6 +58,12 @@ String WebsiteDataStore::defaultIndexedDBDatabaseDirectory()
     return websiteDataDirectoryFileSystemRepresentation(BASE_DIRECTORY G_DIR_SEPARATOR_S "databases" G_DIR_SEPARATOR_S "indexeddb");
 }
 
+String WebsiteDataStore::defaultServiceWorkerRegistrationDirectory()
+{
+    // FIXME: Implement
+    return { };
+}
+
 String WebsiteDataStore::defaultLocalStorageDirectory()
 {
     return websiteDataDirectoryFileSystemRepresentation(BASE_DIRECTORY G_DIR_SEPARATOR_S "localstorage");
@@ -95,6 +101,8 @@ WebKit::WebsiteDataStore::Configuration WebsiteDataStore::defaultDataStoreConfig
     configuration.applicationCacheDirectory = defaultApplicationCacheDirectory();
     configuration.networkCacheDirectory = defaultNetworkCacheDirectory();
 
+    configuration.indexedDBDatabaseDirectory = defaultIndexedDBDatabaseDirectory();
+    configuration.serviceWorkerRegistrationDirectory = defaultServiceWorkerRegistrationDirectory();
     configuration.webSQLDatabaseDirectory = defaultWebSQLDatabaseDirectory();
     configuration.localStorageDirectory = defaultLocalStorageDirectory();
     configuration.mediaKeysStorageDirectory = defaultMediaKeysStorageDirectory();

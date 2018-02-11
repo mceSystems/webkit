@@ -31,7 +31,7 @@
 
 #include "InspectorWebAgentBase.h"
 #include "StorageArea.h"
-#include <inspector/InspectorBackendDispatchers.h>
+#include <JavaScriptCore/InspectorBackendDispatchers.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
@@ -49,6 +49,7 @@ class Storage;
 typedef String ErrorString;
 
 class InspectorDOMStorageAgent final : public InspectorAgentBase, public Inspector::DOMStorageBackendDispatcherHandler {
+    WTF_MAKE_NONCOPYABLE(InspectorDOMStorageAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     InspectorDOMStorageAgent(WebAgentContext&, InspectorPageAgent*);
@@ -60,7 +61,7 @@ public:
     // Called from the front-end.
     void enable(ErrorString&) override;
     void disable(ErrorString&) override;
-    void getDOMStorageItems(ErrorString&, const JSON::Object& storageId, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::Array<String>>>& items) override;
+    void getDOMStorageItems(ErrorString&, const JSON::Object& storageId, RefPtr<JSON::ArrayOf<JSON::ArrayOf<String>>>& items) override;
     void setDOMStorageItem(ErrorString&, const JSON::Object& storageId, const String& key, const String& value) override;
     void removeDOMStorageItem(ErrorString&, const JSON::Object& storageId, const String& key) override;
 

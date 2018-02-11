@@ -47,6 +47,7 @@ namespace JSC {
     macro(arrayIteratorNext) \
     macro(arrayIteratorIsDone) \
     macro(arrayIteratorKind) \
+    macro(assert) \
     macro(charCodeAt) \
     macro(executor) \
     macro(isView) \
@@ -54,11 +55,6 @@ namespace JSC {
     macro(iteratedString) \
     macro(stringIteratorNextIndex) \
     macro(promise) \
-    macro(fulfillmentHandler) \
-    macro(rejectionHandler) \
-    macro(index) \
-    macro(deferred) \
-    macro(countdownHolder) \
     macro(Object) \
     macro(Number) \
     macro(Array) \
@@ -131,7 +127,6 @@ namespace JSC {
     macro(asyncGeneratorQueueLast) \
     macro(asyncGeneratorQueueItemNext) \
     macro(asyncGeneratorQueueItemPrevious) \
-    macro(promiseCapability) \
     macro(generatorResumeMode) \
     macro(Collator) \
     macro(DateTimeFormat) \
@@ -150,8 +145,6 @@ namespace JSC {
     macro(isConstructor) \
     macro(concatMemcpy) \
     macro(appendMemcpy) \
-    macro(predictFinalLengthFromArgumunts) \
-    macro(print) \
     macro(regExpCreate) \
     macro(replaceUsingRegExp) \
     macro(replaceUsingStringSearch) \
@@ -176,7 +169,6 @@ namespace JSC {
     macro(regExpProtoStickyGetter) \
     macro(regExpProtoUnicodeGetter) \
     macro(regExpPrototypeSymbolReplace) \
-    macro(regExpReplaceFast) \
     macro(regExpSearchFast) \
     macro(regExpSplitFast) \
     macro(regExpTestFast) \

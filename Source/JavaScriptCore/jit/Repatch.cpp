@@ -91,8 +91,7 @@ void ftlThunkAwareRepatchCall(CodeBlock* codeBlock, CodeLocationCall call, Funct
             MacroAssemblerCodePtr::createFromExecutableAddress(
                 MacroAssembler::readCallTarget(call).executableAddress()));
         key = key.withCallTarget(newCalleeFunction.executableAddress());
-        newCalleeFunction = FunctionPtr(
-            thunks.getSlowPathCallThunk(key).code().executableAddress());
+        newCalleeFunction = FunctionPtr(thunks.getSlowPathCallThunk(key).code());
     }
 #else // ENABLE(FTL_JIT)
     UNUSED_PARAM(codeBlock);
@@ -423,6 +422,14 @@ static InlineCacheAction tryCachePutByID(ExecState* exec, JSValue baseValue, Str
 
         if (slot.base() == baseValue && slot.isCacheablePut()) {
             if (slot.type() == PutPropertySlot::ExistingProperty) {
+                // This assert helps catch bugs if we accidentally forget to disable caching
+                // when we transition then store to an existing property. This is common among
+                // paths that reify lazy properties. If we reify a lazy property and forget
+                // to disable caching, we may come down this path. The Replace IC does not
+                // know how to model these types of structure transitions (or any structure
+                // transition for that matter).
+                RELEASE_ASSERT(baseValue.asCell()->structure(vm) == structure);
+
                 structure->didCachePropertyReplacement(vm, slot.cachedOffset());
             
                 if (stubInfo.cacheType == CacheType::Unset

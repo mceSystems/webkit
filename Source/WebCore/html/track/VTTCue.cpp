@@ -41,9 +41,9 @@
 #include "HTMLDivElement.h"
 #include "HTMLSpanElement.h"
 #include "Logging.h"
-#include "NoEventDispatchAssertion.h"
 #include "NodeTraversal.h"
 #include "RenderVTTCue.h"
+#include "ScriptDisallowedScope.h"
 #include "Text.h"
 #include "TextTrack.h"
 #include "TextTrackCueList.h"
@@ -530,7 +530,7 @@ RefPtr<DocumentFragment> VTTCue::createCueRenderingTree()
     auto clonedFragment = DocumentFragment::create(ownerDocument());
 
     // The cloned fragment is never exposed to author scripts so it's safe to dispatch events here.
-    NoEventDispatchAssertion::EventAllowedScope noEventDispatchAssertionDisabledForScope(clonedFragment);
+    ScriptDisallowedScope::EventAllowedScope allowedScope(clonedFragment);
 
     m_webVTTNodeTree->cloneChildNodes(clonedFragment);
     return WTFMove(clonedFragment);
@@ -788,7 +788,7 @@ void VTTCue::updateDisplayTree(const MediaTime& movieTime)
         return;
 
     // Mutating the VTT contents is safe because it's never exposed to author scripts.
-    NoEventDispatchAssertion::EventAllowedScope allowedScopeForCueHighlightBox(*m_cueHighlightBox);
+    ScriptDisallowedScope::EventAllowedScope allowedScopeForCueHighlightBox(*m_cueHighlightBox);
 
     // Clear the contents of the set.
     m_cueHighlightBox->removeChildren();
@@ -798,7 +798,7 @@ void VTTCue::updateDisplayTree(const MediaTime& movieTime)
     if (!referenceTree)
         return;
 
-    NoEventDispatchAssertion::EventAllowedScope allowedScopeForReferenceTree(*referenceTree);
+    ScriptDisallowedScope::EventAllowedScope allowedScopeForReferenceTree(*referenceTree);
 
     markFutureAndPastNodes(referenceTree.get(), startMediaTime(), movieTime);
     m_cueHighlightBox->appendChild(*referenceTree);
@@ -861,7 +861,7 @@ void VTTCue::removeDisplayTree()
         return;
 
     // The display tree is never exposed to author scripts so it's safe to dispatch events here.
-    NoEventDispatchAssertion::EventAllowedScope allowedScope(displayTreeInternal());
+    ScriptDisallowedScope::EventAllowedScope allowedScope(displayTreeInternal());
     displayTreeInternal().remove();
 }
 
@@ -1176,16 +1176,22 @@ const VTTCue* toVTTCue(const TextTrackCue* cue)
     return static_cast<const VTTCue*>(cue);
 }
 
-String VTTCue::toString() const
+String VTTCue::toJSONString() const
 {
-    StringBuilder builder;
+    auto object = JSON::Object::create();
 
-    builder.append(TextTrackCue::toString());
+    TextTrackCue::toJSON(object.get());
 
-    builder.appendLiteral(", content = ");
-    builder.append(text());
+    object->setString(ASCIILiteral("vertical"), vertical());
+    object->setBoolean(ASCIILiteral("snapToLines"), snapToLines());
+    object->setDouble(ASCIILiteral("line"), m_linePosition);
+    object->setDouble(ASCIILiteral("position"), position());
+    object->setInteger(ASCIILiteral("size"), m_cueSize);
+    object->setString(ASCIILiteral("align"), align());
+    object->setString(ASCIILiteral("text"), text());
+    object->setString(ASCIILiteral("regionId"), regionId());
 
-    return builder.toString();
+    return object->toJSONString();
 }
 
 } // namespace WebCore

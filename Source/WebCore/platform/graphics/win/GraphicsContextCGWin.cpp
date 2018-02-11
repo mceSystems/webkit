@@ -58,7 +58,7 @@ static CGContextRef CGContextWithHDC(HDC hdc, bool hasAlpha)
 
     CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Little | (hasAlpha ? kCGImageAlphaPremultipliedFirst : kCGImageAlphaNoneSkipFirst);
     CGContextRef context = CGBitmapContextCreate(pixelData.buffer(), pixelData.size().width(), pixelData.size().height(), 8,
-                                                 pixelData.bytesPerRow(), deviceRGBColorSpaceRef(), bitmapInfo);
+                                                 pixelData.bytesPerRow(), sRGBColorSpaceRef(), bitmapInfo);
 
     // Flip coords
     CGContextTranslateCTM(context, 0, pixelData.size().height());
@@ -92,9 +92,9 @@ void GraphicsContext::platformInit(HDC hdc, bool hasAlpha)
 
 // FIXME: Is it possible to merge getWindowsContext and createWindowsBitmap into a single API
 // suitable for all clients?
-void GraphicsContext::releaseWindowsContext(HDC hdc, const IntRect& dstRect, bool supportAlphaBlend, bool mayCreateBitmap)
+void GraphicsContext::releaseWindowsContext(HDC hdc, const IntRect& dstRect, bool supportAlphaBlend)
 {
-    bool createdBitmap = mayCreateBitmap && (!m_data->m_hdc || isInTransparencyLayer());
+    bool createdBitmap = m_impl || !m_data->m_hdc || isInTransparencyLayer();
     if (!createdBitmap) {
         m_data->restore();
         return;
@@ -110,7 +110,7 @@ void GraphicsContext::releaseWindowsContext(HDC hdc, const IntRect& dstRect, boo
     ASSERT(pixelData.bitsPerPixel() == 32);
 
     CGContextRef bitmapContext = CGBitmapContextCreate(pixelData.buffer(), pixelData.size().width(), pixelData.size().height(), 8,
-                                                       pixelData.bytesPerRow(), deviceRGBColorSpaceRef(), kCGBitmapByteOrder32Little |
+                                                       pixelData.bytesPerRow(), sRGBColorSpaceRef(), kCGBitmapByteOrder32Little |
                                                        (supportAlphaBlend ? kCGImageAlphaPremultipliedFirst : kCGImageAlphaNoneSkipFirst));
 
     CGImageRef image = CGBitmapContextCreateImage(bitmapContext);
@@ -128,7 +128,7 @@ void GraphicsContext::drawWindowsBitmap(WindowsBitmap* image, const IntPoint& po
     // make a custom CGDataProvider that controls the WindowsBitmap lifetime.  see <rdar://6394455>
     RetainPtr<CFDataRef> imageData = adoptCF(CFDataCreate(kCFAllocatorDefault, image->buffer(), image->bufferLength()));
     RetainPtr<CGDataProviderRef> dataProvider = adoptCF(CGDataProviderCreateWithCFData(imageData.get()));
-    RetainPtr<CGImageRef> cgImage = adoptCF(CGImageCreate(image->size().width(), image->size().height(), 8, 32, image->bytesPerRow(), deviceRGBColorSpaceRef(),
+    RetainPtr<CGImageRef> cgImage = adoptCF(CGImageCreate(image->size().width(), image->size().height(), 8, 32, image->bytesPerRow(), sRGBColorSpaceRef(),
                                                          kCGBitmapByteOrder32Little | kCGImageAlphaFirst, dataProvider.get(), 0, true, kCGRenderingIntentDefault));
     CGContextDrawImage(m_data->m_cgContext.get(), CGRectMake(point.x(), point.y(), image->size().width(), image->size().height()), cgImage.get());   
 }

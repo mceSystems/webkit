@@ -46,8 +46,8 @@ WTF_EXPORT_STRING_API unsigned charactersToUIntStrict(const LChar*, size_t, bool
 WTF_EXPORT_STRING_API unsigned charactersToUIntStrict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
 int64_t charactersToInt64Strict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
 int64_t charactersToInt64Strict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
-uint64_t charactersToUInt64Strict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
-uint64_t charactersToUInt64Strict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
+WTF_EXPORT_STRING_API uint64_t charactersToUInt64Strict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
+WTF_EXPORT_STRING_API uint64_t charactersToUInt64Strict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
 intptr_t charactersToIntPtrStrict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
 intptr_t charactersToIntPtrStrict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
 
@@ -149,6 +149,7 @@ public:
     RefPtr<StringImpl> releaseImpl() { return WTFMove(m_impl); }
 
     unsigned length() const { return m_impl ? m_impl->length() : 0; }
+    unsigned mask() const { return m_impl ? m_impl->mask() : 0; }
     const LChar* characters8() const { return m_impl ? m_impl->characters8() : nullptr; }
     const UChar* characters16() const { return m_impl ? m_impl->characters16() : nullptr; }
 
@@ -357,6 +358,7 @@ public:
     String(WTF::HashTableDeletedValueType) : m_impl(WTF::HashTableDeletedValue) { }
     bool isHashTableDeletedValue() const { return m_impl.isHashTableDeletedValue(); }
 
+    unsigned hash() const { return isNull() ? 0 : impl()->hash(); }
     unsigned existingHash() const { return isNull() ? 0 : impl()->existingHash(); }
 
 #ifndef NDEBUG

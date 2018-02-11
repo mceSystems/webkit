@@ -80,6 +80,11 @@
 #import "_WKUserInitiatedActionInternal.h"
 #import "_WKUserStyleSheetInternal.h"
 #import "_WKVisitedLinkStoreInternal.h"
+#import "_WKWebsitePoliciesInternal.h"
+
+#if ENABLE(APPLICATION_MANIFEST)
+#import "_WKApplicationManifestInternal.h"
+#endif
 
 static const size_t minimumObjectAlignment = 8;
 static_assert(minimumObjectAlignment >= alignof(void*), "Objects should always be at least pointer-aligned.");
@@ -119,6 +124,12 @@ void* Object::newObject(size_t size, Type type)
     // API::Object, so they are allocated using +alloc.
 
     switch (type) {
+#if ENABLE(APPLICATION_MANIFEST)
+    case Type::ApplicationManifest:
+        wrapper = [_WKApplicationManifest alloc];
+        break;
+#endif
+
     case Type::Array:
         wrapper = [WKNSArray alloc];
         break;
@@ -304,6 +315,10 @@ void* Object::newObject(size_t size, Type type)
 
     case Type::WebsiteDataStore:
         wrapper = [WKWebsiteDataStore alloc];
+        break;
+
+    case Type::WebsitePolicies:
+        wrapper = [_WKWebsitePolicies alloc];
         break;
 
     case Type::WindowFeatures:

@@ -64,14 +64,14 @@ RenderSearchField::~RenderSearchField()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderSearchField::willBeDestroyed()
+void RenderSearchField::willBeDestroyed(RenderTreeBuilder& builder)
 {
     if (m_searchPopup) {
         m_searchPopup->popupMenu()->disconnectClient();
         m_searchPopup = nullptr;
     }
 
-    RenderTextControlSingleLine::willBeDestroyed();
+    RenderTextControlSingleLine::willBeDestroyed(builder);
 }
 
 inline HTMLElement* RenderSearchField::resultsButtonElement() const
@@ -100,7 +100,7 @@ void RenderSearchField::addSearchResult()
         return recentSearch.string == value;
     });
 
-    RecentSearch recentSearch = { value, std::chrono::system_clock::now() };
+    RecentSearch recentSearch = { value, WallTime::now() };
     m_recentSearches.insert(0, recentSearch);
     while (static_cast<int>(m_recentSearches.size()) > inputElement().maxResults())
         m_recentSearches.removeLast();

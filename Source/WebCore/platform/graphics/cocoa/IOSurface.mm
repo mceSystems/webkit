@@ -372,6 +372,11 @@ IOSurfaceID IOSurface::surfaceID() const
 #endif
 }
 
+size_t IOSurface::bytesPerRow() const
+{
+    return IOSurfaceGetBytesPerRow(m_surface.get());
+}
+
 bool IOSurface::isInUse() const
 {
     return IOSurfaceIsInUse(m_surface.get());
@@ -431,6 +436,12 @@ void IOSurface::convertToFormat(std::unique_ptr<IOSurface>&& inSurface, Format f
     ASSERT_UNUSED(ret, ret == kIOReturnSuccess);
 }
 #endif // PLATFORM(IOS)
+
+void IOSurface::migrateColorSpaceToProperties()
+{
+    auto colorSpaceProperties = adoptCF(CGColorSpaceCopyPropertyList(m_colorSpace.get()));
+    IOSurfaceSetValue(m_surface.get(), kIOSurfaceColorSpace, colorSpaceProperties.get());
+}
 
 static TextStream& operator<<(TextStream& ts, IOSurface::Format format)
 {

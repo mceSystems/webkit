@@ -33,6 +33,7 @@
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
 #include "WebSelectionData.h"
+#include <WebCore/CairoOperations.h>
 #include <WebCore/DataTransfer.h>
 #include <WebCore/DragData.h>
 #include <WebCore/GraphicsContext.h>
@@ -53,7 +54,9 @@ static RefPtr<ShareableBitmap> convertCairoSurfaceToShareableBitmap(cairo_surfac
     RefPtr<ShareableBitmap> bitmap = ShareableBitmap::createShareable(imageSize, { });
     auto graphicsContext = bitmap->createGraphicsContext();
 
-    graphicsContext->platformContext()->drawSurfaceToContext(surface, IntRect(IntPoint(), imageSize), IntRect(IntPoint(), imageSize), *graphicsContext);
+    ASSERT(graphicsContext->hasPlatformContext());
+    auto& state = graphicsContext->state();
+    Cairo::drawSurface(*graphicsContext->platformContext(), surface, IntRect(IntPoint(), imageSize), IntRect(IntPoint(), imageSize), state.imageInterpolationQuality, state.alpha, Cairo::ShadowState(state), *graphicsContext);
     return bitmap;
 }
 

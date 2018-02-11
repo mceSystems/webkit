@@ -28,7 +28,7 @@
 #if ENABLE(SERVICE_WORKER)
 
 #include "InspectorWebAgentBase.h"
-#include <inspector/InspectorBackendDispatchers.h>
+#include <JavaScriptCore/InspectorBackendDispatchers.h>
 
 namespace WebCore {
 
@@ -47,7 +47,7 @@ public:
     void willDestroyFrontendAndBackend(Inspector::DisconnectReason) final;
 
     // ServiceWorkerBackendDispatcherHandler
-    void getInitializationInfo(ErrorString&, RefPtr<Inspector::Protocol::ServiceWorker::InitializationInfo>&) final;
+    void getInitializationInfo(ErrorString&, RefPtr<Inspector::Protocol::ServiceWorker::Configuration>&) final;
 
 private:
     ServiceWorkerGlobalScope& m_serviceWorkerGlobalScope;

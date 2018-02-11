@@ -35,6 +35,7 @@
 namespace WebCore {
 
 class SWServerJobQueue {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit SWServerJobQueue(SWServer&, const ServiceWorkerRegistrationKey&);
     SWServerJobQueue(const SWServerRegistration&) = delete;
@@ -51,10 +52,11 @@ public:
     void scriptContextFailedToStart(const ServiceWorkerJobDataIdentifier&, ServiceWorkerIdentifier, const String& message);
     void scriptContextStarted(const ServiceWorkerJobDataIdentifier&, ServiceWorkerIdentifier);
     void didFinishInstall(const ServiceWorkerJobDataIdentifier&, ServiceWorkerIdentifier, bool wasSuccessful);
-    static void didFinishActivation(SWServerRegistration&, ServiceWorkerIdentifier);
     void didResolveRegistrationPromise();
+    void cancelJobsFromConnection(SWServerConnectionIdentifier);
+    void cancelJobsFromServiceWorker(ServiceWorkerIdentifier);
 
-    static void clearRegistration(SWServer&, SWServerRegistration&);
+    bool isCurrentlyProcessingJob(const ServiceWorkerJobDataIdentifier&) const;
 
 private:
     void jobTimerFired();
@@ -66,12 +68,9 @@ private:
     void runUnregisterJob(const ServiceWorkerJobData&);
     void runUpdateJob(const ServiceWorkerJobData&);
 
-    void tryClearRegistration(SWServerRegistration&);
     void install(SWServerRegistration&, ServiceWorkerIdentifier);
-    static void tryActivate(SWServer&, SWServerRegistration&);
-    static void activate(SWServer&, SWServerRegistration&);
 
-    bool isCurrentlyProcessingJob(const ServiceWorkerJobDataIdentifier&) const;
+    void removeAllJobsMatching(const WTF::Function<bool(ServiceWorkerJobData&)>&);
 
     Deque<ServiceWorkerJobData> m_jobQueue;
 

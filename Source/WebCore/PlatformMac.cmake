@@ -67,7 +67,6 @@ if (NOT LOOKUP_FRAMEWORK-NOTFOUND)
 endif ()
 
 list(APPEND WebCore_INCLUDE_DIRECTORIES
-    "${FORWARDING_HEADERS_DIR}/JavaScriptCore"
     "${THIRDPARTY_DIR}/ANGLE"
     "${THIRDPARTY_DIR}/ANGLE/include/KHR"
     "${WEBCORE_DIR}/accessibility/mac"
@@ -75,21 +74,7 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/editing/cocoa"
     "${WEBCORE_DIR}/editing/ios"
     "${WEBCORE_DIR}/editing/mac"
-    "${WEBCORE_DIR}/ForwardingHeaders"
-    "${WEBCORE_DIR}/ForwardingHeaders/bindings"
-    "${WEBCORE_DIR}/ForwardingHeaders/bytecode"
-    "${WEBCORE_DIR}/ForwardingHeaders/domjit"
-    "${WEBCORE_DIR}/ForwardingHeaders/debugger"
-    "${WEBCORE_DIR}/ForwardingHeaders/heap"
-    "${WEBCORE_DIR}/ForwardingHeaders/inspector"
-    "${WEBCORE_DIR}/ForwardingHeaders/interpreter"
-    "${WEBCORE_DIR}/ForwardingHeaders/jit"
-    "${WEBCORE_DIR}/ForwardingHeaders/masm"
-    "${WEBCORE_DIR}/ForwardingHeaders/parser"
-    "${WEBCORE_DIR}/ForwardingHeaders/profiler"
-    "${WEBCORE_DIR}/ForwardingHeaders/replay"
-    "${WEBCORE_DIR}/ForwardingHeaders/runtime"
-    "${WEBCORE_DIR}/ForwardingHeaders/yarr"
+    "${WEBCORE_DIR}/html/shadow/cocoa"
     "${WEBCORE_DIR}/icu"
     "${WEBCORE_DIR}/loader/archive/cf"
     "${WEBCORE_DIR}/loader/cf"
@@ -144,6 +129,8 @@ list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebCore_SOURCES
+    Modules/paymentrequest/MerchantValidationEvent.cpp
+
     accessibility/mac/AXObjectCacheMac.mm
     accessibility/mac/AccessibilityObjectMac.mm
     accessibility/mac/WebAccessibilityObjectWrapperMac.mm
@@ -293,7 +280,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/cg/IOSurfacePool.cpp
     platform/graphics/cg/ImageBufferCG.cpp
     platform/graphics/cg/ImageBufferDataCG.cpp
-    platform/graphics/cg/ImageCG.cpp
     platform/graphics/cg/ImageDecoderCG.cpp
     platform/graphics/cg/ImageSourceCGMac.mm
     platform/graphics/cg/IntPointCG.cpp
@@ -470,6 +456,8 @@ list(APPEND WebCore_SOURCES
     rendering/RenderThemeCocoa.mm
     rendering/RenderThemeMac.mm
     rendering/TextAutoSizing.cpp
+
+    xml/SoftLinkLibxslt.cpp
 )
 
 # FIXME: We do not need everything from all of these directories.
@@ -497,7 +485,10 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     svg
     workers
 
+    workers/service/context
+
     Modules/applepay
+    Modules/applicationmanifest
     Modules/cache
     Modules/geolocation
     Modules/indexeddb
@@ -525,6 +516,8 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     html/forms
     html/parser
     html/shadow
+
+    inspector/agents
 
     loader/appcache
     loader/archive

@@ -1900,12 +1900,7 @@ void AccessibilityNodeObject::colorValue(int& r, int& g, int& b) const
     if (!is<HTMLInputElement>(node()))
         return;
 
-    auto& input = downcast<HTMLInputElement>(*node());
-    if (!input.isColorControl())
-        return;
-
-    // HTMLInputElement::value always returns a string parseable by Color().
-    Color color(input.value());
+    auto color = downcast<HTMLInputElement>(*node()).valueAsColor();
     r = color.red();
     g = color.green();
     b = color.blue();
@@ -2022,7 +2017,9 @@ bool AccessibilityNodeObject::hasAttributesRequiredForInclusion() const
     if (AccessibilityObject::hasAttributesRequiredForInclusion())
         return true;
 
-    if (!ariaAccessibilityDescription().isEmpty())
+    // Avoid calculating the actual description here, which is expensive.
+    // This means there might be more accessible elements in the tree if the labelledBy points to invalid elements, but that shouldn't cause any real problems.
+    if (getAttribute(aria_labelledbyAttr).length() || getAttribute(aria_labeledbyAttr).length() || getAttribute(aria_labelAttr).length())
         return true;
 
     return false;

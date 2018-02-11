@@ -442,13 +442,13 @@ private:
             }
 
             SpeculatedType prediction = node->child1()->prediction();
-            if (prediction) {
+            if (ecmaMode == StrictMode)
+                changed |= mergePrediction(node->getHeapPrediction());
+            else if (prediction) {
                 if (prediction & ~SpecObject) {
                     // Wrapper objects are created only in sloppy mode.
-                    if (ecmaMode != StrictMode) {
-                        prediction &= SpecObject;
-                        prediction = mergeSpeculations(prediction, SpecObjectOther);
-                    }
+                    prediction &= SpecObject;
+                    prediction = mergeSpeculations(prediction, SpecObjectOther);
                 }
                 changed |= mergePrediction(prediction);
             }
@@ -696,7 +696,9 @@ private:
         case ArrayPop:
         case ArrayPush:
         case RegExpExec:
+        case RegExpExecNonGlobalOrSticky:
         case RegExpTest:
+        case RegExpMatchFast:
         case StringReplace:
         case StringReplaceRegExp:
         case GetById:
@@ -732,12 +734,13 @@ private:
         case GetArgument:
         case CallDOMGetter:
         case GetDynamicVar:
-        case WeakMapGet:
-        case GetPrototypeOf: {
+        case GetPrototypeOf:
+        case ExtractValueFromWeakMapGet: {
             setPrediction(m_currentNode->getHeapPrediction());
             break;
         }
 
+        case WeakMapGet:
         case ResolveScopeForHoistingFuncDeclInEval: {
             setPrediction(SpecBytecodeTop);
             break;
@@ -765,6 +768,9 @@ private:
             break;
         }
 
+        case SetArgumentCountIncludingThis:
+            break;
+
         case MapHash:
             setPrediction(SpecInt32Only);
             break;
@@ -772,6 +778,8 @@ private:
         case GetMapBucket:
         case GetMapBucketHead:
         case GetMapBucketNext:
+        case SetAdd:
+        case MapSet:
             setPrediction(SpecCellOther);
             break;
 
@@ -855,7 +863,6 @@ private:
             break;
         }
         case GetButterfly:
-        case GetButterflyWithoutCaging:
         case GetIndexedPropertyStorage:
         case AllocatePropertyStorage:
         case ReallocatePropertyStorage: {
@@ -1086,7 +1093,9 @@ private:
         case PhantomCreateRest:
         case PhantomSpread:
         case PhantomNewArrayWithSpread:
+        case PhantomNewArrayBuffer:
         case PhantomClonedArguments:
+        case PhantomNewRegexp:
         case GetMyArgumentByVal:
         case GetMyArgumentByValOutOfBounds:
         case PutHint:
@@ -1159,6 +1168,7 @@ private:
         case CheckStructure:
         case CheckCell:
         case CheckNotEmpty:
+        case AssertNotEmpty:
         case CheckStringIdent:
         case CheckBadCell:
         case PutStructure:
@@ -1180,8 +1190,8 @@ private:
         case PutDynamicVar:
         case NukeStructureAndSetButterfly:
         case InitializeEntrypointArguments:
-        case SetAdd:
-        case MapSet:
+        case WeakSetAdd:
+        case WeakMapSet:
             break;
             
         // This gets ignored because it only pretends to produce a value.

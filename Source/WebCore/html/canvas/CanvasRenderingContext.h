@@ -25,8 +25,8 @@
 
 #pragma once
 
+#include "CanvasBase.h"
 #include "GraphicsLayer.h"
-#include "HTMLCanvasElement.h"
 #include "ScriptWrappable.h"
 #include <wtf/Noncopyable.h>
 #include <wtf/text/StringHash.h>
@@ -62,6 +62,7 @@ public:
     virtual bool isAccelerated() const { return false; }
     virtual bool isBitmapRenderer() const { return false; }
     virtual bool isPlaceholder() const { return false; }
+    virtual bool isOffscreen2d() const { return false; }
 
     virtual void paintRenderingResultsToCanvas() {}
     virtual PlatformLayer* platformLayer() const { return 0; }

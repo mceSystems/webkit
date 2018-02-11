@@ -56,6 +56,8 @@ public:
     {
     }
 
+    static bool supportsMediaType(MediaType type) { return type == MediaType::Image; }
+
     // Returns nullptr if we can't sniff a supported type from the provided data (possibly
     // because there isn't enough data yet).
     static RefPtr<ScalableImageDecoder> create(SharedBuffer& data, AlphaOption, GammaAndColorProfileOption);
@@ -144,7 +146,7 @@ public:
 
     Seconds frameDurationAtIndex(size_t) const final;
 
-    NativeImagePtr createFrameImageAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default, const DecodingOptions& = DecodingMode::Synchronous) override;
+    NativeImagePtr createFrameImageAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default, const DecodingOptions& = DecodingOptions(DecodingMode::Synchronous)) override;
 
     void setIgnoreGammaAndColorProfile(bool flag) { m_ignoreGammaAndColorProfile = flag; }
     bool ignoresGammaAndColorProfile() const { return m_ignoreGammaAndColorProfile; }

@@ -29,6 +29,8 @@
 
 #if WK_API_ENABLED
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef NS_ENUM(NSInteger, _WKAttachmentDisplayMode) {
     _WKAttachmentDisplayModeAuto = 1,
     _WKAttachmentDisplayModeInPlace,
@@ -38,12 +40,25 @@ typedef NS_ENUM(NSInteger, _WKAttachmentDisplayMode) {
 WK_CLASS_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))
 @interface _WKAttachmentDisplayOptions : NSObject
 @property (nonatomic) _WKAttachmentDisplayMode mode;
-@property (nonatomic) BOOL expandsImageToMaximumWidth;
+@end
+
+WK_CLASS_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))
+@interface _WKAttachmentInfo : NSObject
+@property (nonatomic, readonly) NSString *contentType;
+@property (nonatomic, readonly) NSString *name;
+@property (nonatomic, readonly) NSString *filePath;
+@property (nonatomic, readonly, nullable) NSData *data;
 @end
 
 WK_CLASS_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA))
 @interface _WKAttachment : NSObject
-- (void)requestData:(void(^)(NSData *, NSError *))completionHandler;
+- (void)requestInfo:(void(^)(_WKAttachmentInfo * _Nullable, NSError * _Nullable))completionHandler;
+- (void)requestData:(void(^)(NSData * _Nullable, NSError * _Nullable))completionHandler;
+- (void)setDisplayOptions:(_WKAttachmentDisplayOptions *)options completion:(void(^ _Nullable)(NSError * _Nullable))completionHandler;
+- (void)setData:(NSData *)data newContentType:(nullable NSString *)newContentType newFilename:(nullable NSString *)newFilename completion:(void(^ _Nullable)(NSError * _Nullable))completionHandler;
+@property (nonatomic, readonly) NSString *uniqueIdentifier;
 @end
+
+NS_ASSUME_NONNULL_END
 
 #endif

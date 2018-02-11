@@ -89,6 +89,9 @@ std::unique_ptr<SVGFilterBuilder> RenderSVGResourceFilter::buildPrimitives(SVGFi
 
     // Add effects to the builder
     auto builder = std::make_unique<SVGFilterBuilder>(SourceGraphic::create(filter));
+    builder->setPrimitiveUnits(filterElement().primitiveUnits());
+    builder->setTargetBoundingBox(targetBoundingBox);
+    
     for (auto& element : childrenOfType<SVGFilterPrimitiveStandardAttributes>(filterElement())) {
         RefPtr<FilterEffect> effect = element.build(builder.get(), filter);
         if (!effect) {
@@ -172,6 +175,8 @@ bool RenderSVGResourceFilter::applyResource(RenderElement& renderer, const Rende
     FilterEffect* lastEffect = filterData->builder->lastEffect();
     if (!lastEffect || lastEffect->totalNumberOfEffectInputs() > maxTotalOfEffectInputs)
         return false;
+
+    LOG_WITH_STREAM(Filters, stream << "RenderSVGResourceFilter::applyResource\n" << *filterData->builder->lastEffect());
 
     RenderSVGResourceFilterPrimitive::determineFilterPrimitiveSubregion(*lastEffect);
     FloatRect subRegion = lastEffect->maxEffectRect();
@@ -276,7 +281,7 @@ void RenderSVGResourceFilter::postApplyResource(RenderElement& renderer, Graphic
             filterData.state = FilterData::Applying;
             lastEffect->applyAll();
             lastEffect->correctFilterResultIfNeeded();
-            lastEffect->transformResultColorSpace(ColorSpaceDeviceRGB);
+            lastEffect->transformResultColorSpace(ColorSpaceSRGB);
         }
         filterData.state = FilterData::Built;
 

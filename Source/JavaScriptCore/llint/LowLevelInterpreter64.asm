@@ -1,4 +1,4 @@
-# Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+# Copyright (C) 2011-2018 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -45,6 +45,7 @@ macro dispatchAfterCall()
     loadi ArgumentCount + TagOffset[cfr], PC
     loadp CodeBlock[cfr], PB
     loadp CodeBlock::m_instructions[PB], PB
+    unpoison(_g_CodeBlockPoison, PB, t1)
     loadisFromInstruction(1, t1)
     storeq r0, [cfr, t1, 8]
     valueProfile(r0, (CallOpCodeSize - 1), t3)
@@ -279,7 +280,7 @@ end
 _handleUncaughtException:
     loadp Callee[cfr], t3
     andp MarkedBlockMask, t3
-    loadp MarkedBlock::m_vm[t3], t3
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t3], t3
     restoreCalleeSavesFromVMEntryFrameCalleeSavesBuffer(t3, t0)
     loadp VM::callFrameForCatch[t3], cfr
     storep 0, VM::callFrameForCatch[t3]
@@ -375,15 +376,32 @@ macro checkSwitchToJITForLoop()
         end)
 end
 
-macro loadCaged(basePtr, mask, source, dest, scratch)
-    loadp source, dest
+macro uncage(basePtr, mask, ptr, scratch)
     if GIGACAGE_ENABLED and not C_LOOP
         loadp basePtr, scratch
         btpz scratch, .done
-        andp mask, dest
-        addp scratch, dest
+        andp mask, ptr
+        addp scratch, ptr
     .done:
     end
+end
+
+macro loadCaged(basePtr, mask, source, dest, scratch)
+    loadp source, dest
+    uncage(basePtr, mask, dest, scratch)
+end
+
+macro loadTypedArrayCaged(basePtr, mask, source, typeIndex, dest, scratch)
+    if POISON
+        andp TypedArrayPoisonIndexMask, typeIndex
+        leap _g_typedArrayPoisons, dest
+        loadp [dest, typeIndex, 8], dest
+        loadp source, scratch
+        xorp scratch, dest
+    else
+        loadp source, dest
+    end
+    uncage(basePtr, mask, dest, scratch)
 end
 
 macro loadVariable(operand, value)
@@ -479,24 +497,17 @@ macro valueProfile(value, operand, scratch)
     storeq value, ValueProfile::m_buckets[scratch]
 end
 
-macro structureIDToStructureWithScratch(structureIDThenStructure, scratch)
+macro structureIDToStructureWithScratch(structureIDThenStructure, scratch, scratch2)
     loadp CodeBlock[cfr], scratch
-    loadp CodeBlock::m_vm[scratch], scratch
+    loadp CodeBlock::m_poisonedVM[scratch], scratch
+    unpoison(_g_CodeBlockPoison, scratch, scratch2)
     loadp VM::heap + Heap::m_structureIDTable + StructureIDTable::m_table[scratch], scratch
     loadp [scratch, structureIDThenStructure, 8], structureIDThenStructure
 end
 
-macro loadStructureWithScratch(cell, structure, scratch)
+macro loadStructureWithScratch(cell, structure, scratch, scratch2)
     loadi JSCell::m_structureID[cell], structure
-    structureIDToStructureWithScratch(structure, scratch)
-end
-
-macro loadStructureAndClobberFirstArg(cell, structure)
-    loadi JSCell::m_structureID[cell], structure
-    loadp CodeBlock[cfr], cell
-    loadp CodeBlock::m_vm[cell], cell
-    loadp VM::heap + Heap::m_structureIDTable + StructureIDTable::m_table[cell], cell
-    loadp [cell, structure, 8], structure
+    structureIDToStructureWithScratch(structure, scratch, scratch2)
 end
 
 # Entrypoints into the interpreter.
@@ -559,6 +570,7 @@ macro functionArityCheck(doneLabel, slowPath)
     # Reload CodeBlock and reset PC, since the slow_path clobbered them.
     loadp CodeBlock[cfr], t1
     loadp CodeBlock::m_instructions[t1], PB
+    unpoison(_g_CodeBlockPoison, PB, t2)
     move 0, PC
     jmp doneLabel
 end
@@ -566,7 +578,7 @@ end
 macro branchIfException(label)
     loadp Callee[cfr], t3
     andp MarkedBlockMask, t3
-    loadp MarkedBlock::m_vm[t3], t3
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t3], t3
     btqz VM::m_exception[t3], .noException
     jmp label
 .noException:
@@ -637,7 +649,7 @@ _llint_op_to_this:
     loadq [cfr, t0, 8], t0
     btqnz t0, tagMask, .opToThisSlow
     bbneq JSCell::m_type[t0], FinalObjectType, .opToThisSlow
-    loadStructureWithScratch(t0, t1, t2)
+    loadStructureWithScratch(t0, t1, t2, t3)
     loadpFromInstruction(2, t2)
     bpneq t1, t2, .opToThisSlow
     dispatch(constexpr op_to_this_length)
@@ -720,7 +732,7 @@ macro equalNullComparison()
     move 0, t0
     jmp .done
 .masqueradesAsUndefined:
-    loadStructureWithScratch(t0, t2, t1)
+    loadStructureWithScratch(t0, t2, t1, t3)
     loadp CodeBlock[cfr], t0
     loadp CodeBlock::m_globalObject[t0], t0
     cpeq Structure::m_globalObject[t2], t0, t0
@@ -1159,7 +1171,7 @@ _llint_op_is_undefined:
     storeq t1, [cfr, t2, 8]
     dispatch(constexpr op_is_undefined_length)
 .masqueradesAsUndefined:
-    loadStructureWithScratch(t0, t3, t1)
+    loadStructureWithScratch(t0, t3, t1, t5)
     loadp CodeBlock[cfr], t1
     loadp CodeBlock::m_globalObject[t1], t1
     cpeq Structure::m_globalObject[t3], t1, t0
@@ -1429,7 +1441,7 @@ _llint_op_put_by_id:
     loadp StructureChain::m_vector[t3], t3
     assert(macro (ok) btpnz t3, ok end)
 
-    structureIDToStructureWithScratch(t2, t1)
+    structureIDToStructureWithScratch(t2, t1, t5)
     loadq Structure::m_prototype[t2], t2
     bqeq t2, ValueNull, .opPutByIdTransitionChainDone
 .opPutByIdTransitionChainLoop:
@@ -1500,9 +1512,10 @@ _llint_op_get_by_val:
     andi IndexingShapeMask, t2
     bieq t2, Int32Shape, .opGetByValIsContiguous
     bineq t2, ContiguousShape, .opGetByValNotContiguous
-.opGetByValIsContiguous:
 
+.opGetByValIsContiguous:
     biaeq t1, -sizeof IndexingHeader + IndexingHeader::u.lengths.publicLength[t3], .opGetByValOutOfBounds
+    andi JSObject::m_butterflyIndexingMask[t0], t1
     loadisFromInstruction(1, t0)
     loadq [t3, t1, 8], t2
     btqz t2, .opGetByValOutOfBounds
@@ -1511,7 +1524,8 @@ _llint_op_get_by_val:
 .opGetByValNotContiguous:
     bineq t2, DoubleShape, .opGetByValNotDouble
     biaeq t1, -sizeof IndexingHeader + IndexingHeader::u.lengths.publicLength[t3], .opGetByValOutOfBounds
-    loadis 8[PB, PC, 8], t0
+    andi JSObject::m_butterflyIndexingMask[t0], t1
+    loadisFromInstruction(1 ,t0)
     loadd [t3, t1, 8], ft0
     bdnequn ft0, ft0, .opGetByValOutOfBounds
     fd2q ft0, t2
@@ -1522,6 +1536,7 @@ _llint_op_get_by_val:
     subi ArrayStorageShape, t2
     bia t2, SlowPutArrayStorageShape - ArrayStorageShape, .opGetByValNotIndexedStorage
     biaeq t1, -sizeof IndexingHeader + IndexingHeader::u.lengths.vectorLength[t3], .opGetByValOutOfBounds
+    andi JSObject::m_butterflyIndexingMask[t0], t1
     loadisFromInstruction(1, t0)
     loadq ArrayStorage::m_vector[t3, t1, 8], t2
     btqz t2, .opGetByValOutOfBounds
@@ -1540,60 +1555,72 @@ _llint_op_get_by_val:
     # First lets check if we even have a typed array. This lets us do some boilerplate up front.
     loadb JSCell::m_type[t0], t2
     subi FirstArrayType, t2
-    bia t2, LastArrayType - FirstArrayType, .opGetByValSlow
+    biaeq t2, NumberOfTypedArrayTypesExcludingDataView, .opGetByValSlow
     
     # Sweet, now we know that we have a typed array. Do some basic things now.
-    loadCaged(_g_gigacageBasePtrs + Gigacage::BasePtrs::primitive, constexpr PRIMITIVE_GIGACAGE_MASK, JSArrayBufferView::m_vector[t0], t3, t5)
     biaeq t1, JSArrayBufferView::m_length[t0], .opGetByValSlow
-    
-    # Now bisect through the various types. Note that we can treat Uint8ArrayType and
-    # Uint8ClampedArrayType the same.
-    bia t2, Uint8ClampedArrayType - FirstArrayType, .opGetByValAboveUint8ClampedArray
-    
-    # We have one of Int8ArrayType .. Uint8ClampedArrayType.
-    bia t2, Int16ArrayType - FirstArrayType, .opGetByValInt32ArrayOrUint8Array
-    
-    # We have one of Int8ArrayType or Int16ArrayType
-    bineq t2, Int8ArrayType - FirstArrayType, .opGetByValInt16Array
-    
+    loadTypedArrayCaged(_g_gigacageBasePtrs + Gigacage::BasePtrs::primitive, constexpr PRIMITIVE_GIGACAGE_MASK, JSArrayBufferView::m_poisonedVector[t0], t2, t3, t5)
+
+    # Now bisect through the various types:
+    #    Int8ArrayType,
+    #    Uint8ArrayType,
+    #    Uint8ClampedArrayType,
+    #    Int16ArrayType,
+    #    Uint16ArrayType,
+    #    Int32ArrayType,
+    #    Uint32ArrayType,
+    #    Float32ArrayType,
+    #    Float64ArrayType,
+
+    bia t2, Uint16ArrayType - FirstArrayType, .opGetByValAboveUint16Array
+
+    # We have one of Int8ArrayType .. Uint16ArrayType.
+    bia t2, Uint8ClampedArrayType - FirstArrayType, .opGetByValInt16ArrayOrUint16Array
+
+    # We have one of Int8ArrayType ... Uint8ClampedArrayType
+    bineq t2, Int8ArrayType - FirstArrayType, .opGetByValUint8ArrayOrUint8ClampedArray
+
     # We have Int8ArrayType
     loadbs [t3, t1], t0
     finishIntGetByVal(t0, t1)
 
-.opGetByValInt16Array:
-    loadhs [t3, t1, 2], t0
-    finishIntGetByVal(t0, t1)
-
-.opGetByValInt32ArrayOrUint8Array:
-    # We have one of Int16Array, Uint8Array, or Uint8ClampedArray.
-    bieq t2, Int32ArrayType - FirstArrayType, .opGetByValInt32Array
-    
-    # We have either Uint8Array or Uint8ClampedArray. They behave the same so that's cool.
+.opGetByValUint8ArrayOrUint8ClampedArray:
+    # We have either Uint8ArrayType or Uint8ClampedArrayType. They behave the same so that's cool.
     loadb [t3, t1], t0
     finishIntGetByVal(t0, t1)
 
-.opGetByValInt32Array:
-    loadi [t3, t1, 4], t0
+.opGetByValInt16ArrayOrUint16Array:
+    # We have either Int16ArrayType or Uint16ClampedArrayType.
+    bieq t2, Uint16ArrayType - FirstArrayType, .opGetByValUint16Array
+
+    # We have Int16ArrayType.
+    loadhs [t3, t1, 2], t0
     finishIntGetByVal(t0, t1)
 
-.opGetByValAboveUint8ClampedArray:
-    # We have one of Uint16ArrayType .. Float64ArrayType.
-    bia t2, Uint32ArrayType - FirstArrayType, .opGetByValAboveUint32Array
-    
-    # We have either Uint16ArrayType or Uint32ArrayType.
-    bieq t2, Uint32ArrayType - FirstArrayType, .opGetByValUint32Array
-
+.opGetByValUint16Array:
     # We have Uint16ArrayType.
     loadh [t3, t1, 2], t0
     finishIntGetByVal(t0, t1)
 
+.opGetByValAboveUint16Array:
+    # We have one of Int32ArrayType .. Float64ArrayType.
+    bia t2, Uint32ArrayType - FirstArrayType, .opGetByValFloat32ArrayOrFloat64Array
+
+    # We have either Int32ArrayType or Uint32ArrayType
+    bineq t2, Int32ArrayType - FirstArrayType, .opGetByValUint32Array
+
+    # We have Int32ArrayType
+    loadi [t3, t1, 4], t0
+    finishIntGetByVal(t0, t1)
+
 .opGetByValUint32Array:
+    # We have Uint32ArrayType.
     # This is the hardest part because of large unsigned values.
     loadi [t3, t1, 4], t0
     bilt t0, 0, .opGetByValSlow # This case is still awkward to implement in LLInt.
     finishIntGetByVal(t0, t1)
 
-.opGetByValAboveUint32Array:
+.opGetByValFloat32ArrayOrFloat64Array:
     # We have one of Float32ArrayType or Float64ArrayType. Sadly, we cannot handle Float32Array
     # inline yet. That would require some offlineasm changes.
     bieq t2, Float32ArrayType - FirstArrayType, .opGetByValSlow
@@ -1733,7 +1760,7 @@ macro equalNull(cellHandler, immediateHandler)
     assertNotConstant(t0)
     loadq [cfr, t0, 8], t0
     btqnz t0, tagMask, .immediate
-    loadStructureWithScratch(t0, t2, t1)
+    loadStructureWithScratch(t0, t2, t1, t3)
     cellHandler(t2, JSCell::m_flags[t0], .target)
     dispatch(3)
 
@@ -1946,8 +1973,15 @@ macro doCall(slowPath, prepareCall)
     storei PC, ArgumentCount + TagOffset[cfr]
     storei t2, ArgumentCount + PayloadOffset[t3]
     move t3, sp
-    prepareCall(LLIntCallLinkInfo::machineCodeTarget[t1], t2, t3, t4)
-    callTargetFunction(LLIntCallLinkInfo::machineCodeTarget[t1])
+    if POISON
+        loadp _g_JITCodePoison, t2
+        xorp LLIntCallLinkInfo::machineCodeTarget[t1], t2
+        prepareCall(t2, t1, t3, t4)
+        callTargetFunction(t2)
+    else
+        prepareCall(LLIntCallLinkInfo::machineCodeTarget[t1], t2, t3, t4)
+        callTargetFunction(LLIntCallLinkInfo::machineCodeTarget[t1])
+    end
 
 .opCallSlow:
     slowPathForCall(slowPath, prepareCall)
@@ -1985,7 +2019,7 @@ _llint_op_catch:
     # and have set VM::targetInterpreterPCForThrow.
     loadp Callee[cfr], t3
     andp MarkedBlockMask, t3
-    loadp MarkedBlock::m_vm[t3], t3
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t3], t3
     restoreCalleeSavesFromVMEntryFrameCalleeSavesBuffer(t3, t0)
     loadp VM::callFrameForCatch[t3], cfr
     storep 0, VM::callFrameForCatch[t3]
@@ -1993,6 +2027,7 @@ _llint_op_catch:
 
     loadp CodeBlock[cfr], PB
     loadp CodeBlock::m_instructions[PB], PB
+    unpoison(_g_CodeBlockPoison, PB, t2)
     loadp VM::targetInterpreterPCForThrow[t3], PC
     subp PB, PC
     rshiftp 3, PC
@@ -2004,7 +2039,7 @@ _llint_op_catch:
 .isCatchableException:
     loadp Callee[cfr], t3
     andp MarkedBlockMask, t3
-    loadp MarkedBlock::m_vm[t3], t3
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t3], t3
 
     loadq VM::m_exception[t3], t0
     storeq 0, VM::m_exception[t3]
@@ -2034,7 +2069,7 @@ _llint_op_end:
 _llint_throw_from_slow_path_trampoline:
     loadp Callee[cfr], t1
     andp MarkedBlockMask, t1
-    loadp MarkedBlock::m_vm[t1], t1
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t1], t1
     copyCalleeSavesToVMEntryFrameCalleeSavesBuffer(t1, t2)
 
     callSlowPath(_llint_slow_path_handle_exception)
@@ -2044,7 +2079,7 @@ _llint_throw_from_slow_path_trampoline:
     # This essentially emulates the JIT's throwing protocol.
     loadp Callee[cfr], t1
     andp MarkedBlockMask, t1
-    loadp MarkedBlock::m_vm[t1], t1
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t1], t1
     jmp VM::targetMachinePCForThrow[t1]
 
 
@@ -2059,7 +2094,7 @@ macro nativeCallTrampoline(executableOffsetToFunction)
     storep 0, CodeBlock[cfr]
     loadp Callee[cfr], t0
     andp MarkedBlockMask, t0, t1
-    loadp MarkedBlock::m_vm[t1], t1
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t1], t1
     storep cfr, VM::topCallFrame[t1]
     if ARM64 or C_LOOP
         storep lr, ReturnPC[cfr]
@@ -2069,20 +2104,24 @@ macro nativeCallTrampoline(executableOffsetToFunction)
     loadp JSFunction::m_executable[t1], t1
     checkStackPointerAlignment(t3, 0xdead0001)
     if C_LOOP
-        cloopCallNative executableOffsetToFunction[t1]
+        loadp _g_NativeCodePoison, t2
+        xorp executableOffsetToFunction[t1], t2
+        cloopCallNative t2
     else
         if X86_64_WIN
             subp 32, sp
-        end
-        call executableOffsetToFunction[t1]
-        if X86_64_WIN
+            call executableOffsetToFunction[t1]
             addp 32, sp
+        else
+            loadp _g_NativeCodePoison, t2
+            xorp executableOffsetToFunction[t1], t2
+            call t2
         end
     end
 
     loadp Callee[cfr], t3
     andp MarkedBlockMask, t3
-    loadp MarkedBlock::m_vm[t3], t3
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t3], t3
 
     btqnz VM::m_exception[t3], .handleException
 
@@ -2099,7 +2138,7 @@ macro internalFunctionCallTrampoline(offsetOfFunction)
     storep 0, CodeBlock[cfr]
     loadp Callee[cfr], t0
     andp MarkedBlockMask, t0, t1
-    loadp MarkedBlock::m_vm[t1], t1
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t1], t1
     storep cfr, VM::topCallFrame[t1]
     if ARM64 or C_LOOP
         storep lr, ReturnPC[cfr]
@@ -2108,20 +2147,24 @@ macro internalFunctionCallTrampoline(offsetOfFunction)
     loadp Callee[cfr], t1
     checkStackPointerAlignment(t3, 0xdead0001)
     if C_LOOP
-        cloopCallNative offsetOfFunction[t1]
+        loadp _g_NativeCodePoison, t2
+        xorp offsetOfFunction[t1], t2
+        cloopCallNative t2
     else
         if X86_64_WIN
             subp 32, sp
-        end
-        call offsetOfFunction[t1]
-        if X86_64_WIN
+            call offsetOfFunction[t1]
             addp 32, sp
+        else
+            loadp _g_NativeCodePoison, t2
+            xorp offsetOfFunction[t1], t2
+            call t2
         end
     end
 
     loadp Callee[cfr], t3
     andp MarkedBlockMask, t3
-    loadp MarkedBlock::m_vm[t3], t3
+    loadp MarkedBlockFooterOffset + MarkedBlock::Footer::m_vm[t3], t3
 
     btqnz VM::m_exception[t3], .handleException
 
@@ -2224,7 +2267,7 @@ _llint_op_resolve_scope:
 macro loadWithStructureCheck(operand, slowPath)
     loadisFromInstruction(operand, t0)
     loadq [cfr, t0, 8], t0
-    loadStructureWithScratch(t0, t2, t1)
+    loadStructureWithScratch(t0, t2, t1, t3)
     loadpFromInstruction(5, t1)
     bpneq t2, t1, slowPath
 end
@@ -2476,7 +2519,8 @@ _llint_op_get_parent_scope:
 _llint_op_profile_type:
     traceExecution()
     loadp CodeBlock[cfr], t1
-    loadp CodeBlock::m_vm[t1], t1
+    loadp CodeBlock::m_poisonedVM[t1], t1
+    unpoison(_g_CodeBlockPoison, t1, t3)
     # t1 is holding the pointer to the typeProfilerLog.
     loadp VM::m_typeProfilerLog[t1], t1
     # t2 is holding the pointer to the current log entry.

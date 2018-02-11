@@ -49,13 +49,13 @@
 #include "Logging.h"
 #include "TemporaryOpenGLSetting.h"
 #include "WebGLRenderingContextBase.h"
+#include <JavaScriptCore/RegularExpression.h>
 #include <cstring>
 #include <wtf/HexNumber.h>
 #include <wtf/MainThread.h>
 #include <wtf/ThreadSpecific.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
-#include <yarr/RegularExpression.h>
 
 #if PLATFORM(IOS)
 #import <OpenGLES/ES2/glext.h>
@@ -177,12 +177,7 @@ void GraphicsContext3D::paintRenderingResultsToCanvas(ImageBuffer* imageBuffer)
         }
     }
 
-#if USE(CG)
-    paintToCanvas(pixels.get(), m_currentWidth, m_currentHeight,
-                  imageBuffer->internalSize().width(), imageBuffer->internalSize().height(), imageBuffer->context());
-#else
-    paintToCanvas(pixels.get(), m_currentWidth, m_currentHeight, imageBuffer->internalSize().width(), imageBuffer->internalSize().height(), imageBuffer->context().platformContext());
-#endif
+    paintToCanvas(pixels.get(), IntSize(m_currentWidth, m_currentHeight), imageBuffer->internalSize(), imageBuffer->context());
 
 #if PLATFORM(IOS)
     presentRenderbuffer();
@@ -397,7 +392,7 @@ bool GraphicsContext3D::checkVaryingsPacking(Platform3DObject vertexShader, Plat
         variables.push_back(varyingSymbol);
 
     GC3Dint maxVaryingVectors = 0;
-#if !PLATFORM(IOS) && !((PLATFORM(WIN) || PLATFORM(GTK) || PLATFORM(WPE)) && USE(OPENGL_ES_2))
+#if !PLATFORM(IOS) && !USE(OPENGL_ES_2)
     GC3Dint maxVaryingFloats = 0;
     ::glGetIntegerv(GL_MAX_VARYING_FLOATS, &maxVaryingFloats);
     maxVaryingVectors = maxVaryingFloats / 4;

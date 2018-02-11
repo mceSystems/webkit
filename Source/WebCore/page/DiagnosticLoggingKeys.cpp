@@ -413,6 +413,13 @@ String DiagnosticLoggingKeys::applicationCacheKey()
     return ASCIILiteral("applicationCache");
 }
 
+#if ENABLE(APPLICATION_MANIFEST)
+String DiagnosticLoggingKeys::applicationManifestKey()
+{
+    return ASCIILiteral("applicationManifest");
+}
+#endif
+
 String DiagnosticLoggingKeys::audioKey()
 {
     return ASCIILiteral("audio");
@@ -468,11 +475,6 @@ String DiagnosticLoggingKeys::diskCacheAfterValidationKey()
     return ASCIILiteral("diskCacheAfterValidation");
 }
 
-String DiagnosticLoggingKeys::serviceWorkerKey()
-{
-    return ASCIILiteral("serviceWorker");
-}
-
 String DiagnosticLoggingKeys::reloadKey()
 {
     return ASCIILiteral("reload");
@@ -526,6 +528,11 @@ String DiagnosticLoggingKeys::sameLoadKey()
 String DiagnosticLoggingKeys::scriptKey()
 {
     return ASCIILiteral("script");
+}
+
+String DiagnosticLoggingKeys::serviceWorkerKey()
+{
+    return ASCIILiteral("serviceWorker");
 }
 
 String DiagnosticLoggingKeys::streamingMedia()

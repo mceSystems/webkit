@@ -29,6 +29,7 @@
 #include "Attr.h"
 #include "BeforeLoadEvent.h"
 #include "ChildListMutationScope.h"
+#include "CommonVM.h"
 #include "ComposedTreeAncestorIterator.h"
 #include "ContainerNodeAlgorithms.h"
 #include "ContextMenuController.h"
@@ -51,7 +52,6 @@
 #include "KeyboardEvent.h"
 #include "Logging.h"
 #include "MutationEvent.h"
-#include "NoEventDispatchAssertion.h"
 #include "NodeRenderStyle.h"
 #include "ProcessingInstruction.h"
 #include "ProgressEvent.h"
@@ -61,6 +61,7 @@
 #include "RenderTextControl.h"
 #include "RenderView.h"
 #include "ScopedEventQueue.h"
+#include "ScriptDisallowedScope.h"
 #include "StorageEvent.h"
 #include "StyleResolver.h"
 #include "StyleSheetContents.h"
@@ -325,8 +326,8 @@ void Node::willBeDeletedFrom(Document& document)
     document.removeTouchEventHandler(*this, EventHandlerRemoval::All);
 #endif
 
-    if (AXObjectCache* cache = document.existingAXObjectCache())
-        cache->remove(this);
+    if (auto* cache = document.existingAXObjectCache())
+        cache->remove(*this);
 }
 
 void Node::materializeRareData()
@@ -772,9 +773,6 @@ inline void Node::updateAncestorsForStyleRecalc()
     auto end = composedAncestors.end();
     if (it != end) {
         it->setDirectChildNeedsStyleRecalc();
-
-        if (it->childrenAffectedByPropertyBasedBackwardPositionalRules())
-            it->adjustStyleValidity(Style::Validity::SubtreeInvalid, Style::InvalidationMode::Normal);
 
         for (; it != end; ++it) {
             // Iterator skips over shadow roots.
@@ -2008,7 +2006,7 @@ void Node::moveNodeToNewDocument(Document& oldDocument, Document& newDocument)
 
     if (AXObjectCache::accessibilityEnabled()) {
         if (auto* cache = oldDocument.existingAXObjectCache())
-            cache->remove(this);
+            cache->remove(*this);
     }
 
     if (auto* eventTargetData = this->eventTargetData()) {
@@ -2162,7 +2160,14 @@ EventTargetData* Node::eventTargetData()
 
 EventTargetData* Node::eventTargetDataConcurrently()
 {
-    auto locker = holdLock(s_eventTargetDataMapLock);
+    // Not holding the lock when the world is stopped accelerates parallel constraint solving, which
+    // calls this function from many threads. Parallel constraint solving can happen with the world
+    // running or stopped, but if we do it with a running world, then we're usually mixing constraint
+    // solving with other work. Therefore, the most likely time for contention on this lock is when the
+    // world is stopped. We don't have to hold the lock when the world is stopped, because a stopped world
+    // means that we will never mutate the event target data map.
+    JSC::VM* vm = commonVMOrNull();
+    auto locker = holdLockIf(s_eventTargetDataMapLock, vm && vm->heap.worldIsRunning());
     return hasEventTargetData() ? eventTargetDataMap().get(this) : nullptr;
 }
 
@@ -2171,6 +2176,9 @@ EventTargetData& Node::ensureEventTargetData()
     if (hasEventTargetData())
         return *eventTargetDataMap().get(this);
 
+    JSC::VM* vm = commonVMOrNull();
+    RELEASE_ASSERT(!vm || vm->heap.worldIsRunning());
+
     auto locker = holdLock(s_eventTargetDataMapLock);
     setHasEventTargetData(true);
     return *eventTargetDataMap().add(this, std::make_unique<EventTargetData>()).iterator->value;
@@ -2178,6 +2186,8 @@ EventTargetData& Node::ensureEventTargetData()
 
 void Node::clearEventTargetData()
 {
+    JSC::VM* vm = commonVMOrNull();
+    RELEASE_ASSERT(!vm || vm->heap.worldIsRunning());
     auto locker = holdLock(s_eventTargetDataMapLock);
     eventTargetDataMap().remove(this);
 }
@@ -2322,7 +2332,7 @@ void Node::dispatchSubtreeModifiedEvent()
     if (isInShadowTree())
         return;
 
-    ASSERT_WITH_SECURITY_IMPLICATION(NoEventDispatchAssertion::InMainThread::isEventDispatchAllowedInSubtree(*this));
+    ASSERT_WITH_SECURITY_IMPLICATION(ScriptDisallowedScope::InMainThread::isEventDispatchAllowedInSubtree(*this));
 
     if (!document().hasListenerType(Document::DOMSUBTREEMODIFIED_LISTENER))
         return;
@@ -2335,7 +2345,7 @@ void Node::dispatchSubtreeModifiedEvent()
 
 void Node::dispatchDOMActivateEvent(Event& underlyingClickEvent)
 {
-    ASSERT_WITH_SECURITY_IMPLICATION(NoEventDispatchAssertion::InMainThread::isEventAllowed());
+    ASSERT_WITH_SECURITY_IMPLICATION(ScriptDisallowedScope::InMainThread::isScriptAllowed());
     int detail = is<UIEvent>(underlyingClickEvent) ? downcast<UIEvent>(underlyingClickEvent).detail() : 0;
     auto event = UIEvent::create(eventNames().DOMActivateEvent, true, true, document().defaultView(), detail);
     event->setUnderlyingEvent(&underlyingClickEvent);

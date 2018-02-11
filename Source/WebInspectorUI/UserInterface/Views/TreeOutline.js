@@ -28,7 +28,7 @@
 
 WI.TreeOutline = class TreeOutline extends WI.Object
 {
-    constructor(element)
+    constructor(element, selectable = true)
     {
         super();
 
@@ -53,6 +53,7 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this._large = false;
         this._disclosureButtons = true;
         this._customIndent = false;
+        this._selectable = selectable;
 
         this._virtualizedScrollContainer = null;
         this._virtualizedTreeItemHeight = NaN;
@@ -63,6 +64,9 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this._childrenListNode.addEventListener("keydown", this._treeKeyDown.bind(this), true);
 
         WI.TreeOutline._generateStyleRulesIfNeeded();
+
+        if (!this._selectable)
+            this.element.classList.add("non-selectable");
     }
 
     // Public
@@ -142,6 +146,8 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         this._customIndent = x;
         this.element.classList.toggle(WI.TreeOutline.CustomIndentStyleClassName, this._customIndent);
     }
+
+    get selectable() { return this._selectable; }
 
     appendChild(child)
     {
@@ -734,10 +740,20 @@ WI.TreeOutline = class TreeOutline extends WI.Object
         let scrollContainer = this.element.parentElement;
 
         // We choose this X coordinate based on the knowledge that our list
-        // items extend at least to the right edge of the outer <ol> container.
+        // items extend at least to the trailing edge of the outer <ol> container.
         // In the no-word-wrap mode the outer <ol> may be wider than the tree container
-        // (and partially hidden), in which case we are left to use only its right boundary.
-        let x = scrollContainer.totalOffsetLeft + scrollContainer.offsetWidth - 36;
+        // (and partially hidden), in which case we are left to use only its trailing boundary.
+        // This adjustment is useful in order to find the inner-most tree element that
+        // lines up horizontally with the location of the event. If the mouse event
+        // happened in the space preceding a nested tree element (in the leading indentated
+        // space) we use this adjustment to get the nested tree element and not a tree element
+        // from a parent / outer tree outline / tree element.
+        //
+        // NOTE: This can fail if there is floating content over the trailing edge of
+        // the <li> content, since the element from point could hit that.
+        let isRTL = WI.resolvedLayoutDirection() === WI.LayoutDirection.RTL;
+        let trailingEdgeOffset = isRTL ? 36 : (scrollContainer.offsetWidth - 36);
+        let x = scrollContainer.totalOffsetLeft + trailingEdgeOffset;
         let y = event.pageY;
 
         // Our list items have 1-pixel cracks between them vertically. We avoid
@@ -812,6 +828,7 @@ WI.TreeOutline.Event = {
     ElementAdded: Symbol("element-added"),
     ElementDidChange: Symbol("element-did-change"),
     ElementRemoved: Symbol("element-removed"),
+    ElementClicked: Symbol("element-clicked"),
     ElementDisclosureDidChanged: Symbol("element-disclosure-did-change"),
     ElementVisibilityDidChange: Symbol("element-visbility-did-change"),
     SelectionDidChange: Symbol("selection-did-change")

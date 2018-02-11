@@ -30,7 +30,6 @@
 
 #include "Blob.h"
 #include "BlobCallback.h"
-#include "CSSCanvasValue.h"
 #include "CanvasGradient.h"
 #include "CanvasPattern.h"
 #include "CanvasRenderingContext2D.h"
@@ -53,9 +52,9 @@
 #include "ScriptController.h"
 #include "Settings.h"
 #include "StringAdaptors.h"
+#include <JavaScriptCore/JSCInlines.h>
+#include <JavaScriptCore/JSLock.h>
 #include <math.h>
-#include <runtime/JSCInlines.h>
-#include <runtime/JSLock.h>
 #include <wtf/RAMSize.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -140,8 +139,7 @@ static void removeFromActivePixelMemory(size_t pixelsReleased)
     
 HTMLCanvasElement::~HTMLCanvasElement()
 {
-    for (auto& observer : m_observers)
-        observer->canvasDestroyed(*this);
+    notifyObserversCanvasDestroyed();
 
     m_context = nullptr; // Ensure this goes away before the ImageBuffer.
 
@@ -171,38 +169,6 @@ bool HTMLCanvasElement::canContainRangeEndPoint() const
 bool HTMLCanvasElement::canStartSelection() const
 {
     return false;
-}
-
-void HTMLCanvasElement::addObserver(CanvasObserver& observer)
-{
-    m_observers.add(&observer);
-
-    if (is<CSSCanvasValue::CanvasObserverProxy>(observer))
-        InspectorInstrumentation::didChangeCSSCanvasClientNodes(*this);
-}
-
-void HTMLCanvasElement::removeObserver(CanvasObserver& observer)
-{
-    m_observers.remove(&observer);
-
-    if (is<CSSCanvasValue::CanvasObserverProxy>(observer))
-        InspectorInstrumentation::didChangeCSSCanvasClientNodes(*this);
-}
-
-HashSet<Element*> HTMLCanvasElement::cssCanvasClients() const
-{
-    HashSet<Element*> cssCanvasClients;
-    for (auto& observer : m_observers) {
-        if (!is<CSSCanvasValue::CanvasObserverProxy>(observer))
-            continue;
-
-        auto clients = downcast<CSSCanvasValue::CanvasObserverProxy>(observer)->ownerValue().clients();
-        for (auto& entry : clients) {
-            if (RefPtr<Element> element = entry.key->element())
-                cssCanvasClients.add(element.get());
-        }
-    }
-    return cssCanvasClients;
 }
 
 ExceptionOr<void> HTMLCanvasElement::setHeight(unsigned value)
@@ -282,7 +248,11 @@ ExceptionOr<std::optional<RenderingContext>> HTMLCanvasElement::getContext(JSC::
     }
 
     if (isBitmapRendererType(contextId)) {
-        auto context = createContextBitmapRenderer(contextId);
+        auto scope = DECLARE_THROW_SCOPE(state.vm());
+        auto attributes = convert<IDLDictionary<ImageBitmapRenderingContextSettings>>(state, !arguments.isEmpty() ? arguments[0].get() : JSC::jsUndefined());
+        RETURN_IF_EXCEPTION(scope, Exception { ExistingExceptionError });
+
+        auto context = createContextBitmapRenderer(contextId, WTFMove(attributes));
         if (!context)
             return std::optional<RenderingContext> { std::nullopt };
         return std::optional<RenderingContext> { RefPtr<ImageBitmapRenderingContext> { context } };
@@ -366,12 +336,10 @@ CanvasRenderingContext2D* HTMLCanvasElement::createContext2d(const String& type)
         return nullptr;
     }
 
-    m_context = std::make_unique<CanvasRenderingContext2D>(*this, document().inQuirksMode(), usesDashboardCompatibilityMode);
+    m_context = CanvasRenderingContext2D::create(*this, document().inQuirksMode(), usesDashboardCompatibilityMode);
 
     downcast<CanvasRenderingContext2D>(*m_context).setUsesDisplayListDrawing(m_usesDisplayListDrawing);
     downcast<CanvasRenderingContext2D>(*m_context).setTracksDisplayListReplay(m_tracksDisplayListReplay);
-
-    InspectorInstrumentation::didCreateCanvasRenderingContext(*this);
 
 #if USE(IOSURFACE_CANVAS_BACKING_STORE) || ENABLE(ACCELERATED_2D_CANVAS)
     // Need to make sure a RenderLayer and compositing layer get created for the Canvas.
@@ -437,8 +405,6 @@ WebGLRenderingContextBase* HTMLCanvasElement::createContextWebGL(const String& t
     if (m_context) {
         // Need to make sure a RenderLayer and compositing layer get created for the Canvas.
         invalidateStyleAndLayerComposition();
-
-        InspectorInstrumentation::didCreateCanvasRenderingContext(*this);
     }
 
     return downcast<WebGLRenderingContextBase>(m_context.get());
@@ -480,8 +446,6 @@ WebGPURenderingContext* HTMLCanvasElement::createContextWebGPU(const String& typ
     if (m_context) {
         // Need to make sure a RenderLayer and compositing layer get created for the Canvas.
         invalidateStyleAndLayerComposition();
-
-        InspectorInstrumentation::didCreateCanvasRenderingContext(*this);
     }
 
     return static_cast<WebGPURenderingContext*>(m_context.get());
@@ -513,7 +477,7 @@ ImageBitmapRenderingContext* HTMLCanvasElement::createContextBitmapRenderer(cons
     ASSERT_UNUSED(type, HTMLCanvasElement::isBitmapRendererType(type));
     ASSERT(!m_context);
 
-    m_context = std::make_unique<ImageBitmapRenderingContext>(*this, WTFMove(settings));
+    m_context = ImageBitmapRenderingContext::create(*this, WTFMove(settings));
 
 #if USE(IOSURFACE_CANVAS_BACKING_STORE) || ENABLE(ACCELERATED_2D_CANVAS)
     // Need to make sure a RenderLayer and compositing layer get created for the Canvas.
@@ -549,12 +513,6 @@ void HTMLCanvasElement::didDraw(const FloatRect& rect)
         }
     }
     notifyObserversCanvasChanged(dirtyRect);
-}
-
-void HTMLCanvasElement::notifyObserversCanvasChanged(const FloatRect& rect)
-{
-    for (auto& observer : m_observers)
-        observer->canvasChanged(*this, rect);
 }
 
 void HTMLCanvasElement::reset()
@@ -603,8 +561,7 @@ void HTMLCanvasElement::reset()
             canvasRenderer.repaint();
     }
 
-    for (auto& observer : m_observers)
-        observer->canvasResized(*this);
+    notifyObserversCanvasResized();
 }
 
 bool HTMLCanvasElement::paintsIntoCanvasBuffer() const
@@ -628,7 +585,7 @@ bool HTMLCanvasElement::paintsIntoCanvasBuffer() const
 void HTMLCanvasElement::paint(GraphicsContext& context, const LayoutRect& r)
 {
     if (UNLIKELY(m_context && m_context->callTracingActive()))
-        InspectorInstrumentation::didFinishRecordingCanvasFrame(*this);
+        InspectorInstrumentation::didFinishRecordingCanvasFrame(*m_context);
 
     // Clear the dirty rect
     m_dirtyRect = FloatRect();
@@ -676,7 +633,7 @@ void HTMLCanvasElement::makePresentationCopy()
 {
     if (!m_presentedImage) {
         // The buffer contains the last presented data, so save a copy of it.
-        m_presentedImage = buffer()->copyImage(CopyBackingStore, Unscaled);
+        m_presentedImage = buffer()->copyImage(CopyBackingStore, PreserveResolution::Yes);
     }
 }
 
@@ -983,8 +940,8 @@ void HTMLCanvasElement::setImageBuffer(std::unique_ptr<ImageBuffer>&& buffer) co
     size_t currentMemoryCost = memoryCost();
     activePixelMemory += currentMemoryCost;
 
-    if (m_imageBuffer && previousMemoryCost != currentMemoryCost)
-        InspectorInstrumentation::didChangeCanvasMemory(const_cast<HTMLCanvasElement&>(*this));
+    if (m_context && m_imageBuffer && previousMemoryCost != currentMemoryCost)
+        InspectorInstrumentation::didChangeCanvasMemory(*m_context);
 }
 
 void HTMLCanvasElement::setImageBufferAndMarkDirty(std::unique_ptr<ImageBuffer>&& buffer)
@@ -1022,7 +979,7 @@ Image* HTMLCanvasElement::copiedImage() const
     if (!m_copiedImage && buffer()) {
         if (m_context)
             m_context->paintRenderingResultsToCanvas();
-        m_copiedImage = buffer()->copyImage(CopyBackingStore, Unscaled);
+        m_copiedImage = buffer()->copyImage(CopyBackingStore, PreserveResolution::Yes);
     }
     return m_copiedImage.get();
 }

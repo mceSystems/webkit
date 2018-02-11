@@ -36,6 +36,10 @@
 #include <wtf/Forward.h>
 #include <wtf/text/WTFString.h>
 
+#if ENABLE(APPLICATION_MANIFEST)
+#include "ApplicationManifest.h"
+#endif
+
 #if ENABLE(CONTENT_FILTERING)
 #include "ContentFilterUnblockHandler.h"
 #endif
@@ -117,8 +121,8 @@ public:
 
     virtual void makeRepresentation(DocumentLoader*) = 0;
 
-    virtual uint64_t pageID() const = 0;
-    virtual uint64_t frameID() const = 0;
+    virtual std::optional<uint64_t> pageID() const = 0;
+    virtual std::optional<uint64_t> frameID() const = 0;
     virtual PAL::SessionID sessionID() const = 0;
 
 #if PLATFORM(IOS)
@@ -157,6 +161,7 @@ public:
     virtual void dispatchDidCancelClientRedirect() = 0;
     virtual void dispatchWillPerformClientRedirect(const URL&, double interval, double fireDate) = 0;
     virtual void dispatchDidChangeMainDocument() { }
+    virtual void dispatchWillChangeDocument() { }
     virtual void dispatchDidNavigateWithinPage() { }
     virtual void dispatchDidChangeLocationWithinPage() = 0;
     virtual void dispatchDidPushStateWithinPage() = 0;
@@ -356,6 +361,15 @@ public:
 
     virtual void getLoadDecisionForIcons(const Vector<std::pair<WebCore::LinkIcon&, uint64_t>>&) { }
     virtual void finishedLoadingIcon(uint64_t, SharedBuffer*) { }
+
+#if ENABLE(APPLICATION_MANIFEST)
+    virtual void finishedLoadingApplicationManifest(uint64_t, const std::optional<ApplicationManifest>&) { }
+#endif
+
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+    virtual bool hasFrameSpecificStorageAccess() { return false; }
+    virtual void setHasFrameSpecificStorageAccess(bool) { }
+#endif
 };
 
 } // namespace WebCore

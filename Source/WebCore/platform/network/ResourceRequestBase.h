@@ -50,6 +50,7 @@ enum HTTPBodyUpdatePolicy {
 };
 
 class ResourceRequest;
+class ResourceResponse;
 
 // Do not use this type directly.  Use ResourceRequest instead.
 class ResourceRequestBase {
@@ -63,6 +64,8 @@ public:
 
     WEBCORE_EXPORT const URL& url() const;
     WEBCORE_EXPORT void setURL(const URL& url);
+
+    WEBCORE_EXPORT ResourceRequest redirectedRequest(const ResourceResponse&, bool shouldClearReferrerOnHTTPSToHTTPRedirect) const;
 
     WEBCORE_EXPORT void removeCredentials();
 
@@ -107,6 +110,7 @@ public:
     WEBCORE_EXPORT String httpReferrer() const;
     bool hasHTTPReferrer() const;
     WEBCORE_EXPORT void setHTTPReferrer(const String&);
+    WEBCORE_EXPORT void setExistingHTTPReferrerToOriginString();
     WEBCORE_EXPORT void clearHTTPReferrer();
 
     String httpOrigin() const;
@@ -165,12 +169,7 @@ public:
     WEBCORE_EXPORT static double defaultTimeoutInterval(); // May return 0 when using platform default.
     WEBCORE_EXPORT static void setDefaultTimeoutInterval(double);
 
-#if PLATFORM(IOS)
-    WEBCORE_EXPORT static bool defaultAllowCookies();
-    WEBCORE_EXPORT static void setDefaultAllowCookies(bool);
-#endif
-
-    static bool compare(const ResourceRequest&, const ResourceRequest&);
+    WEBCORE_EXPORT static bool equal(const ResourceRequest&, const ResourceRequest&);
 
 protected:
     // Used when ResourceRequest is initialized from a platform representation of the request
@@ -185,11 +184,7 @@ protected:
         , m_timeoutInterval(s_defaultTimeoutInterval)
         , m_httpMethod(ASCIILiteral("GET"))
         , m_cachePolicy(policy)
-#if !PLATFORM(IOS)
         , m_allowCookies(true)
-#else
-        , m_allowCookies(ResourceRequestBase::defaultAllowCookies())
-#endif
         , m_resourceRequestUpdated(true)
         , m_resourceRequestBodyUpdated(true)
     {
@@ -227,14 +222,11 @@ private:
     const ResourceRequest& asResourceRequest() const;
 
     WEBCORE_EXPORT static double s_defaultTimeoutInterval;
-#if PLATFORM(IOS)
-    static bool s_defaultAllowCookies;
-#endif
 };
 
 bool equalIgnoringHeaderFields(const ResourceRequestBase&, const ResourceRequestBase&);
 
-inline bool operator==(const ResourceRequest& a, const ResourceRequest& b) { return ResourceRequestBase::compare(a, b); }
+inline bool operator==(const ResourceRequest& a, const ResourceRequest& b) { return ResourceRequestBase::equal(a, b); }
 inline bool operator!=(ResourceRequest& a, const ResourceRequest& b) { return !(a == b); }
 
 WEBCORE_EXPORT unsigned initializeMaximumHTTPConnectionCountPerHost();

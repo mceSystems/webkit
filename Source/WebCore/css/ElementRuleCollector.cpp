@@ -383,19 +383,16 @@ inline bool ElementRuleCollector::ruleMatches(const RuleData& ruleData, unsigned
     }
 
 #if ENABLE(CSS_SELECTOR_JIT)
-    void* compiledSelectorChecker = ruleData.compiledSelectorCodeRef().code().executableAddress();
-    if (!compiledSelectorChecker && ruleData.compilationStatus() == SelectorCompilationStatus::NotCompiled) {
-        JSC::VM& vm = m_element.document().scriptExecutionContext()->vm();
-        SelectorCompilationStatus compilationStatus;
-        JSC::MacroAssemblerCodeRef compiledSelectorCodeRef;
-        compilationStatus = SelectorCompiler::compileSelector(ruleData.selector(), &vm, SelectorCompiler::SelectorContext::RuleCollector, compiledSelectorCodeRef);
+    auto& compiledSelector = ruleData.rule()->compiledSelectorForListIndex(ruleData.selectorListIndex());
+    void* compiledSelectorChecker = compiledSelector.codeRef.code().executableAddress();
+    if (!compiledSelectorChecker && compiledSelector.status == SelectorCompilationStatus::NotCompiled) {
+        compiledSelector.status = SelectorCompiler::compileSelector(ruleData.selector(), SelectorCompiler::SelectorContext::RuleCollector, compiledSelector.codeRef);
 
-        ruleData.setCompiledSelector(compilationStatus, compiledSelectorCodeRef);
-        compiledSelectorChecker = ruleData.compiledSelectorCodeRef().code().executableAddress();
+        compiledSelectorChecker = compiledSelector.codeRef.code().executableAddress();
     }
 
-    if (compiledSelectorChecker && ruleData.compilationStatus() == SelectorCompilationStatus::SimpleSelectorChecker) {
-        SelectorCompiler::RuleCollectorSimpleSelectorChecker selectorChecker = SelectorCompiler::ruleCollectorSimpleSelectorCheckerFunction(compiledSelectorChecker, ruleData.compilationStatus());
+    if (compiledSelectorChecker && compiledSelector.status == SelectorCompilationStatus::SimpleSelectorChecker) {
+        auto selectorChecker = SelectorCompiler::ruleCollectorSimpleSelectorCheckerFunction(compiledSelectorChecker, compiledSelector.status);
 #if !ASSERT_MSG_DISABLED
         unsigned ignoreSpecificity;
         ASSERT_WITH_MESSAGE(!selectorChecker(&m_element, &ignoreSpecificity) || m_pseudoStyleRequest.pseudoId == NOPSEUDO, "When matching pseudo elements, we should never compile a selector checker without context unless it cannot match anything.");
@@ -421,12 +418,12 @@ inline bool ElementRuleCollector::ruleMatches(const RuleData& ruleData, unsigned
     bool selectorMatches;
 #if ENABLE(CSS_SELECTOR_JIT)
     if (compiledSelectorChecker) {
-        ASSERT(ruleData.compilationStatus() == SelectorCompilationStatus::SelectorCheckerWithCheckingContext);
+        ASSERT(compiledSelector.status == SelectorCompilationStatus::SelectorCheckerWithCheckingContext);
 
-        SelectorCompiler::RuleCollectorSelectorCheckerWithCheckingContext selectorChecker = SelectorCompiler::ruleCollectorSelectorCheckerFunctionWithCheckingContext(compiledSelectorChecker, ruleData.compilationStatus());
+        auto selectorChecker = SelectorCompiler::ruleCollectorSelectorCheckerFunctionWithCheckingContext(compiledSelectorChecker, compiledSelector.status);
 
 #if CSS_SELECTOR_JIT_PROFILING
-        ruleData.compiledSelectorUsed();
+        compiledSelector.useCount++;
 #endif
         selectorMatches = selectorChecker(&m_element, &context, &specificity);
     } else
@@ -464,7 +461,7 @@ void ElementRuleCollector::collectMatchingRulesForList(const RuleSet::RuleDataVe
         if (!ruleData.canMatchPseudoElement() && m_pseudoStyleRequest.pseudoId != NOPSEUDO)
             continue;
 
-        if (m_selectorFilter && m_selectorFilter->fastRejectSelector<RuleData::maximumIdentifierCount>(ruleData.descendantSelectorIdentifierHashes()))
+        if (m_selectorFilter && m_selectorFilter->fastRejectSelector(ruleData.descendantSelectorIdentifierHashes()))
             continue;
 
         StyleRule* rule = ruleData.rule();
@@ -474,10 +471,6 @@ void ElementRuleCollector::collectMatchingRulesForList(const RuleSet::RuleDataVe
         // and that means we always have to consider it.
         const StyleProperties* properties = rule->propertiesWithoutDeferredParsing();
         if (properties && properties->isEmpty() && !matchRequest.includeEmptyRules)
-            continue;
-
-        // FIXME: Exposing the non-standard getMatchedCSSRules API to web is the only reason this is needed.
-        if (m_sameOriginOnly && !ruleData.hasDocumentSecurityOrigin())
             continue;
 
         unsigned specificity;

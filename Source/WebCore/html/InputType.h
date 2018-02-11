@@ -193,7 +193,7 @@ public:
 
     virtual bool shouldSubmitImplicitly(Event&);
     virtual bool hasCustomFocusLogic() const;
-    virtual bool isKeyboardFocusable(KeyboardEvent&) const;
+    virtual bool isKeyboardFocusable(KeyboardEvent*) const;
     virtual bool isMouseFocusable() const;
     virtual bool shouldUseInputMethod() const;
     virtual void handleFocusEvent(Node* oldFocusedNode, FocusDirection);
@@ -225,10 +225,6 @@ public:
     virtual HTMLElement* sliderThumbElement() const { return nullptr; }
     virtual HTMLElement* sliderTrackElement() const { return nullptr; }
     virtual HTMLElement* placeholderElement() const;
-
-#if ENABLE(ALTERNATIVE_PRESENTATION_BUTTON_ELEMENT)
-    virtual HTMLElement* alternativePresentationButtonElement() const { return nullptr; }
-#endif
 
     // Miscellaneous functions.
 
@@ -272,7 +268,7 @@ public:
     virtual bool shouldAppearIndeterminate() const;
     virtual bool supportsSelectionAPI() const;
     virtual Color valueAsColor() const;
-    virtual void selectColor(const Color&);
+    virtual void selectColor(StringView);
 
     // Parses the specified string for the type, and return
     // the Decimal value for the parsing result if the parsing

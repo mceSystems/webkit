@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
  * Copyright (C) 2007-2009 Torch Mobile, Inc.
  * Copyright (C) 2010, 2011 Research In Motion Limited. All rights reserved.
  *
@@ -345,12 +345,12 @@
 
 /* OS(IOS) - iOS */
 /* OS(MAC_OS_X) - Mac OS X (not including iOS) */
-#if OS(DARWIN) && ((defined(TARGET_OS_EMBEDDED) && TARGET_OS_EMBEDDED) \
-    || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)                 \
-    || (defined(TARGET_IPHONE_SIMULATOR) && TARGET_IPHONE_SIMULATOR))
+#if OS(DARWIN)
+#if TARGET_OS_IPHONE
 #define WTF_OS_IOS 1
-#elif OS(DARWIN) && defined(TARGET_OS_MAC) && TARGET_OS_MAC
+#elif TARGET_OS_MAC
 #define WTF_OS_MAC_OS_X 1
+#endif
 #endif
 
 /* OS(FREEBSD) - FreeBSD */
@@ -489,7 +489,7 @@
 #define WTF_PLATFORM_MAC 1
 #elif OS(IOS)
 #define WTF_PLATFORM_IOS 1
-#if defined(TARGET_IPHONE_SIMULATOR) && TARGET_IPHONE_SIMULATOR
+#if TARGET_OS_SIMULATOR
 #define WTF_PLATFORM_IOS_SIMULATOR 1
 #endif
 #elif OS(WINDOWS)
@@ -571,12 +571,6 @@
 #endif
 
 #if PLATFORM(MAC)
-
-#if __MAC_OS_X_VERSION_MIN_REQUIRED < 101200
-#define USE_QTKIT 1
-#else
-#define USE_QTKIT 0
-#endif
 
 #define USE_APPKIT 1
 #define HAVE_RUNLOOP_TIMER 1
@@ -668,7 +662,7 @@
 #define HAVE_READLINE 1
 #define HAVE_SYS_TIMEB_H 1
 
-#if __has_include(<mach/mach_exc.defs>)
+#if __has_include(<mach/mach_exc.defs>) && !PLATFORM(GTK)
 #define HAVE_MACH_EXCEPTIONS 1
 #endif
 
@@ -681,7 +675,7 @@
 
 #endif /* OS(DARWIN) */
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200) || PLATFORM(IOS)
+#if PLATFORM(COCOA)
 #define HAVE_CFNETWORK_STORAGE_PARTITIONING 1
 #endif
 
@@ -709,6 +703,10 @@
 
 /* Include feature macros */
 #include <wtf/FeatureDefines.h>
+
+#if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/AdditionalFeatureDefines.h>)
+#include <WebKitAdditions/AdditionalFeatureDefines.h>
+#endif
 
 #if OS(WINDOWS)
 #define USE_SYSTEM_MALLOC 1
@@ -803,9 +801,10 @@
 #if CPU(ARM_TRADITIONAL)
 #define ENABLE_DFG_JIT 1
 #endif
-/* FIXME: MIPS cannot enable the DFG until it has support for MacroAssembler::probe().
-   https://bugs.webkit.org/show_bug.cgi?id=175447
-*/
+/* Enable the DFG JIT on MIPS. */
+#if CPU(MIPS)
+#define ENABLE_DFG_JIT 1
+#endif
 #endif
 
 /* Concurrent JS only works on 64-bit platforms because it requires that
@@ -824,7 +823,12 @@
 #define ENABLE_FAST_TLS_JIT 1
 #endif
 
-#if CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64) || CPU(ARM_TRADITIONAL)
+/* This feature is currently disabled because WebCore will context switch VMs without telling JSC.
+   FIXME: Re-enable this feature.
+   https://bugs.webkit.org/show_bug.cgi?id=182173 */
+#define USE_FAST_TLS_FOR_TLC 0
+
+#if CPU(X86) || CPU(X86_64) || CPU(ARM_THUMB2) || CPU(ARM64) || CPU(ARM_TRADITIONAL) || CPU(MIPS)
 #define ENABLE_MASM_PROBE 1
 #else
 #define ENABLE_MASM_PROBE 0
@@ -1009,6 +1013,13 @@
 #define ENABLE_SIGNAL_BASED_VM_TRAPS 1
 #endif
 
+#define ENABLE_POISON 1
+/* Not currently supported for 32-bit or OS(WINDOWS) builds (because of missing llint support). Make sure it's disabled. */
+#if USE(JSVALUE32_64) || OS(WINDOWS)
+#undef ENABLE_POISON
+#define ENABLE_POISON 0
+#endif
+
 /* CSS Selector JIT Compiler */
 #if !defined(ENABLE_CSS_SELECTOR_JIT)
 #if (CPU(X86_64) || CPU(ARM64) || (CPU(ARM_THUMB2) && PLATFORM(IOS))) && ENABLE(JIT) && (OS(DARWIN) || PLATFORM(GTK) || PLATFORM(WPE))
@@ -1066,16 +1077,8 @@
 #include <wtf/glib/GTypedefs.h>
 #endif
 
-/* FIXME: This define won't be needed once #27551 is fully landed. However,
-   since most ports try to support sub-project independence, adding new headers
-   to WTF causes many ports to break, and so this way we can address the build
-   breakages one port at a time. */
 #if !defined(USE_EXPORT_MACROS) && (PLATFORM(COCOA) || OS(WINDOWS))
 #define USE_EXPORT_MACROS 1
-#endif
-
-#if !defined(USE_EXPORT_MACROS_FOR_TESTING) && (PLATFORM(GTK) || OS(WINDOWS))
-#define USE_EXPORT_MACROS_FOR_TESTING 1
 #endif
 
 #if PLATFORM(GTK) || PLATFORM(WPE)
@@ -1109,6 +1112,7 @@
 #if PLATFORM(IOS) || PLATFORM(MAC)
 #define USE_COREMEDIA 1
 #define HAVE_AVFOUNDATION_VIDEO_OUTPUT 1
+#define USE_VIDEOTOOLBOX 1
 #endif
 
 #if PLATFORM(IOS) || PLATFORM(MAC) || (OS(WINDOWS) && USE(CG))
@@ -1124,11 +1128,7 @@
 #define HAVE_AVFOUNDATION_LOADER_DELEGATE 1
 #endif
 
-#if PLATFORM(MAC) || (PLATFORM(IOS) && ENABLE(WEB_RTC))
-#define USE_VIDEOTOOLBOX 1
-#endif
-
-#if PLATFORM(COCOA) || PLATFORM(GTK) || PLATFORM(WPE)
+#if !PLATFORM(WIN)
 #define USE_REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR 1
 #endif
 
@@ -1175,8 +1175,8 @@
 #define USE_INSERTION_UNDO_GROUPING 1
 #endif
 
-#if PLATFORM(MAC)
-#define HAVE_AVSAMPLEBUFFERGENERATOR 1
+#if PLATFORM(MAC) || PLATFORM(IOS)
+#define HAVE_AVASSETREADER 1
 #endif
 
 #if PLATFORM(COCOA)
@@ -1216,6 +1216,9 @@
 #define HAVE_NS_ACTIVITY 1
 #endif
 
+/* Disable SharedArrayBuffers until Spectre security concerns are mitigated. */
+#define ENABLE_SHARED_ARRAY_BUFFER 0
+
 #if (OS(DARWIN) && USE(CG)) || (USE(FREETYPE) && !PLATFORM(GTK)) || (PLATFORM(WIN) && (USE(CG) || USE(CAIRO)))
 #undef ENABLE_OPENTYPE_MATH
 #define ENABLE_OPENTYPE_MATH 1
@@ -1232,14 +1235,14 @@
 #endif
 
 /* FIXME: Enable USE_OS_LOG when building with the public iOS 10 SDK once we fix <rdar://problem/27758343>. */
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200) || (PLATFORM(IOS) && USE(APPLE_INTERNAL_SDK))
+#if PLATFORM(MAC) || (PLATFORM(IOS) && USE(APPLE_INTERNAL_SDK))
 #define USE_OS_LOG 1
 #if USE(APPLE_INTERNAL_SDK)
 #define USE_OS_STATE 1
 #endif
 #endif
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200) || PLATFORM(IOS)
+#if PLATFORM(COCOA)
 #define HAVE_SEC_TRUST_SERIALIZATION 1
 #endif
 
@@ -1267,7 +1270,7 @@
 #endif
 #endif
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+#if PLATFORM(MAC)
 #define USE_MEDIAREMOTE 1
 #endif
 
@@ -1276,14 +1279,14 @@
 #pragma strict_gs_check(on)
 #endif
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101201 && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200
+#if PLATFORM(MAC)
 #define HAVE_TOUCH_BAR 1
 #define HAVE_ADVANCED_SPELL_CHECKING 1
 
 #if defined(__LP64__)
 #define ENABLE_WEB_PLAYBACK_CONTROLS_MANAGER 1
 #endif
-#endif /* PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101201 && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200 */
+#endif /* PLATFORM(MAC) */
 
 #if PLATFORM(COCOA) && ENABLE(WEB_RTC)
 #define USE_LIBWEBRTC 1

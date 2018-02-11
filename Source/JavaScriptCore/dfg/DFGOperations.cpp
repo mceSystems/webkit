@@ -55,11 +55,15 @@
 #include "JSGlobalObjectFunctions.h"
 #include "JSLexicalEnvironment.h"
 #include "JSMap.h"
+#include "JSPropertyNameEnumerator.h"
 #include "JSSet.h"
 #include "JSWeakMap.h"
+#include "JSWeakSet.h"
 #include "ObjectConstructor.h"
 #include "Operations.h"
 #include "ParseInt.h"
+#include "RegExpConstructor.h"
+#include "RegExpMatchesArray.h"
 #include "RegExpObject.h"
 #include "Repatch.h"
 #include "ScopedArguments.h"
@@ -634,7 +638,7 @@ ALWAYS_INLINE EncodedJSValue getByValCellInt(ExecState* exec, JSCell* base, int3
     NativeCallFrameTracer tracer(vm, exec);
     
     if (index < 0) {
-        // Go the slowest way possible becase negative indices don't use indexed storage.
+        // Go the slowest way possible because negative indices don't use indexed storage.
         return JSValue::encode(JSValue(base).get(exec, Identifier::from(exec, index)));
     }
 
@@ -1023,11 +1027,42 @@ EncodedJSValue JIT_OPERATION operationRegExpExecGeneric(ExecState* exec, JSGloba
     return JSValue::encode(asRegExpObject(base)->exec(exec, globalObject, input));
 }
 
-EncodedJSValue JIT_OPERATION operationWeakMapGet(ExecState* exec, JSCell* weakMap, JSCell* object, int32_t hash)
+EncodedJSValue JIT_OPERATION operationRegExpExecNonGlobalOrSticky(ExecState* exec, JSGlobalObject* globalObject, RegExp* regExp, JSString* string)
 {
-    VM& vm = exec->vm();
+    SuperSamplerScope superSamplerScope(false);
+
+    VM& vm = globalObject->vm();
     NativeCallFrameTracer tracer(&vm, exec);
-    return JSValue::encode(jsCast<JSWeakMap*>(weakMap)->inlineGet(asObject(object), hash));
+
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    RegExpConstructor* regExpConstructor = globalObject->regExpConstructor();
+    String input = string->value(exec);
+    RETURN_IF_EXCEPTION(scope, { });
+
+    unsigned lastIndex = 0;
+    MatchResult result;
+    JSArray* array = createRegExpMatchesArray(vm, globalObject, string, input, regExp, lastIndex, result);
+    if (!array) {
+        ASSERT(!scope.exception());
+        return JSValue::encode(jsNull());
+    }
+
+    RETURN_IF_EXCEPTION(scope, { });
+    regExpConstructor->recordMatch(vm, regExp, string, result);
+    return JSValue::encode(array);
+}
+
+EncodedJSValue JIT_OPERATION operationRegExpMatchFastString(ExecState* exec, JSGlobalObject* globalObject, RegExpObject* regExpObject, JSString* argument)
+{
+    SuperSamplerScope superSamplerScope(false);
+
+    VM& vm = globalObject->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+
+    if (!regExpObject->regExp()->global())
+        return JSValue::encode(regExpObject->execInline(exec, globalObject, argument));
+    return JSValue::encode(regExpObject->matchGlobal(exec, globalObject, argument));
 }
 
 EncodedJSValue JIT_OPERATION operationParseIntNoRadixGeneric(ExecState* exec, EncodedJSValue value)
@@ -1403,11 +1438,11 @@ char* JIT_OPERATION operationNewArrayWithSizeAndHint(ExecState* exec, Structure*
     return bitwise_cast<char*>(result);
 }
 
-char* JIT_OPERATION operationNewArrayBuffer(ExecState* exec, Structure* arrayStructure, size_t start, size_t size)
+JSCell* JIT_OPERATION operationNewArrayBuffer(ExecState* exec, Structure* arrayStructure, JSCell* fixedArray, size_t size)
 {
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
-    return bitwise_cast<char*>(constructArray(exec, arrayStructure, exec->codeBlock()->constantBuffer(start), size));
+    return constructArray(exec, arrayStructure, jsCast<JSFixedArray*>(fixedArray)->values(), size);
 }
 
 char* JIT_OPERATION operationNewInt8ArrayWithSize(
@@ -1808,6 +1843,79 @@ char* JIT_OPERATION operationEnsureArrayStorage(ExecState* exec, JSCell* cell)
     return reinterpret_cast<char*>(asObject(cell)->ensureArrayStorage(vm));
 }
 
+EncodedJSValue JIT_OPERATION operationHasGenericProperty(ExecState* exec, EncodedJSValue encodedBaseValue, JSCell* propertyName)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+    JSValue baseValue = JSValue::decode(encodedBaseValue);
+    if (baseValue.isUndefinedOrNull())
+        return JSValue::encode(jsBoolean(false));
+
+    JSObject* base = baseValue.toObject(exec);
+    if (!base)
+        return JSValue::encode(JSValue());
+    return JSValue::encode(jsBoolean(base->hasPropertyGeneric(exec, asString(propertyName)->toIdentifier(exec), PropertySlot::InternalMethodType::GetOwnProperty)));
+}
+
+EncodedJSValue JIT_OPERATION operationHasIndexedPropertyByInt(ExecState* exec, JSCell* baseCell, int32_t subscript, int32_t internalMethodType)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+    JSObject* object = baseCell->toObject(exec, exec->lexicalGlobalObject());
+    if (UNLIKELY(subscript < 0)) {
+        // Go the slowest way possible because negative indices don't use indexed storage.
+        return JSValue::encode(jsBoolean(object->hasPropertyGeneric(exec, Identifier::from(exec, subscript), static_cast<PropertySlot::InternalMethodType>(internalMethodType))));
+    }
+    return JSValue::encode(jsBoolean(object->hasPropertyGeneric(exec, subscript, static_cast<PropertySlot::InternalMethodType>(internalMethodType))));
+}
+
+JSCell* JIT_OPERATION operationGetPropertyEnumerator(ExecState* exec, EncodedJSValue encodedBase)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue base = JSValue::decode(encodedBase);
+    if (base.isUndefinedOrNull())
+        return JSPropertyNameEnumerator::create(vm);
+
+    JSObject* baseObject = base.toObject(exec);
+    RETURN_IF_EXCEPTION(scope, { });
+
+    scope.release();
+    return propertyNameEnumerator(exec, baseObject);
+}
+
+JSCell* JIT_OPERATION operationGetPropertyEnumeratorCell(ExecState* exec, JSCell* cell)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSObject* base = cell->toObject(exec, exec->lexicalGlobalObject());
+    RETURN_IF_EXCEPTION(scope, { });
+
+    scope.release();
+    return propertyNameEnumerator(exec, base);
+}
+
+JSCell* JIT_OPERATION operationToIndexString(ExecState* exec, int32_t index)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+    return jsString(exec, Identifier::from(exec, index).string());
+}
+
+JSCell* JIT_OPERATION operationNewRegexpWithLastIndex(ExecState* exec, JSCell* regexpPtr, EncodedJSValue encodedLastIndex)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+
+    RegExp* regexp = static_cast<RegExp*>(regexpPtr);
+    ASSERT(regexp->isValid());
+    return RegExpObject::create(vm, exec->lexicalGlobalObject()->regExpStructure(), regexp, JSValue::decode(encodedLastIndex));
+}
+
 StringImpl* JIT_OPERATION operationResolveRope(ExecState* exec, JSString* string)
 {
     VM& vm = exec->vm();
@@ -2029,8 +2137,8 @@ char* JIT_OPERATION operationFindSwitchImmTargetForDouble(
     double asDouble = value.asDouble();
     int32_t asInt32 = static_cast<int32_t>(asDouble);
     if (asDouble == asInt32)
-        return static_cast<char*>(table.ctiForValue(asInt32).executableAddress());
-    return static_cast<char*>(table.ctiDefault.executableAddress());
+        return table.ctiForValue(asInt32).executableAddress<char*>();
+    return table.ctiDefault.executableAddress<char*>();
 }
 
 char* JIT_OPERATION operationSwitchString(ExecState* exec, size_t tableIndex, JSString* string)
@@ -2038,7 +2146,7 @@ char* JIT_OPERATION operationSwitchString(ExecState* exec, size_t tableIndex, JS
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
 
-    return static_cast<char*>(exec->codeBlock()->stringSwitchJumpTable(tableIndex).ctiForValue(string->value(exec).impl()).executableAddress());
+    return exec->codeBlock()->stringSwitchJumpTable(tableIndex).ctiForValue(string->value(exec).impl()).executableAddress<char*>();
 }
 
 int32_t JIT_OPERATION operationSwitchStringAndGetBranchOffset(ExecState* exec, size_t tableIndex, JSString* string)
@@ -2569,18 +2677,38 @@ JSCell* JIT_OPERATION operationJSSetFindBucket(ExecState* exec, JSCell* map, Enc
     return *bucket;
 }
 
-void JIT_OPERATION operationSetAdd(ExecState* exec, JSCell* set, EncodedJSValue key, int32_t hash)
+JSCell* JIT_OPERATION operationSetAdd(ExecState* exec, JSCell* set, EncodedJSValue key, int32_t hash)
 {
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
-    jsCast<JSSet*>(set)->addNormalized(exec, JSValue::decode(key), JSValue(), hash);
+    auto* bucket = jsCast<JSSet*>(set)->addNormalized(exec, JSValue::decode(key), JSValue(), hash);
+    if (!bucket)
+        return vm.sentinelSetBucket.get();
+    return bucket;
 }
 
-void JIT_OPERATION operationMapSet(ExecState* exec, JSCell* map, EncodedJSValue key, EncodedJSValue value, int32_t hash)
+JSCell* JIT_OPERATION operationMapSet(ExecState* exec, JSCell* map, EncodedJSValue key, EncodedJSValue value, int32_t hash)
 {
     VM& vm = exec->vm();
     NativeCallFrameTracer tracer(&vm, exec);
-    jsCast<JSMap*>(map)->addNormalized(exec, JSValue::decode(key), JSValue::decode(value), hash);
+    auto* bucket = jsCast<JSMap*>(map)->addNormalized(exec, JSValue::decode(key), JSValue::decode(value), hash);
+    if (!bucket)
+        return vm.sentinelMapBucket.get();
+    return bucket;
+}
+
+void JIT_OPERATION operationWeakSetAdd(ExecState* exec, JSCell* set, JSCell* key, int32_t hash)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+    jsCast<JSWeakSet*>(set)->add(vm, asObject(key), JSValue(), hash);
+}
+
+void JIT_OPERATION operationWeakMapSet(ExecState* exec, JSCell* map, JSCell* key, EncodedJSValue value, int32_t hash)
+{
+    VM& vm = exec->vm();
+    NativeCallFrameTracer tracer(&vm, exec);
+    jsCast<JSWeakMap*>(map)->add(vm, asObject(key), JSValue::decode(value), hash);
 }
 
 EncodedJSValue JIT_OPERATION operationGetPrototypeOfObject(ExecState* exec, JSObject* thisObject)

@@ -69,7 +69,6 @@
 #include <WebCore/SecurityPolicy.h>
 #include <WebCore/Settings.h>
 #include <WebCore/UserGestureIndicator.h>
-#include <bindings/ScriptValue.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -223,7 +222,7 @@ static uint32_t lastModifiedDateMS(const ResourceResponse& response)
     if (!lastModified)
         return 0;
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(lastModified.value().time_since_epoch()).count();
+    return lastModified.value().secondsSinceEpoch().millisecondsAs<uint32_t>();
 }
 
 void PluginView::Stream::willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&& request, const ResourceResponse& redirectResponse, CompletionHandler<void(ResourceRequest&&)>&& decisionHandler)
@@ -319,7 +318,7 @@ PluginView::~PluginView()
     if (m_webPage)
         m_webPage->removePluginView(this);
 
-    ASSERT(!m_isBeingDestroyed);
+    ASSERT(!m_plugin || !m_plugin->isBeingDestroyed());
 
     if (m_isWaitingUntilMediaCanStart)
         m_pluginElement->document().removeMediaCanStartListener(this);
@@ -340,9 +339,7 @@ void PluginView::destroyPluginAndReset()
         it->key->setLoadListener(0);
 
     if (m_plugin) {
-        m_isBeingDestroyed = true;
         m_plugin->destroyPlugin();
-        m_isBeingDestroyed = false;
 
         m_pendingURLRequests.clear();
         m_pendingURLRequestsTimer.stop();
@@ -373,7 +370,6 @@ void PluginView::recreateAndInitialize(Ref<Plugin>&& plugin)
     m_isInitialized = false;
     m_isWaitingForSynchronousInitialization = false;
     m_isWaitingUntilMediaCanStart = false;
-    m_isBeingDestroyed = false;
     m_manualStreamState = ManualStreamState::Initial;
     m_transientPaintingSnapshot = nullptr;
 
@@ -992,12 +988,12 @@ bool PluginView::shouldNotAddLayer() const
     return m_pluginElement->displayState() < HTMLPlugInElement::Restarting && !m_plugin->supportsSnapshotting();
 }
 
-void PluginView::willDetatchRenderer()
+void PluginView::willDetachRenderer()
 {
     if (!m_isInitialized || !m_plugin)
         return;
 
-    m_plugin->willDetatchRenderer();
+    m_plugin->willDetachRenderer();
 }
 
 RefPtr<SharedBuffer> PluginView::liveResourceData() const
@@ -1598,7 +1594,7 @@ bool PluginView::getAuthenticationInfo(const ProtectionSpace& protectionSpace, S
     if (!contentDocument)
         return false;
 
-    String partitionName = contentDocument->topDocument().securityOrigin().domainForCachePartition();
+    String partitionName = contentDocument->topDocument().domainForCachePartition();
     Credential credential = CredentialStorage::defaultCredentialStorage().get(partitionName, protectionSpace);
     if (credential.isEmpty())
         credential = CredentialStorage::defaultCredentialStorage().getFromPersistentStorage(protectionSpace);
@@ -1641,13 +1637,13 @@ bool PluginView::artificialPluginInitializationDelayEnabled() const
 
 void PluginView::protectPluginFromDestruction()
 {
-    if (!m_isBeingDestroyed)
+    if (m_plugin && !m_plugin->isBeingDestroyed())
         ref();
 }
 
 void PluginView::unprotectPluginFromDestruction()
 {
-    if (m_isBeingDestroyed)
+    if (!m_plugin || m_plugin->isBeingDestroyed())
         return;
 
     // A plug-in may ask us to evaluate JavaScript that removes the plug-in from the

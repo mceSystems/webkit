@@ -30,8 +30,8 @@
 #pragma once
 
 #include "InspectorWebAgentBase.h"
-#include <inspector/InspectorBackendDispatchers.h>
-#include <inspector/InspectorFrontendDispatchers.h>
+#include <JavaScriptCore/InspectorBackendDispatchers.h>
+#include <JavaScriptCore/InspectorFrontendDispatchers.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/WTFString.h>
 
@@ -43,6 +43,7 @@ class InspectorDatabaseResource;
 typedef String ErrorString;
 
 class InspectorDatabaseAgent final : public InspectorAgentBase, public Inspector::DatabaseBackendDispatcherHandler {
+    WTF_MAKE_NONCOPYABLE(InspectorDatabaseAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit InspectorDatabaseAgent(WebAgentContext&);
@@ -56,7 +57,7 @@ public:
     // Called from the front-end.
     void enable(ErrorString&) override;
     void disable(ErrorString&) override;
-    void getDatabaseTableNames(ErrorString&, const String& databaseId, RefPtr<Inspector::Protocol::Array<String>>& names) override;
+    void getDatabaseTableNames(ErrorString&, const String& databaseId, RefPtr<JSON::ArrayOf<String>>& names) override;
     void executeSQL(ErrorString&, const String& databaseId, const String& query, Ref<ExecuteSQLCallback>&&) override;
 
     // Called from the injected script.

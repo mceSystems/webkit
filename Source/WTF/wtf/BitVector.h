@@ -308,6 +308,13 @@ public:
             return *this;
         }
 
+        iterator operator++(int)
+        {
+            iterator result = *this;
+            ++(*this);
+            return result;
+        }
+
         bool isAtEnd() const
         {
             return m_index >= m_bitVector->size();
@@ -347,6 +354,11 @@ private:
         return (bitCount + 7) >> 3;
     }
 
+    static size_t wordCount(uintptr_t bits)
+    {
+        return (bits + bitsInPointer() - 1) / bitsInPointer();
+    }
+    
     static uintptr_t makeInlineBits(uintptr_t bits)
     {
         ASSERT(!(bits & (static_cast<uintptr_t>(1) << maxInlineBits())));
@@ -411,7 +423,7 @@ private:
     class OutOfLineBits {
     public:
         size_t numBits() const { return m_numBits; }
-        size_t numWords() const { return (m_numBits + bitsInPointer() - 1) / bitsInPointer(); }
+        size_t numWords() const { return wordCount(m_numBits); }
         uintptr_t* bits() { return bitwise_cast<uintptr_t*>(this + 1); }
         const uintptr_t* bits() const { return bitwise_cast<const uintptr_t*>(this + 1); }
         

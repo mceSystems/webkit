@@ -43,7 +43,7 @@
 #define ASSERT_NOT_SYNC_THREAD() ASSERT(!m_syncThreadRunning || !IS_ICON_SYNC_THREAD())
 
 // For methods that are meant to support the sync thread ONLY
-#define IS_ICON_SYNC_THREAD() (m_syncThread->id() == currentThread())
+#define IS_ICON_SYNC_THREAD() (m_syncThread == &Thread::current())
 #define ASSERT_ICON_SYNC_THREAD() ASSERT(IS_ICON_SYNC_THREAD())
 
 using namespace WebCore;
@@ -222,10 +222,8 @@ bool IconDatabase::open(const String& directory, const String& filename)
     m_syncThread = Thread::create("WebCore: IconDatabase", [this] {
         iconDatabaseSyncThread();
     });
-    m_syncThreadRunning = m_syncThread;
+    m_syncThreadRunning = true;
     m_syncLock.unlock();
-    if (!m_syncThread)
-        return false;
     return true;
 }
 

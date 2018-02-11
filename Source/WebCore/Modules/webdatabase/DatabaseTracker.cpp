@@ -773,7 +773,7 @@ void DatabaseTracker::deleteAllDatabasesImmediately()
         deleteOrigin(origin, DeletionMode::Immediate);
 }
 
-void DatabaseTracker::deleteDatabasesModifiedSince(std::chrono::system_clock::time_point time)
+void DatabaseTracker::deleteDatabasesModifiedSince(WallTime time)
 {
     for (auto& origin : origins()) {
         Vector<String> databaseNames = this->databaseNames(origin);
@@ -786,11 +786,11 @@ void DatabaseTracker::deleteDatabasesModifiedSince(std::chrono::system_clock::ti
             // from the tracker database. We want to delete all of the information associated with this
             // database from the tracker database, so still add its name to databaseNamesToDelete.
             if (FileSystem::fileExists(fullPath)) {
-                time_t modificationTime;
-                if (!FileSystem::getFileModificationTime(fullPath, modificationTime))
+                auto modificationTime = FileSystem::getFileModificationTime(fullPath);
+                if (!modificationTime)
                     continue;
 
-                if (modificationTime < std::chrono::system_clock::to_time_t(time))
+                if (modificationTime.value() < time)
                     continue;
             }
 
@@ -1275,22 +1275,22 @@ bool DatabaseTracker::deleteDatabaseFileIfEmpty(const String& path)
     return SQLiteFileSystem::deleteDatabaseFile(path);
 }
 
-Lock& DatabaseTracker::openDatabaseMutex()
+static StaticLock openDatabaseLock;
+StaticLock& DatabaseTracker::openDatabaseMutex()
 {
-    static NeverDestroyed<Lock> mutex;
-    return mutex;
+    return openDatabaseLock;
 }
 
 void DatabaseTracker::emptyDatabaseFilesRemovalTaskWillBeScheduled()
 {
     // Lock the database from opening any database until we are done with scanning the file system for
     // zero byte database files to remove.
-    openDatabaseMutex().lock();
+    openDatabaseLock.lock();
 }
 
 void DatabaseTracker::emptyDatabaseFilesRemovalTaskDidFinish()
 {
-    openDatabaseMutex().unlock();
+    openDatabaseLock.unlock();
 }
 
 #endif
@@ -1300,11 +1300,7 @@ void DatabaseTracker::setClient(DatabaseManagerClient* client)
     m_client = client;
 }
 
-static Lock& notificationMutex()
-{
-    static NeverDestroyed<Lock> mutex;
-    return mutex;
-}
+static StaticLock notificationLock;
 
 using NotificationQueue = Vector<std::pair<SecurityOriginData, String>>;
 
@@ -1316,7 +1312,7 @@ static NotificationQueue& notificationQueue()
 
 void DatabaseTracker::scheduleNotifyDatabaseChanged(const SecurityOriginData& origin, const String& name)
 {
-    LockHolder locker(notificationMutex());
+    auto locker = holdLock(notificationLock);
     notificationQueue().append(std::make_pair(origin.isolatedCopy(), name.isolatedCopy()));
     scheduleForNotification();
 }
@@ -1325,7 +1321,7 @@ static bool notificationScheduled = false;
 
 void DatabaseTracker::scheduleForNotification()
 {
-    ASSERT(!notificationMutex().tryLock());
+    ASSERT(!notificationLock.tryLock());
 
     if (!notificationScheduled) {
         callOnMainThread([] {
@@ -1343,7 +1339,7 @@ void DatabaseTracker::notifyDatabasesChanged()
 
     NotificationQueue notifications;
     {
-        LockHolder locker(notificationMutex());
+        auto locker = holdLock(notificationLock);
         notifications.swap(notificationQueue());
         notificationScheduled = false;
     }

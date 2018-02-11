@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2018 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -237,7 +237,10 @@ inline JSArray* JSArray::tryCreate(VM& vm, Structure* structure, unsigned initia
             return nullptr;
 
         unsigned vectorLength = Butterfly::optimalContiguousVectorLength(structure, vectorLengthHint);
-        void* temp = vm.jsValueGigacageAuxiliarySpace.tryAllocate(nullptr, Butterfly::totalSize(0, outOfLineStorage, true, vectorLength * sizeof(EncodedJSValue)));
+        void* temp = vm.jsValueGigacageAuxiliarySpace.allocateNonVirtual(
+            vm,
+            Butterfly::totalSize(0, outOfLineStorage, true, vectorLength * sizeof(EncodedJSValue)),
+            nullptr, AllocationFailureMode::ReturnNull);
         if (!temp)
             return nullptr;
         butterfly = Butterfly::fromBase(temp, 0, outOfLineStorage);
@@ -245,7 +248,7 @@ inline JSArray* JSArray::tryCreate(VM& vm, Structure* structure, unsigned initia
         butterfly->setPublicLength(initialLength);
         if (hasDouble(indexingType))
             clearArray(butterfly->contiguousDouble().data(), vectorLength);
-        else if (LIKELY(!hasUndecided(indexingType)))
+        else
             clearArray(butterfly->contiguous().data(), vectorLength);
     } else {
         ASSERT(

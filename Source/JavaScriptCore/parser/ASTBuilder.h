@@ -232,6 +232,12 @@ public:
         incConstants();
         return new (m_parserArena) IntegerNode(location, d);
     }
+    
+    ExpressionNode* createBigInt(const JSTokenLocation& location, const Identifier* bigInt, uint8_t radix)
+    {
+        incConstants();
+        return new (m_parserArena) BigIntNode(location, *bigInt, radix);
+    }
 
     ExpressionNode* createString(const JSTokenLocation& location, const Identifier* string)
     {
@@ -329,7 +335,7 @@ public:
 
     ExpressionNode* createRegExp(const JSTokenLocation& location, const Identifier& pattern, const Identifier& flags, const JSTextPosition& start)
     {
-        if (Yarr::checkSyntax(pattern.string(), flags.string()))
+        if (Yarr::hasError(Yarr::checkSyntax(pattern.string(), flags.string())))
             return 0;
         RegExpNode* node = new (m_parserArena) RegExpNode(location, pattern, flags);
         int size = pattern.length() + 2; // + 2 for the two /'s

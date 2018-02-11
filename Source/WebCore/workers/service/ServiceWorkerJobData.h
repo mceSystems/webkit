@@ -28,6 +28,7 @@
 #if ENABLE(SERVICE_WORKER)
 
 #include "SecurityOriginData.h"
+#include "ServiceWorkerClientIdentifier.h"
 #include "ServiceWorkerJobDataIdentifier.h"
 #include "ServiceWorkerJobType.h"
 #include "ServiceWorkerRegistrationKey.h"
@@ -39,7 +40,7 @@ namespace WebCore {
 
 struct ServiceWorkerJobData {
     using Identifier = ServiceWorkerJobDataIdentifier;
-    explicit ServiceWorkerJobData(SWServerConnectionIdentifier);
+    ServiceWorkerJobData(SWServerConnectionIdentifier, const DocumentOrWorkerIdentifier& sourceContext);
     ServiceWorkerJobData(const ServiceWorkerJobData&) = default;
     ServiceWorkerJobData() = default;
 
@@ -49,9 +50,10 @@ struct ServiceWorkerJobData {
     URL clientCreationURL;
     SecurityOriginData topOrigin;
     URL scopeURL;
+    ServiceWorkerOrClientIdentifier sourceContext;
     ServiceWorkerJobType type;
 
-    RegistrationOptions registrationOptions;
+    ServiceWorkerRegistrationOptions registrationOptions;
 
     Identifier identifier() const { return m_identifier; }
     ServiceWorkerRegistrationKey registrationKey() const;
@@ -69,7 +71,7 @@ private:
 template<class Encoder>
 void ServiceWorkerJobData::encode(Encoder& encoder) const
 {
-    encoder << identifier() << scriptURL << clientCreationURL << topOrigin << scopeURL;
+    encoder << identifier() << scriptURL << clientCreationURL << topOrigin << scopeURL << sourceContext;
     encoder.encodeEnum(type);
     switch (type) {
     case ServiceWorkerJobType::Register:
@@ -89,35 +91,41 @@ std::optional<ServiceWorkerJobData> ServiceWorkerJobData::decode(Decoder& decode
     if (!identifier)
         return std::nullopt;
 
-    std::optional<ServiceWorkerJobData> jobData = { ServiceWorkerJobData { WTFMove(*identifier) } };
+    ServiceWorkerJobData jobData { WTFMove(*identifier) };
 
-    if (!decoder.decode(jobData->scriptURL))
+    if (!decoder.decode(jobData.scriptURL))
         return std::nullopt;
-    if (!decoder.decode(jobData->clientCreationURL))
+    if (!decoder.decode(jobData.clientCreationURL))
         return std::nullopt;
 
     std::optional<SecurityOriginData> topOrigin;
     decoder >> topOrigin;
     if (!topOrigin)
         return std::nullopt;
-    jobData->topOrigin = WTFMove(*topOrigin);
+    jobData.topOrigin = WTFMove(*topOrigin);
 
-    if (!decoder.decode(jobData->scopeURL))
+    if (!decoder.decode(jobData.scopeURL))
         return std::nullopt;
-    if (!decoder.decodeEnum(jobData->type))
+    if (!decoder.decode(jobData.sourceContext))
+        return std::nullopt;
+    if (!decoder.decodeEnum(jobData.type))
         return std::nullopt;
 
-    switch (jobData->type) {
-    case ServiceWorkerJobType::Register:
-        if (!decoder.decode(jobData->registrationOptions))
+    switch (jobData.type) {
+    case ServiceWorkerJobType::Register: {
+        std::optional<ServiceWorkerRegistrationOptions> registrationOptions;
+        decoder >> registrationOptions;
+        if (!registrationOptions)
             return std::nullopt;
+        jobData.registrationOptions = WTFMove(*registrationOptions);
         break;
+    }
     case ServiceWorkerJobType::Unregister:
     case ServiceWorkerJobType::Update:
         break;
     }
 
-    return jobData;
+    return WTFMove(jobData);
 }
 
 } // namespace WebCore

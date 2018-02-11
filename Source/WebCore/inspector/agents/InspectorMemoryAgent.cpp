@@ -30,11 +30,12 @@
 
 #include "InstrumentingAgents.h"
 #include "ResourceUsageThread.h"
-#include <inspector/InspectorEnvironment.h>
+#include <JavaScriptCore/InspectorEnvironment.h>
 #include <wtf/Stopwatch.h>
 
 
 namespace WebCore {
+
 using namespace Inspector;
 
 InspectorMemoryAgent::InspectorMemoryAgent(PageAgentContext& context)
@@ -135,7 +136,7 @@ void InspectorMemoryAgent::collectSample(const ResourceUsageData& data)
         .setSize(data.categories[MemoryCategory::Other].totalSize())
         .release();
 
-    auto categories = Protocol::Array<Protocol::Memory::CategoryData>::create();
+    auto categories = JSON::ArrayOf<Protocol::Memory::CategoryData>::create();
     categories->addItem(WTFMove(javascriptCategory));
     categories->addItem(WTFMove(jitCategory));
     categories->addItem(WTFMove(imagesCategory));

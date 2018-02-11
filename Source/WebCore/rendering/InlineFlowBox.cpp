@@ -40,8 +40,11 @@
 #include "RootInlineBox.h"
 #include "Text.h"
 #include <math.h>
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(InlineFlowBox);
 
 struct SameSizeAsInlineFlowBox : public InlineBox {
     void* pointers[5];
@@ -667,6 +670,7 @@ void InlineFlowBox::placeBoxesInBlockDirection(LayoutUnit top, LayoutUnit maxHei
         } else if (!child->renderer().isBR()) {
             const auto& box = downcast<RenderBox>(child->renderer());
             newLogicalTopIncludingMargins = newLogicalTop;
+            // We may flip lines in case of verticalLR mode, so we can assume verticalRL for now.
             LayoutUnit overSideMargin = child->isHorizontal() ? box.marginTop() : box.marginRight();
             LayoutUnit underSideMargin = child->isHorizontal() ? box.marginBottom() : box.marginLeft();
             newLogicalTop += overSideMargin;

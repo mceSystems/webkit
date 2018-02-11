@@ -828,7 +828,7 @@ String AccessibilityObject::selectText(AccessibilitySelectTextCriteria* criteria
     // Determine which candidate is closest to the selection and perform the activity.
     if (RefPtr<Range> closestStringRange = rangeClosestToRange(selectedStringRange.get(), WTFMove(closestAfterStringRange), WTFMove(closestBeforeStringRange))) {
         // If the search started within a text control, ensure that the result is inside that element.
-        if (element() && element()->isTextFormControl()) {
+        if (element() && element()->isTextField()) {
             if (!closestStringRange->startContainer().isDescendantOrShadowDescendantOf(element()) || !closestStringRange->endContainer().isDescendantOrShadowDescendantOf(element()))
                 return String();
         }
@@ -1768,12 +1768,10 @@ void AccessibilityObject::updateBackingStore()
 {
     // Updating the layout may delete this object.
     RefPtr<AccessibilityObject> protectedThis(this);
-
-    if (Document* document = this->document()) {
-        if (!document->view()->layoutContext().isInRenderTreeLayout() && !document->inRenderTreeUpdate())
+    if (auto* document = this->document()) {
+        if (!document->view()->layoutContext().isInRenderTreeLayout() && !document->inRenderTreeUpdate() && !document->inStyleRecalc())
             document->updateLayoutIgnorePendingStylesheets();
     }
-    
     updateChildrenIfNecessary();
 }
 #endif
@@ -2139,51 +2137,63 @@ bool AccessibilityObject::hasAttribute(const QualifiedName& attribute) const
     
 const AtomicString& AccessibilityObject::getAttribute(const QualifiedName& attribute) const
 {
-    if (Element* element = this->element())
+    if (auto* element = this->element())
         return element->attributeWithoutSynchronization(attribute);
     return nullAtom();
 }
 
 bool AccessibilityObject::hasProperty(AXPropertyName propertyKey) const
 {
-    if (Element* element = this->element())
+    if (auto* element = this->element())
         return AccessibleNode::hasProperty(*element, propertyKey);
     return false;
 }
 
 const String AccessibilityObject::stringValueForProperty(AXPropertyName propertyKey) const
 {
-    if (Element* element = this->element())
+    if (auto* element = this->element())
         return AccessibleNode::effectiveStringValueForElement(*element, propertyKey);
     return nullAtom();
 }
 
 std::optional<bool> AccessibilityObject::boolValueForProperty(AXPropertyName propertyKey) const
 {
-    if (Element* element = this->element())
+    if (auto* element = this->element())
         return AccessibleNode::effectiveBoolValueForElement(*element, propertyKey);
     return std::nullopt;
 }
 
 int AccessibilityObject::intValueForProperty(AXPropertyName propertyKey) const
 {
-    if (Element* element = this->element())
+    if (auto* element = this->element())
         return AccessibleNode::effectiveIntValueForElement(*element, propertyKey);
     return 0;
 }
 
 unsigned AccessibilityObject::unsignedValueForProperty(AXPropertyName propertyKey) const
 {
-    if (Element* element = this->element())
+    if (auto* element = this->element())
         return AccessibleNode::effectiveUnsignedValueForElement(*element, propertyKey);
     return 0;
 }
 
 double AccessibilityObject::doubleValueForProperty(AXPropertyName propertyKey) const
 {
-    if (Element* element = this->element())
+    if (auto* element = this->element())
         return AccessibleNode::effectiveDoubleValueForElement(*element, propertyKey);
     return 0.0;
+}
+
+Element* AccessibilityObject::elementValueForProperty(AXPropertyName propertyKey) const
+{
+    if (auto* element = this->element()) {
+        auto elements = AccessibleNode::effectiveElementsValueForElement(*element, propertyKey);
+        size_t size = elements.size();
+        ASSERT(!size || size == 1);
+        if (size)
+            return elements.first().get();
+    }
+    return nullptr;
 }
 
 // Lacking concrete evidence of orientation, horizontal means width > height. vertical is height > width;
@@ -2296,6 +2306,10 @@ static void initializeRoleMap()
         { "doc-tip", AccessibilityRole::DocumentNote },
         { "doc-toc", AccessibilityRole::LandmarkNavigation },
         { "figure", AccessibilityRole::Figure },
+        // The mappings for 'graphics-*' roles are defined in this spec: https://w3c.github.io/graphics-aam/
+        { "graphics-document", AccessibilityRole::GraphicsDocument },
+        { "graphics-object", AccessibilityRole::GraphicsObject },
+        { "graphics-symbol", AccessibilityRole::GraphicsSymbol },
         { "grid", AccessibilityRole::Grid },
         { "gridcell", AccessibilityRole::GridCell },
         { "table", AccessibilityRole::Table },
@@ -2398,8 +2412,16 @@ String AccessibilityObject::computedRoleString() const
         return "";
 
     // We do compute a role string for block elements with author-provided roles.
-    if (role == AccessibilityRole::ApplicationTextGroup || role == AccessibilityRole::Footnote)
+    if (role == AccessibilityRole::ApplicationTextGroup
+        || role == AccessibilityRole::Footnote
+        || role == AccessibilityRole::GraphicsObject)
         return reverseAriaRoleMap().get(static_cast<int>(AccessibilityRole::ApplicationGroup));
+
+    if (role == AccessibilityRole::GraphicsDocument)
+        return reverseAriaRoleMap().get(static_cast<int>(AccessibilityRole::Document));
+
+    if (role == AccessibilityRole::GraphicsSymbol)
+        return reverseAriaRoleMap().get(static_cast<int>(AccessibilityRole::Image));
 
     if (role == AccessibilityRole::HorizontalRule)
         return reverseAriaRoleMap().get(static_cast<int>(AccessibilityRole::Splitter));
@@ -2555,9 +2577,9 @@ bool AccessibilityObject::supportsARIAAttributes() const
         || hasAttribute(aria_controlsAttr)
         || hasProperty(AXPropertyName::Current)
         || hasAttribute(aria_describedbyAttr)
-        || hasAttribute(aria_detailsAttr)
+        || hasProperty(AXPropertyName::Details)
         || hasProperty(AXPropertyName::Disabled)
-        || hasAttribute(aria_errormessageAttr)
+        || hasProperty(AXPropertyName::ErrorMessage)
         || hasAttribute(aria_flowtoAttr)
         || hasProperty(AXPropertyName::HasPopUp)
         || hasProperty(AXPropertyName::Invalid)
@@ -3400,6 +3422,16 @@ bool AccessibilityObject::isContainedByPasswordField() const
     Element* element = node->shadowHost();
     return is<HTMLInputElement>(element) && downcast<HTMLInputElement>(*element).isPasswordField();
 }
+    
+AccessibilityObject* AccessibilityObject::selectedListItem()
+{
+    for (const auto& child : children()) {
+        if (child->isListItem() && (child->isSelected() || child->isActiveDescendantOfFocusedContainer()))
+            return child.get();
+    }
+    
+    return nullptr;
+}
 
 void AccessibilityObject::ariaElementsFromAttribute(AccessibilityChildrenVector& children, const QualifiedName& attributeName) const
 {
@@ -3432,6 +3464,57 @@ void AccessibilityObject::ariaElementsReferencedByAttribute(AccessibilityChildre
     }
 }
 
+void AccessibilityObject::elementsFromProperty(AccessibilityChildrenVector& children, AXPropertyName property) const
+{
+    auto* element = this->element();
+    if (!element)
+        return;
+    
+    auto* cache = axObjectCache();
+    if (!cache)
+        return;
+
+    auto elements = AccessibleNode::effectiveElementsValueForElement(*element, property);
+    for (const auto& element : elements) {
+        if (AccessibilityObject* axObject = cache->getOrCreate(element.get()))
+            children.append(axObject);
+    }
+}
+
+void AccessibilityObject::elementsReferencedByProperty(AccessibilityChildrenVector& elements, AXPropertyName property) const
+{
+    auto* thisElement = this->element();
+    if (!thisElement)
+        return;
+    
+    auto id = identifierAttribute();
+    bool idIsEmpty = id.isEmpty();
+    auto* accessibleNode = thisElement->existingAccessibleNode();
+    if (idIsEmpty && !accessibleNode)
+        return;
+
+    auto* cache = axObjectCache();
+    if (!cache)
+        return;
+
+    for (auto& element : descendantsOfType<Element>(node()->treeScope().rootNode())) {
+        bool shouldStore = false;
+        auto referencedAccessibleNodes = AccessibleNode::relationsValueForProperty(element, property);
+        if (referencedAccessibleNodes.size())
+            shouldStore = referencedAccessibleNodes.contains(accessibleNode);
+        if (!shouldStore && !idIsEmpty) {
+            const AtomicString& idList = element.attributeWithoutSynchronization(AccessibleNode::attributeFromAXPropertyName(property));
+            if (SpaceSplitString(idList, false).contains(id))
+                shouldStore = true;
+        }
+
+        if (!shouldStore)
+            continue;
+        if (AccessibilityObject* axObject = cache->getOrCreate(&element))
+            elements.append(axObject);
+    }
+}
+
 bool AccessibilityObject::isActiveDescendantOfFocusedContainer() const
 {
     AccessibilityChildrenVector containers;
@@ -3446,7 +3529,7 @@ bool AccessibilityObject::isActiveDescendantOfFocusedContainer() const
 
 void AccessibilityObject::ariaActiveDescendantReferencingElements(AccessibilityChildrenVector& containers) const
 {
-    ariaElementsReferencedByAttribute(containers, aria_activedescendantAttr);
+    elementsReferencedByProperty(containers, AXPropertyName::ActiveDescendant);
 }
 
 void AccessibilityObject::ariaControlsElements(AccessibilityChildrenVector& ariaControls) const
@@ -3471,22 +3554,22 @@ void AccessibilityObject::ariaDescribedByReferencingElements(AccessibilityChildr
 
 void AccessibilityObject::ariaDetailsElements(AccessibilityChildrenVector& ariaDetails) const
 {
-    ariaElementsFromAttribute(ariaDetails, aria_detailsAttr);
+    elementsFromProperty(ariaDetails, AXPropertyName::Details);
 }
 
 void AccessibilityObject::ariaDetailsReferencingElements(AccessibilityChildrenVector& detailsFor) const
 {
-    ariaElementsReferencedByAttribute(detailsFor, aria_detailsAttr);
+    elementsReferencedByProperty(detailsFor, AXPropertyName::Details);
 }
 
 void AccessibilityObject::ariaErrorMessageElements(AccessibilityChildrenVector& ariaErrorMessage) const
 {
-    ariaElementsFromAttribute(ariaErrorMessage, aria_errormessageAttr);
+    elementsFromProperty(ariaErrorMessage, AXPropertyName::ErrorMessage);
 }
 
 void AccessibilityObject::ariaErrorMessageReferencingElements(AccessibilityChildrenVector& errorMessageFor) const
 {
-    ariaElementsReferencedByAttribute(errorMessageFor, aria_errormessageAttr);
+    elementsReferencedByProperty(errorMessageFor, AXPropertyName::ErrorMessage);
 }
 
 void AccessibilityObject::ariaFlowToElements(AccessibilityChildrenVector& flowTo) const

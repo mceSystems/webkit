@@ -45,11 +45,11 @@
 #include "SecurityOrigin.h"
 #include "Settings.h"
 #include "WebCoreJSClientData.h"
-#include <bytecode/CodeBlock.h>
-#include <heap/StrongInlines.h>
-#include <runtime/JSInternalPromise.h>
-#include <runtime/JSInternalPromiseDeferred.h>
-#include <runtime/Microtask.h>
+#include <JavaScriptCore/CodeBlock.h>
+#include <JavaScriptCore/JSInternalPromise.h>
+#include <JavaScriptCore/JSInternalPromiseDeferred.h>
+#include <JavaScriptCore/Microtask.h>
+#include <JavaScriptCore/StrongInlines.h>
 #include <wtf/Language.h>
 #include <wtf/MainThread.h>
 
@@ -79,7 +79,7 @@ const GlobalObjectMethodTable JSDOMWindowBase::s_globalObjectMethodTable = {
 };
 
 JSDOMWindowBase::JSDOMWindowBase(VM& vm, Structure* structure, RefPtr<DOMWindow>&& window, JSDOMWindowProxy* proxy)
-    : JSDOMGlobalObject(vm, structure, proxy->world(), &s_globalObjectMethodTable)
+    : JSDOMGlobalObject(vm, structure, proxy->world(), &s_globalObjectMethodTable, window ? &window->document()->threadLocalCache() : nullptr)
     , m_windowCloseWatchpoints((window && window->frame()) ? IsWatched : IsInvalidated)
     , m_wrapped(WTFMove(window))
     , m_proxy(proxy)
@@ -289,40 +289,7 @@ JSDOMWindow* toJSDOMWindow(JSC::VM& vm, JSValue value)
 
 DOMWindow& incumbentDOMWindow(ExecState& state)
 {
-    class GetCallerGlobalObjectFunctor {
-    public:
-        GetCallerGlobalObjectFunctor() = default;
-
-        StackVisitor::Status operator()(StackVisitor& visitor) const
-        {
-            if (!m_hasSkippedFirstFrame) {
-                m_hasSkippedFirstFrame = true;
-                return StackVisitor::Continue;
-            }
-
-            if (auto* codeBlock = visitor->codeBlock())
-                m_globalObject = codeBlock->globalObject();
-            else {
-                ASSERT(visitor->callee().rawPtr());
-                // FIXME: Callee is not an object if the caller is Web Assembly.
-                // Figure out what to do here. We can probably get the global object
-                // from the top-most Wasm Instance. https://bugs.webkit.org/show_bug.cgi?id=165721
-                if (visitor->callee().isCell() && visitor->callee().asCell()->isObject())
-                    m_globalObject = jsCast<JSObject*>(visitor->callee().asCell())->globalObject();
-            }
-            return StackVisitor::Done;
-        }
-
-        JSGlobalObject* globalObject() const { return m_globalObject; }
-
-    private:
-        mutable bool m_hasSkippedFirstFrame { false };
-        mutable JSGlobalObject* m_globalObject { nullptr };
-    };
-
-    GetCallerGlobalObjectFunctor iter;
-    state.iterate(iter);
-    return iter.globalObject() ? asJSDOMWindow(iter.globalObject())->wrapped() : firstDOMWindow(state);
+    return asJSDOMWindow(&callerGlobalObject(state))->wrapped();
 }
 
 DOMWindow& activeDOMWindow(ExecState& state)

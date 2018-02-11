@@ -320,8 +320,10 @@ void RenderLayerCompositor::cacheAcceleratedCompositingFlags()
     if (isMainFrameCompositor())
         forceCompositingMode = m_renderView.settings().forceCompositingMode() && hasAcceleratedCompositing; 
     
-    if (hasAcceleratedCompositing != m_hasAcceleratedCompositing || showDebugBorders != m_showDebugBorders || showRepaintCounter != m_showRepaintCounter || forceCompositingMode != m_forceCompositingMode)
+    if (hasAcceleratedCompositing != m_hasAcceleratedCompositing || showDebugBorders != m_showDebugBorders || showRepaintCounter != m_showRepaintCounter || forceCompositingMode != m_forceCompositingMode) {
         setCompositingLayersNeedRebuild();
+        m_layerNeedsCompositingUpdate = true;
+    }
 
     bool debugBordersChanged = m_showDebugBorders != showDebugBorders;
     m_hasAcceleratedCompositing = hasAcceleratedCompositing;
@@ -2880,6 +2882,9 @@ bool RenderLayerCompositor::shouldCompositeOverflowControls() const
     if (documentUsesTiledBacking())
         return true;
 
+    if (m_overflowControlsHostLayer && isMainFrameCompositor())
+        return true;
+
 #if !USE(COORDINATED_GRAPHICS_THREADED)
     if (!frameView.hasOverlayScrollbars())
         return false;
@@ -3670,14 +3675,15 @@ void RenderLayerCompositor::reattachSubframeScrollLayers()
         if (!parentNodeID)
             continue;
 
-        scrollingCoordinator->attachToStateTree(FrameScrollingNode, frameScrollingNodeID, parentNodeID);
+        scrollingCoordinator->attachToStateTree(child->isMainFrame() ? MainFrameScrollingNode : SubframeScrollingNode, frameScrollingNodeID, parentNodeID);
     }
 }
 
 static inline LayerScrollCoordinationRole scrollCoordinationRoleForNodeType(ScrollingNodeType nodeType)
 {
     switch (nodeType) {
-    case FrameScrollingNode:
+    case MainFrameScrollingNode:
+    case SubframeScrollingNode:
     case OverflowScrollingNode:
         return Scrolling;
     case FixedNode:
@@ -3736,7 +3742,7 @@ void RenderLayerCompositor::updateScrollCoordinationForThisFrame(ScrollingNodeID
     auto* scrollingCoordinator = this->scrollingCoordinator();
     ASSERT(scrollingCoordinator->coordinatesScrollingForFrameView(m_renderView.frameView()));
 
-    ScrollingNodeID nodeID = attachScrollingNode(*m_renderView.layer(), FrameScrollingNode, parentNodeID);
+    ScrollingNodeID nodeID = attachScrollingNode(*m_renderView.layer(), m_renderView.frame().isMainFrame() ? MainFrameScrollingNode : SubframeScrollingNode, parentNodeID);
     scrollingCoordinator->updateFrameScrollingNode(nodeID, m_scrollLayer.get(), m_rootContentLayer.get(), fixedRootBackgroundLayer(), clipLayer());
 }
 
@@ -3770,7 +3776,7 @@ void RenderLayerCompositor::updateScrollCoordinatedLayer(RenderLayer& layer, Lay
     // Always call this even if the backing is already attached because the parent may have changed.
     // If a node plays both roles, fixed/sticky is always the ancestor node of scrolling.
     if (reasons & ViewportConstrained) {
-        ScrollingNodeType nodeType = FrameScrollingNode;
+        ScrollingNodeType nodeType = MainFrameScrollingNode;
         if (layer.renderer().isFixedPositioned())
             nodeType = FixedNode;
         else if (layer.renderer().style().position() == StickyPosition)
@@ -3795,7 +3801,8 @@ void RenderLayerCompositor::updateScrollCoordinatedLayer(RenderLayer& layer, Lay
             case StickyNode:
                 scrollingCoordinator->updateNodeViewportConstraints(nodeID, computeStickyViewportConstraints(layer));
                 break;
-            case FrameScrollingNode:
+            case MainFrameScrollingNode:
+            case SubframeScrollingNode:
             case OverflowScrollingNode:
                 break;
             }

@@ -151,9 +151,9 @@ int countRegularExpressionMatches(const RegularExpression& regex, const String& 
     return result;
 }
 
-Ref<Inspector::Protocol::Array<Inspector::Protocol::GenericTypes::SearchMatch>> searchInTextByLines(const String& text, const String& query, const bool caseSensitive, const bool isRegex)
+Ref<JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>> searchInTextByLines(const String& text, const String& query, const bool caseSensitive, const bool isRegex)
 {
-    Ref<Inspector::Protocol::Array<Inspector::Protocol::GenericTypes::SearchMatch>> result = Inspector::Protocol::Array<Inspector::Protocol::GenericTypes::SearchMatch>::create();
+    auto result = JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>::create();
 
     RegularExpression regex = ContentSearchUtilities::createSearchRegex(query, caseSensitive, isRegex);
     Vector<std::pair<size_t, String>> matches = getRegularExpressionMatchesByLines(regex, text);
@@ -174,10 +174,12 @@ static String stylesheetCommentPattern(const String& name)
 
 static String findMagicComment(const String& content, const String& patternString)
 {
-    ASSERT(!content.isNull());
-    const char* error = nullptr;
-    YarrPattern pattern(patternString, JSC::RegExpFlags::FlagMultiline, &error);
-    ASSERT(!error);
+    if (content.isEmpty())
+        return String();
+
+    JSC::Yarr::ErrorCode error { JSC::Yarr::ErrorCode::NoError };
+    YarrPattern pattern(patternString, JSC::RegExpFlags::FlagMultiline, error);
+    ASSERT(!hasError(error));
     BumpPointerAllocator regexAllocator;
     auto bytecodePattern = byteCompile(pattern, &regexAllocator);
     ASSERT(bytecodePattern);

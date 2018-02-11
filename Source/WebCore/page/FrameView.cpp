@@ -94,10 +94,12 @@
 #include "StyleScope.h"
 #include "TextResourceDecoder.h"
 #include "TiledBacking.h"
+#include "VisualViewport.h"
 #include "WheelEventTestTrigger.h"
 #include <wtf/text/TextStream.h>
 
 #include <wtf/CurrentTime.h>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/MemoryPressureHandler.h>
 #include <wtf/Ref.h>
 #include <wtf/SetForScope.h>
@@ -119,6 +121,8 @@
 namespace WebCore {
 
 using namespace HTMLNames;
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(FrameView);
 
 double FrameView::sCurrentPaintTimeStamp = 0.0;
 
@@ -168,6 +172,7 @@ FrameView::FrameView(Frame& frame)
     : m_frame(frame)
     , m_canHaveScrollbars(true)
     , m_updateEmbeddedObjectsTimer(*this, &FrameView::updateEmbeddedObjectsTimerFired)
+    , m_updateWidgetPositionsTimer(*this, &FrameView::updateWidgetPositionsTimerFired)
     , m_isTransparent(false)
     , m_baseBackgroundColor(Color::white)
     , m_mediaType("screen")
@@ -176,6 +181,8 @@ FrameView::FrameView(Frame& frame)
     , m_inProgrammaticScroll(false)
     , m_safeToPropagateScrollToParent(true)
     , m_delayedScrollEventTimer(*this, &FrameView::sendScrollEvent)
+    , m_selectionRevealModeForFocusedElement(SelectionRevealMode::DoNotReveal)
+    , m_delayedScrollToFocusedElementTimer(*this, &FrameView::scrollToFocusedElementTimerFired)
     , m_isTrackingRepaints(false)
     , m_shouldUpdateWhileOffscreen(true)
     , m_speculativeTilingEnabled(false)
@@ -259,6 +266,8 @@ void FrameView::reset()
     m_wasScrolledByUser = false;
     m_safeToPropagateScrollToParent = true;
     m_delayedScrollEventTimer.stop();
+    m_shouldScrollToFocusedElement = false;
+    m_delayedScrollToFocusedElementTimer.stop();
     m_lastViewportSize = IntSize();
     m_lastZoomFactor = 1.0f;
     m_isTrackingRepaints = false;
@@ -300,6 +309,8 @@ void FrameView::resetScrollbars()
 void FrameView::resetScrollbarsAndClearContentsSize()
 {
     resetScrollbars();
+
+    LOG(Layout, "FrameView %p resetScrollbarsAndClearContentsSize", this);
 
     setScrollbarsSuppressed(true);
     setContentsSize(IntSize());
@@ -428,7 +439,7 @@ void FrameView::invalidateRect(const IntRect& rect)
         return;
 
     IntRect repaintRect = rect;
-    repaintRect.move(renderer->borderLeft() + renderer->paddingLeft(), renderer->borderTop() + renderer->paddingTop());
+    repaintRect.moveBy(roundedIntPoint(renderer->contentBoxLocation()));
     renderer->repaintRectangle(repaintRect);
 }
 
@@ -709,7 +720,8 @@ void FrameView::applyPaginationToViewport()
     EOverflow overflowY = documentOrBodyRenderer->style().overflowY();
     if (overflowY == OPAGEDX || overflowY == OPAGEDY) {
         pagination.mode = WebCore::paginationModeForRenderStyle(documentOrBodyRenderer->style());
-        pagination.gap = static_cast<unsigned>(documentOrBodyRenderer->style().columnGap());
+        GapLength columnGapLength = documentOrBodyRenderer->style().columnGap();
+        pagination.gap = columnGapLength.isNormal() ? 0 : valueForLength(columnGapLength.length(), downcast<RenderBox>(documentOrBodyRenderer)->availableLogicalWidth()).toUnsigned();
     }
     setPagination(pagination);
 }
@@ -1634,6 +1646,11 @@ void FrameView::setLayoutViewportOverrideRect(std::optional<LayoutRect> rect, Tr
         setViewportConstrainedObjectsNeedLayout();
 }
 
+void FrameView::setVisualViewportOverrideRect(std::optional<LayoutRect> rect)
+{
+    m_visualViewportOverrideRect = rect;
+}
+
 LayoutSize FrameView::baseLayoutViewportSize() const
 {
     return renderView() ? renderView()->size() : size();
@@ -1653,13 +1670,20 @@ void FrameView::updateLayoutViewport()
 
     LOG_WITH_STREAM(Scrolling, stream << "\nFrameView " << this << " updateLayoutViewport() totalContentSize " << totalContentsSize() << " unscaledDocumentRect " << (renderView() ? renderView()->unscaledDocumentRect() : IntRect()) << " header height " << headerHeight() << " footer height " << footerHeight() << " fixed behavior " << scrollBehaviorForFixedElements());
     LOG_WITH_STREAM(Scrolling, stream << "layoutViewport: " << layoutViewport);
-    LOG_WITH_STREAM(Scrolling, stream << "visualViewport: " << visualViewportRect());
+    LOG_WITH_STREAM(Scrolling, stream << "visualViewport: " << visualViewportRect() << " (is override " << (bool)m_visualViewportOverrideRect << ")");
     LOG_WITH_STREAM(Scrolling, stream << "stable origins: min: " << minStableLayoutViewportOrigin() << " max: "<< maxStableLayoutViewportOrigin());
     
     if (m_layoutViewportOverrideRect) {
         if (m_inProgrammaticScroll) {
+            LOG_WITH_STREAM(Scrolling, stream << "computing new override layout viewport because of programmatic scrolling");
             LayoutPoint newOrigin = computeLayoutViewportOrigin(visualViewportRect(), minStableLayoutViewportOrigin(), maxStableLayoutViewportOrigin(), layoutViewport, StickToDocumentBounds);
             setLayoutViewportOverrideRect(LayoutRect(newOrigin, m_layoutViewportOverrideRect.value().size()));
+        }
+        if (frame().settings().visualViewportAPIEnabled()) {
+            if (Document* document = frame().document()) {
+                if (VisualViewport* visualViewport = document->domWindow()->visualViewport())
+                    visualViewport->update();
+            }
         }
         return;
     }
@@ -1668,6 +1692,12 @@ void FrameView::updateLayoutViewport()
     if (newLayoutViewportOrigin != m_layoutViewportOrigin) {
         setBaseLayoutViewportOrigin(newLayoutViewportOrigin);
         LOG_WITH_STREAM(Scrolling, stream << "layoutViewport changed to " << layoutViewportRect());
+    }
+    if (frame().settings().visualViewportAPIEnabled()) {
+        if (Document* document = frame().document()) {
+            if (VisualViewport* visualViewport = document->domWindow()->visualViewport())
+                visualViewport->update();
+        }
     }
 }
 
@@ -1724,6 +1754,9 @@ LayoutRect FrameView::visibleDocumentRect(const FloatRect& visibleContentRect, f
 
 LayoutRect FrameView::visualViewportRect() const
 {
+    if (m_visualViewportOverrideRect)
+        return m_visualViewportOverrideRect.value();
+
     FloatRect visibleContentRect = this->visibleContentRect(LegacyIOSDocumentVisibleRect);
     return visibleDocumentRect(visibleContentRect, headerHeight(), footerHeight(), totalContentsSize(), frameScaleFactor());
 }
@@ -1914,12 +1947,7 @@ ScrollPosition FrameView::unscaledMaximumScrollPosition() const
     if (RenderView* renderView = this->renderView()) {
         IntRect unscaledDocumentRect = renderView->unscaledDocumentRect();
         unscaledDocumentRect.expand(0, headerHeight() + footerHeight());
-        IntSize visibleSize = this->visibleSize();
-#if PLATFORM(IOS)
-        // FIXME: visibleSize() is the unscaled size on macOS, but the scaled size on iOS. This should be consistent. webkit.org/b/174648.
-        visibleSize.scale(visibleContentScaleFactor());
-#endif        
-        ScrollPosition maximumPosition = ScrollPosition(unscaledDocumentRect.maxXMaxYCorner() - visibleSize).expandedTo({ 0, 0 });
+        ScrollPosition maximumPosition = ScrollPosition(unscaledDocumentRect.maxXMaxYCorner() - visibleSize()).expandedTo({ 0, 0 });
         if (frame().isMainFrame() && m_scrollPinningBehavior == PinToTop)
             maximumPosition.setY(unscaledMinimumScrollPosition().y());
 
@@ -2103,6 +2131,8 @@ bool FrameView::scrollToFragment(const URL& url)
 
 bool FrameView::scrollToAnchor(const String& fragmentIdentifier)
 {
+    LOG(Scrolling, "FrameView::scrollToAnchor %s", fragmentIdentifier.utf8().data());
+
     // If our URL has no ref, then we have no place we need to jump to.
     if (fragmentIdentifier.isNull())
         return false;
@@ -2118,6 +2148,8 @@ bool FrameView::scrollToAnchor(const String& fragmentIdentifier)
     document.setGotoAnchorNeededAfterStylesheetsLoad(false);
 
     Element* anchorElement = document.findAnchor(fragmentIdentifier);
+
+    LOG(Scrolling, " anchorElement is %p", anchorElement);
 
     // Setting to null will clear the current target.
     document.setCSSTarget(anchorElement);
@@ -2157,9 +2189,13 @@ bool FrameView::scrollToAnchor(const String& fragmentIdentifier)
 
 void FrameView::maintainScrollPositionAtAnchor(ContainerNode* anchorNode)
 {
+    LOG(Scrolling, "FrameView::maintainScrollPositionAtAnchor at %p", anchorNode);
+
     m_maintainScrollPositionAnchor = anchorNode;
     if (!m_maintainScrollPositionAnchor)
         return;
+    m_shouldScrollToFocusedElement = false;
+    m_delayedScrollToFocusedElementTimer.stop();
 
     // We need to update the layout before scrolling, otherwise we could
     // really mess things up if an anchor scroll comes at a bad moment.
@@ -2186,8 +2222,12 @@ void FrameView::scrollElementToRect(const Element& element, const IntRect& rect)
 
 void FrameView::setScrollPosition(const ScrollPosition& scrollPosition)
 {
+    LOG_WITH_STREAM(Scrolling, stream << "FrameView::setScrollPosition " << scrollPosition << " , clearing anchor");
+
     SetForScope<bool> changeInProgrammaticScroll(m_inProgrammaticScroll, true);
     m_maintainScrollPositionAnchor = nullptr;
+    m_shouldScrollToFocusedElement = false;
+    m_delayedScrollToFocusedElementTimer.stop();
     Page* page = frame().page();
     if (page && page->expectsWheelEventTriggers())
         scrollAnimator().setWheelEventTestTrigger(page->testTrigger());
@@ -2212,6 +2252,60 @@ void FrameView::resetScrollAnchor()
             rootElement->resetScrollAnchor();
         }
     }
+}
+
+void FrameView::scheduleScrollToFocusedElement(SelectionRevealMode selectionRevealMode)
+{
+    if (selectionRevealMode == SelectionRevealMode::DoNotReveal)
+        return;
+
+    m_selectionRevealModeForFocusedElement = selectionRevealMode;
+    if (m_shouldScrollToFocusedElement)
+        return;
+    m_shouldScrollToFocusedElement = true;
+    m_delayedScrollToFocusedElementTimer.startOneShot(0_s);
+}
+
+void FrameView::scrollToFocusedElementImmediatelyIfNeeded()
+{
+    if (!m_shouldScrollToFocusedElement)
+        return;
+
+    m_delayedScrollToFocusedElementTimer.stop();
+    scrollToFocusedElementInternal();
+}
+
+void FrameView::scrollToFocusedElementTimerFired()
+{
+    scrollToFocusedElementInternal();
+}
+
+void FrameView::scrollToFocusedElementInternal()
+{
+    RELEASE_ASSERT(m_shouldScrollToFocusedElement);
+    auto document = makeRefPtr(frame().document());
+    if (!document)
+        return;
+
+    document->updateLayoutIgnorePendingStylesheets();
+    if (!m_shouldScrollToFocusedElement)
+        return; // Updating the layout may have ran scripts.
+    m_shouldScrollToFocusedElement = false;
+
+    auto focusedElement = makeRefPtr(document->focusedElement());
+    if (!focusedElement)
+        return;
+    auto updateTarget = focusedElement->focusAppearanceUpdateTarget();
+    if (!updateTarget)
+        return;
+
+    auto* renderer = updateTarget->renderer();
+    if (!renderer || renderer->isWidget())
+        return;
+
+    bool insideFixed;
+    LayoutRect absoluteBounds = renderer->absoluteAnchorRect(&insideFixed);
+    renderer->scrollRectToVisible(m_selectionRevealModeForFocusedElement, absoluteBounds, insideFixed);
 }
 
 void FrameView::contentsResized()
@@ -2949,16 +3043,23 @@ bool FrameView::shouldUpdate() const
 void FrameView::scrollToAnchor()
 {
     RefPtr<ContainerNode> anchorNode = m_maintainScrollPositionAnchor;
+
+    LOG_WITH_STREAM(Scrolling, stream << "FrameView::scrollToAnchor() " << anchorNode.get());
+
     if (!anchorNode)
         return;
 
     if (!anchorNode->renderer())
         return;
+    m_shouldScrollToFocusedElement = false;
+    m_delayedScrollToFocusedElementTimer.stop();
 
     LayoutRect rect;
     bool insideFixed = false;
     if (anchorNode != frame().document() && anchorNode->renderer())
         rect = anchorNode->renderer()->absoluteAnchorRect(&insideFixed);
+
+    LOG_WITH_STREAM(Scrolling, stream << " anchor node rect " << rect);
 
     // Scroll nested layers and frames to reveal the anchor.
     // Align to the top and to the closest side (this matches other browsers).
@@ -2973,7 +3074,10 @@ void FrameView::scrollToAnchor()
         cache->handleScrolledToAnchor(anchorNode.get());
 
     // scrollRectToVisible can call into setScrollPosition(), which resets m_maintainScrollPositionAnchor.
+    LOG_WITH_STREAM(Scrolling, stream << " restoring anchor node to " << anchorNode.get());
     m_maintainScrollPositionAnchor = anchorNode;
+    m_shouldScrollToFocusedElement = false;
+    m_delayedScrollToFocusedElementTimer.stop();
 }
 
 void FrameView::updateEmbeddedObject(RenderEmbeddedObject& embeddedObject)
@@ -3305,6 +3409,8 @@ void FrameView::autoSizeIfEnabled()
         document->updateLayoutIgnorePendingStylesheets();
     }
     m_didRunAutosize = true;
+
+    LOG_WITH_STREAM(Layout, stream << "FrameView " << this << " autoSizeIfEnabled() changed size from " << size << " to " << frameRect().size());
 }
 
 void FrameView::setAutoSizeFixedMinimumHeight(int fixedMinimumHeight)
@@ -3552,6 +3658,8 @@ bool FrameView::isScrollable(Scrollability definitionOfScrollable)
     // 2) display:none or visibility:hidden set to self or inherited.
     // 3) overflow{-x,-y}: hidden;
     // 4) scrolling: no;
+    if (!didFirstLayout())
+        return false;
 
     bool requiresActualOverflowToBeConsideredScrollable = !frame().isMainFrame() || definitionOfScrollable != Scrollability::ScrollableOrRubberbandable;
 #if !ENABLE(RUBBER_BANDING)
@@ -3882,6 +3990,10 @@ bool FrameView::wasScrolledByUser() const
 
 void FrameView::setWasScrolledByUser(bool wasScrolledByUser)
 {
+    LOG(Scrolling, "FrameView::setWasScrolledByUser at %d", wasScrolledByUser);
+
+    m_shouldScrollToFocusedElement = false;
+    m_delayedScrollToFocusedElementTimer.stop();
     if (m_inProgrammaticScroll)
         return;
     m_maintainScrollPositionAnchor = nullptr;
@@ -3958,22 +4070,22 @@ void FrameView::didPaintContents(GraphicsContext& context, const IntRect& dirtyR
 void FrameView::paintContents(GraphicsContext& context, const IntRect& dirtyRect, SecurityOriginPaintPolicy securityOriginPaintPolicy)
 {
 #ifndef NDEBUG
-    bool fillWithRed;
+    bool fillWithWarningColor;
     if (frame().document()->printing())
-        fillWithRed = false; // Printing, don't fill with red (can't remember why).
+        fillWithWarningColor = false; // Printing, don't fill with red (can't remember why).
     else if (frame().ownerElement())
-        fillWithRed = false; // Subframe, don't fill with red.
+        fillWithWarningColor = false; // Subframe, don't fill with red.
     else if (isTransparent())
-        fillWithRed = false; // Transparent, don't fill with red.
+        fillWithWarningColor = false; // Transparent, don't fill with red.
     else if (m_paintBehavior & PaintBehaviorSelectionOnly)
-        fillWithRed = false; // Selections are transparent, don't fill with red.
+        fillWithWarningColor = false; // Selections are transparent, don't fill with red.
     else if (m_nodeToDraw)
-        fillWithRed = false; // Element images are transparent, don't fill with red.
+        fillWithWarningColor = false; // Element images are transparent, don't fill with red.
     else
-        fillWithRed = true;
+        fillWithWarningColor = true;
     
-    if (fillWithRed)
-        context.fillRect(dirtyRect, Color(0xFF, 0, 0));
+    if (fillWithWarningColor)
+        context.fillRect(dirtyRect, Color(255, 64, 255));
 #endif
 
     RenderView* renderView = this->renderView();
@@ -4297,7 +4409,7 @@ void FrameView::adjustPageHeightDeprecated(float *newBottom, float oldTop, float
 
     }
     // Use a context with painting disabled.
-    GraphicsContext context((PlatformGraphicsContext*)nullptr);
+    GraphicsContext context(GraphicsContext::NonPaintingReasons::NoReasons);
     renderView->setTruncatedAt(static_cast<int>(floorf(oldBottom)));
     IntRect dirtyRect(0, static_cast<int>(floorf(oldTop)), renderView->layoutOverflowRect().maxX(), static_cast<int>(ceilf(oldBottom - oldTop)));
     renderView->setPrintRect(dirtyRect);
@@ -4364,10 +4476,8 @@ IntRect FrameView::convertToContainingView(const IntRect& localRect) const
             if (!renderer)
                 return localRect;
                 
-            IntRect rect(localRect);
-            // Add borders and padding??
-            rect.move(renderer->borderLeft() + renderer->paddingLeft(),
-                      renderer->borderTop() + renderer->paddingTop());
+            auto rect = localRect;
+            rect.moveBy(roundedIntPoint(renderer->contentBoxLocation()));
             return parentView.convertFromRendererToContainingView(renderer, rect);
         }
         
@@ -4388,10 +4498,8 @@ IntRect FrameView::convertFromContainingView(const IntRect& parentRect) const
             if (!renderer)
                 return parentRect;
 
-            IntRect rect = parentView.convertFromContainingViewToRenderer(renderer, parentRect);
-            // Subtract borders and padding
-            rect.move(-renderer->borderLeft() - renderer->paddingLeft(),
-                      -renderer->borderTop() - renderer->paddingTop());
+            auto rect = parentView.convertFromContainingViewToRenderer(renderer, parentRect);
+            rect.moveBy(-roundedIntPoint(renderer->contentBoxLocation()));
             return rect;
         }
         
@@ -4412,11 +4520,8 @@ IntPoint FrameView::convertToContainingView(const IntPoint& localPoint) const
             if (!renderer)
                 return localPoint;
                 
-            IntPoint point(localPoint);
-
-            // Add borders and padding
-            point.move(renderer->borderLeft() + renderer->paddingLeft(),
-                       renderer->borderTop() + renderer->paddingTop());
+            auto point = localPoint;
+            point.moveBy(roundedIntPoint(renderer->contentBoxLocation()));
             return parentView.convertFromRendererToContainingView(renderer, point);
         }
         
@@ -4437,10 +4542,8 @@ IntPoint FrameView::convertFromContainingView(const IntPoint& parentPoint) const
             if (!renderer)
                 return parentPoint;
 
-            IntPoint point = parentView.convertFromContainingViewToRenderer(renderer, parentPoint);
-            // Subtract borders and padding
-            point.move(-renderer->borderLeft() - renderer->paddingLeft(),
-                       -renderer->borderTop() - renderer->paddingTop());
+            auto point = parentView.convertFromContainingViewToRenderer(renderer, parentPoint);
+            point.moveBy(-roundedIntPoint(renderer->contentBoxLocation()));
             return point;
         }
         
@@ -4478,7 +4581,7 @@ FloatSize FrameView::documentToClientOffset() const
     FloatSize clientOrigin = -toFloatSize(visibleContentRect().location());
 
     // Layout and visual viewports are affected by page zoom, so we need to factor that out.
-    return clientOrigin.scaled(1 / frame().pageZoomFactor());
+    return clientOrigin.scaled(1 / (frame().pageZoomFactor() * frame().frameScaleFactor()));
 }
 
 FloatRect FrameView::documentToClientRect(FloatRect rect) const
@@ -4503,14 +4606,6 @@ FloatPoint FrameView::clientToDocumentPoint(FloatPoint point) const
 {
     point.move(-documentToClientOffset());
     return point;
-}
-
-FloatRect FrameView::layoutViewportToAbsoluteRect(FloatRect rect) const
-{
-    ASSERT(frame().settings().visualViewportEnabled());
-    rect.moveBy(layoutViewportRect().location());
-    rect.scale(frame().frameScaleFactor());
-    return rect;
 }
 
 FloatPoint FrameView::layoutViewportToAbsolutePoint(FloatPoint p) const
@@ -4610,6 +4705,17 @@ void FrameView::sendScrollEvent()
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     frame().animation().scrollWasUpdated();
 #endif
+}
+
+void FrameView::addChild(Widget& widget)
+{
+    if (is<FrameView>(widget)) {
+        auto& childFrameView = downcast<FrameView>(widget);
+        if (childFrameView.isScrollable())
+            addScrollableArea(&childFrameView);
+    }
+
+    ScrollView::addChild(widget);
 }
 
 void FrameView::removeChild(Widget& widget)
@@ -4885,6 +4991,7 @@ static Vector<RefPtr<Widget>> collectAndProtectWidgets(const HashSet<Widget*>& s
 
 void FrameView::updateWidgetPositions()
 {
+    m_updateWidgetPositionsTimer.stop();
     // updateWidgetPosition() can possibly cause layout to be re-entered (via plug-ins running
     // scripts in response to NPP_SetWindow, for example), so we need to keep the Widgets
     // alive during enumeration.
@@ -4894,6 +5001,17 @@ void FrameView::updateWidgetPositions()
             UNUSED_PARAM(ignoreWidgetState);
         }
     }
+}
+
+void FrameView::scheduleUpdateWidgetPositions()
+{
+    if (!m_updateWidgetPositionsTimer.isActive())
+        m_updateWidgetPositionsTimer.startOneShot(0_s);
+}
+
+void FrameView::updateWidgetPositionsTimerFired()
+{
+    updateWidgetPositions();
 }
 
 void FrameView::notifyWidgets(WidgetNotification notification)

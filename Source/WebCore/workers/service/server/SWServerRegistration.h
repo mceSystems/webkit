@@ -33,6 +33,7 @@
 #include "ServiceWorkerTypes.h"
 #include <wtf/HashCountedSet.h>
 #include <wtf/MonotonicTime.h>
+#include <wtf/WallTime.h>
 
 namespace WebCore {
 
@@ -41,9 +42,11 @@ class SWServerWorker;
 enum class ServiceWorkerRegistrationState;
 enum class ServiceWorkerState;
 struct ExceptionData;
+struct ServiceWorkerContextData;
 struct ServiceWorkerFetchResult;
 
 class SWServerRegistration {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     SWServerRegistration(SWServer&, const ServiceWorkerRegistrationKey&, ServiceWorkerUpdateViaCache, const URL& scopeURL, const URL& scriptURL);
     ~SWServerRegistration();
@@ -55,9 +58,12 @@ public:
     WEBCORE_EXPORT ServiceWorkerRegistrationData data() const;
 
     bool isUninstalling() const { return m_uninstalling; }
-    void setIsUninstalling(bool value) { m_uninstalling = value; }
+    void setIsUninstalling(bool);
 
-    void setLastUpdateTime(double time) { m_lastUpdateTime = time; }
+    void setLastUpdateTime(WallTime);
+    WallTime lastUpdateTime() const { return m_lastUpdateTime; }
+
+    void setUpdateViaCache(ServiceWorkerUpdateViaCache);
     ServiceWorkerUpdateViaCache updateViaCache() const { return m_updateViaCache; }
 
     void updateRegistrationState(ServiceWorkerRegistrationState, SWServerWorker*);
@@ -67,6 +73,8 @@ public:
     void addClientServiceWorkerRegistration(SWServerConnectionIdentifier);
     void removeClientServiceWorkerRegistration(SWServerConnectionIdentifier);
 
+    void setPreInstallationWorker(SWServerWorker*);
+    SWServerWorker* preInstallationWorker() const { return m_preInstallationWorker.get(); }
     SWServerWorker* installingWorker() const { return m_installingWorker.get(); }
     SWServerWorker* waitingWorker() const { return m_waitingWorker.get(); }
     SWServerWorker* activeWorker() const { return m_activeWorker.get(); }
@@ -79,9 +87,18 @@ public:
     void unregisterServerConnection(SWServerConnectionIdentifier);
 
     void notifyClientsOfControllerChange();
+    void controlClient(ServiceWorkerClientIdentifier);
+
+    void clear();
+    bool tryClear();
+    void tryActivate();
+    void didFinishActivation(ServiceWorkerIdentifier);
+
+    void forEachConnection(const WTF::Function<void(SWServer::Connection&)>&);
 
 private:
-    void forEachConnection(const WTF::Function<void(SWServer::Connection&)>&);
+    void activate();
+    void handleClientUnload();
 
     ServiceWorkerRegistrationIdentifier m_identifier;
     ServiceWorkerRegistrationKey m_registrationKey;
@@ -90,11 +107,12 @@ private:
     URL m_scriptURL;
 
     bool m_uninstalling { false };
+    RefPtr<SWServerWorker> m_preInstallationWorker; // Implementation detail, not part of the specification.
     RefPtr<SWServerWorker> m_installingWorker;
     RefPtr<SWServerWorker> m_waitingWorker;
     RefPtr<SWServerWorker> m_activeWorker;
 
-    double m_lastUpdateTime { 0 };
+    WallTime m_lastUpdateTime;
     
     HashCountedSet<SWServerConnectionIdentifier> m_connectionsWithClientRegistrations;
     SWServer& m_server;

@@ -40,6 +40,7 @@
 #include "JIT.h"
 #include "JSArray.h"
 #include "JSArrayBuffer.h"
+#include "JSBigInt.h"
 #include "JSCInlines.h"
 #include "JSFunction.h"
 #include "JSInternalPromise.h"
@@ -340,6 +341,7 @@ static EncodedJSValue JSC_HOST_CALL functionDollarAgentLeaving(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionWaitForReport(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionHeapCapacity(ExecState*);
 static EncodedJSValue JSC_HOST_CALL functionFlashHeapAccess(ExecState*);
+static EncodedJSValue JSC_HOST_CALL functionDisableRichSourceInfo(ExecState*);
 
 struct Script {
     enum class StrictMode {
@@ -595,6 +597,8 @@ protected:
 
         addFunction(vm, "heapCapacity", functionHeapCapacity, 0);
         addFunction(vm, "flashHeapAccess", functionFlashHeapAccess, 0);
+
+        addFunction(vm, "disableRichSourceInfo", functionDisableRichSourceInfo, 0);
     }
     
     void addFunction(VM& vm, JSObject* object, const char* name, NativeFunction function, unsigned arguments)
@@ -614,9 +618,15 @@ protected:
     static JSObject* moduleLoaderCreateImportMetaProperties(JSGlobalObject*, ExecState*, JSModuleLoader*, JSValue, JSModuleRecord*, JSValue);
 };
 
+static bool supportsRichSourceInfo = true;
+static bool shellSupportsRichSourceInfo(const JSGlobalObject*)
+{
+    return supportsRichSourceInfo;
+}
+
 const ClassInfo GlobalObject::s_info = { "global", &JSGlobalObject::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(GlobalObject) };
 const GlobalObjectMethodTable GlobalObject::s_globalObjectMethodTable = {
-    &supportsRichSourceInfo,
+    &shellSupportsRichSourceInfo,
     &shouldInterruptScript,
     &javaScriptRuntimeFlags,
     nullptr, // queueTaskToEventLoop
@@ -1560,7 +1570,7 @@ EncodedJSValue JSC_HOST_CALL functionDollarAgentStart(ExecState* exec)
     Condition didStartCondition;
     bool didStart = false;
     
-    RefPtr<Thread> thread = Thread::create(
+    Thread::create(
         "JSC Agent",
         [sourceCode, &didStartLock, &didStartCondition, &didStart] () {
             CommandLine commandLine(0, nullptr);
@@ -1586,8 +1596,7 @@ EncodedJSValue JSC_HOST_CALL functionDollarAgentStart(ExecState* exec)
                         exit(1);
                     return success;
                 });
-        });
-    thread->detach();
+        })->detach();
     
     {
         auto locker = holdLock(didStartLock);
@@ -1720,13 +1729,22 @@ EncodedJSValue JSC_HOST_CALL functionFlashHeapAccess(ExecState* exec)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
     
-    vm.heap.releaseAccess();
+    double sleepTimeMs = 0;
     if (exec->argumentCount() >= 1) {
-        double ms = exec->argument(0).toNumber(exec);
+        sleepTimeMs = exec->argument(0).toNumber(exec);
         RETURN_IF_EXCEPTION(scope, encodedJSValue());
-        sleep(Seconds::fromMilliseconds(ms));
     }
+
+    vm.heap.releaseAccess();
+    if (sleepTimeMs)
+        sleep(Seconds::fromMilliseconds(sleepTimeMs));
     vm.heap.acquireAccess();
+    return JSValue::encode(jsUndefined());
+}
+
+EncodedJSValue JSC_HOST_CALL functionDisableRichSourceInfo(ExecState*)
+{
+    supportsRichSourceInfo = false;
     return JSValue::encode(jsUndefined());
 }
 
@@ -2310,7 +2328,7 @@ static void runInteractive(GlobalObject* globalObject)
             shouldQuit = !line;
             if (!line)
                 break;
-            source = source + line;
+            source = source + String::fromUTF8(line);
             source = source + '\n';
             checkSyntax(vm, makeSource(source, sourceOrigin), error);
             if (!line[0]) {

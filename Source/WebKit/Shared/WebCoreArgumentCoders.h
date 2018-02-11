@@ -28,7 +28,6 @@
 #include "ArgumentCoders.h"
 #include <WebCore/AutoplayEvent.h>
 #include <WebCore/CacheStorageConnection.h>
-#include <WebCore/CaptureDevice.h>
 #include <WebCore/ColorSpace.h>
 #include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/FrameLoaderTypes.h>
@@ -39,13 +38,13 @@
 #include <WebCore/PaymentHeaders.h>
 #include <WebCore/RealtimeMediaSource.h>
 #include <WebCore/ScrollSnapOffsetsInfo.h>
+#include <WebCore/ServiceWorkerTypes.h>
 #include <WebCore/StoredCredentialsPolicy.h>
 #include <WebCore/WorkerType.h>
 
 namespace WTF {
 class MonotonicTime;
 class Seconds;
-class WallTime;
 }
 
 namespace WebCore {
@@ -84,12 +83,14 @@ class ResourceRequest;
 class ResourceResponse;
 class SpringTimingFunction;
 class StepsTimingFunction;
+class FramesTimingFunction;
 class StickyPositionViewportConstraints;
 class TextCheckingRequestData;
 class TransformationMatrix;
 class UserStyleSheet;
 class URL;
 
+struct AttachmentInfo;
 struct CacheQueryOptions;
 struct CompositionUnderline;
 struct DictationAlternative;
@@ -104,6 +105,7 @@ struct PasteboardImage;
 struct PasteboardCustomData;
 struct PasteboardURL;
 struct PluginInfo;
+struct PromisedBlobInfo;
 struct RecentSearch;
 struct ResourceLoadStatistics;
 struct ScrollableAreaParameters;
@@ -150,7 +152,6 @@ class MediaSessionMetadata;
 #endif
 
 #if ENABLE(MEDIA_STREAM)
-class CaptureDevice;
 struct MediaConstraints;
 #endif
 
@@ -164,11 +165,6 @@ namespace IPC {
 template<> struct ArgumentCoder<WTF::MonotonicTime> {
     static void encode(Encoder&, const WTF::MonotonicTime&);
     static bool decode(Decoder&, WTF::MonotonicTime&);
-};
-
-template<> struct ArgumentCoder<WTF::WallTime> {
-    static void encode(Encoder&, const WTF::WallTime&);
-    static bool decode(Decoder&, WTF::WallTime&);
 };
 
 template<> struct ArgumentCoder<WTF::Seconds> {
@@ -219,6 +215,11 @@ template<> struct ArgumentCoder<WebCore::CubicBezierTimingFunction> {
 template<> struct ArgumentCoder<WebCore::StepsTimingFunction> {
     static void encode(Encoder&, const WebCore::StepsTimingFunction&);
     static bool decode(Decoder&, WebCore::StepsTimingFunction&);
+};
+
+template<> struct ArgumentCoder<WebCore::FramesTimingFunction> {
+    static void encode(Encoder&, const WebCore::FramesTimingFunction&);
+    static bool decode(Decoder&, WebCore::FramesTimingFunction&);
 };
 
 template<> struct ArgumentCoder<WebCore::SpringTimingFunction> {
@@ -651,11 +652,6 @@ template<> struct ArgumentCoder<WebCore::MediaConstraints> {
     static void encode(Encoder&, const WebCore::MediaConstraints&);
     static bool decode(Decoder&, WebCore::MediaConstraints&);
 };
-
-template<> struct ArgumentCoder<WebCore::CaptureDevice> {
-    static void encode(Encoder&, const WebCore::CaptureDevice&);
-    static std::optional<WebCore::CaptureDevice> decode(Decoder&);
-};
 #endif
 
 #if ENABLE(INDEXED_DATABASE)
@@ -663,6 +659,20 @@ template<> struct ArgumentCoder<WebCore::CaptureDevice> {
 template<> struct ArgumentCoder<WebCore::IDBKeyPath> {
     static void encode(Encoder&, const WebCore::IDBKeyPath&);
     static bool decode(Decoder&, WebCore::IDBKeyPath&);
+};
+
+#endif
+
+#if ENABLE(SERVICE_WORKER)
+
+template<> struct ArgumentCoder<WebCore::ServiceWorkerOrClientData> {
+    static void encode(Encoder&, const WebCore::ServiceWorkerOrClientData&);
+    static bool decode(Decoder&, WebCore::ServiceWorkerOrClientData&);
+};
+
+template<> struct ArgumentCoder<WebCore::ServiceWorkerOrClientIdentifier> {
+    static void encode(Encoder&, const WebCore::ServiceWorkerOrClientIdentifier&);
+    static bool decode(Decoder&, WebCore::ServiceWorkerOrClientIdentifier&);
 };
 
 #endif
@@ -681,6 +691,20 @@ template<> struct ArgumentCoder<WebCore::MediaSelectionOption> {
     static std::optional<WebCore::MediaSelectionOption> decode(Decoder&);
 };
 
+template<> struct ArgumentCoder<WebCore::PromisedBlobInfo> {
+    static void encode(Encoder&, const WebCore::PromisedBlobInfo&);
+    static bool decode(Decoder&, WebCore::PromisedBlobInfo&);
+};
+
+#if ENABLE(ATTACHMENT_ELEMENT)
+
+template<> struct ArgumentCoder<WebCore::AttachmentInfo> {
+    static void encode(Encoder&, const WebCore::AttachmentInfo&);
+    static bool decode(Decoder&, WebCore::AttachmentInfo&);
+};
+
+#endif
+
 } // namespace IPC
 
 namespace WTF {
@@ -688,7 +712,6 @@ namespace WTF {
 template<> struct EnumTraits<WebCore::ColorSpace> {
     using values = EnumValues<
     WebCore::ColorSpace,
-    WebCore::ColorSpace::ColorSpaceDeviceRGB,
     WebCore::ColorSpace::ColorSpaceSRGB,
     WebCore::ColorSpace::ColorSpaceLinearRGB,
     WebCore::ColorSpace::ColorSpaceDisplayP3
@@ -750,14 +773,6 @@ template<> struct EnumTraits<WebCore::IndexedDB::GetAllType> {
 #endif
 
 #if ENABLE(MEDIA_STREAM)
-template<> struct EnumTraits<WebCore::CaptureDevice::DeviceType> {
-    using values = EnumValues<
-        WebCore::CaptureDevice::DeviceType,
-        WebCore::CaptureDevice::DeviceType::Unknown,
-        WebCore::CaptureDevice::DeviceType::Audio,
-        WebCore::CaptureDevice::DeviceType::Video
-    >;
-};
 template<> struct EnumTraits<WebCore::RealtimeMediaSource::Type> {
     using values = EnumValues<
         WebCore::RealtimeMediaSource::Type,

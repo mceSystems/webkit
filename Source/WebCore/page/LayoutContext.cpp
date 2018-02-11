@@ -31,11 +31,12 @@
 #include "Document.h"
 #include "FrameView.h"
 #include "InspectorInstrumentation.h"
+#include "LayoutDisallowedScope.h"
 #include "LayoutState.h"
 #include "Logging.h"
-#include "NoEventDispatchAssertion.h"
 #include "RenderElement.h"
 #include "RenderView.h"
+#include "ScriptDisallowedScope.h"
 #include "Settings.h"
 
 #include <wtf/SetForScope.h>
@@ -119,7 +120,10 @@ LayoutContext::LayoutContext(FrameView& frameView)
 
 void LayoutContext::layout()
 {
-    RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(!frame().document()->inRenderTreeUpdate());
+    LOG_WITH_STREAM(Layout, stream << "FrameView " << &view() << " LayoutContext::layout() with size " << view().layoutSize());
+
+    RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(!frame().document()->inRenderTreeUpdate() || ScriptDisallowedScope::LayoutAssertionDisableScope::shouldDisable());
+    ASSERT(LayoutDisallowedScope::isLayoutAllowed());
     ASSERT(!view().isPainting());
     ASSERT(frame().view() == &view());
     ASSERT(frame().document());
@@ -142,7 +146,7 @@ void LayoutContext::layout()
 
 #if !LOG_DISABLED
     if (m_firstLayout && !frame().ownerElement())
-        LOG(Layout, "FrameView %p elapsed time before first layout: %.3fs\n", this, document()->timeSinceDocumentCreation().value());
+        LOG(Layout, "FrameView %p elapsed time before first layout: %.3fs", this, document()->timeSinceDocumentCreation().value());
 #endif
 #if PLATFORM(IOS)
     if (view().updateFixedPositionLayoutRect() && subtreeLayoutRoot())
@@ -173,7 +177,7 @@ void LayoutContext::layout()
     }
     {
         SetForScope<LayoutPhase> layoutPhase(m_layoutPhase, LayoutPhase::InRenderTreeLayout);
-        NoEventDispatchAssertion::InMainThread noEventDispatchAssertion;
+        ScriptDisallowedScope::InMainThread scriptDisallowedScope;
         SubtreeLayoutStateMaintainer subtreeLayoutStateMaintainer(subtreeLayoutRoot());
         RenderView::RepaintRegionAccumulator repaintRegionAccumulator(renderView());
 #ifndef NDEBUG
@@ -478,6 +482,11 @@ void LayoutContext::applyTextSizingIfNeeded(RenderElement& layoutRoot)
 void LayoutContext::updateStyleForLayout()
 {
     Document& document = *frame().document();
+
+    // FIXME: This shouldn't be necessary, but see rdar://problem/36670246.
+    if (!document.styleScope().resolverIfExists())
+        document.styleScope().didChangeStyleSheetEnvironment();
+
     // Viewport-dependent media queries may cause us to need completely different style information.
     document.styleScope().evaluateMediaQueriesForViewportChange();
 

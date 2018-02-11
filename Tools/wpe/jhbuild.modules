@@ -16,7 +16,6 @@
       <dep package="freetype6"/>
       <dep package="harfbuzz"/>
       <dep package="xkbcommon"/>
-      <dep package="wayland"/>
       <dep package="webkit-gstreamer-testing-dependencies"/>
       <dep package="wpe"/>
       <dep package="wpe-mesa"/>
@@ -36,8 +35,6 @@
       href="http://cairographics.org"/>
   <repository type="tarball" name="freedesktop.org"
       href="http://www.freedesktop.org"/>
-  <repository type="tarball" name="wayland.freedesktop.org"
-      href="http://wayland.freedesktop.org"/>
   <repository type="git" name="github.com"
       href="https://github.com"/>
   <repository type="tarball" name="github-tarball"
@@ -61,11 +58,11 @@
     <dependencies>
       <dep package="libffi"/>
     </dependencies>
-    <branch module="/pub/GNOME/sources/glib/2.44/glib-2.44.1.tar.xz" version="2.44.1"
+    <branch module="/pub/GNOME/sources/glib/2.54/glib-2.54.3.tar.xz" version="2.54.3"
             repo="ftp.gnome.org"
-            hash="sha256:8811deacaf8a503d0a9b701777ea079ca6a4277be10e3d730d2112735d5eca07">
-      <patch file="glib-warning-fix.patch" strip="1"/>
+            hash="sha256:963fdc6685dc3da8e5381dfb9f15ca4b5709b28be84d9d05a9bb8e446abac0a8">
       <patch file="gdate-suppress-string-format-literal-warning.patch" strip="1"/>
+      <patch file="glib-revert-wakeup-changes.patch" strip="1"/>
     </branch>
   </autotools>
 
@@ -74,9 +71,9 @@
     <dependencies>
       <dep package="glib"/>
     </dependencies>
-    <branch module="/pub/GNOME/sources/glib-networking/2.42/glib-networking-2.42.0.tar.xz" version="2.42.0"
+    <branch module="/pub/GNOME/sources/glib-networking/2.54/glib-networking-2.54.1.tar.xz" version="2.54.1"
             repo="ftp.gnome.org"
-            hash="sha256:304dd9e4c0ced69094300e0b9e66cd2eaae7161b9fc3186536d11458677d820d"/>
+            hash="sha256:eaa787b653015a0de31c928e9a17eb57b4ce23c8cf6f277afaec0d685335012f"/>
   </autotools>
 
   <autotools id="libsoup"
@@ -85,9 +82,9 @@
     <dependencies>
       <dep package="glib-networking"/>
     </dependencies>
-    <branch module="/pub/GNOME/sources/libsoup/2.48/libsoup-2.48.0.tar.xz" version="2.48.0"
+    <branch module="/pub/GNOME/sources/libsoup/2.60/libsoup-2.60.3.tar.xz" version="2.60.3"
             repo="ftp.gnome.org"
-            hash="sha256:ea34dd64fe44343445daf6dd690d0691e9d973468de44878da97371c16d89784"/>
+            hash="sha256:1b0dc762f23abe4e0d29b77370e539fd35f31d8e8e0318d6ddccff395be68a22"/>
   </autotools>
 
   <autotools id="fonts" supports-non-srcdir-builds="no"
@@ -119,8 +116,9 @@
   </autotools>
 
   <autotools id="harfbuzz" autogen-sh="configure"
-        autogenargs="--with-cairo=no --with-glib=no --with-freetype=yes --with-fontconfig=yes">
+        autogenargs="--with-cairo=no --with-glib=yes --with-freetype=yes --with-fontconfig=yes">
     <dependencies>
+      <dep package="glib"/>
       <dep package="freetype6"/>
       <dep package="fontconfig"/>
     </dependencies>
@@ -161,14 +159,6 @@
             hash="sha1:7127993bfb69e13cdff25fb8b3c8f26ce6be5bfa"/>
   </autotools>
 
-  <autotools id="wayland"
-             autogen-sh="configure"
-             autogenargs="--disable-documentation">
-    <branch module="releases/wayland-1.10.0.tar.xz" version="1.10.0"
-            repo="wayland.freedesktop.org"
-            hash="sha256:4bf6e790aa6f50ab3825676282ecd75850ec9c4767af96ecb7127b1f3c3d60dc"/>
-  </autotools>
-
   <cmake id="wpe">
     <branch repo="github.com" module="WebPlatformForEmbedded/WPEBackend.git"
             tag="3013faaebab42e7ef7497b3850a2902978eb3d6f" />
@@ -178,7 +168,6 @@
     <dependencies>
       <dep package="wpe" />
       <dep package="glib" />
-      <dep package="wayland" />
       <dep package="xkbcommon" />
     </dependencies>
     <branch repo="github.com" module="WebPlatformForEmbedded/WPEBackend-mesa.git"

@@ -552,9 +552,9 @@ void StyleResolver::keyframeStylesForAnimation(const Element& element, const Ren
     }
 }
 
-std::unique_ptr<RenderStyle> StyleResolver::pseudoStyleForElement(const Element& element, const PseudoStyleRequest& pseudoStyleRequest, const RenderStyle& parentStyle)
+std::unique_ptr<RenderStyle> StyleResolver::pseudoStyleForElement(const Element& element, const PseudoStyleRequest& pseudoStyleRequest, const RenderStyle& parentStyle, const SelectorFilter* selectorFilter)
 {
-    m_state = State(element, &parentStyle);
+    m_state = State(element, &parentStyle, m_overrideDocumentElementStyle, selectorFilter);
 
     State& state = m_state;
 
@@ -957,7 +957,7 @@ void StyleResolver::adjustRenderStyle(RenderStyle& style, const RenderStyle& par
             style.setOverflowX(OHIDDEN);
             style.setOverflowY(OHIDDEN);
 
-            bool isVertical = style.marqueeDirection() == MUP || style.marqueeDirection() == MDOWN;
+            bool isVertical = style.marqueeDirection() == MarqueeDirection::Up || style.marqueeDirection() == MarqueeDirection::Down;
             // Make horizontal marquees not wrap.
             if (!isVertical) {
                 style.setWhiteSpace(NOWRAP);
@@ -1063,13 +1063,10 @@ void StyleResolver::adjustRenderStyle(RenderStyle& style, const RenderStyle& par
             style.setDisplay(BLOCK);
     }
 
-    // If the inherited value of justify-items includes the 'legacy' keyword,
-    // 'auto' computes to the inherited value. Otherwise, 'auto' computes to
-    // 'normal'.
-    if (style.justifyItems().position() == ItemPositionAuto) {
-        if (parentBoxStyle->justifyItems().positionType() == LegacyPosition)
-            style.setJustifyItems(parentBoxStyle->justifyItems());
-    }
+    // If the inherited value of justify-items includes the 'legacy' keyword (plus 'left', 'right' or
+    // 'center'), 'legacy' computes to the the inherited value. Otherwise, 'auto' computes to 'normal'.
+    if (parentBoxStyle->justifyItems().positionType() == LegacyPosition && style.justifyItems().position() == ItemPositionLegacy)
+        style.setJustifyItems(parentBoxStyle->justifyItems());
 }
 
 static void checkForOrientationChange(RenderStyle* style)
@@ -1132,12 +1129,8 @@ Vector<RefPtr<StyleRule>> StyleResolver::pseudoStyleRulesForElement(const Elemen
             collector.matchUserRules(rulesToInclude & EmptyCSSRules);
     }
 
-    if (m_matchAuthorAndUserStyles && (rulesToInclude & AuthorCSSRules)) {
-        collector.setSameOriginOnly(!(rulesToInclude & CrossOriginCSSRules));
-
-        // Check the rules in author sheets.
+    if (m_matchAuthorAndUserStyles && (rulesToInclude & AuthorCSSRules))
         collector.matchAuthorRules(rulesToInclude & EmptyCSSRules);
-    }
 
     return collector.matchedRuleList();
 }
@@ -1533,8 +1526,8 @@ static inline bool isValidCueStyleProperty(CSSPropertyID id)
     case CSSPropertyPaintOrder:
     case CSSPropertyStrokeLinejoin:
     case CSSPropertyStrokeLinecap:
-    case CSSPropertyWebkitTextStrokeColor:
-    case CSSPropertyWebkitTextStrokeWidth:
+    case CSSPropertyStrokeColor:
+    case CSSPropertyStrokeWidth:
         return true;
     default:
         break;
@@ -1792,6 +1785,7 @@ void StyleResolver::initializeFontStyle()
     fontDescription.setOneFamily(standardFamily);
     fontDescription.setKeywordSizeFromIdentifier(CSSValueMedium);
     setFontSize(fontDescription, Style::fontSizeForKeyword(CSSValueMedium, false, document()));
+    fontDescription.setShouldAllowUserInstalledFonts(settings().shouldAllowUserInstalledFonts() ? AllowUserInstalledFonts::Yes : AllowUserInstalledFonts::No);
     setFontDescription(fontDescription);
 }
 
@@ -1803,8 +1797,7 @@ void StyleResolver::setFontSize(FontCascadeDescription& fontDescription, float s
 
 bool StyleResolver::colorFromPrimitiveValueIsDerivedFromElement(const CSSPrimitiveValue& value)
 {
-    int ident = value.valueID();
-    switch (ident) {
+    switch (value.valueID()) {
     case CSSValueWebkitText:
     case CSSValueWebkitLink:
     case CSSValueWebkitActivelink:
@@ -1820,26 +1813,23 @@ Color StyleResolver::colorFromPrimitiveValue(const CSSPrimitiveValue& value, boo
     if (value.isRGBColor())
         return value.color();
 
-    const State& state = m_state;
-    CSSValueID ident = value.valueID();
-    switch (ident) {
-    case 0:
-        return Color();
+    auto identifier = value.valueID();
+    switch (identifier) {
     case CSSValueWebkitText:
         return document().textColor();
     case CSSValueWebkitLink:
-        return (state.element()->isLink() && forVisitedLink) ? document().visitedLinkColor() : document().linkColor();
+        return (m_state.element()->isLink() && forVisitedLink) ? document().visitedLinkColor() : document().linkColor();
     case CSSValueWebkitActivelink:
         return document().activeLinkColor();
     case CSSValueWebkitFocusRingColor:
         return RenderTheme::focusRingColor();
     case CSSValueCurrentcolor:
         // Color is an inherited property so depending on it effectively makes the property inherited.
-        state.style()->setHasExplicitlyInheritedProperties();
-        return state.style()->color();
-    default: {
-        return StyleColor::colorFromKeyword(ident);
-    }
+        // FIXME: Setting the flag as a side effect of calling this function is a bit oblique. Can we do better?
+        m_state.style()->setHasExplicitlyInheritedProperties();
+        return m_state.style()->color();
+    default:
+        return StyleColor::colorFromKeyword(identifier);
     }
 }
 

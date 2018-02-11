@@ -26,6 +26,7 @@
 #pragma once
 
 #include "DragImage.h"
+#include "PasteboardItemInfo.h"
 #include "URL.h"
 #include <wtf/HashMap.h>
 #include <wtf/ListHashSet.h>
@@ -63,6 +64,7 @@ class Range;
 class SelectionData;
 class SharedBuffer;
 
+enum class WebContentReadingPolicy { AnyType, OnlyRichTextTypes };
 enum ShouldSerializeSelectedTextForDataTransfer { DefaultSelectedTextType, IncludeImageAltTextForDataTransfer };
 
 // For writing to the pasteboard. Generally sorted with the richest formats on top.
@@ -134,7 +136,7 @@ public:
 
 #if PLATFORM(COCOA)
     virtual bool readWebArchive(SharedBuffer&) = 0;
-    virtual bool readFilenames(const Vector<String>&) = 0;
+    virtual bool readFilePaths(const Vector<String>&) = 0;
     virtual bool readHTML(const String&) = 0;
     virtual bool readRTFD(SharedBuffer&) = 0;
     virtual bool readRTF(SharedBuffer&) = 0;
@@ -196,32 +198,32 @@ public:
 
     virtual bool isStatic() const { return false; }
 
-    virtual bool hasData();
-    virtual Vector<String> typesSafeForBindings(const String& origin);
-    virtual Vector<String> typesForLegacyUnsafeBindings();
-    virtual String readOrigin();
-    virtual String readString(const String& type);
-    virtual String readStringInCustomData(const String& type);
+    virtual WEBCORE_EXPORT bool hasData();
+    virtual WEBCORE_EXPORT Vector<String> typesSafeForBindings(const String& origin);
+    virtual WEBCORE_EXPORT Vector<String> typesForLegacyUnsafeBindings();
+    virtual WEBCORE_EXPORT String readOrigin();
+    virtual WEBCORE_EXPORT String readString(const String& type);
+    virtual WEBCORE_EXPORT String readStringInCustomData(const String& type);
 
-    virtual void writeString(const String& type, const String& data);
-    virtual void clear();
-    virtual void clear(const String& type);
+    virtual WEBCORE_EXPORT void writeString(const String& type, const String& data);
+    virtual WEBCORE_EXPORT void clear();
+    virtual WEBCORE_EXPORT void clear(const String& type);
 
-    virtual void read(PasteboardPlainText&);
-    virtual void read(PasteboardWebContentReader&);
-    virtual void read(PasteboardFileReader&);
+    virtual WEBCORE_EXPORT void read(PasteboardPlainText&);
+    virtual WEBCORE_EXPORT void read(PasteboardWebContentReader&, WebContentReadingPolicy = WebContentReadingPolicy::AnyType);
+    virtual WEBCORE_EXPORT void read(PasteboardFileReader&);
 
-    virtual void write(const PasteboardURL&);
-    virtual void writeTrustworthyWebURLsPboardType(const PasteboardURL&);
-    virtual void write(const PasteboardImage&);
-    virtual void write(const PasteboardWebContent&);
+    virtual WEBCORE_EXPORT void write(const PasteboardURL&);
+    virtual WEBCORE_EXPORT void writeTrustworthyWebURLsPboardType(const PasteboardURL&);
+    virtual WEBCORE_EXPORT void write(const PasteboardImage&);
+    virtual WEBCORE_EXPORT void write(const PasteboardWebContent&);
 
-    virtual void writeCustomData(const PasteboardCustomData&);
+    virtual WEBCORE_EXPORT void writeCustomData(const PasteboardCustomData&);
 
-    virtual bool containsFiles();
-    virtual bool canSmartReplace();
+    virtual WEBCORE_EXPORT bool containsFiles();
+    virtual WEBCORE_EXPORT bool canSmartReplace();
 
-    virtual void writeMarkup(const String& markup);
+    virtual WEBCORE_EXPORT void writeMarkup(const String& markup);
     enum SmartReplaceOption { CanSmartReplace, CannotSmartReplace };
     virtual WEBCORE_EXPORT void writePlainText(const String&, SmartReplaceOption); // FIXME: Two separate functions would be clearer than one function with an argument.
 
@@ -272,7 +274,7 @@ public:
 private:
 #if PLATFORM(IOS)
     bool respectsUTIFidelities() const;
-    void readRespectingUTIFidelities(PasteboardWebContentReader&);
+    void readRespectingUTIFidelities(PasteboardWebContentReader&, WebContentReadingPolicy);
 
     enum class ReaderResult {
         ReadType,
@@ -290,7 +292,7 @@ private:
 #endif
 
 #if PLATFORM(COCOA)
-    Vector<String> readFilenames();
+    Vector<String> readFilePaths();
     String readPlatformValueAsString(const String& domType, long changeCount, const String& pasteboardName);
     static void addHTMLClipboardTypesForCocoaType(ListHashSet<String>& resultTypes, const String& cocoaType);
     String readStringForPlatformType(const String&);

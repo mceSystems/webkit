@@ -45,11 +45,11 @@
 #include "ScriptState.h"
 #include "TimelineRecordFactory.h"
 #include "WebConsoleAgent.h"
-#include <inspector/ConsoleMessage.h>
-#include <inspector/ScriptBreakpoint.h>
-#include <inspector/agents/InspectorDebuggerAgent.h>
-#include <inspector/agents/InspectorHeapAgent.h>
-#include <inspector/agents/InspectorScriptProfilerAgent.h>
+#include <JavaScriptCore/ConsoleMessage.h>
+#include <JavaScriptCore/InspectorDebuggerAgent.h>
+#include <JavaScriptCore/InspectorHeapAgent.h>
+#include <JavaScriptCore/InspectorScriptProfilerAgent.h>
+#include <JavaScriptCore/ScriptBreakpoint.h>
 #include <wtf/Stopwatch.h>
 
 #if PLATFORM(IOS)
@@ -63,11 +63,10 @@
 
 
 namespace WebCore {
+
 using namespace Inspector;
 
 #if PLATFORM(COCOA)
-static const CFIndex frameStopRunLoopOrder = (CFIndex)RunLoopObserver::WellKnownRunLoopOrders::CoreAnimationCommit + 1;
-
 static CFRunLoopRef currentRunLoop()
 {
 #if PLATFORM(IOS)
@@ -173,7 +172,7 @@ void InspectorTimelineAgent::internalStart(const int* maxCallStackDepth)
     // FIXME: Abstract away platform-specific code once https://bugs.webkit.org/show_bug.cgi?id=142748 is fixed.
 
 #if PLATFORM(COCOA)
-    m_frameStartObserver = std::make_unique<RunLoopObserver>(0, [this]() {
+    m_frameStartObserver = std::make_unique<RunLoopObserver>(static_cast<CFIndex>(RunLoopObserver::WellKnownRunLoopOrders::InspectorFrameBegin), [this]() {
         if (!m_enabled || m_environment.scriptDebugServer().isPaused())
             return;
 
@@ -182,7 +181,7 @@ void InspectorTimelineAgent::internalStart(const int* maxCallStackDepth)
         m_runLoopNestingLevel++;
     });
 
-    m_frameStopObserver = std::make_unique<RunLoopObserver>(frameStopRunLoopOrder, [this]() {
+    m_frameStopObserver = std::make_unique<RunLoopObserver>(static_cast<CFIndex>(RunLoopObserver::WellKnownRunLoopOrders::InspectorFrameEnd), [this]() {
         if (!m_enabled || m_environment.scriptDebugServer().isPaused())
             return;
 

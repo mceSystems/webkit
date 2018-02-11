@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 
 #include "CallData.h"
 #include "CodeSpecializationKind.h"
+#include "CompleteSubspace.h"
 #include "ConcurrentJSLock.h"
 #include "ControlFlowProfiler.h"
 #include "DateInstanceCache.h"
@@ -39,23 +40,21 @@
 #include "FunctionHasExecutedCache.h"
 #include "Heap.h"
 #include "Intrinsic.h"
+#include "IsoCellSet.h"
+#include "IsoSubspace.h"
 #include "JITThunks.h"
 #include "JSCJSValue.h"
-#include "JSDestructibleObjectSubspace.h"
 #include "JSLock.h"
-#include "JSSegmentedVariableObjectSubspace.h"
-#include "JSStringSubspace.h"
-#include "JSWebAssemblyCodeBlockSubspace.h"
 #include "MacroAssemblerCodeRef.h"
 #include "Microtask.h"
 #include "NumericStrings.h"
 #include "SmallStrings.h"
 #include "Strong.h"
 #include "StructureCache.h"
-#include "Subspace.h"
 #include "TemplateRegistryKeyTable.h"
 #include "VMEntryRecord.h"
 #include "VMTraps.h"
+#include "ThreadLocalCache.h"
 #include "WasmContext.h"
 #include "Watchpoint.h"
 #include <wtf/BumpPointerAllocator.h>
@@ -108,9 +107,13 @@ class HeapProfiler;
 class Identifier;
 class Interpreter;
 class JSCustomGetterSetterFunction;
+class JSDestructibleObjectHeapCellType;
 class JSGlobalObject;
 class JSObject;
 class JSRunLoopTimer;
+class JSSegmentedVariableObjectHeapCellType;
+class JSStringHeapCellType;
+class JSWebAssemblyCodeBlockHeapCellType;
 class JSWebAssemblyInstance;
 class LLIntOffsetsExtractor;
 class NativeExecutable;
@@ -242,7 +245,7 @@ struct ScratchBuffer {
 class VM : public ThreadSafeRefCounted<VM>, public DoublyLinkedListNode<VM> {
 public:
     // WebCore has a one-to-one mapping of threads to VMs;
-    // either create() or createLeaked() should only be called once
+    // create() should only be called once
     // on a thread, this is the 'default' VM (it uses the
     // thread's default string uniquing table from Thread::current()).
     // API contexts created using the new context group aware interface
@@ -261,7 +264,6 @@ public:
     JS_EXPORT_PRIVATE static VM& sharedInstance();
 
     JS_EXPORT_PRIVATE static Ref<VM> create(HeapType = SmallHeap);
-    JS_EXPORT_PRIVATE static Ref<VM> createLeaked(HeapType = SmallHeap);
     static Ref<VM> createContextGroup(HeapType = SmallHeap);
     JS_EXPORT_PRIVATE ~VM();
 
@@ -290,9 +292,19 @@ public:
     std::unique_ptr<FastMallocAlignedMemoryAllocator> fastMallocAllocator;
     std::unique_ptr<GigacageAlignedMemoryAllocator> primitiveGigacageAllocator;
     std::unique_ptr<GigacageAlignedMemoryAllocator> jsValueGigacageAllocator;
+
+    std::unique_ptr<HeapCellType> auxiliaryHeapCellType;
+    std::unique_ptr<HeapCellType> cellHeapCellType;
+    std::unique_ptr<HeapCellType> destructibleCellHeapCellType;
+    std::unique_ptr<JSStringHeapCellType> stringHeapCellType;
+    std::unique_ptr<JSDestructibleObjectHeapCellType> destructibleObjectHeapCellType;
+    std::unique_ptr<JSSegmentedVariableObjectHeapCellType> segmentedVariableObjectHeapCellType;
+#if ENABLE(WEBASSEMBLY)
+    std::unique_ptr<JSWebAssemblyCodeBlockHeapCellType> webAssemblyCodeBlockHeapCellType;
+#endif
     
-    Subspace primitiveGigacageAuxiliarySpace; // Typed arrays, strings, bitvectors, etc go here.
-    Subspace jsValueGigacageAuxiliarySpace; // Butterflies, arrays of JSValues, etc go here.
+    CompleteSubspace primitiveGigacageAuxiliarySpace; // Typed arrays, strings, bitvectors, etc go here.
+    CompleteSubspace jsValueGigacageAuxiliarySpace; // Butterflies, arrays of JSValues, etc go here.
 
     // We make cross-cutting assumptions about typed arrays being in the primitive Gigacage and butterflies
     // being in the JSValue gigacage. For some types, it's super obvious where they should go, and so we
@@ -300,7 +312,7 @@ public:
     // constant somewhere.
     // FIXME: Maybe it would be better if everyone abstracted this?
     // https://bugs.webkit.org/show_bug.cgi?id=175248
-    ALWAYS_INLINE Subspace& gigacageAuxiliarySpace(Gigacage::Kind kind)
+    ALWAYS_INLINE CompleteSubspace& gigacageAuxiliarySpace(Gigacage::Kind kind)
     {
         switch (kind) {
         case Gigacage::Primitive:
@@ -315,17 +327,77 @@ public:
     }
     
     // Whenever possible, use subspaceFor<CellType>(vm) to get one of these subspaces.
-    Subspace cellSpace;
-    Subspace jsValueGigacageCellSpace;
-    Subspace destructibleCellSpace;
-    JSStringSubspace stringSpace;
-    JSDestructibleObjectSubspace destructibleObjectSpace;
-    JSDestructibleObjectSubspace eagerlySweptDestructibleObjectSpace;
-    JSSegmentedVariableObjectSubspace segmentedVariableObjectSpace;
+    CompleteSubspace cellSpace;
+    CompleteSubspace jsValueGigacageCellSpace;
+    CompleteSubspace destructibleCellSpace;
+    CompleteSubspace stringSpace;
+    CompleteSubspace destructibleObjectSpace;
+    CompleteSubspace eagerlySweptDestructibleObjectSpace;
+    CompleteSubspace segmentedVariableObjectSpace;
 #if ENABLE(WEBASSEMBLY)
-    JSWebAssemblyCodeBlockSubspace webAssemblyCodeBlockSpace;
+    CompleteSubspace webAssemblyCodeBlockSpace;
 #endif
+    
+    IsoSubspace directEvalExecutableSpace;
+    IsoSubspace errorInstanceSpace;
+    IsoSubspace exceptionSpace;
+    IsoSubspace executableToCodeBlockEdgeSpace;
+    IsoSubspace functionExecutableSpace;
+    IsoSubspace indirectEvalExecutableSpace;
+    IsoSubspace inferredTypeSpace;
+    IsoSubspace inferredValueSpace;
+    IsoSubspace moduleProgramExecutableSpace;
+    IsoSubspace nativeExecutableSpace;
+    IsoSubspace programExecutableSpace;
+    IsoSubspace propertyTableSpace;
+    IsoSubspace structureRareDataSpace;
+    IsoSubspace structureSpace;
+    IsoSubspace weakSetSpace;
+    IsoSubspace weakMapSpace;
+    
+    IsoCellSet errorInstancesWithFinalizers;
+    IsoCellSet exceptionsWithFinalizers;
+    IsoCellSet executableToCodeBlockEdgesWithConstraints;
+    IsoCellSet executableToCodeBlockEdgesWithFinalizers;
+    IsoCellSet inferredTypesWithFinalizers;
+    IsoCellSet inferredValuesWithFinalizers;
+    
+    struct SpaceAndFinalizerSet {
+        IsoSubspace space;
+        IsoCellSet finalizerSet;
+        
+        template<typename... Arguments>
+        SpaceAndFinalizerSet(Arguments&&... arguments)
+            : space(std::forward<Arguments>(arguments)...)
+            , finalizerSet(space)
+        {
+        }
+        
+        static IsoCellSet& finalizerSetFor(Subspace& space)
+        {
+            return *bitwise_cast<IsoCellSet*>(
+                bitwise_cast<char*>(&space) -
+                OBJECT_OFFSETOF(SpaceAndFinalizerSet, space) +
+                OBJECT_OFFSETOF(SpaceAndFinalizerSet, finalizerSet));
+        }
+    };
+    
+    SpaceAndFinalizerSet evalCodeBlockSpace;
+    SpaceAndFinalizerSet functionCodeBlockSpace;
+    SpaceAndFinalizerSet moduleProgramCodeBlockSpace;
+    SpaceAndFinalizerSet programCodeBlockSpace;
 
+    template<typename Func>
+    void forEachCodeBlockSpace(const Func& func)
+    {
+        // This should not include webAssemblyCodeBlockSpace because this is about subsclasses of
+        // JSC::CodeBlock.
+        func(evalCodeBlockSpace);
+        func(functionCodeBlockSpace);
+        func(moduleProgramCodeBlockSpace);
+        func(programCodeBlockSpace);
+    }
+    
     VMType vmType;
     ClientData* clientData;
     EntryFrame* topEntryFrame;
@@ -372,9 +444,9 @@ public:
     Strong<Structure> unlinkedFunctionCodeBlockStructure;
     Strong<Structure> unlinkedModuleProgramCodeBlockStructure;
     Strong<Structure> propertyTableStructure;
-    Strong<Structure> inferredValueStructure;
     Strong<Structure> inferredTypeStructure;
     Strong<Structure> inferredTypeTableStructure;
+    Strong<Structure> inferredValueStructure;
     Strong<Structure> functionRareDataStructure;
     Strong<Structure> exceptionStructure;
     Strong<Structure> promiseDeferredStructure;
@@ -388,6 +460,8 @@ public:
     Strong<Structure> hashMapBucketMapStructure;
     Strong<Structure> setIteratorStructure;
     Strong<Structure> mapIteratorStructure;
+    Strong<Structure> bigIntStructure;
+    Strong<Structure> executableToCodeBlockEdgeStructure;
 
     Strong<JSCell> emptyPropertyNameEnumerator;
     Strong<JSCell> sentinelSetBucket;
@@ -396,7 +470,7 @@ public:
     std::unique_ptr<PromiseDeferredTimer> promiseDeferredTimer;
     
     JSCell* currentlyDestructingCallbackObject;
-    const ClassInfo* currentlyDestructingCallbackObjectClassInfo;
+    PoisonedClassInfoPtr currentlyDestructingCallbackObjectClassInfo;
 
     AtomicStringTable* m_atomicStringTable;
     WTF::SymbolRegistry m_symbolRegistry;
@@ -450,17 +524,9 @@ public:
         DeletePropertyMode m_previousMode;
     };
 
-#if ENABLE(JIT)
-    bool canUseJIT() { return m_canUseJIT; }
-#else
-    bool canUseJIT() { return false; } // interpreter only
-#endif
-
-#if ENABLE(YARR_JIT)
-    bool canUseRegExpJIT() { return m_canUseRegExpJIT; }
-#else
-    bool canUseRegExpJIT() { return false; } // interpreter only
-#endif
+    static JS_EXPORT_PRIVATE bool canUseAssembler();
+    static JS_EXPORT_PRIVATE bool canUseJIT();
+    static JS_EXPORT_PRIVATE bool canUseRegExpJIT();
 
     SourceProviderCache* addSourceProviderCache(SourceProvider*);
     void clearSourceProviderCaches();
@@ -594,6 +660,11 @@ public:
 
     JSObject* stringRecursionCheckFirstObject { nullptr };
     HashSet<JSObject*> stringRecursionCheckVisitedObjects;
+    
+#if !USE(FAST_TLS_FOR_TLC)
+    ThreadLocalCache::Data* threadLocalCacheData { nullptr };
+#endif
+    RefPtr<ThreadLocalCache> defaultThreadLocalCache;
 
     LocalTimeOffsetCache localTimeOffsetCache;
 
@@ -693,7 +764,7 @@ public:
 
 #if ENABLE(EXCEPTION_SCOPE_VERIFICATION)
     StackTrace* nativeStackTraceOfLastThrow() const { return m_nativeStackTraceOfLastThrow.get(); }
-    ThreadIdentifier throwingThread() const { return m_throwingThread; }
+    Thread* throwingThread() const { return m_throwingThread.get(); }
 #endif
 
 #if USE(CF)
@@ -736,7 +807,7 @@ private:
 #if ENABLE(EXCEPTION_SCOPE_VERIFICATION)
         m_needExceptionCheck = false;
         m_nativeStackTraceOfLastThrow = nullptr;
-        m_throwingThread = 0;
+        m_throwingThread = nullptr;
 #endif
         m_exception = nullptr;
     }
@@ -757,15 +828,6 @@ private:
     static void primitiveGigacageDisabledCallback(void*);
     void primitiveGigacageDisabled();
 
-#if ENABLE(ASSEMBLER)
-    bool m_canUseAssembler;
-#endif
-#if ENABLE(JIT)
-    bool m_canUseJIT;
-#endif
-#if ENABLE(YARR_JIT)
-    bool m_canUseRegExpJIT;
-#endif
 #if ENABLE(GC_VALIDATION)
     const ClassInfo* m_initializingObjectClass;
 #endif
@@ -788,7 +850,7 @@ private:
     mutable bool m_needExceptionCheck { false };
     std::unique_ptr<StackTrace> m_nativeStackTraceOfLastThrow;
     std::unique_ptr<StackTrace> m_nativeStackTraceOfLastSimulatedThrow;
-    ThreadIdentifier m_throwingThread;
+    RefPtr<Thread> m_throwingThread;
 #endif
 
     bool m_failNextNewCodeBlock { false };

@@ -107,6 +107,10 @@ public:
     bool constantPropertiesEnabled { false };
     bool conicGradientsEnabled { false };
     bool deferredCSSParserEnabled { false };
+    bool allowNewLinesClamp { false };
+    
+    // This is only needed to support getMatchedCSSRules.
+    bool hasDocumentSecurityOrigin { false };
 
     URL completeURL(const String& url) const
     {
@@ -141,7 +145,9 @@ struct CSSParserContextHash {
             & key.springTimingFunctionEnabled               << 7
             & key.conicGradientsEnabled                     << 8
             & key.deferredCSSParserEnabled                  << 9
-            & key.mode                                      << 10;
+            & key.hasDocumentSecurityOrigin                 << 10
+            & key.mode                                      << 11
+            & key.allowNewLinesClamp                        << 12;
         hash ^= WTF::intHash(bits);
         return hash;
     }

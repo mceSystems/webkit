@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2018 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,12 +39,12 @@ namespace IPC {
 
 void ArgumentCoder<ResourceRequest>::encodePlatformData(Encoder& encoder, const ResourceRequest& resourceRequest)
 {
-    resourceRequest.encodeWithoutPlatformData(encoder);
+    resourceRequest.encodeWithPlatformData(encoder);
 }
 
 bool ArgumentCoder<ResourceRequest>::decodePlatformData(Decoder& decoder, ResourceRequest& resourceRequest)
 {
-    return resourceRequest.decodeWithoutPlatformData(decoder);
+    return resourceRequest.decodeWithPlatformData(decoder);
 }
 
 void ArgumentCoder<CertificateInfo>::encode(Encoder&, const CertificateInfo&)
@@ -56,12 +56,52 @@ bool ArgumentCoder<CertificateInfo>::decode(Decoder&, CertificateInfo&)
     return true;
 }
 
-void ArgumentCoder<ResourceError>::encodePlatformData(Encoder&, const ResourceError&)
+void ArgumentCoder<ResourceError>::encodePlatformData(Encoder& encoder, const ResourceError& resourceError)
 {
+    encoder.encodeEnum(resourceError.type());
+    if (resourceError.isNull())
+        return;
+
+    encoder << resourceError.domain();
+    encoder << resourceError.errorCode();
+    encoder << resourceError.failingURL().string();
+    encoder << resourceError.localizedDescription();
+    encoder << resourceError.sslErrors();
 }
 
-bool ArgumentCoder<ResourceError>::decodePlatformData(Decoder&, ResourceError&)
+bool ArgumentCoder<ResourceError>::decodePlatformData(Decoder& decoder, ResourceError& resourceError)
 {
+    ResourceErrorBase::Type errorType;
+    if (!decoder.decodeEnum(errorType))
+        return false;
+    if (errorType == ResourceErrorBase::Type::Null) {
+        resourceError = { };
+        return true;
+    }
+
+    String domain;
+    if (!decoder.decode(domain))
+        return false;
+
+    int errorCode;
+    if (!decoder.decode(errorCode))
+        return false;
+
+    String failingURL;
+    if (!decoder.decode(failingURL))
+        return false;
+
+    String localizedDescription;
+    if (!decoder.decode(localizedDescription))
+        return false;
+
+    unsigned sslErrors;
+    if (!decoder.decode(sslErrors))
+        return false;
+
+    resourceError = ResourceError(domain, errorCode, URL(URL(), failingURL), localizedDescription, errorType);
+    resourceError.setSslErrors(sslErrors);
+
     return true;
 }
 

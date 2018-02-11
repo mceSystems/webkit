@@ -70,7 +70,7 @@ public:
 
     static const constexpr int MetaPropertyBit = 0x80000000;
     enum : int { NoneExpr = 0,
-        ResolveEvalExpr, ResolveExpr, IntegerExpr, DoubleExpr, StringExpr,
+        ResolveEvalExpr, ResolveExpr, IntegerExpr, DoubleExpr, StringExpr, BigIntExpr,
         ThisExpr, NullExpr, BoolExpr, RegExpExpr, ObjectLiteralExpr,
         FunctionExpr, ClassExpr, SuperExpr, ImportExpr, BracketExpr, DotExpr, CallExpr,
         NewExpr, PreExpr, PostExpr, UnaryExpr, BinaryExpr,
@@ -175,12 +175,13 @@ public:
     ExpressionType createArray(const JSTokenLocation&, int, int) { return ArrayLiteralExpr; }
     ExpressionType createDoubleExpr(const JSTokenLocation&, double) { return DoubleExpr; }
     ExpressionType createIntegerExpr(const JSTokenLocation&, double) { return IntegerExpr; }
+    ExpressionType createBigInt(const JSTokenLocation&, const Identifier*, int) { return BigIntExpr; }
     ExpressionType createString(const JSTokenLocation&, const Identifier*) { return StringExpr; }
     ExpressionType createBoolean(const JSTokenLocation&, bool) { return BoolExpr; }
     ExpressionType createNull(const JSTokenLocation&) { return NullExpr; }
     ExpressionType createBracketAccess(const JSTokenLocation&, ExpressionType, ExpressionType, bool, int, int, int) { return BracketExpr; }
     ExpressionType createDotAccess(const JSTokenLocation&, ExpressionType, const Identifier*, int, int, int) { return DotExpr; }
-    ExpressionType createRegExp(const JSTokenLocation&, const Identifier& pattern, const Identifier& flags, int) { return Yarr::checkSyntax(pattern.string(), flags.string()) ? 0 : RegExpExpr; }
+    ExpressionType createRegExp(const JSTokenLocation&, const Identifier& pattern, const Identifier& flags, int) { return Yarr::hasError(Yarr::checkSyntax(pattern.string(), flags.string())) ? 0 : RegExpExpr; }
     ExpressionType createNewExpr(const JSTokenLocation&, ExpressionType, int, int, int, int) { return NewExpr; }
     ExpressionType createNewExpr(const JSTokenLocation&, ExpressionType, int, int) { return NewExpr; }
     ExpressionType createConditionalExpr(const JSTokenLocation&, ExpressionType, ExpressionType, ExpressionType) { return ConditionalExpr; }

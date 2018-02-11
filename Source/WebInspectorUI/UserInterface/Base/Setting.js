@@ -123,6 +123,9 @@ WI.settings = {
     selectedNetworkDetailContentViewIdentifier: new WI.Setting("network-detail-content-view-identifier", "preview"),
 
     // Experimental
-    experimentalLegacyStyleEditor: new WI.Setting("experimental-legacy-style-editor", false),
     experimentalEnableLayersTab: new WI.Setting("experimental-enable-layers-tab", false),
+    experimentalEnableSourcesTab: new WI.Setting("experimental-enable-sources-bar", false),
+    experimentalLegacyStyleEditor: new WI.Setting("experimental-legacy-style-editor", false),
+    experimentalLegacyVisualSidebar: new WI.Setting("experimental-legacy-visual-sidebar", false),
+    experimentalEnableNewTabBar: new WI.Setting("experimental-enable-new-tab-bar", false),
 };

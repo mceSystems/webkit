@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,9 +30,8 @@
 
 #include "ApplePayContactField.h"
 #include "ApplePayMerchantCapability.h"
-#include "ApplePayMerchantValidationEvent.h"
+#include "ApplePayModifier.h"
 #include "ApplePayPayment.h"
-#include "ApplePayPaymentMethodUpdateEvent.h"
 #include "ApplePaySessionPaymentRequest.h"
 #include "Document.h"
 #include "EventNames.h"
@@ -40,11 +39,13 @@
 #include "JSApplePayRequest.h"
 #include "LinkIconCollector.h"
 #include "MainFrame.h"
+#include "MerchantValidationEvent.h"
 #include "Page.h"
 #include "Payment.h"
 #include "PaymentAuthorizationStatus.h"
 #include "PaymentContact.h"
 #include "PaymentCoordinator.h"
+#include "PaymentMerchantSession.h"
 #include "PaymentMethod.h"
 #include "PaymentRequestValidator.h"
 #include "PaymentResponse.h"
@@ -79,12 +80,12 @@ ApplePayPaymentHandler::ApplePayPaymentHandler(Document& document, const Payment
     ASSERT(handlesIdentifier(m_identifier));
 }
 
-Document& ApplePayPaymentHandler::document()
+Document& ApplePayPaymentHandler::document() const
 {
     return downcast<Document>(*scriptExecutionContext());
 }
 
-PaymentCoordinator& ApplePayPaymentHandler::paymentCoordinator()
+PaymentCoordinator& ApplePayPaymentHandler::paymentCoordinator() const
 {
     return WebCore::paymentCoordinator(document());
 }
@@ -174,11 +175,12 @@ ExceptionOr<void> ApplePayPaymentHandler::convertData(JSC::JSValue&& data)
 
 ExceptionOr<void> ApplePayPaymentHandler::show()
 {
-    auto validatedRequest = convertAndValidate(m_applePayRequest->version, *m_applePayRequest);
+    auto validatedRequest = convertAndValidate(m_applePayRequest->version, *m_applePayRequest, paymentCoordinator());
     if (validatedRequest.hasException())
         return validatedRequest.releaseException();
 
     ApplePaySessionPaymentRequest request = validatedRequest.releaseReturnValue();
+    request.setRequester(ApplePaySessionPaymentRequest::Requester::PaymentRequest);
 
     String expectedCurrency = m_paymentRequest->paymentDetails().total.amount.currency;
     request.setCurrencyCode(expectedCurrency);
@@ -190,20 +192,7 @@ ExceptionOr<void> ApplePayPaymentHandler::show()
     auto convertedLineItems = convertAndValidate(m_paymentRequest->paymentDetails().displayItems, expectedCurrency);
     if (convertedLineItems.hasException())
         return convertedLineItems.releaseException();
-
-    auto lineItems = convertedLineItems.releaseReturnValue();
-    for (auto& modifier : m_paymentRequest->paymentDetails().modifiers) {
-        auto convertedIdentifier = convertAndValidatePaymentMethodIdentifier(modifier.supportedMethods);
-        if (!convertedIdentifier || !handlesIdentifier(*convertedIdentifier))
-            continue;
-
-        auto additionalDisplayItems = convertAndValidate(modifier.additionalDisplayItems, expectedCurrency);
-        if (additionalDisplayItems.hasException())
-            return additionalDisplayItems.releaseException();
-
-        lineItems.appendVector(additionalDisplayItems.releaseReturnValue());
-    }
-    request.setLineItems(lineItems);
+    request.setLineItems(convertedLineItems.releaseReturnValue());
 
     request.setRequiredShippingContactFields(convert(m_paymentRequest->paymentOptions()));
     if (m_paymentRequest->paymentOptions().requestShipping)
@@ -255,37 +244,109 @@ void ApplePayPaymentHandler::canMakePayment(Function<void(bool)>&& completionHan
     paymentCoordinator().canMakePaymentsWithActiveCard(m_applePayRequest->merchantIdentifier, document().domain(), WTFMove(completionHandler));
 }
 
-static ExceptionOr<ApplePaySessionPaymentRequest::TotalAndLineItems> convertAndValidate(const PaymentDetailsInit& details)
+ExceptionOr<ApplePaySessionPaymentRequest::TotalAndLineItems> ApplePayPaymentHandler::computeTotalAndLineItems()
 {
+    auto& details = m_paymentRequest->paymentDetails();
     String currency = details.total.amount.currency;
-    auto total = convertAndValidate(details.total, currency);
-    if (total.hasException())
-        return total.releaseException();
 
-    auto lineItems = convertAndValidate(details.displayItems, currency);
-    if (lineItems.hasException())
-        return lineItems.releaseException();
+    auto convertedTotal = convertAndValidate(details.total, currency);
+    if (convertedTotal.hasException())
+        return convertedTotal.releaseException();
+    auto total = convertedTotal.releaseReturnValue();
 
-    return ApplePaySessionPaymentRequest::TotalAndLineItems { total.releaseReturnValue(), lineItems.releaseReturnValue() };
+    auto convertedLineItems = convertAndValidate(details.displayItems, currency);
+    if (convertedLineItems.hasException())
+        return convertedLineItems.releaseException();
+    auto lineItems = convertedLineItems.releaseReturnValue();
+
+    if (!m_selectedPaymentMethodType)
+        return ApplePaySessionPaymentRequest::TotalAndLineItems { WTFMove(total), WTFMove(lineItems) };
+
+    auto& modifiers = details.modifiers;
+    auto& serializedModifierData = m_paymentRequest->serializedModifierData();
+    ASSERT(modifiers.size() == serializedModifierData.size());
+    for (size_t i = 0; i < modifiers.size(); ++i) {
+        auto convertedIdentifier = convertAndValidatePaymentMethodIdentifier(modifiers[i].supportedMethods);
+        if (!convertedIdentifier || !handlesIdentifier(*convertedIdentifier))
+            continue;
+
+        if (serializedModifierData[i].isEmpty())
+            continue;
+
+        auto& execState = *document().execState();
+        auto scope = DECLARE_THROW_SCOPE(execState.vm());
+        JSC::JSValue data;
+        {
+            auto lock = JSC::JSLockHolder { &execState };
+            data = JSONParse(&execState, serializedModifierData[i]);
+            if (scope.exception())
+                return Exception { ExistingExceptionError };
+        }
+
+        auto applePayModifier = convertDictionary<ApplePayModifier>(execState, WTFMove(data));
+        if (scope.exception())
+            return Exception { ExistingExceptionError };
+
+        if (applePayModifier.paymentMethodType != *m_selectedPaymentMethodType)
+            continue;
+
+        if (modifiers[i].total) {
+            auto totalOverride = convertAndValidate(*modifiers[i].total, currency);
+            if (totalOverride.hasException())
+                return totalOverride.releaseException();
+            total = totalOverride.releaseReturnValue();
+        }
+
+        auto additionalDisplayItems = convertAndValidate(modifiers[i].additionalDisplayItems, currency);
+        if (additionalDisplayItems.hasException())
+            return additionalDisplayItems.releaseException();
+        lineItems.appendVector(additionalDisplayItems.releaseReturnValue());
+        break;
+    }
+
+    return ApplePaySessionPaymentRequest::TotalAndLineItems { WTFMove(total), WTFMove(lineItems) };
 }
 
-ExceptionOr<void> ApplePayPaymentHandler::detailsUpdated(const AtomicString& eventType, const String& error)
+ExceptionOr<void> ApplePayPaymentHandler::detailsUpdated(PaymentRequest::UpdateReason reason, const String& error)
 {
-    if (eventType == eventNames().shippingaddresschangeEvent)
+    using Reason = PaymentRequest::UpdateReason;
+    switch (reason) {
+    case Reason::ShowDetailsResolved:
+        return { };
+    case Reason::ShippingAddressChanged:
         return shippingAddressUpdated(error);
-
-    if (eventType == eventNames().shippingoptionchangeEvent)
+    case Reason::ShippingOptionChanged:
         return shippingOptionUpdated();
-
-    if (eventType == eventNames().applepaypaymentmethodchangedEvent)
+    case Reason::PaymentMethodChanged:
         return paymentMethodUpdated();
+    }
 
     ASSERT_NOT_REACHED();
     return { };
 }
 
+ExceptionOr<void> ApplePayPaymentHandler::merchantValidationCompleted(JSC::JSValue&& merchantSessionValue)
+{
+    if (!paymentCoordinator().hasActiveSession())
+        return Exception { InvalidStateError };
+
+    if (!merchantSessionValue.isObject())
+        return Exception { TypeError };
+
+    String errorMessage;
+    auto merchantSession = PaymentMerchantSession::fromJS(*document().execState(), asObject(merchantSessionValue), errorMessage);
+    if (!merchantSession)
+        return Exception { TypeError, WTFMove(errorMessage) };
+
+    paymentCoordinator().completeMerchantValidation(*merchantSession);
+    return { };
+}
+
 ExceptionOr<void> ApplePayPaymentHandler::shippingAddressUpdated(const String& error)
 {
+    ASSERT(m_isUpdating);
+    m_isUpdating = false;
+
     ShippingContactUpdate update;
 
     if (m_paymentRequest->paymentOptions().requestShipping && m_paymentRequest->paymentDetails().shippingOptions.isEmpty()) {
@@ -295,7 +356,7 @@ ExceptionOr<void> ApplePayPaymentHandler::shippingAddressUpdated(const String& e
         update.errors.append(WTFMove(paymentError));
     }
 
-    auto newTotalAndLineItems = convertAndValidate(m_paymentRequest->paymentDetails());
+    auto newTotalAndLineItems = computeTotalAndLineItems();
     if (newTotalAndLineItems.hasException())
         return newTotalAndLineItems.releaseException();
     update.newTotalAndLineItems = newTotalAndLineItems.releaseReturnValue();
@@ -306,9 +367,12 @@ ExceptionOr<void> ApplePayPaymentHandler::shippingAddressUpdated(const String& e
 
 ExceptionOr<void> ApplePayPaymentHandler::shippingOptionUpdated()
 {
+    ASSERT(m_isUpdating);
+    m_isUpdating = false;
+
     ShippingMethodUpdate update;
 
-    auto newTotalAndLineItems = convertAndValidate(m_paymentRequest->paymentDetails());
+    auto newTotalAndLineItems = computeTotalAndLineItems();
     if (newTotalAndLineItems.hasException())
         return newTotalAndLineItems.releaseException();
     update.newTotalAndLineItems = newTotalAndLineItems.releaseReturnValue();
@@ -319,9 +383,12 @@ ExceptionOr<void> ApplePayPaymentHandler::shippingOptionUpdated()
 
 ExceptionOr<void> ApplePayPaymentHandler::paymentMethodUpdated()
 {
+    ASSERT(m_isUpdating);
+    m_isUpdating = false;
+
     PaymentMethodUpdate update;
 
-    auto newTotalAndLineItems = convertAndValidate(m_paymentRequest->paymentDetails());
+    auto newTotalAndLineItems = computeTotalAndLineItems();
     if (newTotalAndLineItems.hasException())
         return newTotalAndLineItems.releaseException();
     update.newTotalAndLineItems = newTotalAndLineItems.releaseReturnValue();
@@ -342,7 +409,6 @@ void ApplePayPaymentHandler::complete(std::optional<PaymentComplete>&& result)
     case PaymentComplete::Fail:
     case PaymentComplete::Unknown:
         authorizationResult.status = PaymentAuthorizationStatus::Failure;
-        authorizationResult.errors.append({ PaymentError::Code::Unknown, { }, std::nullopt });
         break;
     case PaymentComplete::Success:
         authorizationResult.status = PaymentAuthorizationStatus::Success;
@@ -352,10 +418,20 @@ void ApplePayPaymentHandler::complete(std::optional<PaymentComplete>&& result)
     paymentCoordinator().completePaymentSession(WTFMove(authorizationResult));
 }
 
+unsigned ApplePayPaymentHandler::version() const
+{
+    if (!m_applePayRequest)
+        return 0;
+    
+    auto version = m_applePayRequest->version;
+    ASSERT(paymentCoordinator().supportsVersion(version));
+    return version;
+}
+
 void ApplePayPaymentHandler::validateMerchant(const URL& validationURL)
 {
     if (validationURL.isValid())
-        m_paymentRequest->dispatchEvent(ApplePayMerchantValidationEvent::create(eventNames().applepayvalidatemerchantEvent, validationURL).get());
+        m_paymentRequest->dispatchEvent(MerchantValidationEvent::create(eventNames().merchantvalidationEvent, validationURL, m_paymentRequest.get()).get());
 }
 
 static Ref<PaymentAddress> convert(const ApplePayPaymentContact& contact)
@@ -365,7 +441,9 @@ static Ref<PaymentAddress> convert(const ApplePayPaymentContact& contact)
 
 void ApplePayPaymentHandler::didAuthorizePayment(const Payment& payment)
 {
-    auto applePayPayment = payment.toApplePayPayment();
+    ASSERT(!m_isUpdating);
+
+    auto applePayPayment = payment.toApplePayPayment(version());
     auto& execState = *document().execState();
     auto lock = JSC::JSLockHolder { &execState };
     auto details = JSC::Strong<JSC::JSObject> { execState.vm(), asObject(toJS<IDLDictionary<ApplePayPayment>>(execState, *JSC::jsCast<JSDOMGlobalObject*>(execState.lexicalGlobalObject()), applePayPayment)) };
@@ -375,18 +453,27 @@ void ApplePayPaymentHandler::didAuthorizePayment(const Payment& payment)
 
 void ApplePayPaymentHandler::didSelectShippingMethod(const ApplePaySessionPaymentRequest::ShippingMethod& shippingMethod)
 {
+    ASSERT(!m_isUpdating);
+    m_isUpdating = true;
+
     m_paymentRequest->shippingOptionChanged(shippingMethod.identifier);
 }
 
 void ApplePayPaymentHandler::didSelectShippingContact(const PaymentContact& shippingContact)
 {
-    m_paymentRequest->shippingAddressChanged(convert(shippingContact.toApplePayPaymentContact()));
+    ASSERT(!m_isUpdating);
+    m_isUpdating = true;
+
+    m_paymentRequest->shippingAddressChanged(convert(shippingContact.toApplePayPaymentContact(version())));
 }
 
 void ApplePayPaymentHandler::didSelectPaymentMethod(const PaymentMethod& paymentMethod)
 {
-    auto event = ApplePayPaymentMethodUpdateEvent::create(eventNames().applepaypaymentmethodchangedEvent, paymentMethod.toApplePayPaymentMethod(), m_paymentRequest.get());
-    m_paymentRequest->dispatchEvent(event.get());
+    ASSERT(!m_isUpdating);
+    m_isUpdating = true;
+
+    m_selectedPaymentMethodType = paymentMethod.toApplePayPaymentMethod().type;
+    m_paymentRequest->paymentMethodChanged();
 }
 
 void ApplePayPaymentHandler::didCancelPaymentSession()

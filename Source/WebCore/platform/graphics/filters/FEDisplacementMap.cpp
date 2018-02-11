@@ -27,7 +27,7 @@
 #include "ColorUtilities.h"
 #include "Filter.h"
 #include "GraphicsContext.h"
-#include <runtime/Uint8ClampedArray.h>
+#include <JavaScriptCore/Uint8ClampedArray.h>
 #include <wtf/text/TextStream.h>
 
 namespace WebCore {
@@ -112,12 +112,11 @@ void FEDisplacementMap::platformApplySoftware()
 
     Filter& filter = this->filter();
     IntSize paintSize = absolutePaintRect().size();
-    float scaleX = filter.applyHorizontalScale(m_scale);
-    float scaleY = filter.applyVerticalScale(m_scale);
-    float scaleForColorX = scaleX / 255.0;
-    float scaleForColorY = scaleY / 255.0;
-    float scaledOffsetX = 0.5 - scaleX * 0.5;
-    float scaledOffsetY = 0.5 - scaleY * 0.5;
+    FloatSize scale = filter.scaledByFilterResolution({ m_scale, m_scale });
+    float scaleForColorX = scale.width() / 255.0;
+    float scaleForColorY = scale.height() / 255.0;
+    float scaledOffsetX = 0.5 - scale.width() * 0.5;
+    float scaledOffsetY = 0.5 - scale.height() * 0.5;
     
     int displacementChannelX = xChannelIndex();
     int displacementChannelY = yChannelIndex();
@@ -166,17 +165,17 @@ static TextStream& operator<<(TextStream& ts, const ChannelSelectorType& type)
     return ts;
 }
 
-TextStream& FEDisplacementMap::externalRepresentation(TextStream& ts) const
+TextStream& FEDisplacementMap::externalRepresentation(TextStream& ts, RepresentationType representation) const
 {
     ts << indent << "[feDisplacementMap";
-    FilterEffect::externalRepresentation(ts);
+    FilterEffect::externalRepresentation(ts, representation);
     ts << " scale=\"" << m_scale << "\" "
        << "xChannelSelector=\"" << m_xChannelSelector << "\" "
        << "yChannelSelector=\"" << m_yChannelSelector << "\"]\n";
 
     TextStream::IndentScope indentScope(ts);
-    inputEffect(0)->externalRepresentation(ts);
-    inputEffect(1)->externalRepresentation(ts);
+    inputEffect(0)->externalRepresentation(ts, representation);
+    inputEffect(1)->externalRepresentation(ts, representation);
     return ts;
 }
 

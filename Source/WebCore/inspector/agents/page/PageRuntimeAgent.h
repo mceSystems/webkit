@@ -32,8 +32,8 @@
 #pragma once
 
 #include "InspectorWebAgentBase.h"
-#include <inspector/InspectorFrontendDispatchers.h>
-#include <inspector/agents/InspectorRuntimeAgent.h>
+#include <JavaScriptCore/InspectorFrontendDispatchers.h>
+#include <JavaScriptCore/InspectorRuntimeAgent.h>
 
 namespace JSC {
 class ExecState;
@@ -48,6 +48,7 @@ class SecurityOrigin;
 typedef String ErrorString;
 
 class PageRuntimeAgent final : public Inspector::InspectorRuntimeAgent {
+    WTF_MAKE_NONCOPYABLE(PageRuntimeAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     PageRuntimeAgent(PageAgentContext&, InspectorPageAgent*);

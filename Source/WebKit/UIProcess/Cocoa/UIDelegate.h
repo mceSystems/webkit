@@ -80,7 +80,7 @@ private:
 
     private:
         // API::UIClient
-        void createNewPage(WebPageProxy&, Ref<API::FrameInfo>&&, WebCore::ResourceRequest&&, WebCore::WindowFeatures&&, NavigationActionData&&, WTF::Function<void(RefPtr<WebPageProxy>&&)>&&) final;
+        void createNewPage(WebPageProxy&, Ref<API::FrameInfo>&&, WebCore::ResourceRequest&&, WebCore::WindowFeatures&&, NavigationActionData&&, CompletionHandler<void(RefPtr<WebPageProxy>&&)>&&) final;
         void close(WebPageProxy*) final;
         void fullscreenMayReturnToInline(WebPageProxy*) final;
         void didEnterFullscreen(WebPageProxy*) final;
@@ -114,7 +114,6 @@ private:
         void unavailablePluginButtonClicked(WebPageProxy&, WKPluginUnavailabilityReason, API::Dictionary&) final;
         void mouseDidMoveOverElement(WebPageProxy&, const WebHitTestResultData&, WebEvent::Modifiers, API::Object*);
         void didClickAutoFillButton(WebPageProxy&, API::Object*) final;
-        void didClickAlternativePresentationButton(WebPageProxy&, API::Object*) final;
         void toolbarsAreVisible(WebPageProxy&, Function<void(bool)>&&) final;
         bool runOpenPanel(WebPageProxy*, WebFrameProxy*, const WebCore::SecurityOriginData&, API::OpenPanelParameters*, WebOpenPanelResultListenerProxy*) final;
         void didExceedBackgroundResourceLimitWhileInForeground(WebPageProxy&, WKResourceLimit) final;
@@ -173,7 +172,6 @@ private:
         bool webViewHandleAutoplayEventWithFlags : 1;
         bool webViewUnavailablePlugInButtonClicked : 1;
         bool webViewDidClickAutoFillButtonWithUserInfo : 1;
-        bool webViewDidClickAlternativePresentationButtonWithUserInfo : 1;
         bool webViewDrawHeaderInRectForPageWithTitleURL : 1;
         bool webViewDrawFooterInRectForPageWithTitleURL : 1;
         bool webViewGetWindowFrameWithCompletionHandler : 1;

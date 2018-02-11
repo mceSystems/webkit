@@ -138,6 +138,9 @@ enum class AccessibilityRole {
     Footer,
     Footnote,
     Form,
+    GraphicsDocument,
+    GraphicsObject,
+    GraphicsSymbol,
     Grid,
     GridCell,
     Group,
@@ -660,6 +663,7 @@ public:
     virtual float stepValueForRange() const { return 0.0f; }
     virtual AccessibilityObject* selectedRadioButton() { return nullptr; }
     virtual AccessibilityObject* selectedTabItem() { return nullptr; }
+    AccessibilityObject* selectedListItem();
     virtual int layoutCount() const { return 0; }
     virtual double estimatedLoadingProgress() const { return 0; }
     static bool isARIAControl(AccessibilityRole);
@@ -899,6 +903,7 @@ public:
     int intValueForProperty(AXPropertyName) const;
     unsigned unsignedValueForProperty(AXPropertyName) const;
     double doubleValueForProperty(AXPropertyName) const;
+    Element* elementValueForProperty(AXPropertyName) const;
 
     virtual VisiblePositionRange visiblePositionRange() const { return VisiblePositionRange(); }
     virtual VisiblePositionRange visiblePositionRangeForLine(unsigned) const { return VisiblePositionRange(); }
@@ -1003,7 +1008,7 @@ public:
     bool supportsARIAAttributes() const;
     
     // CSS3 Speech properties.
-    virtual ESpeak speakProperty() const { return SpeakNormal; }
+    virtual ESpeakAs speakAsProperty() const { return SpeakNormal; }
 
     // Make this object visible by scrolling as many nested scrollable views as needed.
     virtual void scrollToMakeVisible() const;
@@ -1168,6 +1173,8 @@ protected:
 
     void ariaElementsFromAttribute(AccessibilityChildrenVector&, const QualifiedName&) const;
     void ariaElementsReferencedByAttribute(AccessibilityChildrenVector&, const QualifiedName&) const;
+    void elementsFromProperty(AccessibilityChildrenVector&, AXPropertyName) const;
+    void elementsReferencedByProperty(AccessibilityChildrenVector&, AXPropertyName) const;
 
     AccessibilityObject* radioGroupAncestor() const;
 

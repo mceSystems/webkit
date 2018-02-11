@@ -36,16 +36,22 @@ public:
     static Ref<ServiceWorkerProcessProxy> create(WebProcessPool&, WebsiteDataStore&);
     ~ServiceWorkerProcessProxy();
 
+    static bool hasRegisteredServiceWorkers(const String& serviceWorkerDirectory);
+
     void didReceiveAuthenticationChallenge(uint64_t pageID, uint64_t frameID, Ref<AuthenticationChallengeProxy>&&);
 
-    void start(const WebPreferencesStore&);
+    void start(const WebPreferencesStore&, std::optional<PAL::SessionID> initialSessionID);
+    void setUserAgent(const String&);
+    void updatePreferencesStore(const WebPreferencesStore&);
+
     uint64_t pageID() const { return m_serviceWorkerPageID; }
 
-protected:
+private:
     // ChildProcessProxy
     void getLaunchOptions(ProcessLauncher::LaunchOptions&) final;
 
-private:
+    bool isServiceWorkerProcess() const final { return true; }
+
     ServiceWorkerProcessProxy(WebProcessPool&, WebsiteDataStore&);
     uint64_t m_serviceWorkerPageID { 0 };
 };

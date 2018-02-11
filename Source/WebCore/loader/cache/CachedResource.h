@@ -84,6 +84,9 @@ public:
 #if ENABLE(VIDEO_TRACK)
         , TextTrackResource
 #endif
+#if ENABLE(APPLICATION_MANIFEST)
+        , ApplicationManifest
+#endif
     };
 
     enum Status {
@@ -231,7 +234,7 @@ public:
     DataBufferingPolicy dataBufferingPolicy() const { return m_options.dataBufferingPolicy; }
 
     bool allowsCaching() const { return m_options.cachingPolicy == CachingPolicy::AllowCaching; }
-    const FetchOptions& options() const { return m_options; }
+    const ResourceLoaderOptions& options() const { return m_options; }
 
     virtual void destroyDecodedData() { }
 
@@ -276,10 +279,6 @@ public:
     WEBCORE_EXPORT void tryReplaceEncodedData(SharedBuffer&);
 #endif
 
-#if USE(SOUP)
-    virtual char* getOrCreateReadBuffer(size_t /* requestedSize */, size_t& /* actualSize */) { return nullptr; }
-#endif
-
     unsigned long identifierForLoadWithoutResourceLoader() const { return m_identifierForLoadWithoutResourceLoader; }
     static ResourceLoadPriority defaultPriorityForResourceType(Type);
 
@@ -319,7 +318,7 @@ private:
     virtual void checkNotify();
     virtual bool mayTryReplaceEncodedData() const { return false; }
 
-    std::chrono::microseconds freshnessLifetime(const ResourceResponse&) const;
+    Seconds freshnessLifetime(const ResourceResponse&) const;
 
     void addAdditionalRequestHeaders(CachedResourceLoader&);
     void failBeforeStarting();
@@ -327,7 +326,7 @@ private:
     HashMap<CachedResourceClient*, std::unique_ptr<Callback>> m_clientsAwaitingCallback;
     PAL::SessionID m_sessionID;
     ResourceLoadPriority m_loadPriority;
-    std::chrono::system_clock::time_point m_responseTimestamp;
+    WallTime m_responseTimestamp;
 
     String m_fragmentIdentifierForRequest;
 

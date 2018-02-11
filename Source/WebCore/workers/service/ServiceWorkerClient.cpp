@@ -34,18 +34,32 @@
 #include "SerializedScriptValue.h"
 #include "ServiceWorkerGlobalScope.h"
 #include "ServiceWorkerThread.h"
+#include "ServiceWorkerWindowClient.h"
 
 namespace WebCore {
 
-ServiceWorkerClient::ServiceWorkerClient(ScriptExecutionContext& context, ServiceWorkerClientIdentifier identifier, ServiceWorkerClientData&& data)
+Ref<ServiceWorkerClient> ServiceWorkerClient::getOrCreate(ServiceWorkerGlobalScope& context, ServiceWorkerClientData&& data)
+{
+    if (auto* client = context.serviceWorkerClient(data.identifier))
+        return *client;
+
+    if (data.type == ServiceWorkerClientType::Window)
+        return ServiceWorkerWindowClient::create(context, WTFMove(data));
+
+    return adoptRef(*new ServiceWorkerClient { context, WTFMove(data) });
+}
+
+ServiceWorkerClient::ServiceWorkerClient(ServiceWorkerGlobalScope& context, ServiceWorkerClientData&& data)
     : ContextDestructionObserver(&context)
-    , m_identifier(identifier)
     , m_data(WTFMove(data))
 {
+    context.addServiceWorkerClient(*this);
 }
 
 ServiceWorkerClient::~ServiceWorkerClient()
 {
+    if (auto* context = scriptExecutionContext())
+        downcast<ServiceWorkerGlobalScope>(*context).removeServiceWorkerClient(*this);
 }
 
 const URL& ServiceWorkerClient::url() const
@@ -74,22 +88,18 @@ ExceptionOr<void> ServiceWorkerClient::postMessage(ScriptExecutionContext& conte
     ASSERT(execState);
 
     Vector<RefPtr<MessagePort>> ports;
-    auto message = SerializedScriptValue::create(*execState, messageValue, WTFMove(transfer), ports, SerializationContext::WorkerPostMessage);
-    if (message.hasException())
-        return message.releaseException();
+    auto messageData = SerializedScriptValue::create(*execState, messageValue, WTFMove(transfer), ports, SerializationContext::WorkerPostMessage);
+    if (messageData.hasException())
+        return messageData.releaseException();
 
     // Disentangle the port in preparation for sending it to the remote context.
-    auto channelsOrException = MessagePort::disentanglePorts(WTFMove(ports));
-    if (channelsOrException.hasException())
-        return channelsOrException.releaseException();
+    auto portsOrException = MessagePort::disentanglePorts(WTFMove(ports));
+    if (portsOrException.hasException())
+        return portsOrException.releaseException();
 
-    // FIXME: Support sending the channels.
-    auto channels = channelsOrException.releaseReturnValue();
-    if (channels && !channels->isEmpty())
-        return Exception { NotSupportedError, ASCIILiteral("Passing MessagePort objects to postMessage is not yet supported") };
-
+    MessageWithMessagePorts message = { messageData.releaseReturnValue(), portsOrException.releaseReturnValue() };
     auto sourceIdentifier = downcast<ServiceWorkerGlobalScope>(context).thread().identifier();
-    callOnMainThread([message = message.releaseReturnValue(), destinationIdentifier = identifier(), sourceIdentifier, sourceOrigin = context.origin().isolatedCopy()] () mutable {
+    callOnMainThread([message = WTFMove(message), destinationIdentifier = identifier(), sourceIdentifier, sourceOrigin = context.origin().isolatedCopy()] () mutable {
         if (auto* connection = SWContextManager::singleton().connection())
             connection->postMessageToServiceWorkerClient(destinationIdentifier, WTFMove(message), sourceIdentifier, sourceOrigin);
     });

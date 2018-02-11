@@ -1107,32 +1107,27 @@ static EncodedJSValue JSC_HOST_CALL functionCpuClflush(ExecState* exec)
         asm volatile ("clflush %0" :: "m"(*ptrToFlush) : "memory");
     };
 
+    Vector<void*> toFlush;
+
     uint32_t offset = exec->argument(1).asUInt32();
 
-    char* ptr = nullptr;
-    if (JSArrayBuffer* buffer = jsDynamicCast<JSArrayBuffer*>(vm, exec->argument(0))) {
-        if (ArrayBuffer* impl = buffer->impl()) {
-            if (offset < impl->byteLength()) {
-                clflush(impl);
-                ptr = bitwise_cast<char*>(impl) + offset;
-            }
-        }
-    } else if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(vm, exec->argument(0)))
-        ptr = bitwise_cast<char*>(view);
+    if (JSArrayBufferView* view = jsDynamicCast<JSArrayBufferView*>(vm, exec->argument(0)))
+        toFlush.append(bitwise_cast<char*>(view->vector()) + offset);
     else if (JSObject* object = jsDynamicCast<JSObject*>(vm, exec->argument(0))) {
         switch (object->indexingType()) {
         case ALL_INT32_INDEXING_TYPES:
         case ALL_CONTIGUOUS_INDEXING_TYPES:
         case ALL_DOUBLE_INDEXING_TYPES:
-            clflush(object);
-            ptr = bitwise_cast<char*>(object->butterfly()) + offset;
+            toFlush.append(bitwise_cast<char*>(object->butterfly()) + Butterfly::offsetOfVectorLength());
+            toFlush.append(bitwise_cast<char*>(object->butterfly()) + Butterfly::offsetOfPublicLength());
         }
     }
 
-    if (!ptr)
+    if (!toFlush.size())
         return JSValue::encode(jsBoolean(false));
 
-    clflush(ptr);
+    for (void* ptr : toFlush)
+        clflush(ptr);
     return JSValue::encode(jsBoolean(true));
 #else
     UNUSED_PARAM(exec);
@@ -1164,6 +1159,22 @@ private:
     mutable JITCode::JITType m_jitType;
 };
 
+static FunctionExecutable* getExecutableForFunction(JSValue theFunctionValue)
+{
+    if (!theFunctionValue.isCell())
+        return nullptr;
+    
+    VM& vm = *theFunctionValue.asCell()->vm();
+    JSFunction* theFunction = jsDynamicCast<JSFunction*>(vm, theFunctionValue);
+    if (!theFunction)
+        return nullptr;
+    
+    FunctionExecutable* executable = jsDynamicCast<FunctionExecutable*>(vm,
+        theFunction->executable());
+
+    return executable;
+}
+
 // Returns true if the current frame is a LLInt frame.
 // Usage: isLLInt = $vm.llintTrue()
 static EncodedJSValue JSC_HOST_CALL functionLLintTrue(ExecState* exec)
@@ -1184,6 +1195,23 @@ static EncodedJSValue JSC_HOST_CALL functionJITTrue(ExecState* exec)
     CallerFrameJITTypeFunctor functor;
     exec->iterate(functor);
     return JSValue::encode(jsBoolean(functor.jitType() == JITCode::BaselineJIT));
+}
+
+// Set that the argument function should not be inlined.
+// Usage:
+// function f() { };
+// $vm.noInline(f);
+static EncodedJSValue JSC_HOST_CALL functionNoInline(ExecState* exec)
+{
+    if (exec->argumentCount() < 1)
+        return JSValue::encode(jsUndefined());
+    
+    JSValue theFunctionValue = exec->uncheckedArgument(0);
+
+    if (FunctionExecutable* executable = getExecutableForFunction(theFunctionValue))
+        executable->setNeverInline(true);
+    
+    return JSValue::encode(jsUndefined());
 }
 
 // Runs a full GC synchronously.
@@ -1698,6 +1726,22 @@ static EncodedJSValue JSC_HOST_CALL functionCreateCustomTestGetterSetter(ExecSta
     return JSValue::encode(JSTestCustomGetterSetter::create(vm, globalObject, JSTestCustomGetterSetter::createStructure(vm, globalObject)));
 }
 
+static EncodedJSValue JSC_HOST_CALL functionDeltaBetweenButterflies(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    JSObject* a = jsDynamicCast<JSObject*>(vm, exec->argument(0));
+    JSObject* b = jsDynamicCast<JSObject*>(vm, exec->argument(1));
+    if (!a || !b)
+        return JSValue::encode(jsNumber(PNaN));
+
+    ptrdiff_t delta = bitwise_cast<char*>(a->butterfly()) - bitwise_cast<char*>(b->butterfly());
+    if (delta < 0)
+        return JSValue::encode(jsNumber(PNaN));
+    if (delta > std::numeric_limits<int32_t>::max())
+        return JSValue::encode(jsNumber(PNaN));
+    return JSValue::encode(jsNumber(static_cast<int32_t>(delta)));
+}
+
 void JSDollarVM::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
@@ -1724,6 +1768,8 @@ void JSDollarVM::finishCreation(VM& vm)
 
     addFunction(vm, "llintTrue", functionLLintTrue, 0);
     addFunction(vm, "jitTrue", functionJITTrue, 0);
+
+    addFunction(vm, "noInline", functionNoInline, 1);
 
     addFunction(vm, "gc", functionGC, 0);
     addFunction(vm, "edenGC", functionEdenGC, 0);
@@ -1779,6 +1825,8 @@ void JSDollarVM::finishCreation(VM& vm)
     addFunction(vm, "getGetterSetter", functionGetGetterSetter, 2);
     addFunction(vm, "loadGetterFromGetterSetter", functionLoadGetterFromGetterSetter, 1);
     addFunction(vm, "createCustomTestGetterSetter", functionCreateCustomTestGetterSetter, 1);
+
+    addFunction(vm, "deltaBetweenButterflies", functionDeltaBetweenButterflies, 2);
 }
 
 void JSDollarVM::addFunction(VM& vm, JSGlobalObject* globalObject, const char* name, NativeFunction function, unsigned arguments)

@@ -91,6 +91,7 @@ public:
     bool isInitialValue() const { return m_classType == InitialClass; }
     bool isUnsetValue() const { return m_classType == UnsetClass; }
     bool isRevertValue() const { return m_classType == RevertClass; }
+    bool isGlobalKeyword() const { return isInheritedValue() || isInitialValue() || isUnsetValue() || isRevertValue(); }
     bool treatAsInitialValue(CSSPropertyID) const;
     bool treatAsInheritedValue(CSSPropertyID) const;
     bool isLinearGradientValue() const { return m_classType == LinearGradientClass; }
@@ -100,6 +101,7 @@ public:
     bool isShadowValue() const { return m_classType == ShadowClass; }
     bool isCubicBezierTimingFunctionValue() const { return m_classType == CubicBezierTimingFunctionClass; }
     bool isStepsTimingFunctionValue() const { return m_classType == StepsTimingFunctionClass; }
+    bool isFramesTimingFunctionValue() const { return m_classType == FramesTimingFunctionClass; }
     bool isSpringTimingFunctionValue() const { return m_classType == SpringTimingFunctionClass; }
     bool isLineBoxContainValue() const { return m_classType == LineBoxContainClass; }
     bool isCalcValue() const {return m_classType == CalculationClass; }
@@ -149,6 +151,7 @@ protected:
         // Timing function classes.
         CubicBezierTimingFunctionClass,
         StepsTimingFunctionClass,
+        FramesTimingFunctionClass,
         SpringTimingFunctionClass,
 
         // Other class types.

@@ -42,7 +42,7 @@ class ISOWebVTTCue : public ISOBox {
 public:
     ISOWebVTTCue(const MediaTime& presentationTime, const MediaTime& duration);
 
-    static FourCC boxTypeName() { return "vtcc"; }
+    static FourCC boxTypeName() { return "vttc"; }
 
     const MediaTime& presentationTime() const { return m_presentationTime; }
     const MediaTime& duration() const { return m_duration; }
@@ -52,6 +52,8 @@ public:
     const String& originalStartTime() const { return m_originalStartTime; }
     const String& settings() const { return m_settings; }
     const String& cueText() const { return m_cueText; }
+
+    String toJSONString() const;
 
 protected:
     bool parse(JSC::DataView&, unsigned& offset) override;
@@ -66,4 +68,19 @@ protected:
     String m_cueText;
 };
 
-}
+} // namespace WebCore
+
+namespace WTF {
+
+template<typename Type>
+struct LogArgument;
+
+template <>
+struct LogArgument<WebCore::ISOWebVTTCue> {
+    static String toString(const WebCore::ISOWebVTTCue& cue)
+    {
+        return cue.toJSONString();
+    }
+};
+
+} // namespace WTF

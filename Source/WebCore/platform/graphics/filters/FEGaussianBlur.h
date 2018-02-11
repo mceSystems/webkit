@@ -40,8 +40,8 @@ public:
     EdgeModeType edgeMode() const { return m_edgeMode; }
     void setEdgeMode(EdgeModeType);
 
-    static IntSize calculateKernelSize(const Filter&, const FloatPoint& stdDeviation);
-    static IntSize calculateUnscaledKernelSize(const FloatPoint& stdDeviation);
+    static IntSize calculateKernelSize(const Filter&, FloatSize stdDeviation);
+    static IntSize calculateUnscaledKernelSize(FloatSize stdDeviation);
 
 private:
     FEGaussianBlur(Filter&, float, float, EdgeModeType);
@@ -67,7 +67,7 @@ private:
 
     void determineAbsolutePaintRect() override;
 
-    WTF::TextStream& externalRepresentation(WTF::TextStream&) const override;
+    WTF::TextStream& externalRepresentation(WTF::TextStream&, RepresentationType) const override;
 
     static void platformApplyWorker(PlatformApplyParameters*);
     void platformApply(Uint8ClampedArray& ioBuffer, Uint8ClampedArray& tempBuffer, unsigned kernelSizeX, unsigned kernelSizeY, IntSize& paintSize);

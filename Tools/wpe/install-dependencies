@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # This script needs to be run with root rights.
 if [ $UID -ne 0 ]; then
@@ -111,6 +111,7 @@ function installDependenciesWithApt {
         libgbm-dev \
         libgles2-mesa-dev \
         libluajit-5.1-dev \
+        libmount-dev \
         libopus-dev \
         liborc-0.4-dev \
         libproxy-dev \
@@ -122,6 +123,7 @@ function installDependenciesWithApt {
         libvpx-dev \
         libxcb-xkb-dev \
         libxml-libxml-perl \
+        libwayland-dev \
         luajit"
 
     # These are dependencies necessary for using webkit-patch
@@ -210,8 +212,10 @@ function installDependenciesWithPacman {
         mesa-libgl \
         opus \
         orc \
-        perl-xml-libxml\
-        v4l-utils"
+        perl-xml-libxml \
+        util-linux \
+        v4l-utils \
+        wayland"
 
     # These are dependencies necessary for using webkit-patch
     packages="$packages \
@@ -278,6 +282,7 @@ function installDependenciesWithDnf {
         expat-devel \
         git \
         gsettings-desktop-schemas-devel \
+        libmount-devel \
         libproxy-devel \
         libsrtp-devel \
         libtheora-devel \
@@ -292,7 +297,8 @@ function installDependenciesWithDnf {
         opus-devel \
         orc-devel \
         perl-XML-LibXML \
-        pulseaudio-libs-devel"
+        pulseaudio-libs-devel \
+        wayland-devel"
 
     # These are dependencies necessary for using webkit-patch
     packages="$packages

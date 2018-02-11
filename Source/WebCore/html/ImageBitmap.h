@@ -40,6 +40,7 @@ class HTMLVideoElement;
 class ImageBuffer;
 class ImageData;
 class IntRect;
+class IntSize;
 class PendingImageBitmap;
 class ScriptExecutionContext;
 struct ImageBitmapOptions;
@@ -62,6 +63,8 @@ public:
     static void createPromise(ScriptExecutionContext&, Source&&, ImageBitmapOptions&&, Promise&&);
     static void createPromise(ScriptExecutionContext&, Source&&, ImageBitmapOptions&&, int sx, int sy, int sw, int sh, Promise&&);
 
+    static Ref<ImageBitmap> create(IntSize);
+
     ~ImageBitmap();
 
     unsigned width() const;
@@ -79,8 +82,8 @@ public:
 private:
     friend class PendingImageBitmap;
 
-    static Ref<ImageBitmap> create();
-    ImageBitmap();
+    static Ref<ImageBitmap> create(std::unique_ptr<ImageBuffer>&&);
+    ImageBitmap(std::unique_ptr<ImageBuffer>&&);
 
     static void createPromise(ScriptExecutionContext&, RefPtr<HTMLImageElement>&, ImageBitmapOptions&&, std::optional<IntRect>, Promise&&);
 #if ENABLE(VIDEO)

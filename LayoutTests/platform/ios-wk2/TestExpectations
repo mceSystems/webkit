@@ -15,6 +15,8 @@ scrollingcoordinator/ios [ Pass ]
 tiled-drawing/ios [ Pass ]
 editing/selection/character-granularity-rect.html [ Pass ]
 
+accessibility/smart-invert.html [ Pass ]
+accessibility/smart-invert-reference.html [ Pass ]
 fast/media/mq-inverted-colors-live-update.html [ Pass ]
 fast/media/mq-inverted-colors-live-update-in-subframes.html [ Pass ]
 fast/media/mq-monochrome-live-update.html [ Pass ]
@@ -30,7 +32,6 @@ fast/viewport/ios/viewport-fit-auto.html [ Skip ]
 
 http/tests/paymentrequest [ Pass ]
 imported/w3c/web-platform-tests/payment-request [ Pass ]
-webkit.org/b/178107 http/tests/paymentrequest/payment-request-abort-method.https.html [ Pass Failure ]
 webkit.org/b/175611 imported/w3c/web-platform-tests/payment-request/allowpaymentrequest/allowpaymentrequest-attribute-cross-origin-bc-containers.https.html [ Skip ]
 webkit.org/b/175611 imported/w3c/web-platform-tests/payment-request/allowpaymentrequest/no-attribute-cross-origin-bc-containers.https.html [ Skip ]
 webkit.org/b/175611 imported/w3c/web-platform-tests/payment-request/allowpaymentrequest/removing-allowpaymentrequest.https.sub.html [ Skip ]
@@ -41,6 +42,7 @@ webkit.org/b/175611 imported/w3c/web-platform-tests/payment-request/allowpayment
 imported/w3c/web-platform-tests/payment-request/payment-request-show-method.https.html [ WontFix ]
 imported/w3c/web-platform-tests/payment-request/payment-request-abort-method.https.html [ WontFix ]
 imported/w3c/web-platform-tests/payment-request/payment-request-canmakepayment-method.https.html [ WontFix ]
+imported/w3c/web-platform-tests/payment-request/rejects_if_not_active.https.html [ WontFix ]
 
  # skip manual payment-request tests
 imported/w3c/web-platform-tests/payment-request/algorithms-manual.https.html [ Skip ]
@@ -59,7 +61,11 @@ imported/w3c/web-platform-tests/payment-request/updateWith-method-pmi-handling-m
 imported/w3c/web-platform-tests/payment-request/user-abort-algorithm-manual.https.html [ Skip ]
 imported/w3c/web-platform-tests/payment-request/user-accepts-payment-request-algo-manual.https.html [ Skip ]
 
-webkit.org/b/170713 imported/w3c/web-platform-tests/css/css-ui-3/text-overflow-022.html [ ImageOnlyFailure ]
+webkit.org/b/170713 imported/w3c/web-platform-tests/css/css-ui/text-overflow-022.html [ ImageOnlyFailure ]
+
+http/tests/security/contentSecurityPolicy/manifest-src-allowed.html [ Pass ]
+http/tests/security/contentSecurityPolicy/manifest-src-blocked.html [ Pass ]
+applicationmanifest/ [ Pass ]
 
 #//////////////////////////////////////////////////////////////////////////////////////////
 # End platform-specific directories.
@@ -588,26 +594,6 @@ loader/go-back-to-different-window-size.html [ Failure ]
 transforms/2d/transform-fixed-container.html [ Failure ]
 
 # Editing tests that fail:
-editing/caret/color-span-inside-editable-background.html [ ImageOnlyFailure ]
-editing/caret/color-span-inside-editable.html [ ImageOnlyFailure ]
-editing/deleting/5144139-2.html [ Failure ]
-editing/execCommand/button.html [ Failure ]
-editing/execCommand/createLink.html [ Failure ]
-editing/execCommand/hilitecolor.html [ Failure ]
-editing/execCommand/query-command-state.html [ Failure ]
-editing/execCommand/remove-format-multiple-elements-mac.html [ Failure ]
-editing/execCommand/remove-format-multiple-elements-win.html [ Failure ]
-editing/execCommand/remove-formatting-2.html [ Failure ]
-editing/execCommand/toggle-link-mac.html [ Failure ]
-editing/execCommand/toggle-unlink-mac.html [ Failure ]
-editing/execCommand/unlink.html [ Failure ]
-editing/input/editable-container-with-word-wrap-normal.html [ Failure ]
-editing/input/password-echo-passnode.html [ Failure ]
-editing/input/password-echo-passnode2.html [ Failure ]
-editing/input/password-echo-passnode3.html [ Failure ]
-editing/input/reveal-edit-on-input-vertically.html [ Failure ]
-editing/input/scroll-to-edge-if-line-break-at-end-of-document-contenteditable.html [ Failure ]
-editing/input/scroll-to-edge-if-paragraph-separator-at-end-of-document-contenteditable.html [ Failure ]
 editing/inserting/caret-position.html [ Failure ]
 editing/inserting/insert-3654864-fix.html [ Failure ]
 editing/inserting/insert-3775316-fix.html [ Failure ]
@@ -716,7 +702,6 @@ editing/undo/undo-misspellings.html [ Failure ]
 editing/undo/undo-typing-001.html [ Failure ]
 
 # Editing tests that time out:
-editing/input/reveal-contenteditable-on-input-vertically.html
 editing/selection/designmode-no-caret.html
 editing/selection/move-by-character-brute-force.html
 editing/spelling/delete-into-misspelled-word.html
@@ -742,9 +727,6 @@ editing/spelling/spelling-with-whitespace-selection.html
 editing/unsupported-content/list-delete-001.html
 
 # Editing tests that are flaky:
-editing/caret/caret-color.html [ Failure Pass ]
-editing/deleting/whitespace-pre-1.html [ Failure Pass ]
-editing/execCommand/indent-paragraphs.html [ Failure Pass ]
 editing/inserting/insert-thai-characters-001.html [ Failure Pass ]
 editing/selection/find-in-text-control.html [ Failure Pass ]
 editing/selection/skip-non-editable-1.html [ Failure Pass ]
@@ -990,6 +972,20 @@ fast/forms/validation-message-in-relative-body.html [ Skip ]
 fast/forms/validation-message-appearance.html [ Skip ]
 fast/forms/validation-message-on-textarea.html  [ Skip ]
 
+# iOS doesn’t support mouse events simulation using the eventSender.
+editing/selection/select-out-of-floated-non-editable-01.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-02.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-03.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-04.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-05.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-06.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-07.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-08.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-09.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-10.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-11.html [ Skip ]
+editing/selection/select-out-of-floated-non-editable-12.html [ Skip ]
+
 # Flaky as of 06/08/2015
 fast/loader/fragment-navigation-base-blank.html [ Failure Pass ]
 fast/loader/iframe-meta-refresh-base-blank.html [ Failure Pass ]
@@ -1222,7 +1218,7 @@ webkit.org/b/162524 [ Release ] http/tests/cache/disk-cache/disk-cache-redirect.
 
 webkit.org/b/127116 [ Debug ] svg/custom/animate-initial-pause-unpause.html [ Pass Failure ]
 
-webkit.org/b/163362 [ Debug ] platform/ios/ios/plugin/youtube-flash-plugin-iframe.html [ Pass Failure ]
+webkit.org/b/163362 platform/ios/ios/plugin/youtube-flash-plugin-iframe.html [ Pass Failure ]
 
 webkit.org/b/164960 http/tests/security/module-correct-mime-types.html [ Slow ]
 
@@ -1299,8 +1295,6 @@ imported/w3c/web-platform-tests/XMLHttpRequest/setrequestheader-content-type.htm
 
 webkit.org/b/176240 http/tests/websocket/tests/hybi/handshake-ok-with-legacy-websocket-response-headers.html [ Pass Failure ]
 
-webkit.org/b/177832 imported/w3c/web-platform-tests/payment-request/rejects_if_not_active.https.html [ Skip ]
-
 webkit.org/b/173608 webrtc/video-replace-muted-track.html [ Skip ]
 
 webkit.org/b/177501 webrtc/video-mute.html [ Pass Timeout ]
@@ -1310,4 +1304,16 @@ webkit.org/b/172397 [ Debug ] animations/needs-layout.html [ Pass ImageOnlyFailu
 webkit.org/b/179176 [ Release ] svg/wicd/test-rightsizing-a.xhtml [ Pass Failure ]
 
 webkit.org/b/178195 accessibility/ios-simulator/video-elements-ios.html [ Pass Timeout ]
+
+webkit.org/b/181166 imported/w3c/web-platform-tests/service-workers/service-worker/register-same-scope-different-script-url.https.html [ Pass Failure ]
+
+webkit.org/b/181167 imported/w3c/web-platform-tests/service-workers/service-worker/ServiceWorkerGlobalScope/update.https.html [ Pass Failure ]
+
+webkit.org/b/181392 imported/w3c/web-platform-tests/service-workers/service-worker/fetch-waits-for-activate.https.html [ Pass Failure ]
+
+webkit.org/b/172879 webrtc/video-unmute.html [ Skip ]
+
+webkit.org/b/181957 [ Release ] http/tests/misc/resource-timing-resolution.html [ Pass Failure ]
+
+webkit.org/b/181821 fast/visual-viewport/ios/caret-after-focus-in-fixed.html [ Pass Failure ]
 

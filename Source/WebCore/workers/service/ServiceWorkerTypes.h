@@ -27,10 +27,17 @@
 
 #if ENABLE(SERVICE_WORKER)
 
+#include "DocumentIdentifier.h"
+#include "ServiceWorkerIdentifier.h"
 #include <wtf/EnumTraits.h>
 #include <wtf/ObjectIdentifier.h>
+#include <wtf/Variant.h>
 
 namespace WebCore {
+
+struct ServiceWorkerData;
+struct ServiceWorkerClientData;
+struct ServiceWorkerClientIdentifier;
 
 enum class ServiceWorkerRegistrationState {
     Installing = 0,
@@ -66,6 +73,11 @@ using SWServerToContextConnectionIdentifier = ObjectIdentifier<SWServerToContext
 
 enum SWServerConnectionIdentifierType { };
 using SWServerConnectionIdentifier = ObjectIdentifier<SWServerConnectionIdentifierType>;
+
+using DocumentOrWorkerIdentifier = Variant<DocumentIdentifier, ServiceWorkerIdentifier>;
+
+using ServiceWorkerOrClientData = Variant<ServiceWorkerData, ServiceWorkerClientData>;
+using ServiceWorkerOrClientIdentifier = Variant<ServiceWorkerIdentifier, ServiceWorkerClientIdentifier>;
 
 } // namespace WebCore
 

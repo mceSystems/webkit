@@ -55,15 +55,13 @@ void CurlDownload::init(CurlDownloadListener& listener, ResourceHandle*, const R
     m_request = request.isolatedCopy();
 }
 
-bool CurlDownload::start()
+void CurlDownload::start()
 {
     ASSERT(isMainThread());
 
     m_curlRequest = createCurlRequest(m_request);
     m_curlRequest->enableDownloadToFile();
     m_curlRequest->start();
-
-    return true;
 }
 
 bool CurlDownload::cancel()
@@ -176,7 +174,7 @@ void CurlDownload::willSendRequest()
     }
 
     String location = m_response.httpHeaderField(HTTPHeaderName::Location);
-    URL newURL = URL(m_request.url(), location);
+    URL newURL = URL(m_response.url(), location);
     bool crossOrigin = !protocolHostAndPortAreEqual(m_request.url(), newURL);
 
     ResourceRequest newRequest = m_request;

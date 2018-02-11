@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,35 +38,9 @@ String systemMarketingVersionForUserAgentString()
     return [systemMarketingVersion() stringByReplacingOccurrencesOfString:@"." withString:@"_"];
 }
 
-static NSString *userVisibleWebKitBundleVersionFromFullVersion(NSString *fullWebKitVersion)
+String userAgentBundleVersion()
 {
-    // If the version is longer than 3 digits then the leading digits represent the version of the OS. Our user agent
-    // string should not include the leading digits, so strip them off and report the rest as the version. <rdar://problem/4997547>
-    NSRange nonDigitRange = [fullWebKitVersion rangeOfCharacterFromSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]];
-    if (nonDigitRange.location == NSNotFound && fullWebKitVersion.length > 3)
-        return [fullWebKitVersion substringFromIndex:fullWebKitVersion.length - 3];
-    if (nonDigitRange.location != NSNotFound && nonDigitRange.location > 3)
-        return [fullWebKitVersion substringFromIndex:nonDigitRange.location - 3];
-    return fullWebKitVersion;
-}
-
-String userAgentBundleVersionFromFullVersionString(const String& fullWebKitVersion)
-{
-    // We include at most three components of the bundle version in the user agent string.
-    NSString *bundleVersion = userVisibleWebKitBundleVersionFromFullVersion(fullWebKitVersion);
-    NSScanner *scanner = [NSScanner scannerWithString:bundleVersion];
-    NSInteger periodCount = 0;
-    while (true) {
-        if (![scanner scanUpToString:@"." intoString:nullptr] || scanner.isAtEnd)
-            return bundleVersion;
-
-        if (++periodCount == 3)
-            return [bundleVersion substringToIndex:scanner.scanLocation];
-
-        ++scanner.scanLocation;
-    }
-
-    ASSERT_NOT_REACHED();
+    return ASCIILiteral("605.1.15");
 }
 
 } // namespace WebCore

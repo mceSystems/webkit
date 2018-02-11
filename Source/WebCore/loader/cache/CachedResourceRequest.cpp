@@ -33,8 +33,10 @@
 #include "Element.h"
 #include "FrameLoader.h"
 #include "HTTPHeaderValues.h"
+#include "ImageDecoder.h"
 #include "MemoryCache.h"
 #include "SecurityPolicy.h"
+#include "ServiceWorkerRegistrationData.h"
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
@@ -131,7 +133,7 @@ void CachedResourceRequest::upgradeInsecureRequestIfNeeded(Document& document)
 
 void CachedResourceRequest::setDomainForCachePartition(Document& document)
 {
-    m_resourceRequest.setDomainForCachePartition(document.topOrigin().domainForCachePartition());
+    m_resourceRequest.setDomainForCachePartition(document.domainForCachePartition());
 }
 
 void CachedResourceRequest::setDomainForCachePartition(const String& domain)
@@ -145,6 +147,8 @@ static inline String acceptHeaderValueFromType(CachedResource::Type type)
     case CachedResource::Type::MainResource:
         return ASCIILiteral("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
     case CachedResource::Type::ImageResource:
+        if (ImageDecoder::supportsMediaType(ImageDecoder::MediaType::Video))
+            return ASCIILiteral("image/png,image/svg+xml,image/*;q=0.8,video/*;q=0.8,*/*;q=0.5");
         return ASCIILiteral("image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5");
     case CachedResource::Type::CSSStyleSheet:
         return ASCIILiteral("text/css,*/*;q=0.1");
@@ -219,7 +223,13 @@ void CachedResourceRequest::applyBlockedStatus(const ContentExtensions::BlockedS
 
 #endif
 
-void CachedResourceRequest::updateReferrerOriginAndUserAgentHeaders(FrameLoader& frameLoader, ReferrerPolicy defaultPolicy)
+void CachedResourceRequest::updateReferrerPolicy(ReferrerPolicy defaultPolicy)
+{
+    if (m_options.referrerPolicy == ReferrerPolicy::EmptyString)
+        m_options.referrerPolicy = defaultPolicy;
+}
+
+void CachedResourceRequest::updateReferrerOriginAndUserAgentHeaders(FrameLoader& frameLoader)
 {
     // Implementing step 7 to 9 of https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
 
@@ -232,15 +242,7 @@ void CachedResourceRequest::updateReferrerOriginAndUserAgentHeaders(FrameLoader&
         outgoingOrigin = frameLoader.outgoingOrigin();
     }
 
-    switch (m_options.referrerPolicy) {
-    case ReferrerPolicy::EmptyString:
-        outgoingReferrer = SecurityPolicy::generateReferrerHeader(defaultPolicy, m_resourceRequest.url(), outgoingReferrer);
-        break;
-    default:
-        outgoingReferrer = SecurityPolicy::generateReferrerHeader(m_options.referrerPolicy, m_resourceRequest.url(), outgoingReferrer);
-        break;
-    };
-
+    outgoingReferrer = SecurityPolicy::generateReferrerHeader(m_options.referrerPolicy, m_resourceRequest.url(), outgoingReferrer);
     if (outgoingReferrer.isEmpty())
         m_resourceRequest.clearHTTPReferrer();
     else
@@ -274,7 +276,13 @@ void CachedResourceRequest::setDestinationIfNotSet(FetchOptions::Destination des
 }
 
 #if ENABLE(SERVICE_WORKER)
-void CachedResourceRequest::setSelectedServiceWorkerIdentifierIfNeeded(ServiceWorkerIdentifier identifier)
+void CachedResourceRequest::setClientIdentifierIfNeeded(DocumentIdentifier clientIdentifier)
+{
+    if (!m_options.clientIdentifier)
+        m_options.clientIdentifier = clientIdentifier;
+}
+
+void CachedResourceRequest::setSelectedServiceWorkerRegistrationIdentifierIfNeeded(ServiceWorkerRegistrationIdentifier identifier)
 {
     if (isNonSubresourceRequest(m_options.destination))
         return;
@@ -283,10 +291,10 @@ void CachedResourceRequest::setSelectedServiceWorkerIdentifierIfNeeded(ServiceWo
 
     if (m_options.serviceWorkersMode == ServiceWorkersMode::None)
         return;
-    if (m_options.serviceWorkerIdentifier)
+    if (m_options.serviceWorkerRegistrationIdentifier)
         return;
 
-    m_options.serviceWorkerIdentifier = identifier;
+    m_options.serviceWorkerRegistrationIdentifier = identifier;
 }
 
 void CachedResourceRequest::setNavigationServiceWorkerRegistrationData(const std::optional<ServiceWorkerRegistrationData>& data)
@@ -295,7 +303,7 @@ void CachedResourceRequest::setNavigationServiceWorkerRegistrationData(const std
         m_options.serviceWorkersMode = ServiceWorkersMode::None;
         return;
     }
-    m_options.serviceWorkerIdentifier = data->activeWorker->identifier;
+    m_options.serviceWorkerRegistrationIdentifier = data->identifier;
 }
 #endif
 

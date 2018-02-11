@@ -101,10 +101,10 @@ void RenderSVGInline::absoluteQuads(Vector<FloatQuad>& quads, bool* wasFixed) co
         quads.append(localToAbsoluteQuad(FloatRect(textBoundingBox.x() + box->x(), textBoundingBox.y() + box->y(), box->logicalWidth(), box->logicalHeight()), UseTransforms, wasFixed));
 }
 
-void RenderSVGInline::willBeDestroyed()
+void RenderSVGInline::willBeDestroyed(RenderTreeBuilder& builder)
 {
     SVGResourcesCache::clientDestroyed(*this);
-    RenderInline::willBeDestroyed();
+    RenderInline::willBeDestroyed(builder);
 }
 
 void RenderSVGInline::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
@@ -123,27 +123,22 @@ void RenderSVGInline::updateFromStyle()
     setInline(true);
 }
 
-void RenderSVGInline::addChild(RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
+void RenderSVGInline::addChild(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
 {
-    auto& child = *newChild;
-    RenderInline::addChild(WTFMove(newChild), beforeChild);
-    SVGResourcesCache::clientWasAddedToTree(child);
-
-    if (auto* textAncestor = RenderSVGText::locateRenderSVGTextAncestor(*this))
-        textAncestor->subtreeChildWasAdded(&child);
+    builder.insertChildToSVGInline(*this, WTFMove(newChild), beforeChild);
 }
 
-RenderPtr<RenderObject> RenderSVGInline::takeChild(RenderObject& child)
+RenderPtr<RenderObject> RenderSVGInline::takeChild(RenderTreeBuilder& builder, RenderObject& child)
 {
     SVGResourcesCache::clientWillBeRemovedFromTree(child);
 
     auto* textAncestor = RenderSVGText::locateRenderSVGTextAncestor(*this);
     if (!textAncestor)
-        return RenderInline::takeChild(child);
+        return RenderInline::takeChild(builder, child);
 
     Vector<SVGTextLayoutAttributes*, 2> affectedAttributes;
     textAncestor->subtreeChildWillBeRemoved(&child, affectedAttributes);
-    auto takenChild = RenderInline::takeChild(child);
+    auto takenChild = RenderInline::takeChild(builder, child);
     textAncestor->subtreeChildWasRemoved(affectedAttributes);
     return takenChild;
 }

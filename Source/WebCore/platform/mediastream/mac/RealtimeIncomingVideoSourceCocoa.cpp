@@ -33,6 +33,7 @@
 #include "Logging.h"
 #include "MediaSampleAVFObjC.h"
 #include <webrtc/sdk/objc/Framework/Classes/Video/corevideo_frame_buffer.h>
+#include <wtf/cf/TypeCastsCF.h>
 
 #include <pal/cf/CoreMediaSoftLink.h>
 #include "CoreVideoSoftLink.h"
@@ -65,7 +66,7 @@ CVPixelBufferRef RealtimeIncomingVideoSourceCocoa::pixelBufferFromVideoFrame(con
             auto status = CVPixelBufferCreate(kCFAllocatorDefault, frame.width(), frame.height(), kCVPixelFormatType_420YpCbCr8Planar, nullptr, &pixelBuffer);
             ASSERT_UNUSED(status, status == noErr);
 
-            m_blackFrame = pixelBuffer;
+            m_blackFrame = adoptCF(pixelBuffer);
             m_blackFrameWidth = frame.width();
             m_blackFrameHeight = frame.height();
 
@@ -114,17 +115,17 @@ void RealtimeIncomingVideoSourceCocoa::OnFrame(const webrtc::VideoFrame& frame)
 
     CMSampleBufferRef sampleBuffer;
     ostatus = CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, (CVImageBufferRef)pixelBuffer, formatDescription, &timingInfo, &sampleBuffer);
+    CFRelease(formatDescription);
     if (ostatus != noErr) {
         LOG_ERROR("Failed to create the sample buffer: %d", static_cast<int>(ostatus));
         return;
     }
-    CFRelease(formatDescription);
 
     auto sample = adoptCF(sampleBuffer);
 
     CFArrayRef attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true);
     for (CFIndex i = 0; i < CFArrayGetCount(attachmentsArray); ++i) {
-        CFMutableDictionaryRef attachments = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachmentsArray, i);
+        CFMutableDictionaryRef attachments = checked_cf_cast<CFMutableDictionaryRef>(CFArrayGetValueAtIndex(attachmentsArray, i));
         CFDictionarySetValue(attachments, kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
     }
 

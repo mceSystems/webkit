@@ -24,12 +24,14 @@
  */
 
 #include "config.h"
+#include "CoordinatedImageBacking.h"
 
 #if USE(COORDINATED_GRAPHICS)
-#include "CoordinatedImageBacking.h"
 
 #include "CoordinatedGraphicsState.h"
 #include "GraphicsContext.h"
+#include "NicosiaBuffer.h"
+#include "NicosiaPaintingContext.h"
 
 namespace WebCore {
 
@@ -100,18 +102,18 @@ void CoordinatedImageBacking::update()
         }
     }
 
-    m_buffer = CoordinatedBuffer::create(IntSize(m_image->size()), !m_image->currentFrameKnownToBeOpaque() ? CoordinatedBuffer::SupportsAlpha : CoordinatedBuffer::NoFlags);
+    m_buffer = Nicosia::Buffer::create(IntSize(m_image->size()), !m_image->currentFrameKnownToBeOpaque() ? Nicosia::Buffer::SupportsAlpha : Nicosia::Buffer::NoFlags);
     ASSERT(m_buffer);
 
-    IntRect rect(IntPoint::zero(), IntSize(m_image->size()));
-
-    {
-        GraphicsContext& context = m_buffer->context();
-        context.save();
-        context.clip(rect);
-        context.drawImage(*m_image, rect, rect);
-        context.restore();
-    }
+    Nicosia::PaintingContext::paint(*m_buffer,
+        [this](GraphicsContext& context)
+        {
+            IntRect rect(IntPoint::zero(), IntSize(m_image->size()));
+            context.save();
+            context.clip(rect);
+            context.drawImage(*m_image, rect, rect);
+            context.restore();
+        });
 
     m_nativeImagePtr = m_image->nativeImageForCurrentFrame();
 

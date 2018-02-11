@@ -65,7 +65,7 @@ RenderLayerModelObject::~RenderLayerModelObject()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderLayerModelObject::willBeDestroyed()
+void RenderLayerModelObject::willBeDestroyed(RenderTreeBuilder& builder)
 {
     if (isPositioned()) {
         if (style().hasViewportConstrainedPosition())
@@ -77,7 +77,7 @@ void RenderLayerModelObject::willBeDestroyed()
         destroyLayer();
     }
 
-    RenderElement::willBeDestroyed();
+    RenderElement::willBeDestroyed(builder);
     
     clearRepaintLayoutRects();
 }
@@ -238,7 +238,7 @@ void RenderLayerModelObject::styleDidChange(StyleDifference diff, const RenderSt
 bool RenderLayerModelObject::shouldPlaceBlockDirectionScrollbarOnLeft() const
 {
 // RTL Scrollbars require some system support, and this system support does not exist on certain versions of OS X. iOS uses a separate mechanism.
-#if PLATFORM(IOS) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200)
+#if PLATFORM(IOS)
     return false;
 #else
     switch (settings().userInterfaceDirectionPolicy()) {

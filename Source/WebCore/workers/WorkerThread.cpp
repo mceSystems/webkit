@@ -130,25 +130,25 @@ WorkerThread::~WorkerThread()
     workerThreads().remove(this);
 }
 
-bool WorkerThread::start(WTF::Function<void(const String&)>&& evaluateCallback)
+void WorkerThread::start(WTF::Function<void(const String&)>&& evaluateCallback)
 {
     // Mutex protection is necessary to ensure that m_thread is initialized when the thread starts.
     LockHolder lock(m_threadCreationAndWorkerGlobalScopeMutex);
 
     if (m_thread)
-        return true;
+        return;
 
     m_evaluateCallback = WTFMove(evaluateCallback);
 
     m_thread = Thread::create("WebCore: Worker", [this] {
         workerThread();
     });
-
-    return m_thread;
 }
 
 void WorkerThread::workerThread()
 {
+    auto protectedThis = makeRef(*this);
+
     // Propagate the mainThread's fenv to workers.
 #if PLATFORM(IOS)
     FloatingPointEnvironment::singleton().propagateMainThreadEnvironment();
@@ -231,6 +231,9 @@ void WorkerThread::workerThread()
     // Clean up WebCore::ThreadGlobalData before WTF::Thread goes away!
     threadGlobalData().destroy();
 
+    // Send the last WorkerThread Ref to be Deref'ed on the main thread.
+    callOnMainThread([protectedThis = WTFMove(protectedThis)] { });
+
     // The thread object may be already destroyed from notification now, don't try to access "this".
     protector->detach();
 }
@@ -262,7 +265,15 @@ void WorkerThread::stop(WTF::Function<void()>&& stoppedCallback)
     // Mutex protection is necessary to ensure that m_workerGlobalScope isn't changed by
     // WorkerThread::workerThread() while we're accessing it. Note also that stop() can
     // be called before m_workerGlobalScope is fully created.
-    LockHolder lock(m_threadCreationAndWorkerGlobalScopeMutex);
+    auto locker = Locker<Lock>::tryLock(m_threadCreationAndWorkerGlobalScopeMutex);
+    if (!locker) {
+        // The thread is still starting, spin the runloop and try again to avoid deadlocks if the worker thread
+        // needs to interact with the main thread during startup.
+        callOnMainThread([this, stoppedCallback = WTFMove(stoppedCallback)]() mutable {
+            stop(WTFMove(stoppedCallback));
+        });
+        return;
+    }
 
     ASSERT(!m_stoppedCallback);
     m_stoppedCallback = WTFMove(stoppedCallback);

@@ -555,7 +555,7 @@ bool InputType::hasCustomFocusLogic() const
     return true;
 }
 
-bool InputType::isKeyboardFocusable(KeyboardEvent& event) const
+bool InputType::isKeyboardFocusable(KeyboardEvent* event) const
 {
     return !element().isReadOnly() && element().isTextFormControlKeyboardFocusable(event);
 }
@@ -1142,7 +1142,7 @@ Color InputType::valueAsColor() const
     return Color::transparent;
 }
 
-void InputType::selectColor(const Color&)
+void InputType::selectColor(StringView)
 {
 }
 

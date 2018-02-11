@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,7 @@
 #define OSAllocator_h
 
 #include <algorithm>
+#include <wtf/FastCopy.h>
 #include <wtf/VMTags.h>
 
 namespace WTF {
@@ -42,7 +43,8 @@ public:
 
     // These methods are symmetric; reserveUncommitted allocates VM in an uncommitted state,
     // releaseDecommitted should be called on a region of VM allocated by a single reservation,
-    // the memory must all currently be in a decommitted state.
+    // the memory must all currently be in a decommitted state. reserveUncommitted returns to
+    // you memory that is zeroed.
     WTF_EXPORT_PRIVATE static void* reserveUncommitted(size_t, Usage = UnknownUsage, bool writable = true, bool executable = false, bool includesGuardPages = false);
     WTF_EXPORT_PRIVATE static void releaseDecommitted(void*, size_t);
 
@@ -89,7 +91,7 @@ template<typename T>
 inline T* OSAllocator::reallocateCommitted(T* oldBase, size_t oldSize, size_t newSize, Usage usage, bool writable, bool executable)
 {
     void* newBase = reserveAndCommit(newSize, usage, writable, executable);
-    memcpy(newBase, oldBase, std::min(oldSize, newSize));
+    fastCopyBytes(newBase, oldBase, std::min(oldSize, newSize));
     decommitAndRelease(oldBase, oldSize);
     return static_cast<T*>(newBase);
 }

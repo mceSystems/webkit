@@ -158,7 +158,7 @@ WI.loaded = function()
     // Create settings.
     this._showingSplitConsoleSetting = new WI.Setting("showing-split-console", false);
 
-    this._openTabsSetting = new WI.Setting("open-tab-types", ["elements", "network", "resources", "timeline", "debugger", "storage", "console"]);
+    this._openTabsSetting = new WI.Setting("open-tab-types", ["elements", "network", "debugger", "resources", "timeline", "storage", "canvas", "console"]);
     this._selectedTabIndexSetting = new WI.Setting("selected-tab-index", 0);
 
     this.showShadowDOMSetting = new WI.Setting("show-shadow-dom", false);
@@ -270,8 +270,12 @@ WI.contentLoaded = function()
     // Create the user interface elements.
     this.toolbar = new WI.Toolbar(document.getElementById("toolbar"));
 
-    this.tabBar = new WI.TabBar(document.getElementById("tab-bar"));
-    this.tabBar.addEventListener(WI.TabBar.Event.OpenDefaultTab, this._openDefaultTab, this);
+    if (WI.settings.experimentalEnableNewTabBar.value)
+        this.tabBar = new WI.TabBar(document.getElementById("tab-bar"));
+    else {
+        this.tabBar = new WI.LegacyTabBar(document.getElementById("tab-bar"));
+        this.tabBar.addEventListener(WI.TabBar.Event.OpenDefaultTab, this._openDefaultTab, this);
+    }
 
     this._contentElement = document.getElementById("content");
     this._contentElement.setAttribute("role", "main");
@@ -373,7 +377,7 @@ WI.contentLoaded = function()
     this._togglePreviousDockConfigurationKeyboardShortcut = new WI.KeyboardShortcut(WI.KeyboardShortcut.Modifier.CommandOrControl | WI.KeyboardShortcut.Modifier.Shift, "D", this._togglePreviousDockConfiguration.bind(this));
 
     let reloadToolTip;
-    if (WI.debuggableType === WI.DebuggableType.JavaScript)
+    if (WI.sharedApp.debuggableType === WI.DebuggableType.JavaScript)
         reloadToolTip = WI.UIString("Restart (%s)").format(this._reloadPageKeyboardShortcut.displayName);
     else
         reloadToolTip = WI.UIString("Reload page (%s)\nReload page ignoring cache (%s)").format(this._reloadPageKeyboardShortcut.displayName, this._reloadPageFromOriginKeyboardShortcut.displayName);
@@ -428,18 +432,18 @@ WI.contentLoaded = function()
     // These tabs are always available for selecting, modulo isTabAllowed().
     // Other tabs may be engineering-only or toggled at runtime if incomplete.
     let productionTabClasses = [
-        WI.CanvasTabContentView,
-        WI.ConsoleTabContentView,
-        WI.DebuggerTabContentView,
         WI.ElementsTabContentView,
-        WI.LayersTabContentView,
         WI.NetworkTabContentView,
-        WI.NewTabContentView,
+        WI.DebuggerTabContentView,
         WI.ResourcesTabContentView,
-        WI.SearchTabContentView,
-        WI.SettingsTabContentView,
-        WI.StorageTabContentView,
         WI.TimelineTabContentView,
+        WI.StorageTabContentView,
+        WI.CanvasTabContentView,
+        WI.LayersTabContentView,
+        WI.ConsoleTabContentView,
+        WI.SearchTabContentView,
+        WI.NewTabContentView,
+        WI.SettingsTabContentView,
     ];
 
     this._knownTabClassesByType = new Map;
@@ -601,7 +605,8 @@ WI._tryToRestorePendingTabs = function()
 
     this._pendingOpenTabs = stillPendingOpenTabs;
 
-    this.tabBrowser.tabBar.updateNewTabTabBarItemState();
+    if (!WI.settings.experimentalEnableNewTabBar.value)
+        this.tabBrowser.tabBar.updateNewTabTabBarItemState();
 };
 
 WI.showNewTabTab = function(options)
@@ -632,7 +637,7 @@ WI.isNewTabWithTypeAllowed = function(tabType)
 
     if (tabClass === WI.NewTabContentView) {
         let allTabs = Array.from(this.knownTabClasses());
-        let addableTabs = allTabs.filter((tabClass) => !tabClass.isEphemeral());
+        let addableTabs = allTabs.filter((tabClass) => !tabClass.tabInfo().isEphemeral);
         let canMakeNewTab = addableTabs.some((tabClass) => WI.isNewTabWithTypeAllowed(tabClass.Type));
         return canMakeNewTab;
     }
@@ -660,21 +665,6 @@ WI.createNewTabWithType = function(tabType, options = {})
 
     if (shouldShowNewTab)
         this.tabBrowser.showTabForContentView(tabContentView);
-};
-
-WI.registerTabClass = function(tabClass)
-{
-    console.assert(WI.TabContentView.isPrototypeOf(tabClass));
-    if (!WI.TabContentView.isPrototypeOf(tabClass))
-        return;
-
-    if (this._knownTabClassesByType.has(tabClass.Type))
-        return;
-
-    this._knownTabClassesByType.set(tabClass.Type, tabClass);
-
-    this._tryToRestorePendingTabs();
-    this.notifications.dispatchEventToListeners(WI.Notification.TabTypesChanged);
 };
 
 WI.activateExtraDomains = function(domains)
@@ -775,7 +765,7 @@ WI.updateVisibilityState = function(visible)
 
 WI.handlePossibleLinkClick = function(event, frame, options = {})
 {
-    var anchorElement = event.target.enclosingNodeOrSelfWithNodeName("a");
+    let anchorElement = event.target.enclosingNodeOrSelfWithNodeName("a");
     if (!anchorElement || !anchorElement.href)
         return false;
 
@@ -788,7 +778,11 @@ WI.handlePossibleLinkClick = function(event, frame, options = {})
     event.preventDefault();
     event.stopPropagation();
 
-    this.openURL(anchorElement.href, frame, Object.shallowMerge(options, {lineNumber: anchorElement.lineNumber}));
+    this.openURL(anchorElement.href, frame, {
+        ...options,
+        lineNumber: anchorElement.lineNumber,
+        ignoreSearchTab: !WI.isShowingSearchTab(),
+    });
 
     return true;
 };
@@ -810,20 +804,23 @@ WI.openURL = function(url, frame, options = {})
         return;
     }
 
-    var searchChildFrames = false;
+    let searchChildFrames = false;
     if (!frame) {
         frame = this.frameResourceManager.mainFrame;
         searchChildFrames = true;
     }
 
-    console.assert(frame);
-
-    // WI.Frame.resourceForURL does not check the main resource, only sub-resources. So check both.
+    let resource;
     let simplifiedURL = removeURLFragment(url);
-    var resource = frame.url === simplifiedURL ? frame.mainResource : frame.resourceForURL(simplifiedURL, searchChildFrames);
+    if (frame) {
+        // WI.Frame.resourceForURL does not check the main resource, only sub-resources. So check both.
+        resource = frame.url === simplifiedURL ? frame.mainResource : frame.resourceForURL(simplifiedURL, searchChildFrames);
+    } else if (WI.sharedApp.debuggableType === WI.DebuggableType.ServiceWorker)
+        resource = WI.mainTarget.resourceCollection.resourceForURL(removeURLFragment(url));
+
     if (resource) {
         let positionToReveal = new WI.SourceCodePosition(options.lineNumber, 0);
-        this.showSourceCode(resource, Object.shallowMerge(options, {positionToReveal}));
+        this.showSourceCode(resource, {...options, positionToReveal});
         return;
     }
 
@@ -886,10 +883,6 @@ WI.showSplitConsole = function()
     if (this.consoleDrawer.currentContentView === this.consoleContentView)
         return;
 
-    // Be sure to close the view in the tab content browser before showing it in the
-    // split content browser. We can only show a content view in one browser at a time.
-    if (this.consoleContentView.parentContainer)
-        this.consoleContentView.parentContainer.closeContentView(this.consoleContentView);
     this.consoleDrawer.showContentView(this.consoleContentView);
 };
 
@@ -925,6 +918,11 @@ WI.showElementsTab = function()
     if (!tabContentView)
         tabContentView = new WI.ElementsTabContentView;
     this.tabBrowser.showTabForContentView(tabContentView);
+};
+
+WI.isShowingElementsTab = function()
+{
+    return this.tabBrowser.selectedTabContentView instanceof WI.ElementsTabContentView;
 };
 
 WI.showDebuggerTab = function(options)
@@ -982,12 +980,32 @@ WI.isShowingNetworkTab = function()
     return this.tabBrowser.selectedTabContentView instanceof WI.NetworkTabContentView;
 };
 
+WI.isShowingSearchTab = function()
+{
+    return this.tabBrowser.selectedTabContentView instanceof WI.SearchTabContentView;
+};
+
 WI.showTimelineTab = function()
 {
     var tabContentView = this.tabBrowser.bestTabContentViewForClass(WI.TimelineTabContentView);
     if (!tabContentView)
         tabContentView = new WI.TimelineTabContentView;
     this.tabBrowser.showTabForContentView(tabContentView);
+};
+
+WI.showLayersTab = function(options = {})
+{
+    let tabContentView = this.tabBrowser.bestTabContentViewForClass(WI.LayersTabContentView);
+    if (!tabContentView)
+        tabContentView = new WI.LayersTabContentView;
+    if (options.nodeToSelect)
+        tabContentView.selectLayerForNode(options.nodeToSelect);
+    this.tabBrowser.showTabForContentView(tabContentView);
+};
+
+WI.isShowingLayersTab = function()
+{
+    return this.tabBrowser.selectedTabContentView instanceof WI.LayersTabContentView;
 };
 
 WI.indentString = function()
@@ -999,7 +1017,7 @@ WI.indentString = function()
 
 WI.restoreFocusFromElement = function(element)
 {
-    if (element && element.isSelfOrAncestor(this.currentFocusElement))
+    if (element && element.contains(this.currentFocusElement))
         this.previousFocusElement.focus();
 };
 
@@ -1163,33 +1181,37 @@ WI.showSourceCode = function(sourceCode, options = {})
 
 WI.showSourceCodeLocation = function(sourceCodeLocation, options = {})
 {
-    this.showSourceCode(sourceCodeLocation.displaySourceCode, Object.shallowMerge(options, {
+    this.showSourceCode(sourceCodeLocation.displaySourceCode, {
+        ...options,
         positionToReveal: sourceCodeLocation.displayPosition(),
-    }));
+    });
 };
 
 WI.showOriginalUnformattedSourceCodeLocation = function(sourceCodeLocation, options = {})
 {
-    this.showSourceCode(sourceCodeLocation.sourceCode, Object.shallowMerge(options, {
+    this.showSourceCode(sourceCodeLocation.sourceCode, {
+        ...options,
         positionToReveal: sourceCodeLocation.position(),
         forceUnformatted: true,
-    }));
+    });
 };
 
 WI.showOriginalOrFormattedSourceCodeLocation = function(sourceCodeLocation, options = {})
 {
-    this.showSourceCode(sourceCodeLocation.sourceCode, Object.shallowMerge(options, {
+    this.showSourceCode(sourceCodeLocation.sourceCode, {
+        ...options,
         positionToReveal: sourceCodeLocation.formattedPosition(),
-    }));
+    });
 };
 
 WI.showOriginalOrFormattedSourceCodeTextRange = function(sourceCodeTextRange, options = {})
 {
     var textRangeToSelect = sourceCodeTextRange.formattedTextRange;
-    this.showSourceCode(sourceCodeTextRange.sourceCode, Object.shallowMerge(options, {
+    this.showSourceCode(sourceCodeTextRange.sourceCode, {
+        ...options,
         positionToReveal: textRangeToSelect.startPosition(),
         textRangeToSelect,
-    }));
+    });
 };
 
 WI.showResourceRequest = function(resource, options = {})
@@ -1454,7 +1476,7 @@ WI._windowKeyUp = function(event)
 
 WI._mouseDown = function(event)
 {
-    if (this.toolbar.element.isSelfOrAncestor(event.target))
+    if (this.toolbar.element.contains(event.target))
         this._toolbarMouseDown(event);
 };
 
@@ -1825,8 +1847,7 @@ WI._updateReloadToolbarButton = function()
 
 WI._updateDownloadToolbarButton = function()
 {
-    // COMPATIBILITY (iOS 7): Page.archive did not exist yet.
-    if (!window.PageAgent || !PageAgent.archive || this.sharedApp.debuggableType !== WI.DebuggableType.Web) {
+    if (!window.PageAgent || this.sharedApp.debuggableType !== WI.DebuggableType.Web) {
         this._downloadToolbarButton.hidden = true;
         return;
     }
@@ -1872,15 +1893,15 @@ WI._focusedContentBrowser = function()
             return contentBrowserElement.__view;
     }
 
-    if (this.tabBrowser.element.isSelfOrAncestor(this.currentFocusElement) || document.activeElement === document.body) {
+    if (this.tabBrowser.element.contains(this.currentFocusElement) || document.activeElement === document.body) {
         let tabContentView = this.tabBrowser.selectedTabContentView;
         if (tabContentView.contentBrowser)
             return tabContentView.contentBrowser;
         return null;
     }
 
-    if (this.consoleDrawer.element.isSelfOrAncestor(this.currentFocusElement)
-        || (WI.isShowingSplitConsole() && this.quickConsole.element.isSelfOrAncestor(this.currentFocusElement)))
+    if (this.consoleDrawer.element.contains(this.currentFocusElement)
+        || (WI.isShowingSplitConsole() && this.quickConsole.element.contains(this.currentFocusElement)))
         return this.consoleDrawer;
 
     return null;
@@ -1888,15 +1909,15 @@ WI._focusedContentBrowser = function()
 
 WI._focusedContentView = function()
 {
-    if (this.tabBrowser.element.isSelfOrAncestor(this.currentFocusElement) || document.activeElement === document.body) {
+    if (this.tabBrowser.element.contains(this.currentFocusElement) || document.activeElement === document.body) {
         var tabContentView = this.tabBrowser.selectedTabContentView;
         if (tabContentView.contentBrowser)
             return tabContentView.contentBrowser.currentContentView;
         return tabContentView;
     }
 
-    if (this.consoleDrawer.element.isSelfOrAncestor(this.currentFocusElement)
-        || (WI.isShowingSplitConsole() && this.quickConsole.element.isSelfOrAncestor(this.currentFocusElement)))
+    if (this.consoleDrawer.element.contains(this.currentFocusElement)
+        || (WI.isShowingSplitConsole() && this.quickConsole.element.contains(this.currentFocusElement)))
         return this.consoleDrawer.currentContentView;
 
     return null;
@@ -2247,9 +2268,33 @@ WI.createMessageTextView = function(message, isError)
     if (isError)
         messageElement.classList.add("error");
 
-    messageElement.textContent = message;
+    let textElement = messageElement.appendChild(document.createElement("div"));
+    textElement.className = "message";
+    textElement.textContent = message;
 
     return messageElement;
+};
+
+WI.createNavigationItemHelp = function(formatString, navigationItem)
+{
+    console.assert(typeof formatString === "string");
+    console.assert(navigationItem instanceof WI.NavigationItem);
+
+    function append(a, b) {
+        a.append(b);
+        return a;
+    }
+
+    let containerElement = document.createElement("div");
+    containerElement.className = "navigation-item-help";
+    containerElement.__navigationItem = navigationItem;
+
+    let wrapperElement = document.createElement("div");
+    wrapperElement.className = "navigation-bar";
+    wrapperElement.appendChild(navigationItem.element);
+
+    String.format(formatString, [wrapperElement], String.standardFormatters, containerElement, append);
+    return containerElement;
 };
 
 WI.createGoToArrowButton = function()
@@ -2298,9 +2343,14 @@ WI.linkifyLocation = function(url, sourceCodePosition, options = {})
     }
 
     let sourceCodeLocation = sourceCode.createSourceCodeLocation(sourceCodePosition.lineNumber, sourceCodePosition.columnNumber);
-    let linkElement = WI.createSourceCodeLocationLink(sourceCodeLocation, Object.shallowMerge(options, {dontFloat: true}));
+    let linkElement = WI.createSourceCodeLocationLink(sourceCodeLocation, {
+        ...options,
+        dontFloat: true,
+    });
+
     if (options.className)
         linkElement.classList.add(options.className);
+
     return linkElement;
 };
 
@@ -2336,20 +2386,13 @@ WI.sourceCodeForURL = function(url)
     return sourceCode || null;
 };
 
-WI.linkifyURLAsNode = function(url, linkText, classes)
+WI.linkifyURLAsNode = function(url, linkText, className)
 {
-    if (!linkText)
-        linkText = url;
-
-    classes = classes ? classes + " " : "";
-
-    var a = document.createElement("a");
+    let a = document.createElement("a");
     a.href = url;
-    a.className = classes;
-
-    a.textContent = linkText;
+    a.className = className || "";
+    a.textContent = linkText || url;
     a.style.maxWidth = "100%";
-
     return a;
 };
 
@@ -2570,8 +2613,7 @@ WI.archiveMainFrame = function()
 
 WI.canArchiveMainFrame = function()
 {
-    // COMPATIBILITY (iOS 7): Page.archive did not exist yet.
-    if (!PageAgent.archive || this.sharedApp.debuggableType !== WI.DebuggableType.Web)
+    if (this.sharedApp.debuggableType !== WI.DebuggableType.Web)
         return false;
 
     if (!WI.frameResourceManager.mainFrame || !WI.frameResourceManager.mainFrame.mainResource)

@@ -35,6 +35,7 @@
 #include "DFGPureValue.h"
 #include "DOMJITCallDOMGetterSnippet.h"
 #include "DOMJITSignature.h"
+#include "JSFixedArray.h"
 
 namespace JSC { namespace DFG {
 
@@ -416,6 +417,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(PureValue(CheckNotEmpty, AdjacencyList(AdjacencyList::Fixed, node->child1())));
         return;
 
+    case AssertNotEmpty:
+        write(SideState);
+        return;
+
     case CheckStringIdent:
         def(PureValue(CheckStringIdent, AdjacencyList(AdjacencyList::Fixed, node->child1()), node->uidOperand()));
         return;
@@ -522,6 +527,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
 
     case PhantomSpread:
     case PhantomNewArrayWithSpread:
+    case PhantomNewArrayBuffer:
     case PhantomCreateRest:
         // Even though it's phantom, it still has the property that one can't be replaced with another.
         read(HeapObjectCount);
@@ -560,6 +566,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(JSCell_indexingType);
         read(JSCell_structureID);
         read(JSObject_butterfly);
+        read(JSObject_butterflyMask);
         read(Butterfly_publicLength);
         read(IndexedDoubleProperties);
         read(IndexedInt32Properties);
@@ -575,6 +582,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(JSCell_indexingType);
         read(JSCell_structureID);
         read(JSObject_butterfly);
+        read(JSObject_butterflyMask);
         read(Butterfly_publicLength);
         switch (node->arrayMode().type()) {
         case Array::Double:
@@ -696,6 +704,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case GetArgumentCountIncludingThis:
         read(AbstractHeap(Stack, CallFrameSlot::argumentCount));
         def(HeapLocation(StackPayloadLoc, AbstractHeap(Stack, CallFrameSlot::argumentCount)), LazyNode(node));
+        return;
+
+    case SetArgumentCountIncludingThis:
+        write(AbstractHeap(Stack, CallFrameSlot::argumentCount));
         return;
 
     case GetRestLength:
@@ -1044,11 +1056,6 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(HeapLocation(ButterflyLoc, JSObject_butterfly, node->child1()), LazyNode(node));
         return;
 
-    case GetButterflyWithoutCaging:
-        read(JSObject_butterfly);
-        def(HeapLocation(ButterflyWithoutCagingLoc, JSObject_butterfly, node->child1()), LazyNode(node));
-        return;
-
     case CheckSubClass:
         def(PureValue(node, node->classInfo()));
         return;
@@ -1113,6 +1120,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         write(JSCell_structureID);
         write(JSCell_indexingType);
         write(JSObject_butterfly);
+        write(JSObject_butterflyMask);
         write(Watchpoint_fire);
         return;
         
@@ -1164,6 +1172,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case MultiGetByOffset: {
         read(JSCell_structureID);
         read(JSObject_butterfly);
+        read(JSObject_butterflyMask);
         AbstractHeap heap(NamedProperties, node->multiGetByOffsetData().identifierNumber);
         read(heap);
         // FIXME: We cannot def() for MultiGetByOffset because CSE is not smart enough to decay it
@@ -1316,18 +1325,13 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     }
 
     case Spread: {
-        if (node->child1().useKind() == ArrayUse) {
-            // FIXME: We can probably CSE these together, but we need to construct the right rules
-            // to prove that nobody writes to child1() in between two Spreads: https://bugs.webkit.org/show_bug.cgi?id=164531
-            read(HeapObjectCount); 
-            read(JSCell_indexingType);
-            read(JSObject_butterfly);
-            read(Butterfly_publicLength);
-            read(IndexedDoubleProperties);
-            read(IndexedInt32Properties);
-            read(IndexedContiguousProperties);
-            read(IndexedArrayStorageProperties);
+        if (node->child1()->op() == PhantomNewArrayBuffer) {
+            read(MiscFields);
+            return;
+        }
 
+        if (node->child1()->op() == PhantomCreateRest) {
+            read(Stack);
             write(HeapObjectCount);
             return;
         }
@@ -1394,7 +1398,8 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         read(HeapObjectCount);
         write(HeapObjectCount);
 
-        unsigned numElements = node->numConstants();
+        JSFixedArray* array = node->castOperand<JSFixedArray*>();
+        unsigned numElements = array->length();
         def(HeapLocation(ArrayLengthLoc, Butterfly_publicLength, node),
             LazyNode(graph.freeze(jsNumber(numElements))));
 
@@ -1422,11 +1427,10 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             return;
         }
 
-        JSValue* data = graph.m_codeBlock->constantBuffer(node->startConstant());
         if (numElements < graph.m_uint32ValuesInUse.size()) {
             for (unsigned index = 0; index < numElements; ++index) {
                 def(HeapLocation(indexedPropertyLoc, heap, node, LazyNode(graph.freeze(jsNumber(index)))),
-                    LazyNode(graph.freeze(data[index]), op));
+                    LazyNode(graph.freeze(array->get(index)), op));
             }
         } else {
             Vector<uint32_t> possibleIndices;
@@ -1437,7 +1441,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             }
             for (uint32_t index : possibleIndices) {
                 def(HeapLocation(indexedPropertyLoc, heap, node, LazyNode(graph.freeze(jsNumber(index)))),
-                    LazyNode(graph.freeze(data[index]), op));
+                    LazyNode(graph.freeze(array->get(index)), op));
             }
         }
         return;
@@ -1467,6 +1471,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case PhantomNewAsyncGeneratorFunction:
     case PhantomCreateActivation:
     case MaterializeCreateActivation:
+    case PhantomNewRegexp:
         read(HeapObjectCount);
         write(HeapObjectCount);
         return;
@@ -1483,6 +1488,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
 
     case RegExpExec:
     case RegExpTest:
+    case RegExpMatchFast:
         if (node->child2().useKind() == RegExpObjectUse
             && node->child3().useKind() == StringUse) {
             read(RegExpState);
@@ -1493,6 +1499,11 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         }
         read(World);
         write(Heap);
+        return;
+
+    case RegExpExecNonGlobalOrSticky:
+        read(RegExpState);
+        write(RegExpState);
         return;
 
     case StringReplace:
@@ -1534,12 +1545,19 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             write(HeapObjectCount);
             return;
         }
-        if (!node->isBinaryUseKind(UntypedUse)) {
+
+        if (node->op() == CompareEq && node->isBinaryUseKind(ObjectUse)) {
             def(PureValue(node));
             return;
         }
-        read(World);
-        write(Heap);
+        if (node->child1().useKind() == UntypedUse || node->child1().useKind() == ObjectUse
+            || node->child2().useKind() == UntypedUse || node->child2().useKind() == ObjectUse) {
+            read(World);
+            write(Heap);
+            return;
+        }
+
+        def(PureValue(node));
         return;
 
     case ToNumber: {
@@ -1639,24 +1657,48 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case WeakMapGet: {
         Edge& mapEdge = node->child1();
         Edge& keyEdge = node->child2();
-        read(JSWeakMapFields);
-        def(HeapLocation(WeakMapGetLoc, JSWeakMapFields, mapEdge, keyEdge), LazyNode(node));
+        AbstractHeapKind heap = (mapEdge.useKind() == WeakMapObjectUse) ? JSWeakMapFields : JSWeakSetFields;
+        read(heap);
+        def(HeapLocation(WeakMapGetLoc, heap, mapEdge, keyEdge), LazyNode(node));
         return;
     }
 
     case SetAdd: {
-        // FIXME: Define defs for them to participate in CSE.
-        // https://bugs.webkit.org/show_bug.cgi?id=179911
+        Edge& mapEdge = node->child1();
+        Edge& keyEdge = node->child2();
         write(JSSetFields);
+        def(HeapLocation(MapBucketLoc, JSSetFields, mapEdge, keyEdge), LazyNode(node));
         return;
     }
 
     case MapSet: {
-        // FIXME: Define defs for them to participate in CSE.
-        // https://bugs.webkit.org/show_bug.cgi?id=179911
+        Edge& mapEdge = graph.varArgChild(node, 0);
+        Edge& keyEdge = graph.varArgChild(node, 1);
         write(JSMapFields);
+        def(HeapLocation(MapBucketLoc, JSMapFields, mapEdge, keyEdge), LazyNode(node));
         return;
     }
+
+    case WeakSetAdd: {
+        Edge& mapEdge = node->child1();
+        Edge& keyEdge = node->child2();
+        write(JSWeakSetFields);
+        def(HeapLocation(WeakMapGetLoc, JSWeakSetFields, mapEdge, keyEdge), LazyNode(keyEdge.node()));
+        return;
+    }
+
+    case WeakMapSet: {
+        Edge& mapEdge = graph.varArgChild(node, 0);
+        Edge& keyEdge = graph.varArgChild(node, 1);
+        Edge& valueEdge = graph.varArgChild(node, 2);
+        write(JSWeakMapFields);
+        def(HeapLocation(WeakMapGetLoc, JSWeakMapFields, mapEdge, keyEdge), LazyNode(valueEdge.node()));
+        return;
+    }
+
+    case ExtractValueFromWeakMapGet:
+        def(PureValue(node));
+        return;
 
     case StringSlice:
         def(PureValue(node));

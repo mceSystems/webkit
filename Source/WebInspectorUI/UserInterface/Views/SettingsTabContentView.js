@@ -44,12 +44,8 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         return {
             image: "Images/Gear.svg",
             title: WI.UIString("Settings"),
+            isEphemeral: true,
         };
-    }
-
-    static isEphemeral()
-    {
-        return true;
     }
 
     static shouldSaveTab()
@@ -202,10 +198,6 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
 
         generalSettingsView.addSeparator();
 
-        generalSettingsView.addSetting(WI.UIString("Console:"), WI.settings.clearLogOnNavigate, WI.UIString("Clear when page loads"));
-
-        generalSettingsView.addSeparator();
-
         generalSettingsView.addSetting(WI.UIString("Debugger:"), WI.settings.showScopeChainOnPause, WI.UIString("Show Scope Chain on pause"));
 
         generalSettingsView.addSeparator();
@@ -221,11 +213,8 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         if (WI.LogManager.supportsLogChannels()) {
             const logLevels = [
                 [WI.LoggingChannel.Level.Off, WI.UIString("Off")],
-                [WI.LoggingChannel.Level.Log, WI.UIString("Log")],
-                [WI.LoggingChannel.Level.Error, WI.UIString("Error")],
-                [WI.LoggingChannel.Level.Warning, WI.UIString("Warning")],
-                [WI.LoggingChannel.Level.Info, WI.UIString("Info")],
-                [WI.LoggingChannel.Level.Debug, WI.UIString("Debug")],
+                [WI.LoggingChannel.Level.Basic, WI.UIString("Basic")],
+                [WI.LoggingChannel.Level.Verbose, WI.UIString("Verbose")],
             ];
             const editorLabels = {
                 media: WI.UIString("Media Logging:"),
@@ -251,14 +240,21 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         let experimentalSettingsView = new WI.SettingsView("experimental", WI.UIString("Experimental"));
 
         if (window.CSSAgent) {
-            experimentalSettingsView.addSetting(WI.UIString("Styles Panel:"), WI.settings.experimentalLegacyStyleEditor, WI.UIString("Legacy Style Editor"));
-            experimentalSettingsView.addSeparator();
+            let stylesGroup = experimentalSettingsView.addGroup(WI.UIString("Styles Sidebar:"));
+            stylesGroup.addSetting(WI.settings.experimentalLegacyStyleEditor, WI.UIString("Legacy Style Editor"));
+            stylesGroup.addSetting(WI.settings.experimentalLegacyVisualSidebar, WI.UIString("Legacy Visual Styles Panel"));
         }
 
         if (window.LayerTreeAgent) {
             experimentalSettingsView.addSetting(WI.UIString("Layers:"), WI.settings.experimentalEnableLayersTab, WI.UIString("Enable Layers Tab"));
             experimentalSettingsView.addSeparator();
         }
+
+        experimentalSettingsView.addSetting(WI.UIString("Sources:"), WI.settings.experimentalEnableSourcesTab, WI.UIString("Enable Sources Tab"));
+        experimentalSettingsView.addSeparator();
+
+        experimentalSettingsView.addSetting(WI.UIString("User Interface:"), WI.settings.experimentalEnableNewTabBar, WI.UIString("Enable New Tab Bar"));
+        experimentalSettingsView.addSeparator();
 
         let reloadInspectorButton = document.createElement("button");
         reloadInspectorButton.textContent = WI.UIString("Reload Web Inspector");
@@ -275,7 +271,10 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         }
 
         listenForChange(WI.settings.experimentalLegacyStyleEditor);
+        listenForChange(WI.settings.experimentalLegacyVisualSidebar);
         listenForChange(WI.settings.experimentalEnableLayersTab);
+        listenForChange(WI.settings.experimentalEnableSourcesTab);
+        listenForChange(WI.settings.experimentalEnableNewTabBar);
 
         this.addSettingsView(experimentalSettingsView);
     }

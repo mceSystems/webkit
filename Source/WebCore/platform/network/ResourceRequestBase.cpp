@@ -29,20 +29,17 @@
 #include "HTTPHeaderNames.h"
 #include "PublicSuffix.h"
 #include "ResourceRequest.h"
+#include "SecurityPolicy.h"
 #include <wtf/PointerComparison.h>
 
 namespace WebCore {
 
-#if !USE(SOUP) && (!PLATFORM(MAC) || USE(CFURLCONNECTION))
+#if PLATFORM(IOS) || USE(CFURLCONNECTION)
 double ResourceRequestBase::s_defaultTimeoutInterval = INT_MAX;
 #else
 // Will use NSURLRequest default timeout unless set to a non-zero value with setDefaultTimeoutInterval().
 // For libsoup the timeout enabled with integer milliseconds. We set 0 as the default value to avoid integer overflow.
 double ResourceRequestBase::s_defaultTimeoutInterval = 0;
-#endif
-
-#if PLATFORM(IOS)
-bool ResourceRequestBase::s_defaultAllowCookies = true;
 #endif
 
 inline const ResourceRequest& ResourceRequestBase::asResourceRequest() const
@@ -118,6 +115,42 @@ void ResourceRequestBase::setURL(const URL& url)
     m_url = url; 
     
     m_platformRequestUpdated = false;
+}
+
+static bool shouldUseGet(const ResourceRequestBase& request, const ResourceResponse& redirectResponse)
+{
+    if (redirectResponse.httpStatusCode() == 301 || redirectResponse.httpStatusCode() == 302)
+        return equalLettersIgnoringASCIICase(request.httpMethod(), "post");
+    return redirectResponse.httpStatusCode() == 303;
+}
+
+ResourceRequest ResourceRequestBase::redirectedRequest(const ResourceResponse& redirectResponse, bool shouldClearReferrerOnHTTPSToHTTPRedirect) const
+{
+    ASSERT(redirectResponse.isRedirection());
+    // This method is based on https://fetch.spec.whatwg.org/#http-redirect-fetch.
+    // It also implements additional processing like done by CFNetwork layer.
+
+    auto request = asResourceRequest();
+    auto location = redirectResponse.httpHeaderField(HTTPHeaderName::Location);
+
+    request.setURL(location.isEmpty() ? URL { } : URL { redirectResponse.url(), location });
+
+    if (shouldUseGet(*this, redirectResponse)) {
+        request.setHTTPMethod(ASCIILiteral("GET"));
+        request.setHTTPBody(nullptr);
+        request.clearHTTPContentType();
+        request.m_httpHeaderFields.remove(HTTPHeaderName::ContentLength);
+    }
+
+    if (shouldClearReferrerOnHTTPSToHTTPRedirect && !request.url().protocolIs("https") && WebCore::protocolIs(request.httpReferrer(), "https"))
+        request.clearHTTPReferrer();
+
+    if (!protocolHostAndPortAreEqual(request.url(), redirectResponse.url()))
+        request.clearHTTPOrigin();
+    request.clearHTTPAuthorization();
+    request.m_httpHeaderFields.remove(HTTPHeaderName::ProxyAuthorization);
+
+    return request;
 }
 
 void ResourceRequestBase::removeCredentials()
@@ -292,6 +325,14 @@ void ResourceRequestBase::setHTTPReferrer(const String& httpReferrer)
     setHTTPHeaderField(HTTPHeaderName::Referer, httpReferrer);
 }
 
+void ResourceRequestBase::setExistingHTTPReferrerToOriginString()
+{
+    if (!hasHTTPReferrer())
+        return;
+
+    setHTTPHeaderField(HTTPHeaderName::Referer, SecurityPolicy::referrerToOriginString(httpReferrer()));
+}
+    
 void ResourceRequestBase::clearHTTPReferrer()
 {
     updateResourceRequest(); 
@@ -520,7 +561,7 @@ bool equalIgnoringHeaderFields(const ResourceRequestBase& a, const ResourceReque
     return arePointingToEqualData(a.httpBody(), b.httpBody());
 }
 
-bool ResourceRequestBase::compare(const ResourceRequest& a, const ResourceRequest& b)
+bool ResourceRequestBase::equal(const ResourceRequest& a, const ResourceRequest& b)
 {
     if (!equalIgnoringHeaderFields(a, b))
         return false;
@@ -605,18 +646,6 @@ unsigned initializeMaximumHTTPConnectionCountPerHost()
     // This is used by the loader to control the number of issued parallel load requests. 
     // Four seems to be a common default in HTTP frameworks.
     return 4;
-}
-#endif
-
-#if PLATFORM(IOS)
-void ResourceRequestBase::setDefaultAllowCookies(bool allowCookies)
-{
-    s_defaultAllowCookies = allowCookies;
-}
-
-bool ResourceRequestBase::defaultAllowCookies()
-{
-    return s_defaultAllowCookies;
 }
 #endif
 

@@ -84,22 +84,17 @@ JSObject* constructFunctionSkippingEvalEnabledCheck(
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     const char* prefix = nullptr;
-    Structure* structure = nullptr;
     switch (functionConstructionMode) {
     case FunctionConstructionMode::Function:
-        structure = globalObject->functionStructure();
         prefix = "function ";
         break;
     case FunctionConstructionMode::Generator:
-        structure = globalObject->generatorFunctionStructure();
         prefix = "function *";
         break;
     case FunctionConstructionMode::Async:
-        structure = globalObject->asyncFunctionStructure();
         prefix = "async function ";
         break;
     case FunctionConstructionMode::AsyncGenerator:
-        structure = globalObject->asyncGeneratorFunctionStructure();
         prefix = "{async function*";
         break;
     }
@@ -175,6 +170,22 @@ JSObject* constructFunctionSkippingEvalEnabledCheck(
     if (!function) {
         ASSERT(exception);
         return throwException(exec, scope, exception);
+    }
+
+    Structure* structure = nullptr;
+    switch (functionConstructionMode) {
+    case FunctionConstructionMode::Function:
+        structure = JSFunction::selectStructureForNewFuncExp(globalObject, function);
+        break;
+    case FunctionConstructionMode::Generator:
+        structure = globalObject->generatorFunctionStructure();
+        break;
+    case FunctionConstructionMode::Async:
+        structure = globalObject->asyncFunctionStructure();
+        break;
+    case FunctionConstructionMode::AsyncGenerator:
+        structure = globalObject->asyncGeneratorFunctionStructure();
+        break;
     }
 
     Structure* subclassStructure = InternalFunction::createSubclassStructure(exec, newTarget, structure);

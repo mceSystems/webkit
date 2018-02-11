@@ -35,6 +35,7 @@
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/InspectorController.h>
 #include <WebCore/MainFrame.h>
+#include <WebCore/NicosiaPaintingEngine.h>
 #include <WebCore/Page.h>
 #include <wtf/MemoryPressureHandler.h>
 #include <wtf/SetForScope.h>
@@ -50,6 +51,7 @@ namespace WebKit {
 CompositingCoordinator::CompositingCoordinator(Page* page, CompositingCoordinator::Client& client)
     : m_page(page)
     , m_client(client)
+    , m_paintingEngine(Nicosia::PaintingEngine::create())
     , m_releaseInactiveAtlasesTimer(RunLoop::main(), this, &CompositingCoordinator::releaseInactiveAtlasesTimerFired)
 {
 #if USE(GLIB_EVENT_LOOP)
@@ -224,7 +226,7 @@ void CompositingCoordinator::createImageBacking(CoordinatedImageBackingID imageI
     m_state.imagesToCreate.append(imageID);
 }
 
-void CompositingCoordinator::updateImageBacking(CoordinatedImageBackingID imageID, RefPtr<CoordinatedBuffer>&& buffer)
+void CompositingCoordinator::updateImageBacking(CoordinatedImageBackingID imageID, RefPtr<Nicosia::Buffer>&& buffer)
 {
     m_shouldSyncFrame = true;
     m_state.imagesToUpdate.append(std::make_pair(imageID, WTFMove(buffer)));
@@ -284,7 +286,7 @@ std::unique_ptr<GraphicsLayer> CompositingCoordinator::createGraphicsLayer(Graph
     return std::unique_ptr<GraphicsLayer>(layer);
 }
 
-void CompositingCoordinator::createUpdateAtlas(UpdateAtlas::ID id, Ref<CoordinatedBuffer>&& buffer)
+void CompositingCoordinator::createUpdateAtlas(UpdateAtlas::ID id, Ref<Nicosia::Buffer>&& buffer)
 {
     m_state.updateAtlasesToCreate.append(std::make_pair(id, WTFMove(buffer)));
 }
@@ -376,10 +378,10 @@ void CompositingCoordinator::purgeBackingStores()
     m_updateAtlases.clear();
 }
 
-Ref<CoordinatedBuffer> CompositingCoordinator::getCoordinatedBuffer(const IntSize& size, CoordinatedBuffer::Flags flags, uint32_t& atlasID, IntRect& allocatedRect)
+Ref<Nicosia::Buffer> CompositingCoordinator::getCoordinatedBuffer(const IntSize& size, Nicosia::Buffer::Flags flags, uint32_t& atlasID, IntRect& allocatedRect)
 {
     for (auto& atlas : m_updateAtlases) {
-        if (atlas->supportsAlpha() == (flags & CoordinatedBuffer::SupportsAlpha)) {
+        if (atlas->supportsAlpha() == (flags & Nicosia::Buffer::SupportsAlpha)) {
             if (auto buffer = atlas->getCoordinatedBuffer(size, atlasID, allocatedRect))
                 return *buffer;
         }
@@ -395,6 +397,11 @@ Ref<CoordinatedBuffer> CompositingCoordinator::getCoordinatedBuffer(const IntSiz
     auto buffer = m_updateAtlases.last()->getCoordinatedBuffer(size, atlasID, allocatedRect);
     RELEASE_ASSERT(buffer);
     return *buffer;
+}
+
+Nicosia::PaintingEngine& CompositingCoordinator::paintingEngine()
+{
+    return *m_paintingEngine;
 }
 
 const Seconds releaseInactiveAtlasesTimerInterval { 500_ms };

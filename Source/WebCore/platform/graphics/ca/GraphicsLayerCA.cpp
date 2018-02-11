@@ -270,12 +270,27 @@ static String animationIdentifier(const String& animationName, AnimatedPropertyI
 
 static bool animationHasStepsTimingFunction(const KeyframeValueList& valueList, const Animation* anim)
 {
-    if (anim->timingFunction()->isStepsTimingFunction())
+    if (is<StepsTimingFunction>(anim->timingFunction()))
         return true;
     
     for (unsigned i = 0; i < valueList.size(); ++i) {
         if (const TimingFunction* timingFunction = valueList.at(i).timingFunction()) {
-            if (timingFunction->isStepsTimingFunction())
+            if (is<StepsTimingFunction>(timingFunction))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+static bool animationHasFramesTimingFunction(const KeyframeValueList& valueList, const Animation* anim)
+{
+    if (is<FramesTimingFunction>(anim->timingFunction()))
+        return true;
+    
+    for (unsigned i = 0; i < valueList.size(); ++i) {
+        if (const TimingFunction* timingFunction = valueList.at(i).timingFunction()) {
+            if (is<FramesTimingFunction>(timingFunction))
                 return true;
         }
     }
@@ -977,6 +992,9 @@ bool GraphicsLayerCA::animationCanBeAccelerated(const KeyframeValueList& valueLi
     if (animationHasStepsTimingFunction(valueList, anim))
         return false;
 
+    if (animationHasFramesTimingFunction(valueList, anim))
+        return false;
+
 #if ENABLE(CSS_ANIMATIONS_LEVEL_2)
     // If there is a trigger that depends on the scroll position, we cannot accelerate the animation.
     if (is<ScrollAnimationTrigger>(anim->trigger())) {
@@ -1462,6 +1480,9 @@ void GraphicsLayerCA::recursiveCommitChanges(const CommitState& commitState, con
     }
     setVisibleAndCoverageRects(rects, m_isViewportConstrained || commitState.ancestorIsViewportConstrained);
 
+    if (commitState.ancestorStartedOrEndedTransformAnimation)
+        addUncommittedChanges(CoverageRectChanged);
+
 #ifdef VISIBLE_TILE_WASH
     // Use having a transform as a key to making the tile wash layer. If every layer gets a wash,
     // they start to obscure useful information.
@@ -1501,9 +1522,18 @@ void GraphicsLayerCA::recursiveCommitChanges(const CommitState& commitState, con
     if (affectedByPageScale)
         baseRelativePosition += m_position;
 
+    bool wasRunningTransformAnimation = isRunningTransformAnimation();
+
     commitLayerChangesBeforeSublayers(childCommitState, pageScaleFactor, baseRelativePosition);
 
-    if (isRunningTransformAnimation()) {
+    bool nowRunningTransformAnimation = wasRunningTransformAnimation;
+    if (m_uncommittedChanges & AnimationChanged)
+        nowRunningTransformAnimation = isRunningTransformAnimation();
+
+    if (wasRunningTransformAnimation != nowRunningTransformAnimation)
+        childCommitState.ancestorStartedOrEndedTransformAnimation = true;
+
+    if (nowRunningTransformAnimation) {
         childCommitState.ancestorHasTransformAnimation = true;
         if (m_intersectsCoverageRect)
             childCommitState.ancestorWithTransformAnimationIntersectsCoverageRect = true;
@@ -1781,7 +1811,7 @@ void GraphicsLayerCA::commitLayerChangesBeforeSublayers(CommitState& commitState
         updateSupportsSubpixelAntialiasedText();
 
     if (m_uncommittedChanges & DebugIndicatorsChanged)
-        updateDebugBorder();
+        updateDebugIndicators();
 
     if (m_uncommittedChanges & CustomAppearanceChanged)
         updateCustomAppearance();
@@ -2339,7 +2369,7 @@ static Color cloneLayerDebugBorderColor(bool showingBorders)
     return showingBorders ? Color(255, 122, 251) : Color();
 }
 
-void GraphicsLayerCA::updateDebugBorder()
+void GraphicsLayerCA::updateDebugIndicators()
 {
     Color borderColor;
     float width = 0;
@@ -2347,6 +2377,9 @@ void GraphicsLayerCA::updateDebugBorder()
     bool showDebugBorders = isShowingDebugBorder();
     if (showDebugBorders)
         getDebugBorderInfo(borderColor, width);
+
+    // Paint repaint counter.
+    m_layer->setNeedsDisplay();
 
     setLayerDebugBorder(*m_layer, borderColor, width);
     if (m_contentsLayer)
@@ -2976,34 +3009,15 @@ bool GraphicsLayerCA::createTransformAnimationsFromKeyframes(const KeyframeValue
     bool isMatrixAnimation = listIndex < 0;
     int numAnimations = isMatrixAnimation ? 1 : operations->size();
 
-#if PLATFORM(IOS)
-    bool reverseAnimationList = false;
-#else
-    bool reverseAnimationList = true;
 #if !PLATFORM(WIN)
-        // Old versions of Core Animation apply animations in reverse order (<rdar://problem/7095638>) so we need to flip the list.
-        // to be non-additive. For binary compatibility, the current version of Core Animation preserves this behavior for applications linked
-        // on or before Snow Leopard.
-        // FIXME: This fix has not been added to QuartzCore on Windows yet (<rdar://problem/9112233>) so we expect the
-        // reversed animation behavior
-        static bool executableWasLinkedOnOrBeforeSnowLeopard = !_CFExecutableLinkedOnOrAfter(CFSystemVersionLion);
-        if (!executableWasLinkedOnOrBeforeSnowLeopard)
-            reverseAnimationList = false;
+    for (int animationIndex = 0; animationIndex < numAnimations; ++animationIndex) {
+#else
+    // QuartzCore on Windows expects animation lists to be applied in reverse order (<rdar://problem/9112233>).
+    for (int animationIndex = numAnimations - 1; animationIndex >= 0; --animationIndex) {
 #endif
-#endif // PLATFORM(IOS)
-    if (reverseAnimationList) {
-        for (int animationIndex = numAnimations - 1; animationIndex >= 0; --animationIndex) {
-            if (!appendToUncommittedAnimations(valueList, operations, animation, animationName, boxSize, animationIndex, timeOffset, isMatrixAnimation)) {
-                validMatrices = false;
-                break;
-            }
-        }
-    } else {
-        for (int animationIndex = 0; animationIndex < numAnimations; ++animationIndex) {
-            if (!appendToUncommittedAnimations(valueList, operations, animation, animationName, boxSize, animationIndex, timeOffset, isMatrixAnimation)) {
-                validMatrices = false;
-                break;
-            }
+        if (!appendToUncommittedAnimations(valueList, operations, animation, animationName, boxSize, animationIndex, timeOffset, isMatrixAnimation)) {
+            validMatrices = false;
+            break;
         }
     }
 

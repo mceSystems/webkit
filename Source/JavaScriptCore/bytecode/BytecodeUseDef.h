@@ -38,7 +38,6 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     switch (opcodeID) {
     // No uses.
     case op_new_regexp:
-    case op_new_array_buffer:
     case op_debug:
     case op_jneq_ptr:
     case op_loop_hint:
@@ -58,7 +57,6 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_super_sampler_begin:
     case op_super_sampler_end:
         return;
-    case op_assert:
     case op_get_scope:
     case op_to_this:
     case op_check_tdz:
@@ -213,7 +211,8 @@ void computeUsesForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_get_parent_scope:
     case op_create_scoped_arguments:
     case op_create_rest:
-    case op_get_from_arguments: {
+    case op_get_from_arguments:
+    case op_new_array_buffer: {
         ASSERT(opcodeLengths[opcodeID] > 2);
         functor(codeBlock, instruction, opcodeID, instruction[2].u.operand);
         return;
@@ -333,7 +332,6 @@ void computeDefsForBytecodeOffset(Block* codeBlock, OpcodeID opcodeID, Instructi
     case op_end:
     case op_throw:
     case op_throw_static_error:
-    case op_assert:
     case op_debug:
     case op_ret:
     case op_jmp:

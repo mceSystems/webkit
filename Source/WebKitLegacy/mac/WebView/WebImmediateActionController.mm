@@ -46,6 +46,7 @@
 #import <WebCore/FrameView.h>
 #import <WebCore/GeometryUtilities.h>
 #import <WebCore/HTMLConverter.h>
+#import <WebCore/NodeRenderStyle.h>
 #import <WebCore/Page.h>
 #import <WebCore/RenderElement.h>
 #import <WebCore/RenderObject.h>
@@ -511,8 +512,8 @@ static IntRect elementBoundingBoxInWindowCoordinatesFromNode(Node* node)
         return popupInfo;
     }
 
-    RenderObject* renderer = range.startContainer().renderer();
-    const RenderStyle& style = renderer->style();
+    const RenderStyle* style = range.startContainer().renderStyle();
+    float scaledDescent = style ? style->fontMetrics().descent() * frame->page()->pageScaleFactor() : 0;
 
     Vector<FloatQuad> quads;
     range.absoluteTextQuads(quads);
@@ -523,7 +524,7 @@ static IntRect elementBoundingBoxInWindowCoordinatesFromNode(Node* node)
 
     IntRect rangeRect = frame->view()->contentsToWindow(quads[0].enclosingBoundingBox());
 
-    popupInfo.origin = NSMakePoint(rangeRect.x(), rangeRect.y() + (style.fontMetrics().descent() * frame->page()->pageScaleFactor()));
+    popupInfo.origin = NSMakePoint(rangeRect.x(), rangeRect.y() + scaledDescent);
     popupInfo.options = lookupOptions;
 
     NSAttributedString *nsAttributedString = editingAttributedStringFromRange(range, IncludeImagesInAttributedString::No);
@@ -564,12 +565,12 @@ static IntRect elementBoundingBoxInWindowCoordinatesFromNode(Node* node)
     if (!frame)
         return nil;
 
-    RetainPtr<NSDictionary> options;
+    NSDictionary *options = nil;
     auto dictionaryRange = DictionaryLookup::rangeAtHitTestResult(_hitTestResult, &options);
     if (!dictionaryRange)
         return nil;
 
-    auto dictionaryPopupInfo = [WebImmediateActionController _dictionaryPopupInfoForRange:*dictionaryRange inFrame:frame withLookupOptions:options.get() indicatorOptions:TextIndicatorOptionDefault transition: TextIndicatorPresentationTransition::FadeIn];
+    auto dictionaryPopupInfo = [WebImmediateActionController _dictionaryPopupInfoForRange:*dictionaryRange inFrame:frame withLookupOptions:options indicatorOptions:TextIndicatorOptionDefault transition: TextIndicatorPresentationTransition::FadeIn];
     if (!dictionaryPopupInfo.attributedString)
         return nil;
 

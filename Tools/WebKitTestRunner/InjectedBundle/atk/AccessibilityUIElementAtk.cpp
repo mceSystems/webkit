@@ -1688,7 +1688,7 @@ int AccessibilityUIElement::hierarchicalLevel() const
     return 0;
 }
 
-JSRetainPtr<JSStringRef> AccessibilityUIElement::speak()
+JSRetainPtr<JSStringRef> AccessibilityUIElement::speakAs()
 {
     // FIXME: implement
     return JSStringCreateWithCharacters(0, 0);
@@ -2031,6 +2031,9 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::url()
 
     AtkHyperlink* hyperlink = atk_hyperlink_impl_get_hyperlink(ATK_HYPERLINK_IMPL(m_element.get()));
     GUniquePtr<char> hyperlinkURI(atk_hyperlink_get_uri(hyperlink, 0));
+
+    if (!hyperlinkURI.get())
+        return JSStringCreateWithUTF8CString("AXURL: (null)");
 
     // Build the result string, stripping the absolute URL paths if present.
     char* localURI = g_strstr_len(hyperlinkURI.get(), -1, "LayoutTests");

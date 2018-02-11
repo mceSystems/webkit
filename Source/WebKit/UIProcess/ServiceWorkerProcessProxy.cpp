@@ -28,10 +28,13 @@
 
 #include "AuthenticationChallengeProxy.h"
 #include "WebCredential.h"
+#include "WebPageGroup.h"
 #include "WebPreferencesStore.h"
 #include "WebProcessMessages.h"
 #include "WebProcessPool.h"
+#include "WebSWContextManagerConnectionMessages.h"
 #include <WebCore/NotImplemented.h>
+#include <WebCore/RegistrationDatabase.h>
 
 namespace WebKit {
 
@@ -52,6 +55,12 @@ ServiceWorkerProcessProxy::~ServiceWorkerProcessProxy()
 {
 }
 
+bool ServiceWorkerProcessProxy::hasRegisteredServiceWorkers(const String& serviceWorkerDirectory)
+{
+    String registrationFile = WebCore::serviceWorkerRegistrationDatabaseFilename(serviceWorkerDirectory);
+    return WebCore::FileSystem::fileExists(registrationFile);
+}
+
 void ServiceWorkerProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions)
 {
     WebProcessProxy::getLaunchOptions(launchOptions);
@@ -59,9 +68,19 @@ void ServiceWorkerProcessProxy::getLaunchOptions(ProcessLauncher::LaunchOptions&
     launchOptions.extraInitializationData.add(ASCIILiteral("service-worker-process"), ASCIILiteral("1"));
 }
 
-void ServiceWorkerProcessProxy::start(const WebPreferencesStore& store)
+void ServiceWorkerProcessProxy::start(const WebPreferencesStore& store, std::optional<PAL::SessionID> initialSessionID)
 {
-    send(Messages::WebProcess::GetWorkerContextConnection(m_serviceWorkerPageID, store), 0);
+    send(Messages::WebProcess::EstablishWorkerContextConnectionToStorageProcess { processPool().defaultPageGroup().pageGroupID(), m_serviceWorkerPageID, store, initialSessionID.value_or(PAL::SessionID::defaultSessionID()) }, 0);
+}
+
+void ServiceWorkerProcessProxy::setUserAgent(const String& userAgent)
+{
+    send(Messages::WebSWContextManagerConnection::SetUserAgent { userAgent }, 0);
+}
+
+void ServiceWorkerProcessProxy::updatePreferencesStore(const WebPreferencesStore& store)
+{
+    send(Messages::WebSWContextManagerConnection::UpdatePreferencesStore { store }, 0);
 }
 
 void ServiceWorkerProcessProxy::didReceiveAuthenticationChallenge(uint64_t pageID, uint64_t frameID, Ref<AuthenticationChallengeProxy>&& challenge)

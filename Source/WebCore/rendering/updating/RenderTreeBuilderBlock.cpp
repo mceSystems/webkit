@@ -1,0 +1,356 @@
+/*
+ * Copyright (C) 2017 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "config.h"
+#include "RenderTreeBuilderBlock.h"
+
+#include "RenderButton.h"
+#include "RenderChildIterator.h"
+#include "RenderFullScreen.h"
+#include "RenderRuby.h"
+#include "RenderRubyRun.h"
+#include "RenderTextControl.h"
+
+namespace WebCore {
+
+static bool canDropAnonymousBlock(const RenderBlock& anonymousBlock)
+{
+    if (anonymousBlock.beingDestroyed() || anonymousBlock.continuation())
+        return false;
+    if (anonymousBlock.isRubyRun() || anonymousBlock.isRubyBase())
+        return false;
+    return true;
+}
+
+static bool canMergeContiguousAnonymousBlocks(RenderObject& oldChild, RenderObject* previous, RenderObject* next)
+{
+    ASSERT(!oldChild.renderTreeBeingDestroyed());
+
+    if (oldChild.isInline())
+        return false;
+
+    if (is<RenderBoxModelObject>(oldChild) && downcast<RenderBoxModelObject>(oldChild).continuation())
+        return false;
+
+    if (previous) {
+        if (!previous->isAnonymousBlock())
+            return false;
+        RenderBlock& previousAnonymousBlock = downcast<RenderBlock>(*previous);
+        if (!canDropAnonymousBlock(previousAnonymousBlock))
+            return false;
+    }
+    if (next) {
+        if (!next->isAnonymousBlock())
+            return false;
+        RenderBlock& nextAnonymousBlock = downcast<RenderBlock>(*next);
+        if (!canDropAnonymousBlock(nextAnonymousBlock))
+            return false;
+    }
+    return true;
+}
+
+static RenderBlock* continuationBefore(RenderBlock& parent, RenderObject* beforeChild)
+{
+    if (beforeChild && beforeChild->parent() == &parent)
+        return &parent;
+
+    RenderBlock* nextToLast = &parent;
+    RenderBlock* last = &parent;
+    for (auto* current = downcast<RenderBlock>(parent.continuation()); current; current = downcast<RenderBlock>(current->continuation())) {
+        if (beforeChild && beforeChild->parent() == current) {
+            if (current->firstChild() == beforeChild)
+                return last;
+            return current;
+        }
+
+        nextToLast = last;
+        last = current;
+    }
+
+    if (!beforeChild && !last->firstChild())
+        return nextToLast;
+    return last;
+}
+
+RenderTreeBuilder::Block::Block(RenderTreeBuilder& builder)
+    : m_builder(builder)
+{
+}
+
+void RenderTreeBuilder::Block::insertChild(RenderBlock& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild)
+{
+    if (parent.continuation() && !parent.isAnonymousBlock())
+        insertChildToContinuation(parent, WTFMove(child), beforeChild);
+    else
+        insertChildIgnoringContinuation(parent, WTFMove(child), beforeChild);
+}
+
+void RenderTreeBuilder::Block::insertChildToContinuation(RenderBlock& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild)
+{
+    RenderBlock* flow = continuationBefore(parent, beforeChild);
+    ASSERT(!beforeChild || is<RenderBlock>(*beforeChild->parent()));
+    RenderBoxModelObject* beforeChildParent = nullptr;
+    if (beforeChild)
+        beforeChildParent = downcast<RenderBoxModelObject>(beforeChild->parent());
+    else {
+        RenderBoxModelObject* continuation = flow->continuation();
+        if (continuation)
+            beforeChildParent = continuation;
+        else
+            beforeChildParent = flow;
+    }
+
+    if (child->isFloatingOrOutOfFlowPositioned()) {
+        beforeChildParent->addChildIgnoringContinuation(m_builder, WTFMove(child), beforeChild);
+        return;
+    }
+
+    bool childIsNormal = child->isInline() || !child->style().columnSpan();
+    bool bcpIsNormal = beforeChildParent->isInline() || !beforeChildParent->style().columnSpan();
+    bool flowIsNormal = flow->isInline() || !flow->style().columnSpan();
+
+    if (flow == beforeChildParent) {
+        flow->addChildIgnoringContinuation(m_builder, WTFMove(child), beforeChild);
+        return;
+    }
+
+    // The goal here is to match up if we can, so that we can coalesce and create the
+    // minimal # of continuations needed for the inline.
+    if (childIsNormal == bcpIsNormal) {
+        beforeChildParent->addChildIgnoringContinuation(m_builder, WTFMove(child), beforeChild);
+        return;
+    }
+    if (flowIsNormal == childIsNormal) {
+        flow->addChildIgnoringContinuation(m_builder, WTFMove(child), nullptr); // Just treat like an append.
+        return;
+    }
+    beforeChildParent->addChildIgnoringContinuation(m_builder, WTFMove(child), beforeChild);
+}
+
+void RenderTreeBuilder::Block::insertChildIgnoringContinuation(RenderBlock& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild)
+{
+    if (beforeChild && beforeChild->parent() != &parent) {
+        RenderElement* beforeChildContainer = beforeChild->parent();
+        while (beforeChildContainer->parent() != &parent)
+            beforeChildContainer = beforeChildContainer->parent();
+        ASSERT(beforeChildContainer);
+
+        if (beforeChildContainer->isAnonymous()) {
+            RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(!beforeChildContainer->isInline());
+
+            // If the requested beforeChild is not one of our children, then this is because
+            // there is an anonymous container within this object that contains the beforeChild.
+            RenderElement* beforeChildAnonymousContainer = beforeChildContainer;
+            if (beforeChildAnonymousContainer->isAnonymousBlock()
+#if ENABLE(FULLSCREEN_API)
+                // Full screen renderers and full screen placeholders act as anonymous blocks, not tables:
+                || beforeChildAnonymousContainer->isRenderFullScreen()
+                || beforeChildAnonymousContainer->isRenderFullScreenPlaceholder()
+#endif
+                ) {
+                // Insert the child into the anonymous block box instead of here.
+                if (child->isInline() || beforeChild->parent()->firstChild() != beforeChild)
+                    m_builder.insertChild(*beforeChild->parent(), WTFMove(child), beforeChild);
+                else
+                    m_builder.insertChild(parent, WTFMove(child), beforeChild->parent());
+                return;
+            }
+
+            ASSERT(beforeChildAnonymousContainer->isTable());
+
+            if (child->isTablePart()) {
+                // Insert into the anonymous table.
+                m_builder.insertChild(*beforeChildAnonymousContainer, WTFMove(child), beforeChild);
+                return;
+            }
+
+            beforeChild = m_builder.splitAnonymousBoxesAroundChild(parent, beforeChild);
+
+            RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(beforeChild->parent() == &parent);
+        }
+    }
+
+    bool madeBoxesNonInline = false;
+
+    // A block has to either have all of its children inline, or all of its children as blocks.
+    // So, if our children are currently inline and a block child has to be inserted, we move all our
+    // inline children into anonymous block boxes.
+    if (parent.childrenInline() && !child->isInline() && !child->isFloatingOrOutOfFlowPositioned()) {
+        // This is a block with inline content. Wrap the inline content in anonymous blocks.
+        m_builder.makeChildrenNonInline(parent, beforeChild);
+        madeBoxesNonInline = true;
+
+        if (beforeChild && beforeChild->parent() != &parent) {
+            beforeChild = beforeChild->parent();
+            ASSERT(beforeChild->isAnonymousBlock());
+            ASSERT(beforeChild->parent() == &parent);
+        }
+    } else if (!parent.childrenInline() && (child->isFloatingOrOutOfFlowPositioned() || child->isInline())) {
+        // If we're inserting an inline child but all of our children are blocks, then we have to make sure
+        // it is put into an anomyous block box. We try to use an existing anonymous box if possible, otherwise
+        // a new one is created and inserted into our list of children in the appropriate position.
+        RenderObject* afterChild = beforeChild ? beforeChild->previousSibling() : parent.lastChild();
+
+        if (afterChild && afterChild->isAnonymousBlock()) {
+            m_builder.insertChild(downcast<RenderBlock>(*afterChild), WTFMove(child));
+            return;
+        }
+
+        if (child->isInline()) {
+            // No suitable existing anonymous box - create a new one.
+            auto newBox = parent.createAnonymousBlock();
+            auto& box = *newBox;
+            parent.RenderBox::addChild(m_builder, WTFMove(newBox), beforeChild);
+            m_builder.insertChild(box, WTFMove(child));
+            return;
+        }
+    }
+
+    parent.invalidateLineLayoutPath();
+
+    parent.RenderBox::addChild(m_builder, WTFMove(child), beforeChild);
+
+    if (madeBoxesNonInline && is<RenderBlock>(parent.parent()) && parent.isAnonymousBlock())
+        removeLeftoverAnonymousBlock(parent);
+    // parent object may be dead here
+}
+
+void RenderTreeBuilder::Block::childBecameNonInline(RenderBlock& parent, RenderElement&)
+{
+    m_builder.makeChildrenNonInline(parent);
+    if (parent.isAnonymousBlock() && is<RenderBlock>(parent.parent()))
+        removeLeftoverAnonymousBlock(parent);
+    // parent may be dead here
+}
+
+void RenderTreeBuilder::Block::removeLeftoverAnonymousBlock(RenderBlock& anonymousBlock)
+{
+    ASSERT(anonymousBlock.isAnonymousBlock());
+    ASSERT(!anonymousBlock.childrenInline());
+    ASSERT(anonymousBlock.parent());
+
+    if (anonymousBlock.continuation())
+        return;
+
+    auto* parent = anonymousBlock.parent();
+    if (is<RenderButton>(*parent) || is<RenderTextControl>(*parent) || is<RenderRubyAsBlock>(*parent) || is<RenderRubyRun>(*parent))
+        return;
+
+    // FIXME: This should really just be a moveAllChilrenTo (see webkit.org/b/182495)
+    anonymousBlock.moveAllChildrenToInternal(*parent);
+    auto toBeDestroyed = parent->takeChildInternal(anonymousBlock);
+    // anonymousBlock is dead here.
+}
+
+RenderPtr<RenderObject> RenderTreeBuilder::Block::takeChild(RenderBlock& parent, RenderObject& oldChild)
+{
+    // No need to waste time in merging or removing empty anonymous blocks.
+    // We can just bail out if our document is getting destroyed.
+    if (parent.renderTreeBeingDestroyed())
+        return parent.RenderBox::takeChild(m_builder, oldChild);
+
+    // If this child is a block, and if our previous and next siblings are both anonymous blocks
+    // with inline content, then we can fold the inline content back together.
+    RenderObject* prev = oldChild.previousSibling();
+    RenderObject* next = oldChild.nextSibling();
+    bool canMergeAnonymousBlocks = canMergeContiguousAnonymousBlocks(oldChild, prev, next);
+    if (canMergeAnonymousBlocks && prev && next) {
+        prev->setNeedsLayoutAndPrefWidthsRecalc();
+        RenderBlock& nextBlock = downcast<RenderBlock>(*next);
+        RenderBlock& prevBlock = downcast<RenderBlock>(*prev);
+
+        if (prev->childrenInline() != next->childrenInline()) {
+            RenderBlock& inlineChildrenBlock = prev->childrenInline() ? prevBlock : nextBlock;
+            RenderBlock& blockChildrenBlock = prev->childrenInline() ? nextBlock : prevBlock;
+
+            // Place the inline children block inside of the block children block instead of deleting it.
+            // In order to reuse it, we have to reset it to just be a generic anonymous block. Make sure
+            // to clear out inherited column properties by just making a new style, and to also clear the
+            // column span flag if it is set.
+            ASSERT(!inlineChildrenBlock.continuation());
+            // Cache this value as it might get changed in setStyle() call.
+            inlineChildrenBlock.setStyle(RenderStyle::createAnonymousStyleWithDisplay(parent.style(), BLOCK));
+            auto blockToMove = parent.takeChildInternal(inlineChildrenBlock);
+
+            // Now just put the inlineChildrenBlock inside the blockChildrenBlock.
+            RenderObject* beforeChild = prev == &inlineChildrenBlock ? blockChildrenBlock.firstChild() : nullptr;
+            blockChildrenBlock.insertChildInternal(WTFMove(blockToMove), beforeChild);
+            next->setNeedsLayoutAndPrefWidthsRecalc();
+
+            // inlineChildrenBlock got reparented to blockChildrenBlock, so it is no longer a child
+            // of "this". we null out prev or next so that is not used later in the function.
+            if (&inlineChildrenBlock == &prevBlock)
+                prev = nullptr;
+            else
+                next = nullptr;
+        } else {
+            // Take all the children out of the |next| block and put them in
+            // the |prev| block.
+            nextBlock.moveAllChildrenIncludingFloatsTo(m_builder, prevBlock, RenderBoxModelObject::NormalizeAfterInsertion::No);
+
+            // Delete the now-empty block's lines and nuke it.
+            nextBlock.deleteLines();
+            nextBlock.removeFromParentAndDestroy(m_builder);
+            next = nullptr;
+        }
+    }
+
+    parent.invalidateLineLayoutPath();
+
+    auto takenChild = parent.RenderBox::takeChild(m_builder, oldChild);
+
+    RenderObject* child = prev ? prev : next;
+    if (canMergeAnonymousBlocks && child && !child->previousSibling() && !child->nextSibling() && parent.canDropAnonymousBlockChild()) {
+        // The removal has knocked us down to containing only a single anonymous
+        // box. We can pull the content right back up into our box.
+        parent.dropAnonymousBoxChild(m_builder, downcast<RenderBlock>(*child));
+    } else if (((prev && prev->isAnonymousBlock()) || (next && next->isAnonymousBlock())) && parent.canDropAnonymousBlockChild()) {
+        // It's possible that the removal has knocked us down to a single anonymous
+        // block with floating siblings.
+        RenderBlock& anonBlock = downcast<RenderBlock>((prev && prev->isAnonymousBlock()) ? *prev : *next);
+        if (canDropAnonymousBlock(anonBlock)) {
+            bool dropAnonymousBlock = true;
+            for (auto& sibling : childrenOfType<RenderObject>(parent)) {
+                if (&sibling == &anonBlock)
+                    continue;
+                if (!sibling.isFloating()) {
+                    dropAnonymousBlock = false;
+                    break;
+                }
+            }
+            if (dropAnonymousBlock)
+                parent.dropAnonymousBoxChild(m_builder, anonBlock);
+        }
+    }
+
+    if (!parent.firstChild()) {
+        // If this was our last child be sure to clear out our line boxes.
+        if (parent.childrenInline())
+            parent.deleteLines();
+    }
+    return takenChild;
+}
+
+}

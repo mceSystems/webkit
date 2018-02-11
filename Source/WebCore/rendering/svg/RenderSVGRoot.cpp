@@ -35,6 +35,7 @@
 #include "RenderSVGResource.h"
 #include "RenderSVGResourceContainer.h"
 #include "RenderSVGResourceFilter.h"
+#include "RenderTreeBuilder.h"
 #include "RenderView.h"
 #include "SVGImage.h"
 #include "SVGRenderingContext.h"
@@ -269,12 +270,12 @@ void RenderSVGRoot::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paint
     childPaintInfo.context().restore();
 }
 
-void RenderSVGRoot::willBeDestroyed()
+void RenderSVGRoot::willBeDestroyed(RenderTreeBuilder& builder)
 {
     RenderBlock::removePercentHeightDescendant(const_cast<RenderSVGRoot&>(*this));
 
     SVGResourcesCache::clientDestroyed(*this);
-    RenderReplaced::willBeDestroyed();
+    RenderReplaced::willBeDestroyed(builder);
 }
 
 void RenderSVGRoot::insertedIntoTree()
@@ -302,17 +303,15 @@ void RenderSVGRoot::styleDidChange(StyleDifference diff, const RenderStyle* oldS
     SVGResourcesCache::clientStyleChanged(*this, diff, style());
 }
 
-void RenderSVGRoot::addChild(RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
+void RenderSVGRoot::addChild(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
 {
-    auto& child = *newChild;
-    RenderReplaced::addChild(WTFMove(newChild), beforeChild);
-    SVGResourcesCache::clientWasAddedToTree(child);
+    builder.insertChildToSVGRoot(*this, WTFMove(newChild), beforeChild);
 }
 
-RenderPtr<RenderObject> RenderSVGRoot::takeChild(RenderObject& child)
+RenderPtr<RenderObject> RenderSVGRoot::takeChild(RenderTreeBuilder& builder, RenderObject& child)
 {
     SVGResourcesCache::clientWillBeRemovedFromTree(child);
-    return RenderReplaced::takeChild(child);
+    return RenderReplaced::takeChild(builder, child);
 }
 
 // RenderBox methods will expect coordinates w/o any transforms in coordinates

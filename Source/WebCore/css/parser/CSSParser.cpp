@@ -72,13 +72,15 @@ CSSParserContext::CSSParserContext(CSSParserMode mode, const URL& baseURL)
 #endif
 }
 
-CSSParserContext::CSSParserContext(Document& document, const URL& baseURL, const String& charset)
-    : baseURL(baseURL.isNull() ? document.baseURL() : baseURL)
+CSSParserContext::CSSParserContext(Document& document, const URL& sheetBaseURL, const String& charset)
+    : baseURL(sheetBaseURL.isNull() ? document.baseURL() : sheetBaseURL)
     , charset(charset)
     , mode(document.inQuirksMode() ? HTMLQuirksMode : HTMLStandardMode)
     , isHTMLDocument(document.isHTMLDocument())
     , cssGridLayoutEnabled(document.isCSSGridLayoutEnabled())
+    , hasDocumentSecurityOrigin(sheetBaseURL.isNull() || document.securityOrigin().canRequest(baseURL))
 {
+    
     needsSiteSpecificQuirks = document.settings().needsSiteSpecificQuirks();
     enforcesCSSMIMETypeInNoQuirksMode = document.settings().enforceCSSMIMETypeInNoQuirksMode();
     useLegacyBackgroundSizeShorthandBehavior = document.settings().useLegacyBackgroundSizeShorthandBehavior();
@@ -89,7 +91,8 @@ CSSParserContext::CSSParserContext(Document& document, const URL& baseURL, const
     constantPropertiesEnabled = document.settings().constantPropertiesEnabled();
     conicGradientsEnabled = document.settings().conicGradientsEnabled();
     deferredCSSParserEnabled = document.settings().deferredCSSParserEnabled();
-
+    allowNewLinesClamp = document.settings().appleMailLinesClampEnabled();
+    
 #if PLATFORM(IOS)
     // FIXME: Force the site specific quirk below to work on iOS. Investigating other site specific quirks
     // to see if we can enable the preference all together is to be handled by:
@@ -111,7 +114,8 @@ bool operator==(const CSSParserContext& a, const CSSParserContext& b)
         && a.springTimingFunctionEnabled == b.springTimingFunctionEnabled
         && a.constantPropertiesEnabled == b.constantPropertiesEnabled
         && a.conicGradientsEnabled == b.conicGradientsEnabled
-        && a.deferredCSSParserEnabled == b.deferredCSSParserEnabled;
+        && a.deferredCSSParserEnabled == b.deferredCSSParserEnabled
+        && a.hasDocumentSecurityOrigin == b.hasDocumentSecurityOrigin;
 }
 
 CSSParser::CSSParser(const CSSParserContext& context)
@@ -218,10 +222,8 @@ void CSSParser::parseSelector(const String& string, CSSSelectorList& selectorLis
     selectorList = CSSSelectorParser::parseSelector(tokenizer.tokenRange(), m_context, nullptr);
 }
 
-Ref<ImmutableStyleProperties> CSSParser::parseInlineStyleDeclaration(const String& string, Element* element)
+Ref<ImmutableStyleProperties> CSSParser::parseInlineStyleDeclaration(const String& string, const Element* element)
 {
-    CSSParserContext context(element->document());
-    context.mode = strictToCSSParserMode(element->isHTMLElement() && !element->document().inQuirksMode());
     return CSSParserImpl::parseInlineStyleDeclaration(string, element);
 }
 

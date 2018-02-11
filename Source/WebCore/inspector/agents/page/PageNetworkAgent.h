@@ -30,6 +30,7 @@
 namespace WebCore {
 
 class PageNetworkAgent final : public InspectorNetworkAgent {
+    WTF_MAKE_NONCOPYABLE(PageNetworkAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     PageNetworkAgent(PageAgentContext&, InspectorPageAgent*);
@@ -41,6 +42,7 @@ private:
     Vector<WebSocket*> activeWebSockets(const LockHolder&) final;
     void setResourceCachingDisabled(bool) final;
     ScriptExecutionContext* scriptExecutionContext(ErrorString&, const String& frameId) final;
+    bool shouldForceBufferingNetworkResourceData() const final { return false; }
 
     InspectorPageAgent* m_pageAgent { nullptr };
 };

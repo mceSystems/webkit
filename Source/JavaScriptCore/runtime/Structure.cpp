@@ -26,6 +26,7 @@
 #include "config.h"
 #include "Structure.h"
 
+#include "BuiltinNames.h"
 #include "CodeBlock.h"
 #include "DumpContext.h"
 #include "JSCInlines.h"
@@ -86,7 +87,7 @@ inline void StructureTransitionTable::setSingleTransition(Structure* structure)
     if (WeakImpl* impl = this->weakImpl())
         WeakSet::deallocate(impl);
     WeakImpl* impl = WeakSet::allocate(structure, &singleSlotTransitionWeakOwner(), this);
-    m_data = reinterpret_cast<intptr_t>(impl) | UsingSingleSlotFlag;
+    m_data = PoisonedWeakImplPtr(impl).bits() | UsingSingleSlotFlag;
 }
 
 bool StructureTransitionTable::contains(UniquedStringImpl* rep, unsigned attributes) const
@@ -98,7 +99,7 @@ bool StructureTransitionTable::contains(UniquedStringImpl* rep, unsigned attribu
     return map()->get(std::make_pair(rep, attributes));
 }
 
-Structure* StructureTransitionTable::get(UniquedStringImpl* rep, unsigned attributes) const
+inline Structure* StructureTransitionTable::get(UniquedStringImpl* rep, unsigned attributes) const
 {
     if (isUsingSingleSlot()) {
         Structure* transition = singleTransition();
@@ -798,7 +799,7 @@ Structure* Structure::flattenDictionaryStructure(VM& vm, JSObject* object)
         // If the object had a Butterfly but after flattening/compacting we no longer have need of it,
         // we need to zero it out because the collector depends on the Structure to know the size for copying.
         if (!afterOutOfLineCapacity && !this->hasIndexingHeader(object))
-            object->setButterfly(vm, nullptr);
+            object->setButterflyWithIndexingMask(vm, nullptr, 0);
         // If the object was down-sized to the point where the base of the Butterfly is no longer within the 
         // first CopiedBlock::blockSize bytes, we'll get the wrong answer if we try to mask the base back to 
         // the CopiedBlock header. To prevent this case we need to memmove the Butterfly down.
@@ -873,6 +874,7 @@ void Structure::startWatchingPropertyForReplacements(VM& vm, PropertyName proper
 
 void Structure::didCachePropertyReplacement(VM& vm, PropertyOffset offset)
 {
+    RELEASE_ASSERT(isValidOffset(offset));
     ensurePropertyReplacementWatchpointSet(vm, offset)->fireAll(vm, "Did cache property replacement");
 }
 
@@ -1101,14 +1103,14 @@ bool Structure::isCheapDuringGC()
     // has any large property names.
     // https://bugs.webkit.org/show_bug.cgi?id=157334
     
-    return (!m_globalObject || Heap::isMarkedConcurrently(m_globalObject.get()))
-        && (hasPolyProto() || !storedPrototypeObject() || Heap::isMarkedConcurrently(storedPrototypeObject()));
+    return (!m_globalObject || Heap::isMarked(m_globalObject.get()))
+        && (hasPolyProto() || !storedPrototypeObject() || Heap::isMarked(storedPrototypeObject()));
 }
 
 bool Structure::markIfCheap(SlotVisitor& visitor)
 {
     if (!isCheapDuringGC())
-        return Heap::isMarkedConcurrently(this);
+        return Heap::isMarked(this);
     
     visitor.appendUnbarriered(this);
     return true;
@@ -1244,13 +1246,17 @@ JSPropertyNameEnumerator* Structure::cachedPropertyNameEnumerator() const
 
 bool Structure::canCachePropertyNameEnumerator() const
 {
-    if (isDictionary())
-        return false;
+    auto canCache = [] (const Structure* structure) {
+        if (structure->isDictionary())
+            return false;
+        if (hasIndexedProperties(structure->indexingType()))
+            return false;
+        if (structure->typeInfo().overridesGetPropertyNames())
+            return false;
+        return true;
+    };
 
-    if (hasIndexedProperties(indexingType()))
-        return false;
-
-    if (typeInfo().overridesGetPropertyNames())
+    if (!canCache(this))
         return false;
 
     StructureChain* structureChain = m_cachedPrototypeChain.get();
@@ -1258,12 +1264,13 @@ bool Structure::canCachePropertyNameEnumerator() const
     WriteBarrier<Structure>* structure = structureChain->head();
     while (true) {
         if (!structure->get())
-            break;
-        if (structure->get()->isDictionary() || structure->get()->typeInfo().overridesGetPropertyNames())
+            return true;
+        if (!canCache(structure->get()))
             return false;
         structure++;
     }
-    
+
+    ASSERT_NOT_REACHED();
     return true;
 }
     

@@ -131,9 +131,7 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
             });
         }
 
-        // COMPATIBILITY (iOS 7): Network.loadResource did not exist.
-        // Also, JavaScript Debuggable with SourceMaps that do not have inlined content may reach this.
-        if (!window.NetworkAgent || !NetworkAgent.loadResource)
+        if (!window.NetworkAgent)
             return sourceMapResourceLoadError.call(this);
 
         var frameIdentifier = null;
@@ -141,7 +139,7 @@ WI.SourceMapResource = class SourceMapResource extends WI.Resource
             frameIdentifier = this._sourceMap.originalSourceCode.parentFrame.id;
 
         if (!frameIdentifier)
-            frameIdentifier = WI.frameResourceManager.mainFrame.id;
+            frameIdentifier = WI.frameResourceManager.mainFrame ? WI.frameResourceManager.mainFrame.id : "";
 
         return NetworkAgent.loadResource(frameIdentifier, this.url).then(sourceMapResourceLoaded.bind(this)).catch(sourceMapResourceLoadError.bind(this));
     }

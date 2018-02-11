@@ -78,6 +78,7 @@ class TestWebKitPort(Port):
 
 @contextmanager
 def bind_mock_apple_additions():
+    from webkitpy.common.version_name_map import PUBLIC_TABLE, VersionNameMap
 
     class MockAppleAdditions(object):
 
@@ -93,11 +94,23 @@ def bind_mock_apple_additions():
         def mac_os_name(name):
             return 'add-{}'.format(name)
 
+        @staticmethod
+        def version_name_mapping(platform=None):
+            result = VersionNameMap(platform)
+            result.mapping['internal'] = {}
+            for platform in result.mapping[PUBLIC_TABLE]:
+                result.mapping['internal'][platform] = {}
+                for name, version in result.mapping[PUBLIC_TABLE][platform].iteritems():
+                    result.mapping['internal'][platform]['add-' + name] = version
+            return result
+
     # apple_additions is a memoized function. Take advantage of this fact and manipulate the cache
     # to temporarily return a mocked result
     apple_additions._results_cache[()] = MockAppleAdditions
+    VersionNameMap.map._results_cache = {}
     yield
     apple_additions._results_cache[()] = None
+    VersionNameMap.map._results_cache = {}
 
 
 class PortTestCase(unittest.TestCase):
@@ -144,7 +157,7 @@ class PortTestCase(unittest.TestCase):
                 test_socket = socket.socket()
                 test_socket.connect((host, port))
                 self.fail()
-            except IOError, e:
+            except IOError as e:
                 self.assertTrue(e.errno in (errno.ECONNREFUSED, errno.ECONNRESET))
             finally:
                 test_socket.close()
@@ -154,7 +167,7 @@ class PortTestCase(unittest.TestCase):
             try:
                 test_socket = socket.socket()
                 test_socket.connect((host, port))
-            except IOError, e:
+            except IOError as e:
                 self.fail('failed to connect to %s:%d' % (host, port))
             finally:
                 test_socket.close()
@@ -186,14 +199,14 @@ class PortTestCase(unittest.TestCase):
             try:
                 try:
                     test_socket.bind(('localhost', port_number))
-                except socket.error, e:
+                except socket.error as e:
                     if e.errno in (errno.EADDRINUSE, errno.EALREADY):
                         self.fail('could not bind to port %d' % port_number)
                     raise
                 try:
                     port.start_http_server()
                     self.fail('should not have been able to start the server while bound to %d' % port_number)
-                except http_server_base.ServerError, e:
+                except http_server_base.ServerError as e:
                     pass
             finally:
                 port.stop_http_server()
@@ -360,7 +373,7 @@ class PortTestCase(unittest.TestCase):
                 try:
                     port.start_websocket_server()
                     self.fail('should not have been able to start the server while bound to %d' % port_number)
-                except http_server_base.ServerError, e:
+                except http_server_base.ServerError as e:
                     pass
             finally:
                 port.stop_websocket_server()

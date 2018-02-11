@@ -47,9 +47,6 @@ class IOSDevicePort(IOSPort):
             return apple_additions().ios_device_default_child_processes(self)
         return 1
 
-    def using_multiple_devices(self):
-        return True
-
     def _device_for_worker_number_map(self):
         if not apple_additions():
             raise RuntimeError(self.NO_ON_DEVICE_TESTING)
@@ -109,9 +106,7 @@ class IOSDevicePort(IOSPort):
             else:
                 if device.platform.os_version != version:
                     raise RuntimeError('Multiple connected devices have different iOS versions')
-        if version:
-            return VersionNameMap.map(self.host.platform).from_name(version)[1]
-        return None
+        return version
 
     # FIXME: These need device implementations <rdar://problem/30497991>.
     def check_for_leaks(self, process_name, process_pid):

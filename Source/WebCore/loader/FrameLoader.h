@@ -131,6 +131,7 @@ public:
 
     static void reportLocalLoadFailed(Frame*, const String& url);
     static void reportBlockedPortFailed(Frame*, const String& url);
+    static void reportAuthenticationChallengeBlocked(Frame*, const URL&, const String& reason);
 
     // FIXME: These are all functions which stop loads. We have too many.
     WEBCORE_EXPORT void stopAllLoaders(ClearProvisionalItemPolicy = ShouldClearProvisionalItem);
@@ -158,6 +159,9 @@ public:
     DocumentLoader* provisionalDocumentLoader() const { return m_provisionalDocumentLoader.get(); }
     FrameState state() const { return m_state; }
 
+    void setShouldReportResourceTimingToParentFrame(bool value) { m_shouldReportResourceTimingToParentFrame = value; }
+    bool shouldReportResourceTimingToParentFrame() { return m_shouldReportResourceTimingToParentFrame; };
+    
 #if PLATFORM(IOS)
     RetainPtr<CFDictionaryRef> connectionProperties(ResourceLoader*);
 #endif
@@ -386,6 +390,7 @@ private:
     void dispatchGlobalObjectAvailableInAllWorlds();
 
     bool isNavigationAllowed() const;
+    bool isStopLoadingAllowed() const;
 
     Frame& m_frame;
     FrameLoaderClient& m_client;
@@ -416,6 +421,7 @@ private:
     bool m_quickRedirectComing;
     bool m_sentRedirectNotification;
     bool m_inStopAllLoaders;
+    bool m_shouldReportResourceTimingToParentFrame { true };
 
     String m_outgoingReferrer;
 

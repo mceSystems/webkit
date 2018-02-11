@@ -44,6 +44,7 @@
 #include "ParsedContentType.h"
 #include "ResourceError.h"
 #include "ResourceRequest.h"
+#include "RuntimeApplicationChecks.h"
 #include "SecurityOriginPolicy.h"
 #include "Settings.h"
 #include "SharedBuffer.h"
@@ -54,11 +55,11 @@
 #include "XMLHttpRequestProgressEvent.h"
 #include "XMLHttpRequestUpload.h"
 #include "markup.h"
+#include <JavaScriptCore/ArrayBuffer.h>
+#include <JavaScriptCore/ArrayBufferView.h>
+#include <JavaScriptCore/JSCInlines.h>
+#include <JavaScriptCore/JSLock.h>
 #include <mutex>
-#include <runtime/ArrayBuffer.h>
-#include <runtime/ArrayBufferView.h>
-#include <runtime/JSCInlines.h>
-#include <runtime/JSLock.h>
 #include <wtf/RefCountedLeakCounter.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
@@ -465,7 +466,7 @@ ExceptionOr<void> XMLHttpRequest::send(Document& document)
 
         // FIXME: According to XMLHttpRequest Level 2, this should use the Document.innerHTML algorithm
         // from the HTML5 specification to serialize the document.
-        m_requestEntityBody = FormData::create(UTF8Encoding().encode(createMarkup(document), EntitiesForUnencodables));
+        m_requestEntityBody = FormData::create(UTF8Encoding().encode(createMarkup(document), UnencodableHandling::Entities));
         if (m_upload)
             m_requestEntityBody->setAlwaysStream(true);
     }
@@ -492,7 +493,7 @@ ExceptionOr<void> XMLHttpRequest::send(const String& body)
             m_requestHeaders.set(HTTPHeaderName::ContentType, contentType);
         }
 
-        m_requestEntityBody = FormData::create(UTF8Encoding().encode(body, EntitiesForUnencodables));
+        m_requestEntityBody = FormData::create(UTF8Encoding().encode(body, UnencodableHandling::Entities));
         if (m_upload)
             m_requestEntityBody->setAlwaysStream(true);
     }
@@ -643,7 +644,7 @@ ExceptionOr<void> XMLHttpRequest::createRequest()
         if (m_loader)
             setPendingActivity(this);
     } else {
-        request.setDomainForCachePartition(scriptExecutionContext()->topOrigin().domainForCachePartition());
+        request.setDomainForCachePartition(scriptExecutionContext()->domainForCachePartition());
         InspectorInstrumentation::willLoadXHRSynchronously(scriptExecutionContext());
         ThreadableLoader::loadResourceSynchronously(*scriptExecutionContext(), WTFMove(request), *this, options);
         InspectorInstrumentation::didLoadXHRSynchronously(scriptExecutionContext());
@@ -805,6 +806,8 @@ ExceptionOr<void> XMLHttpRequest::setRequestHeader(const String& name, const Str
 #if ENABLE(DASHBOARD_SUPPORT)
     allowUnsafeHeaderField = usesDashboardBackwardCompatibilityMode();
 #endif
+    if (securityOrigin()->canLoadLocalResources() && document()->settings().allowSettingAnyXHRHeaderFromFileURLs())
+        allowUnsafeHeaderField = true;
     if (!allowUnsafeHeaderField && isForbiddenHeaderName(name)) {
         logConsoleError(scriptExecutionContext(), "Refused to set unsafe header \"" + name + "\"");
         return { };
@@ -925,7 +928,7 @@ void XMLHttpRequest::didFail(const ResourceError& error)
     networkError();
 }
 
-void XMLHttpRequest::didFinishLoading(unsigned long identifier)
+void XMLHttpRequest::didFinishLoading(unsigned long)
 {
     if (m_error)
         return;
@@ -937,11 +940,6 @@ void XMLHttpRequest::didFinishLoading(unsigned long identifier)
         m_responseBuilder.append(m_decoder->flush());
 
     m_responseBuilder.shrinkToFit();
-
-    std::optional<String> decodedText;
-    if (!m_binaryResponseBuilder)
-        decodedText = m_responseBuilder.toStringPreserveCapacity();
-    InspectorInstrumentation::didFinishXHRLoading(scriptExecutionContext(), identifier, decodedText);
 
     bool hadLoader = m_loader;
     m_loader = nullptr;

@@ -55,6 +55,7 @@ namespace JSC { namespace DFG {
     macro(CreateThis, NodeResultJS) /* Note this is not MustGenerate since we're returning it anyway. */ \
     macro(GetCallee, NodeResultJS) \
     macro(GetArgumentCountIncludingThis, NodeResultInt32) \
+    macro(SetArgumentCountIncludingThis, NodeMustGenerate) \
     \
     /* Nodes for local variable access. These nodes are linked together using Phi nodes. */\
     /* Any two nodes that are part of the same Phi graph will share the same */\
@@ -204,7 +205,6 @@ namespace JSC { namespace DFG {
     macro(AllocatePropertyStorage, NodeMustGenerate | NodeResultStorage) \
     macro(ReallocatePropertyStorage, NodeMustGenerate | NodeResultStorage) \
     macro(GetButterfly, NodeResultStorage) \
-    macro(GetButterflyWithoutCaging, NodeResultStorage) \
     macro(NukeStructureAndSetButterfly, NodeMustGenerate) \
     macro(CheckArray, NodeMustGenerate) \
     macro(Arrayify, NodeMustGenerate) \
@@ -240,6 +240,7 @@ namespace JSC { namespace DFG {
     macro(RecordRegExpCachedResult, NodeMustGenerate | NodeHasVarArgs) \
     macro(CheckCell, NodeMustGenerate) \
     macro(CheckNotEmpty, NodeMustGenerate) \
+    macro(AssertNotEmpty, NodeMustGenerate) \
     macro(CheckBadCell, NodeMustGenerate) \
     macro(CheckInBounds, NodeMustGenerate) \
     macro(CheckStringIdent, NodeMustGenerate) \
@@ -268,7 +269,9 @@ namespace JSC { namespace DFG {
     \
     /* Optimizations for regular expression matching. */\
     macro(RegExpExec, NodeResultJS | NodeMustGenerate) \
+    macro(RegExpExecNonGlobalOrSticky, NodeResultJS) \
     macro(RegExpTest, NodeResultJS | NodeMustGenerate) \
+    macro(RegExpMatchFast, NodeResultJS | NodeMustGenerate) \
     macro(StringReplace, NodeResultJS | NodeMustGenerate) \
     macro(StringReplaceRegExp, NodeResultJS | NodeMustGenerate) \
     \
@@ -331,6 +334,7 @@ namespace JSC { namespace DFG {
     macro(PhantomNewAsyncGeneratorFunction, NodeResultJS | NodeMustGenerate) \
     macro(PhantomCreateActivation, NodeResultJS | NodeMustGenerate) \
     macro(MaterializeCreateActivation, NodeResultJS | NodeHasVarArgs) \
+    macro(PhantomNewRegexp, NodeResultJS | NodeMustGenerate) \
     \
     /* Nodes for misc operations. */\
     macro(OverridesHasInstance, NodeMustGenerate | NodeResultBoolean) \
@@ -372,6 +376,7 @@ namespace JSC { namespace DFG {
     macro(PhantomCreateRest, NodeResultJS | NodeMustGenerate) \
     macro(PhantomSpread, NodeResultJS | NodeMustGenerate) \
     macro(PhantomNewArrayWithSpread, NodeResultJS | NodeMustGenerate | NodeHasVarArgs) \
+    macro(PhantomNewArrayBuffer, NodeResultJS | NodeMustGenerate) \
     macro(CreateScopedArguments, NodeResultJS) \
     macro(CreateClonedArguments, NodeResultJS) \
     macro(PhantomClonedArguments, NodeResultJS | NodeMustGenerate) \
@@ -441,10 +446,13 @@ namespace JSC { namespace DFG {
     macro(GetMapBucketNext, NodeResultJS) \
     macro(LoadKeyFromMapBucket, NodeResultJS) \
     macro(LoadValueFromMapBucket, NodeResultJS) \
-    macro(SetAdd, NodeMustGenerate) \
-    macro(MapSet, NodeMustGenerate | NodeHasVarArgs) \
+    macro(SetAdd, NodeMustGenerate | NodeResultJS) \
+    macro(MapSet, NodeMustGenerate | NodeHasVarArgs | NodeResultJS) \
     /* Nodes for JSWeakMap and JSWeakSet */ \
     macro(WeakMapGet, NodeResultJS) \
+    macro(WeakSetAdd, NodeMustGenerate) \
+    macro(WeakMapSet, NodeMustGenerate | NodeHasVarArgs) \
+    macro(ExtractValueFromWeakMapGet, NodeResultJS) \
     \
     macro(StringSlice, NodeResultJS) \
     macro(ToLowerCase, NodeResultJS) \

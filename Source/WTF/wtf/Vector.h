@@ -27,9 +27,12 @@
 #include <type_traits>
 #include <utility>
 #include <wtf/CheckedArithmetic.h>
+#include <wtf/FastCopy.h>
 #include <wtf/FastMalloc.h>
+#include <wtf/FastZeroFill.h>
 #include <wtf/Forward.h>
 #include <wtf/MallocPtr.h>
+#include <wtf/MathExtras.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/NotFound.h>
 #include <wtf/StdLibExtras.h>
@@ -85,7 +88,7 @@ struct VectorInitializer<true, true, T>
 {
     static void initialize(T* begin, T* end) 
     {
-        memset(begin, 0, reinterpret_cast<char*>(end) - reinterpret_cast<char*>(begin));
+        fastZeroFill(begin, end - begin);
     }
 };
 
@@ -125,7 +128,7 @@ struct VectorMover<true, T>
 {
     static void move(const T* src, const T* srcEnd, T* dst) 
     {
-        memcpy(dst, src, reinterpret_cast<const char*>(srcEnd) - reinterpret_cast<const char*>(src));
+        fastCopy(dst, src, srcEnd - src);
     }
     static void moveOverlapping(const T* src, const T* srcEnd, T* dst) 
     {
@@ -266,6 +269,7 @@ public:
             CRASH();
         size_t sizeToAllocate = newCapacity * sizeof(T);
         m_capacity = sizeToAllocate / sizeof(T);
+        updateMask();
         m_buffer = static_cast<T*>(Malloc::malloc(sizeToAllocate));
     }
 
@@ -280,6 +284,7 @@ public:
         if (!newBuffer)
             return false;
         m_capacity = sizeToAllocate / sizeof(T);
+        updateMask();
         m_buffer = newBuffer;
         return true;
     }
@@ -296,6 +301,7 @@ public:
             CRASH();
         size_t sizeToAllocate = newCapacity * sizeof(T);
         m_capacity = sizeToAllocate / sizeof(T);
+        updateMask();
         m_buffer = static_cast<T*>(Malloc::realloc(m_buffer, sizeToAllocate));
     }
 
@@ -307,6 +313,7 @@ public:
         if (m_buffer == bufferToDeallocate) {
             m_buffer = 0;
             m_capacity = 0;
+            m_mask = 0;
         }
 
         Malloc::free(bufferToDeallocate);
@@ -322,6 +329,7 @@ public:
         T* buffer = m_buffer;
         m_buffer = 0;
         m_capacity = 0;
+        m_mask = 0;
         return adoptMallocPtr(buffer);
     }
 
@@ -330,6 +338,7 @@ protected:
         : m_buffer(0)
         , m_capacity(0)
         , m_size(0)
+        , m_mask(0)
     {
     }
 
@@ -337,7 +346,9 @@ protected:
         : m_buffer(buffer)
         , m_capacity(capacity)
         , m_size(size)
+        , m_mask(0)
     {
+        updateMask();
     }
 
     ~VectorBufferBase()
@@ -345,9 +356,15 @@ protected:
         // FIXME: It would be nice to find a way to ASSERT that m_buffer hasn't leaked here.
     }
 
+    void updateMask()
+    {
+        m_mask = maskForSize(m_capacity);
+    }
+
     T* m_buffer;
     unsigned m_capacity;
     unsigned m_size; // Only used by the Vector subclass, but placed here to avoid padding the struct.
+    unsigned m_mask;
 };
 
 template<typename T, size_t inlineCapacity, typename Malloc>
@@ -380,6 +397,7 @@ public:
     {
         std::swap(m_buffer, other.m_buffer);
         std::swap(m_capacity, other.m_capacity);
+        std::swap(m_mask, other.m_mask);
     }
     
     void restoreInlineBufferIfNeeded() { }
@@ -404,6 +422,7 @@ public:
     using Base::releaseBuffer;
 
 protected:
+    using Base::m_mask;
     using Base::m_size;
 
 private:
@@ -442,6 +461,7 @@ public:
         else {
             m_buffer = inlineBuffer();
             m_capacity = inlineCapacity;
+            updateMask();
         }
     }
 
@@ -451,6 +471,7 @@ public:
             return Base::tryAllocateBuffer(newCapacity);
         m_buffer = inlineBuffer();
         m_capacity = inlineCapacity;
+        updateMask();
         return true;
     }
 
@@ -478,19 +499,23 @@ public:
         if (buffer() == inlineBuffer() && other.buffer() == other.inlineBuffer()) {
             swapInlineBuffer(other, mySize, otherSize);
             std::swap(m_capacity, other.m_capacity);
+            std::swap(m_mask, other.m_mask);
         } else if (buffer() == inlineBuffer()) {
             m_buffer = other.m_buffer;
             other.m_buffer = other.inlineBuffer();
             swapInlineBuffer(other, mySize, 0);
             std::swap(m_capacity, other.m_capacity);
+            std::swap(m_mask, other.m_mask);
         } else if (other.buffer() == other.inlineBuffer()) {
             other.m_buffer = m_buffer;
             m_buffer = inlineBuffer();
             swapInlineBuffer(other, 0, otherSize);
             std::swap(m_capacity, other.m_capacity);
+            std::swap(m_mask, other.m_mask);
         } else {
             std::swap(m_buffer, other.m_buffer);
             std::swap(m_capacity, other.m_capacity);
+            std::swap(m_mask, other.m_mask);
         }
     }
 
@@ -500,6 +525,7 @@ public:
             return;
         m_buffer = inlineBuffer();
         m_capacity = inlineCapacity;
+        updateMask();
     }
 
 #if ASAN_ENABLED
@@ -527,11 +553,13 @@ public:
     }
 
 protected:
+    using Base::m_mask;
     using Base::m_size;
 
 private:
     using Base::m_buffer;
     using Base::m_capacity;
+    using Base::updateMask;
     
     void swapInlineBuffer(VectorBuffer& other, size_t mySize, size_t otherSize)
     {
@@ -667,23 +695,23 @@ public:
     {
         if (UNLIKELY(i >= size()))
             OverflowHandler::overflowed();
-        return Base::buffer()[i];
+        return Base::buffer()[i & m_mask];
     }
     const T& at(size_t i) const 
     {
         if (UNLIKELY(i >= size()))
             OverflowHandler::overflowed();
-        return Base::buffer()[i];
+        return Base::buffer()[i & m_mask];
     }
     T& at(Checked<size_t> i)
     {
         RELEASE_ASSERT(i < size());
-        return Base::buffer()[i];
+        return Base::buffer()[i & m_mask];
     }
     const T& at(Checked<size_t> i) const
     {
         RELEASE_ASSERT(i < size());
-        return Base::buffer()[i];
+        return Base::buffer()[i & m_mask];
     }
 
     T& operator[](size_t i) { return at(i); }
@@ -827,6 +855,7 @@ private:
 
     void asanBufferSizeWillChangeTo(size_t);
 
+    using Base::m_mask;
     using Base::m_size;
     using Base::buffer;
     using Base::capacity;

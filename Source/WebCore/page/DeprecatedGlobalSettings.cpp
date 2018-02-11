@@ -39,19 +39,11 @@
 #endif
 #endif
 
-#if PLATFORM(COCOA)
-#include <wtf/spi/darwin/dyldSPI.h>
-#endif
-
 namespace WebCore {
 
 #if USE(AVFOUNDATION)
 bool DeprecatedGlobalSettings::gAVFoundationEnabled = true;
 bool DeprecatedGlobalSettings::gAVFoundationNSURLSessionEnabled = true;
-#endif
-
-#if PLATFORM(COCOA)
-bool DeprecatedGlobalSettings::gQTKitEnabled = false;
 #endif
 
 #if USE(GSTREAMER)
@@ -82,20 +74,6 @@ bool DeprecatedGlobalSettings::gAVKitEnabled = false;
 bool DeprecatedGlobalSettings::gShouldOptOutOfNetworkStateObservation = false;
 #endif
 bool DeprecatedGlobalSettings::gManageAudioSession = false;
-bool DeprecatedGlobalSettings::gCustomPasteboardDataEnabled = false;
-
-bool DeprecatedGlobalSettings::defaultCustomPasteboardDataEnabled()
-{
-#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 110300
-    return IOSApplication::isMobileSafari() || dyld_get_program_sdk_version() >= DYLD_IOS_VERSION_11_3;
-#elif PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-    return MacApplication::isSafari() || dyld_get_program_sdk_version() > DYLD_MACOSX_VERSION_10_13;
-#elif PLATFORM(MAC)
-    return MacApplication::isSafari();
-#else
-    return false;
-#endif
-}
 
 #if PLATFORM(WIN)
 void DeprecatedGlobalSettings::setShouldUseHighResolutionTimers(bool shouldUseHighResolutionTimers)
@@ -123,17 +101,6 @@ void DeprecatedGlobalSettings::setAVFoundationNSURLSessionEnabled(bool enabled)
 }
 #endif
 
-#if PLATFORM(COCOA)
-void DeprecatedGlobalSettings::setQTKitEnabled(bool enabled)
-{
-    if (gQTKitEnabled == enabled)
-        return;
-
-    gQTKitEnabled = enabled;
-    HTMLMediaElement::resetMediaEngines();
-}
-#endif
-
 #if USE(GSTREAMER)
 void DeprecatedGlobalSettings::setGStreamerEnabled(bool enabled)
 {
@@ -141,7 +108,10 @@ void DeprecatedGlobalSettings::setGStreamerEnabled(bool enabled)
         return;
 
     gGStreamerEnabled = enabled;
+
+#if ENABLE(VIDEO)
     HTMLMediaElement::resetMediaEngines();
+#endif
 }
 #endif
 

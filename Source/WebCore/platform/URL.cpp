@@ -275,11 +275,7 @@ static void assertProtocolIsGood(StringView protocol)
 
 #endif
 
-static Lock& defaultPortForProtocolMapForTestingLock()
-{
-    static NeverDestroyed<Lock> lock;
-    return lock;
-}
+static StaticLock defaultPortForProtocolMapForTestingLock;
 
 using DefaultPortForProtocolMapForTesting = HashMap<String, uint16_t>;
 static DefaultPortForProtocolMapForTesting*& defaultPortForProtocolMapForTesting()
@@ -298,13 +294,13 @@ static DefaultPortForProtocolMapForTesting& ensureDefaultPortForProtocolMapForTe
 
 void registerDefaultPortForProtocolForTesting(uint16_t port, const String& protocol)
 {
-    LockHolder locker(defaultPortForProtocolMapForTestingLock());
+    auto locker = holdLock(defaultPortForProtocolMapForTestingLock);
     ensureDefaultPortForProtocolMapForTesting().add(protocol, port);
 }
 
 void clearDefaultPortForProtocolMapForTesting()
 {
-    LockHolder locker(defaultPortForProtocolMapForTestingLock());
+    auto locker = holdLock(defaultPortForProtocolMapForTestingLock);
     if (auto* map = defaultPortForProtocolMapForTesting())
         map->clear();
 }
@@ -312,7 +308,7 @@ void clearDefaultPortForProtocolMapForTesting()
 std::optional<uint16_t> defaultPortForProtocol(StringView protocol)
 {
     if (auto* overrideMap = defaultPortForProtocolMapForTesting()) {
-        LockHolder locker(defaultPortForProtocolMapForTestingLock());
+        auto locker = holdLock(defaultPortForProtocolMapForTestingLock);
         ASSERT(overrideMap); // No need to null check again here since overrideMap cannot become null after being non-null.
         auto iterator = overrideMap->find(protocol.toStringWithoutCopying());
         if (iterator != overrideMap->end())
@@ -877,12 +873,14 @@ bool protocolIsJavaScript(StringView url)
 
 bool protocolIsInHTTPFamily(const String& url)
 {
+    auto length = url.length();
     // Do the comparison without making a new string object.
-    return isASCIIAlphaCaselessEqual(url[0], 'h')
+    return length >= 5
+        && isASCIIAlphaCaselessEqual(url[0], 'h')
         && isASCIIAlphaCaselessEqual(url[1], 't')
         && isASCIIAlphaCaselessEqual(url[2], 't')
         && isASCIIAlphaCaselessEqual(url[3], 'p')
-        && (url[4] == ':' || (isASCIIAlphaCaselessEqual(url[4], 's') && url[5] == ':'));
+        && (url[4] == ':' || (isASCIIAlphaCaselessEqual(url[4], 's') && length >= 6 && url[5] == ':'));
 }
 
 const URL& blankURL()
@@ -1036,5 +1034,13 @@ TextStream& operator<<(TextStream& ts, const URL& url)
     ts << url.string();
     return ts;
 }
+
+#if !PLATFORM(COCOA) && !USE(SOUP)
+bool URL::hostIsIPAddress(const String& host)
+{
+    // Assume that any host that ends with a digit is trying to be an IP address.
+    return !host.isEmpty() && isASCIIDigit(host[host.length() - 1]);
+}
+#endif
 
 } // namespace WebCore

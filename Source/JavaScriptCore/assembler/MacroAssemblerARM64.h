@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -364,7 +364,7 @@ public:
 
     void and32(Address src, RegisterID dest)
     {
-        load32(src, dataTempRegister);
+        load32(src, getCachedDataTempRegisterIDAndInvalidate());
         and32(dataTempRegister, dest);
     }
 
@@ -568,9 +568,19 @@ public:
         m_assembler.neg<32>(dest, dest);
     }
 
+    void neg32(RegisterID src, RegisterID dest)
+    {
+        m_assembler.neg<32>(dest, src);
+    }
+
     void neg64(RegisterID dest)
     {
         m_assembler.neg<64>(dest, dest);
+    }
+
+    void neg64(RegisterID src, RegisterID dest)
+    {
+        m_assembler.neg<64>(dest, src);
     }
 
     void or32(RegisterID src, RegisterID dest)
@@ -981,6 +991,11 @@ public:
         }
     }
 
+    void xor64(TrustedImm64 imm, RegisterID srcDest)
+    {
+        xor64(imm, srcDest, srcDest);
+    }
+
     void xor64(TrustedImm32 imm, RegisterID src, RegisterID dest)
     {
         if (imm.m_value == -1)
@@ -1090,12 +1105,14 @@ public:
 
     void abortWithReason(AbortReason reason)
     {
+        // It is safe to use dataTempRegister directly since this is a crashing JIT Assert.
         move(TrustedImm32(reason), dataTempRegister);
         breakpoint();
     }
 
     void abortWithReason(AbortReason reason, intptr_t misc)
     {
+        // It is safe to use memoryTempRegister directly since this is a crashing JIT Assert.
         move(TrustedImm64(misc), memoryTempRegister);
         abortWithReason(reason);
     }
@@ -1540,7 +1557,7 @@ public:
         m_assembler.strb(src, dest, simm);
     }
 
-    void getEffectiveAddress64(BaseIndex address, RegisterID dest)
+    void getEffectiveAddress(BaseIndex address, RegisterID dest)
     {
         m_assembler.add<64>(dest, address.base, address.index, ARM64Assembler::LSL, address.scale);
         if (address.offset)
@@ -2186,7 +2203,11 @@ public:
     
     void pushToSaveImmediateWithoutTouchingRegisters(TrustedImm32 imm)
     {
+        // We can use any non-hardware reserved register here since we restore its value.
+        // We pick dataTempRegister arbitrarily. We don't need to invalidate it here since
+        // we restore its original value.
         RegisterID reg = dataTempRegister;
+
         pushPair(reg, reg);
         move(imm, reg);
         store64(reg, stackPointerRegister);

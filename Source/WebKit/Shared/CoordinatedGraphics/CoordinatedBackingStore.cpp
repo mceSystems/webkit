@@ -22,8 +22,8 @@
 
 #if USE(COORDINATED_GRAPHICS)
 
-#include <WebCore/CoordinatedBuffer.h>
 #include <WebCore/GraphicsLayer.h>
+#include <WebCore/NicosiaBuffer.h>
 #include <WebCore/TextureMapper.h>
 #include <WebCore/TextureMapperGL.h>
 
@@ -48,12 +48,11 @@ void CoordinatedBackingStoreTile::swapBuffers(TextureMapper& textureMapper)
     } else if (m_buffer->supportsAlpha() == m_texture->isOpaque())
         m_texture->reset(m_tileRect.size(), m_buffer->supportsAlpha());
 
-    auto uploadImage = m_buffer->uploadImage();
-    m_texture->updateContents(uploadImage.get(), m_sourceRect, m_bufferOffset, BitmapTexture::UpdateCanModifyOriginalImageData);
+    m_texture->updateContents(m_buffer->data(), m_sourceRect, m_bufferOffset, m_buffer->stride(), BitmapTexture::UpdateCanModifyOriginalImageData);
     m_buffer = nullptr;
 }
 
-void CoordinatedBackingStoreTile::setBackBuffer(const IntRect& tileRect, const IntRect& sourceRect, RefPtr<CoordinatedBuffer>&& buffer, const IntPoint& offset)
+void CoordinatedBackingStoreTile::setBackBuffer(const IntRect& tileRect, const IntRect& sourceRect, RefPtr<Nicosia::Buffer>&& buffer, const IntPoint& offset)
 {
     m_sourceRect = sourceRect;
     m_tileRect = tileRect;
@@ -79,7 +78,7 @@ void CoordinatedBackingStore::removeAllTiles()
         m_tilesToRemove.add(key);
 }
 
-void CoordinatedBackingStore::updateTile(uint32_t id, const IntRect& sourceRect, const IntRect& tileRect, RefPtr<CoordinatedBuffer>&& buffer, const IntPoint& offset)
+void CoordinatedBackingStore::updateTile(uint32_t id, const IntRect& sourceRect, const IntRect& tileRect, RefPtr<Nicosia::Buffer>&& buffer, const IntPoint& offset)
 {
     CoordinatedBackingStoreTileMap::iterator it = m_tiles.find(id);
     ASSERT(it != m_tiles.end());

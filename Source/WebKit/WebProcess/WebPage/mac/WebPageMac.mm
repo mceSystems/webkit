@@ -83,7 +83,6 @@
 #import <WebCore/RenderObject.h>
 #import <WebCore/RenderStyle.h>
 #import <WebCore/RenderView.h>
-#import <WebCore/ResourceHandle.h>
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/ScrollView.h>
 #import <WebCore/StyleInheritedData.h>
@@ -255,7 +254,7 @@ bool WebPage::executeKeypressCommandsInternal(const Vector<WebCore::KeypressComm
                 bool commandExecutedByEditor = command.execute(event);
                 eventWasHandled |= commandExecutedByEditor;
                 if (!commandExecutedByEditor) {
-                    bool performedNonEditingBehavior = event->keyEvent()->type() == PlatformEvent::RawKeyDown && performNonEditingBehaviorForSelector(commands[i].commandName, event);
+                    bool performedNonEditingBehavior = event->underlyingPlatformEvent()->type() == PlatformEvent::RawKeyDown && performNonEditingBehaviorForSelector(commands[i].commandName, event);
                     eventWasHandled |= performedNonEditingBehavior;
                 }
             } else {
@@ -273,10 +272,10 @@ bool WebPage::handleEditingKeyboardEvent(KeyboardEvent* event)
 {
     Frame* frame = frameForEvent(event);
     
-    const PlatformKeyboardEvent* platformEvent = event->keyEvent();
+    auto* platformEvent = event->underlyingPlatformEvent();
     if (!platformEvent)
         return false;
-    const Vector<KeypressCommand>& commands = event->keypressCommands();
+    auto& commands = event->keypressCommands();
 
     ASSERT(!platformEvent->macEvent()); // Cannot have a native event in WebProcess.
 
@@ -298,8 +297,8 @@ bool WebPage::handleEditingKeyboardEvent(KeyboardEvent* event)
     // If there are no text insertion commands, default keydown handler is the right time to execute the commands.
     // Keypress (Char event) handler is the latest opportunity to execute.
     if (!haveTextInsertionCommands || platformEvent->type() == PlatformEvent::Char) {
-        eventWasHandled = executeKeypressCommandsInternal(event->keypressCommands(), event);
-        event->keypressCommands().clear();
+        eventWasHandled = executeKeypressCommandsInternal(commands, event);
+        commands.clear();
     }
 
     return eventWasHandled;
@@ -400,7 +399,7 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
 
     // Find the frame the point is over.
     HitTestResult result = m_page->mainFrame().eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(roundedIntPoint(floatPoint)));
-    RetainPtr<NSDictionary> options;
+    NSDictionary *options = nil;
     auto range = DictionaryLookup::rangeAtHitTestResult(result, &options);
     if (!range)
         return;
@@ -409,14 +408,14 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
     if (!frame)
         return;
 
-    performDictionaryLookupForRange(*frame, *range, options.get(), TextIndicatorPresentationTransition::Bounce);
+    performDictionaryLookupForRange(*frame, *range, options, TextIndicatorPresentationTransition::Bounce);
 }
 
 void WebPage::performDictionaryLookupForSelection(Frame& frame, const VisibleSelection& selection, TextIndicatorPresentationTransition presentationTransition)
 {
-    RetainPtr<NSDictionary> options;
+    NSDictionary *options = nil;
     if (auto selectedRange = DictionaryLookup::rangeForSelection(selection, &options))
-        performDictionaryLookupForRange(frame, *selectedRange, options.get(), presentationTransition);
+        performDictionaryLookupForRange(frame, *selectedRange, options, presentationTransition);
 }
 
 void WebPage::performDictionaryLookupOfCurrentSelection()
@@ -857,9 +856,9 @@ static void drawPDFPage(PDFDocument *pdfDocument, CFIndex pageIndex, CGContextRe
     }
 
     [NSGraphicsContext saveGraphicsState];
-    [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:context flipped:NO]];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:context flipped:NO]];
     [pdfPage drawWithBox:kPDFDisplayBoxCropBox];
 #pragma clang diagnostic pop
     [NSGraphicsContext restoreGraphicsState];
@@ -1007,7 +1006,7 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
         immediateActionResult.lookupText = lookupRange->text();
         if (auto* node = hitTestResult.innerNode()) {
             if (auto* frame = node->document().frame()) {
-                auto options = std::get<RetainPtr<NSDictionary>>(lookupResult).get();
+                auto options = std::get<NSDictionary *>(lookupResult);
                 immediateActionResult.dictionaryPopupInfo = dictionaryPopupInfoForRange(*frame, *lookupRange, options, TextIndicatorPresentationTransition::FadeIn);
             }
         }
@@ -1066,8 +1065,8 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
                     if (is<PluginDocument>(document))
                         downcast<PluginDocument>(document).setFocusedElement(element);
 
-                    auto selection = std::get<RetainPtr<PDFSelection>>(lookupResult).get();
-                    auto options = std::get<RetainPtr<NSDictionary>>(lookupResult).get();
+                    auto selection = std::get<PDFSelection *>(lookupResult);
+                    auto options = std::get<NSDictionary *>(lookupResult);
 
                     immediateActionResult.lookupText = lookupText;
                     immediateActionResult.isTextNode = true;
@@ -1085,7 +1084,7 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
     send(Messages::WebPageProxy::DidPerformImmediateActionHitTest(immediateActionResult, immediateActionHitTestPreventsDefault, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get())));
 }
 
-std::tuple<RefPtr<WebCore::Range>, RetainPtr<NSDictionary>> WebPage::lookupTextAtLocation(FloatPoint locationInViewCoordinates)
+std::tuple<RefPtr<WebCore::Range>, NSDictionary *> WebPage::lookupTextAtLocation(FloatPoint locationInViewCoordinates)
 {
     auto& mainFrame = corePage()->mainFrame();
     if (!mainFrame.view() || !mainFrame.view()->renderView())
@@ -1093,7 +1092,7 @@ std::tuple<RefPtr<WebCore::Range>, RetainPtr<NSDictionary>> WebPage::lookupTextA
 
     auto point = roundedIntPoint(locationInViewCoordinates);
     auto result = mainFrame.eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(point));
-    RetainPtr<NSDictionary> options;
+    NSDictionary *options = nil;
     auto range = DictionaryLookup::rangeAtHitTestResult(result, &options);
     return { WTFMove(range), WTFMove(options) };
 }

@@ -95,6 +95,7 @@
 #include "RenderTableRow.h"
 #include "RenderView.h"
 #include "SVGElement.h"
+#include "ScriptDisallowedScope.h"
 #include "ScrollView.h"
 #include "TextBoundaries.h"
 #include "TextControlInnerElements.h"
@@ -119,7 +120,23 @@ using namespace HTMLNames;
 static const Seconds accessibilityPasswordValueChangeNotificationInterval { 25_ms };
 static const Seconds accessibilityLiveRegionChangedNotificationInterval { 20_ms };
 static const Seconds accessibilityFocusModalNodeNotificationInterval { 50_ms };
+    
+static bool rendererNeedsDeferredUpdate(const RenderObject& renderer)
+{
+    ASSERT(!renderer.beingDestroyed());
+    auto& document = renderer.document();
+    return renderer.needsLayout() || document.needsStyleRecalc() || document.inRenderTreeUpdate() || (document.view() && document.view()->layoutContext().isInRenderTreeLayout());
+}
 
+static bool nodeAndRendererAreValid(Node* node)
+{
+    if (!node)
+        return false;
+    
+    auto* renderer = node->renderer();
+    return renderer && !renderer->beingDestroyed();
+}
+    
 AccessibilityObjectInclusion AXComputedObjectAttributeCache::getIgnored(AXID id) const
 {
     auto it = m_idMapping.find(id);
@@ -716,25 +733,24 @@ void AXObjectCache::remove(RenderObject* renderer)
     remove(m_renderObjectMapping.take(renderer));
 }
 
-void AXObjectCache::remove(Node* node)
+void AXObjectCache::remove(Node& node)
 {
-    if (!node)
-        return;
-
-    if (is<Element>(*node)) {
-        m_deferredRecomputeIsIgnoredList.remove(downcast<Element>(node));
-        m_deferredSelectedChildredChangedList.remove(downcast<Element>(node));
+    if (is<Element>(node)) {
+        m_deferredRecomputeIsIgnoredList.remove(downcast<Element>(&node));
+        m_deferredSelectedChildredChangedList.remove(downcast<Element>(&node));
+        m_deferredTextFormControlValue.remove(downcast<Element>(&node));
+        m_deferredAttributeChange.remove(downcast<Element>(&node));
     }
-    m_deferredTextChangedList.remove(node);
+    m_deferredTextChangedList.remove(&node);
     removeNodeForUse(node);
 
-    remove(m_nodeObjectMapping.take(node));
+    remove(m_nodeObjectMapping.take(&node));
 
-    if (m_currentModalNode == node)
+    if (m_currentModalNode == &node)
         m_currentModalNode = nullptr;
-    m_modalNodesSet.remove(node);
+    m_modalNodesSet.remove(&node);
 
-    remove(node->renderer());
+    remove(node.renderer());
 }
 
 void AXObjectCache::remove(Widget* view)
@@ -834,7 +850,7 @@ void AXObjectCache::childrenChanged(Node* node, Node* newChild)
         handleMenuOpened(newChild);
         handleLiveRegionCreated(newChild);
     }
-    
+
     childrenChanged(get(node));
 }
 
@@ -842,6 +858,9 @@ void AXObjectCache::childrenChanged(RenderObject* renderer, RenderObject* newChi
 {
     if (!renderer)
         return;
+
+    // FIXME: Refactor the code to avoid calling updateLayout in this call stack.
+    ScriptDisallowedScope::LayoutAssertionDisableScope disableScope;
     
     if (newChild) {
         handleMenuOpened(newChild->node());
@@ -1400,7 +1419,7 @@ void AXObjectCache::handleScrollbarUpdate(ScrollView* view)
     
 void AXObjectCache::handleAriaExpandedChange(Node* node)
 {
-    if (AccessibilityObject* obj = getOrCreate(node))
+    if (AccessibilityObject* obj = get(node))
         obj->handleAriaExpandedChanged();
 }
     
@@ -1414,18 +1433,48 @@ void AXObjectCache::handleAriaRoleChanged(Node* node)
 {
     stopCachingComputedObjectAttributes();
 
-    if (AccessibilityObject* obj = getOrCreate(node)) {
+    // Don't make an AX object unless it's needed
+    if (AccessibilityObject* obj = get(node)) {
         obj->updateAccessibilityRole();
         obj->notifyIfIgnoredValueChanged();
     }
 }
 
-void AXObjectCache::handleAttributeChanged(const QualifiedName& attrName, Element* element)
+void AXObjectCache::deferAttributeChangeIfNeeded(const QualifiedName& attrName, Element* element)
 {
+    if (nodeAndRendererAreValid(element) && rendererNeedsDeferredUpdate(*element->renderer()))
+        m_deferredAttributeChange.add(element, attrName);
+    else
+        handleAttributeChange(attrName, element);
+}
+    
+bool AXObjectCache::shouldProcessAttributeChange(const QualifiedName& attrName, Element* element)
+{
+    if (!element)
+        return false;
+    
+    // aria-modal ends up affecting sub-trees that are being shown/hidden so it's likely that
+    // an AT would not have accessed this node yet.
+    if (attrName == aria_modalAttr)
+        return true;
+    
+    // If an AXObject has yet to be created, then there's no need to process attribute changes.
+    // Some of these notifications are processed on the parent, so allow that to proceed as well
+    if (get(element) || get(element->parentNode()))
+        return true;
+
+    return false;
+}
+    
+void AXObjectCache::handleAttributeChange(const QualifiedName& attrName, Element* element)
+{
+    if (!shouldProcessAttributeChange(attrName, element))
+        return;
+    
     if (attrName == roleAttr)
         handleAriaRoleChanged(element);
     else if (attrName == altAttr || attrName == titleAttr)
-        deferTextChangedIfNeeded(element);
+        textChanged(element);
     else if (attrName == forAttr && is<HTMLLabelElement>(*element))
         labelChanged(element);
 
@@ -1439,7 +1488,7 @@ void AXObjectCache::handleAttributeChanged(const QualifiedName& attrName, Elemen
     else if (attrName == aria_valuenowAttr || attrName == aria_valuetextAttr)
         postNotification(element, AXObjectCache::AXValueChanged);
     else if (attrName == aria_labelAttr || attrName == aria_labeledbyAttr || attrName == aria_labelledbyAttr)
-        deferTextChangedIfNeeded(element);
+        textChanged(element);
     else if (attrName == aria_checkedAttr)
         checkedStateChanged(element);
     else if (attrName == aria_selectedAttr)
@@ -2728,20 +2777,40 @@ const Element* AXObjectCache::rootAXEditableElement(const Node* node)
     return result;
 }
 
-void AXObjectCache::clearTextMarkerNodesInUse(Document* document)
+template<typename T, typename U>
+static void filterMapForRemoval(const HashMap<T, U>& list, const Document& document, HashSet<Node*>& nodesToRemove)
 {
-    if (!document)
-        return;
-    
-    // Check each node to see if it's inside the document being deleted, of if it no longer belongs to a document.
-    HashSet<Node*> nodesToDelete;
-    for (const auto& node : m_textMarkerNodes) {
-        if (!node->isConnected() || &(node)->document() == document)
-            nodesToDelete.add(node);
+    for (auto& entry : list) {
+        auto* node = entry.key;
+        if (node->isConnected() && &node->document() != &document)
+            continue;
+        nodesToRemove.add(node);
     }
-    
-    for (const auto& node : nodesToDelete)
-        m_textMarkerNodes.remove(node);
+}
+
+template<typename T>
+static void filterListForRemoval(const ListHashSet<T>& list, const Document& document, HashSet<Node*>& nodesToRemove)
+{
+    for (auto* node : list) {
+        if (node->isConnected() && &node->document() != &document)
+            continue;
+        nodesToRemove.add(node);
+    }
+}
+
+void AXObjectCache::prepareForDocumentDestruction(const Document& document)
+{
+    HashSet<Node*> nodesToRemove;
+    filterListForRemoval(m_textMarkerNodes, document, nodesToRemove);
+    filterListForRemoval(m_modalNodesSet, document, nodesToRemove);
+    filterListForRemoval(m_deferredRecomputeIsIgnoredList, document, nodesToRemove);
+    filterListForRemoval(m_deferredTextChangedList, document, nodesToRemove);
+    filterListForRemoval(m_deferredSelectedChildredChangedList, document, nodesToRemove);
+    filterMapForRemoval(m_deferredTextFormControlValue, document, nodesToRemove);
+    filterMapForRemoval(m_deferredAttributeChange, document, nodesToRemove);
+
+    for (auto* node : nodesToRemove)
+        remove(*node);
 }
     
 bool AXObjectCache::nodeIsTextControl(const Node* node)
@@ -2772,37 +2841,33 @@ void AXObjectCache::performDeferredCacheUpdate()
     for (auto* selectElement : m_deferredSelectedChildredChangedList)
         selectedChildrenChanged(selectElement);
     m_deferredSelectedChildredChangedList.clear();
-}
 
-static bool rendererNeedsDeferredUpdate(RenderObject& renderer)
-{
-    ASSERT(!renderer.beingDestroyed());
-    auto& document = renderer.document();
-    return renderer.needsLayout() || document.needsStyleRecalc() || document.inRenderTreeUpdate() || (document.view() && document.view()->layoutContext().isInRenderTreeLayout());
-}
+    for (auto& deferredFormControlContext : m_deferredTextFormControlValue) {
+        auto& textFormControlElement = downcast<HTMLTextFormControlElement>(*deferredFormControlContext.key);
+        postTextReplacementNotificationForTextControl(textFormControlElement, deferredFormControlContext.value, textFormControlElement.innerTextValue());
+    }
+    m_deferredTextFormControlValue.clear();
 
+    for (auto& deferredAttributeChangeContext : m_deferredAttributeChange)
+        handleAttributeChange(deferredAttributeChangeContext.value, deferredAttributeChangeContext.key);
+    m_deferredAttributeChange.clear();
+}
+    
 void AXObjectCache::deferRecomputeIsIgnoredIfNeeded(Element* element)
 {
-    if (!element)
+    if (!nodeAndRendererAreValid(element))
         return;
-
-    auto* renderer = element->renderer();
-    if (!renderer || renderer->beingDestroyed())
-        return;
-
-    if (rendererNeedsDeferredUpdate(*renderer)) {
+    
+    if (rendererNeedsDeferredUpdate(*element->renderer())) {
         m_deferredRecomputeIsIgnoredList.add(element);
         return;
     }
-    recomputeIsIgnored(renderer);
+    recomputeIsIgnored(element->renderer());
 }
 
 void AXObjectCache::deferRecomputeIsIgnored(Element* element)
 {
-    if (!element)
-        return;
-
-    if (element->renderer() && element->renderer()->beingDestroyed())
+    if (!nodeAndRendererAreValid(element))
         return;
 
     m_deferredRecomputeIsIgnoredList.add(element);
@@ -2810,14 +2875,10 @@ void AXObjectCache::deferRecomputeIsIgnored(Element* element)
 
 void AXObjectCache::deferTextChangedIfNeeded(Node* node)
 {
-    if (!node)
+    if (!nodeAndRendererAreValid(node))
         return;
 
-    auto* renderer = node->renderer();
-    if (renderer && renderer->beingDestroyed())
-        return;
-
-    if (renderer && rendererNeedsDeferredUpdate(*renderer)) {
+    if (rendererNeedsDeferredUpdate(*node->renderer())) {
         m_deferredTextChangedList.add(node);
         return;
     }
@@ -2826,15 +2887,22 @@ void AXObjectCache::deferTextChangedIfNeeded(Node* node)
 
 void AXObjectCache::deferSelectedChildrenChangedIfNeeded(Element& selectElement)
 {
-    auto* renderer = selectElement.renderer();
-    if (renderer && renderer->beingDestroyed())
+    if (!nodeAndRendererAreValid(&selectElement))
         return;
-    
-    if (renderer && rendererNeedsDeferredUpdate(*renderer)) {
+
+    if (rendererNeedsDeferredUpdate(*selectElement.renderer())) {
         m_deferredSelectedChildredChangedList.add(&selectElement);
         return;
     }
     selectedChildrenChanged(&selectElement);
+}
+
+void AXObjectCache::deferTextReplacementNotificationForTextControl(HTMLTextFormControlElement& formControlElement, const String& previousValue)
+{
+    auto* renderer = formControlElement.renderer();
+    if (!renderer)
+        return;
+    m_deferredTextFormControlValue.add(&formControlElement, previousValue);
 }
 
 bool isNodeAriaVisible(Node* node)

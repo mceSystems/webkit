@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -75,11 +75,8 @@ String StackFrame::sourceURL() const
 
 String StackFrame::functionName(VM& vm) const
 {
-    if (m_isWasmFrame) {
-        if (m_wasmFunctionIndexOrName.isEmpty())
-            return ASCIILiteral("wasm function");
-        return makeString("wasm function: ", makeString(m_wasmFunctionIndexOrName));
-    }
+    if (m_isWasmFrame)
+        return makeString(m_wasmFunctionIndexOrName);
 
     if (m_codeBlock) {
         switch (m_codeBlock->codeType()) {
@@ -145,15 +142,27 @@ String StackFrame::toString(VM& vm) const
     return traceBuild.toString().impl();
 }
 
-void StackFrame::visitChildren(SlotVisitor& visitor)
+bool StackFrame::isFinalizationCandidate()
 {
-    // FIXME: We should do something here about Wasm::IndexOrName.
-    // https://bugs.webkit.org/show_bug.cgi?id=176644
+    if (m_callee && !Heap::isMarked(m_callee.get()))
+        return true;
+    if (m_codeBlock && !Heap::isMarked(m_codeBlock.get()))
+        return true;
+    return false;
+}
+
+void StackFrame::finalizeUnconditionally(VM&)
+{
+    // FIXME: We should do something smarter. For example, if this happens, we could stringify the
+    // whole stack trace. The main shortcoming is that that requires doing operations that are not
+    // currently legal during finalization. We could make this work by giving JSC a proper "second
+    // chance" finalizer infrastructure. Or maybe there's an even easier way.
+    // https://bugs.webkit.org/show_bug.cgi?id=182650
     
-    if (m_callee)
-        visitor.append(m_callee);
-    if (m_codeBlock)
-        visitor.append(m_codeBlock);
+    if (m_callee && !Heap::isMarked(m_callee.get()))
+        m_callee.clear();
+    if (m_codeBlock && !Heap::isMarked(m_codeBlock.get()))
+        m_codeBlock.clear();
 }
 
 } // namespace JSC

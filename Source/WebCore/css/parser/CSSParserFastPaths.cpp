@@ -47,8 +47,6 @@ static inline bool isSimpleLengthPropertyID(CSSPropertyID propertyId, bool& acce
 {
     switch (propertyId) {
     case CSSPropertyFontSize:
-    case CSSPropertyGridColumnGap:
-    case CSSPropertyGridRowGap:
     case CSSPropertyHeight:
     case CSSPropertyWidth:
     case CSSPropertyMinHeight:
@@ -630,8 +628,6 @@ bool CSSParserFastPaths::isValidKeywordPropertyAndValue(CSSPropertyID propertyId
     //   return valueID == CSSValueAuto || valueID == CSSValueSmooth;
     case CSSPropertyShapeRendering:
         return valueID == CSSValueAuto || valueID == CSSValueOptimizeSpeed || valueID == CSSValueCrispedges || valueID == CSSValueGeometricPrecision;
-    case CSSPropertySpeak: // none | normal | spell-out | digits | literal-punctuation | no-punctuation
-        return valueID == CSSValueNone || valueID == CSSValueNormal || valueID == CSSValueSpellOut || valueID == CSSValueDigits || valueID == CSSValueLiteralPunctuation || valueID == CSSValueNoPunctuation;
     case CSSPropertyStrokeLinejoin:
         return valueID == CSSValueMiter || valueID == CSSValueRound || valueID == CSSValueBevel;
     case CSSPropertyStrokeLinecap:
@@ -861,7 +857,6 @@ bool CSSParserFastPaths::isKeywordPropertyID(CSSPropertyID propertyId)
     case CSSPropertyPointerEvents:
     case CSSPropertyPosition:
     case CSSPropertyResize:
-    case CSSPropertySpeak:
     case CSSPropertyTableLayout:
     case CSSPropertyTextAlign:
     case CSSPropertyTextOverflow:

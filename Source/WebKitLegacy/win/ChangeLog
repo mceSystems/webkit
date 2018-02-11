@@ -1,3 +1,281 @@
+2018-01-13  Darin Adler  <darin@apple.com>
+
+        Event improvements
+        https://bugs.webkit.org/show_bug.cgi?id=179591
+
+        Reviewed by Chris Dumez.
+
+        * Plugins/PluginView.cpp: Removed include of ScriptValue.h.
+        * WebFrame.cpp: Ditto.
+
+        * WebScriptWorld.cpp:
+        (WebScriptWorld::scriptWorldForGlobalContext): Pass reference to currentWorld.
+
+        * WebView.cpp: Removed include of ScriptValue.h.
+        (WebView::handleEditingKeyboardEvent): Updated for name change from
+        keyEvent to underlyingPlatformEvent.
+
+2018-02-06  Don Olmstead  <don.olmstead@sony.com>
+
+        Remove WebCore/ForwardingHeaders directory
+        https://bugs.webkit.org/show_bug.cgi?id=182347
+
+        Reviewed by Keith Miller.
+
+        * Plugins/PluginView.cpp:
+        * Plugins/PluginViewWin.cpp:
+        * WebCoreSupport/WebInspectorClient.cpp:
+        * WebCoreSupport/WebInspectorClient.h:
+        * WebFrame.cpp:
+        * WebJavaScriptCollector.cpp:
+        * WebView.cpp:
+
+2018-01-24  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Unreviewed, another attempt to fix the Windows build after r227479.
+
+        * WebFrame.cpp:
+        (WebFrame::elementWithName):
+
+2018-01-24  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Unreviewed, try to fix the Windows build after r227479.
+
+        Tweak some Windows WebKitLegacy code to use updated HTMLFormElement methods.
+
+        * WebFrame.cpp:
+        (WebFrame::elementWithName):
+        (WebFrame::controlsInForm):
+
+2018-01-19  Per Arne Vollan  <pvollan@apple.com>
+
+        [Win] Compile error: 'WebKitQuartzCoreAdditionsBase.h' not found.
+        https://bugs.webkit.org/show_bug.cgi?id=181859
+        <rdar://problem/36659886>
+
+        Reviewed by Alex Christensen.
+        
+        Use local include patch.
+
+        * WebKitQuartzCoreAdditions/API/WKCACFImage.h:
+        * WebKitQuartzCoreAdditions/API/WKCACFView.h:
+        * WebKitQuartzCoreAdditions/API/WKCACFViewPrivate.h:
+
+2018-01-17  Youenn Fablet  <youenn@apple.com>
+
+        Put fetch Request.keepalive behind a runtime flag
+        https://bugs.webkit.org/show_bug.cgi?id=181592
+
+        Reviewed by Chris Dumez.
+
+        * WebPreferences.cpp:
+        (WebPreferences::fetchAPIKeepAliveEnabled):
+        (WebPreferences::setFetchAPIKeepAliveEnabled):
+        * WebPreferences.h:
+        * WebView.cpp:
+        (WebView::notifyPreferencesChanged):
+
+2018-01-17  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Add injected bundle SPI to replace subresource URLs when dropping or pasting rich content
+        https://bugs.webkit.org/show_bug.cgi?id=181637
+        <rdar://problem/36508471>
+
+        Reviewed by Tim Horton.
+
+        Add a stub implementation of replacementURLForResource. See WebCore and WebKit ChangeLogs for more detail.
+
+        * WebCoreSupport/WebEditorClient.cpp:
+        (WebEditorClient::replacementURLForResource):
+        * WebCoreSupport/WebEditorClient.h:
+
+2017-12-28  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Remove std::chrono completely
+        https://bugs.webkit.org/show_bug.cgi?id=181186
+
+        Reviewed by Alex Christensen.
+
+        * Plugins/PluginStream.cpp:
+        (WebCore::lastModifiedDateMS):
+
+2018-01-02  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [Win] Web Inspector: Wrongly placed inspector highlight in HiDPI
+        https://bugs.webkit.org/show_bug.cgi?id=181173
+
+        Reviewed by Alex Christensen.
+
+        * WebNodeHighlight.cpp:
+        (WebNodeHighlight::update): Scale the GraphicsContext.
+
+2017-12-26  Carlos Alberto Lopez Perez  <clopez@igalia.com>
+
+        REGRESSION(r225769): Build error with constexpr std::max // std::min in libdstdc++4
+        https://bugs.webkit.org/show_bug.cgi?id=181160
+
+        Reviewed by Myles C. Maxfield.
+
+        * Plugins/PluginView.cpp:
+        (WebCore::PluginView::handlePost): Disambiguate usage of min (Use the version from stdlib).
+
+2017-12-21  Jeremy Jones  <jeremyj@apple.com>
+
+        Enable picture-in-picture from inline element on suspend.
+        https://bugs.webkit.org/show_bug.cgi?id=180942
+        rdar://problem/34745234
+
+        Reviewed by Jer Noble.
+
+        Update signature of enterVideoFullscreenForVideoElement.
+
+        * WebCoreSupport/WebChromeClient.cpp:
+        (WebChromeClient::enterVideoFullscreenForVideoElement):
+        * WebCoreSupport/WebChromeClient.h:
+
+2017-12-18  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [Win] SHOULD NEVER BE REACHED in WebFrameLoaderClient::pageID
+        https://bugs.webkit.org/show_bug.cgi?id=180926
+
+        Reviewed by Tim Horton.
+
+        Apply the same change of mac/WebCoreSupport/WebFrameLoaderClient.mm
+        of r225934 to win/WebCoreSupport/WebFrameLoaderClient.cpp.
+
+        * WebCoreSupport/WebFrameLoaderClient.cpp:
+        (WebFrameLoaderClient::frameID const): Removed RELEASE_ASSERT_NOT_REACHED.
+        (WebFrameLoaderClient::pageID const): Ditto.
+
+2017-12-16  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Remove unnecessary boolean result of start() functions
+        https://bugs.webkit.org/show_bug.cgi?id=180856
+
+        Reviewed by Darin Adler.
+
+        It always returns true.
+
+        * WebDownloadCurl.cpp:
+        (WebDownload::start):
+
+2017-12-14  John Wilander  <wilander@apple.com>
+
+        Storage Access API: Implement frame-specific access in the document.cookie layer
+        https://bugs.webkit.org/show_bug.cgi?id=180682
+        <rdar://problem/35982257>
+
+        Reviewed by Alex Christensen.
+
+        CookiesStrategy::cookiesForDOM(), CookiesStrategy::setCookiesFromDOM(),
+        CookiesStrategy::cookieRequestHeaderFieldValue(), and
+        CookiesStrategy::getRawCookies() now take optional parameters for
+        frameID and pageID to allow frame-specific scoping of cookies.
+
+        This change makes the return values of FrameLoaderClient::frameID()
+        and FrameLoaderClient::pageID() std::optional<uint64_t> so that
+        WebCore can call those getters and get the right return values in
+        WebKit and std:nullopt in WebKitLegacy.
+
+        * WebCoreSupport/WebFrameLoaderClient.cpp:
+        (WebFrameLoaderClient::pageID const):
+        (WebFrameLoaderClient::frameID const):
+            Now return an optional.
+        * WebCoreSupport/WebFrameLoaderClient.h:
+        * WebCoreSupport/WebPlatformStrategies.cpp:
+        (WebPlatformStrategies::cookiesForDOM):
+        (WebPlatformStrategies::setCookiesFromDOM):
+        (WebPlatformStrategies::cookieRequestHeaderFieldValue):
+        (WebPlatformStrategies::getRawCookies):
+        * WebCoreSupport/WebPlatformStrategies.h:
+
+2017-12-12  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [WTF] Thread::create should have Thread::tryCreate
+        https://bugs.webkit.org/show_bug.cgi?id=180333
+
+        Reviewed by Darin Adler.
+
+        * WebKitQuartzCoreAdditions/CVDisplayLink.cpp:
+        (WKQCA::CVDisplayLink::start):
+
+2017-12-08  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Use StaticLock and Lock instead of Mutex in Windows WebKitLegacy
+        https://bugs.webkit.org/show_bug.cgi?id=180572
+
+        Reviewed by Mark Lam.
+
+        Use StaticLock and drop DEPRECATED_DEFINE_STATIC_LOCAL.
+        Also we use Lock instead of Mutex.
+
+        * WebKitQuartzCoreAdditions/CAD3DRenderer.cpp:
+        (WKQCA::CAD3DRenderer::swapChain):
+        (WKQCA::CAD3DRenderer::renderAndPresent):
+        (WKQCA::CAD3DRenderer::renderToImage):
+        (WKQCA::CAD3DRenderer::setDeviceIsLost):
+        (WKQCA::CAD3DRenderer::renderInternal):
+        * WebKitQuartzCoreAdditions/CAD3DRenderer.h:
+        * WebKitQuartzCoreAdditions/CAView.cpp:
+        (WKQCA::CAView::Handle::create):
+        Return Ref<Handle> instead of RefPtr<>.
+
+        (WKQCA::CAView::Handle::lock):
+        (WKQCA::CAView::Handle::view const):
+        (WKQCA::CAView::Handle::clear):
+        (WKQCA::views):
+        (WKQCA::viewsNeedingUpdate):
+        (WKQCA::CAView::releaseAllD3DResources):
+        (WKQCA::CAView::CAView):
+        (WKQCA::CAView::~CAView):
+        (WKQCA::CAView::setLayer):
+        (WKQCA::CAView::update):
+        (WKQCA::CAView::drawToWindow):
+        (WKQCA::CAView::drawToWindowInternal):
+        (WKQCA::CAView::drawToImage):
+        (WKQCA::CAView::willDraw):
+        (WKQCA::CAView::drawIntoDC):
+        (WKQCA::CAView::setShouldInvertColors):
+        (WKQCA::CAView::scheduleNextDraw):
+        (WKQCA::CAView::displayLinkReachedCAMediaTime):
+        (WKQCA::CAView::contextDidChange):
+        (WKQCA::CAView::updateSoon):
+        (WKQCA::CAView::updateViewsNow):
+        (WKQCA::CAView::d3dDevice9):
+        (WKQCA::CAView::Handle::mutex): Deleted.
+        (WKQCA::globalStateMutex): Deleted.
+        (): Deleted.
+        * WebKitQuartzCoreAdditions/CAView.h:
+
+2017-12-07  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Use StaticLock instead of NeverDestroyed<Lock>
+        https://bugs.webkit.org/show_bug.cgi?id=180507
+
+        Reviewed by Saam Barati.
+
+        * WebLocalizableStrings.cpp:
+        (findCachedString):
+        (cacheString):
+        (mainBundleLocStrings): Deleted.
+        (frameworkLocStringsMutex): Deleted.
+
+2017-12-05  Per Arne Vollan  <pvollan@apple.com>
+
+        [Win] Scrollbars are sometimes not rendered in accelerated compositing mode.
+        https://bugs.webkit.org/show_bug.cgi?id=180431
+        <rdar://problem/34531264>
+
+        Reviewed by Simon Fraser.
+
+        Fix the signatures of GraphicsLayerClient that should have been overridden, and use
+        'override' to make sure this doesn't break in the future.
+
+        * WebView.cpp:
+        (WebView::notifyAnimationStarted):
+        (WebView::paintContents):
+        * WebView.h:
+
 2017-11-23  Darin Adler  <darin@apple.com>
 
         Fix dictionary leak in lookup, convert FindOptions to OptionSet, tweak code style nearby

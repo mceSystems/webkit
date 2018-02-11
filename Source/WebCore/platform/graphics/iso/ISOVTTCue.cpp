@@ -27,11 +27,12 @@
 #include "ISOVTTCue.h"
 
 #include "Logging.h"
-#include <runtime/ArrayBuffer.h>
-#include <runtime/DataView.h>
-#include <runtime/Int8Array.h>
-#include <runtime/JSCInlines.h>
-#include <runtime/TypedArrayInlines.h>
+#include <JavaScriptCore/ArrayBuffer.h>
+#include <JavaScriptCore/DataView.h>
+#include <JavaScriptCore/Int8Array.h>
+#include <JavaScriptCore/JSCInlines.h>
+#include <JavaScriptCore/TypedArrayInlines.h>
+#include <wtf/JSONValues.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
@@ -57,7 +58,7 @@ protected:
             return true;
         }
 
-        StringVector<LChar> characters;
+        Vector<LChar> characters;
         characters.reserveInitialCapacity((size_t)characterCount);
         while (characterCount--) {
             int8_t character = 0;
@@ -66,7 +67,7 @@ protected:
             characters.uncheckedAppend(character);
         }
 
-        m_contents.adopt(WTFMove(characters));
+        m_contents = String::fromUTF8(characters);
         offset = localOffset;
         return true;
     }
@@ -87,6 +88,9 @@ ISOWebVTTCue::ISOWebVTTCue(const MediaTime& presentationTime, const MediaTime& d
 
 bool ISOWebVTTCue::parse(DataView& view, unsigned& offset)
 {
+    if (!ISOBox::parse(view, offset))
+        return false;
+
     ISOStringBox stringBox;
 
     while (stringBox.read(view, offset)) {
@@ -104,6 +108,23 @@ bool ISOWebVTTCue::parse(DataView& view, unsigned& offset)
             LOG(Media, "ISOWebVTTCue::ISOWebVTTCue - skipping box id = \"%s\", size = %zu", stringBox.boxType().toString().utf8().data(), (size_t)stringBox.size());
     }
     return true;
+}
+
+String ISOWebVTTCue::toJSONString() const
+{
+    auto object = JSON::Object::create();
+
+    object->setString(ASCIILiteral("sourceId"), m_sourceID);
+    object->setString(ASCIILiteral("id"), m_identifier);
+
+    object->setString(ASCIILiteral("originalStartTime"), m_originalStartTime);
+    object->setString(ASCIILiteral("settings"), m_settings);
+    object->setString(ASCIILiteral("cueText"), m_cueText);
+
+    object->setDouble(ASCIILiteral("presentationTime"), m_presentationTime.toDouble());
+    object->setDouble(ASCIILiteral("duration"), m_duration.toDouble());
+
+    return object->toJSONString();
 }
 
 } // namespace WebCore

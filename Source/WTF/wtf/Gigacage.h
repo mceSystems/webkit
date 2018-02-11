@@ -97,6 +97,16 @@ ALWAYS_INLINE BasePtrs& basePtrs()
     return *reinterpret_cast<BasePtrs*>(g_gigacageBasePtrs);
 }
 
+ALWAYS_INLINE void*& basePtr(Kind kind)
+{
+    return basePtr(basePtrs(), kind);
+}
+
+ALWAYS_INLINE bool isEnabled(Kind kind)
+{
+    return !!basePtr(kind);
+}
+
 ALWAYS_INLINE size_t mask(Kind) { return 0; }
 
 template<typename T>
@@ -109,7 +119,7 @@ inline void alignedFree(Kind, void* p) { fastAlignedFree(p); }
 WTF_EXPORT_PRIVATE void* tryMalloc(Kind, size_t size);
 inline void free(Kind, void* p) { fastFree(p); }
 
-WTF_EXPORT_PRIVATE void* tryAllocateVirtualPages(Kind, size_t size);
+WTF_EXPORT_PRIVATE void* tryAllocateZeroedVirtualPages(Kind, size_t size);
 WTF_EXPORT_PRIVATE void freeVirtualPages(Kind, void* basePtr, size_t size);
 
 } // namespace Gigacage
@@ -123,7 +133,7 @@ WTF_EXPORT_PRIVATE void alignedFree(Kind, void*);
 WTF_EXPORT_PRIVATE void* tryMalloc(Kind, size_t);
 WTF_EXPORT_PRIVATE void free(Kind, void*);
 
-WTF_EXPORT_PRIVATE void* tryAllocateVirtualPages(Kind, size_t size);
+WTF_EXPORT_PRIVATE void* tryAllocateZeroedVirtualPages(Kind, size_t size);
 WTF_EXPORT_PRIVATE void freeVirtualPages(Kind, void* basePtr, size_t size);
 
 } // namespace Gigacage

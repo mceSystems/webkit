@@ -382,8 +382,8 @@ ALWAYS_INLINE Structure* JSObject::visitButterflyImpl(SlotVisitor& visitor)
     structure = vm.getStructure(structureID);
     lastOffset = structure->lastOffset();
     IndexingType indexingType = structure->indexingType();
-    Dependency indexingTypeDependency = dependency(indexingType);
-    Locker<JSCell> locker(NoLockingNecessary);
+    Dependency indexingTypeDependency = Dependency::fence(indexingType);
+    Locker<JSCellLock> locker(NoLockingNecessary);
     switch (indexingType) {
     case ALL_CONTIGUOUS_INDEXING_TYPES:
     case ALL_ARRAY_STORAGE_INDEXING_TYPES:
@@ -391,18 +391,18 @@ ALWAYS_INLINE Structure* JSObject::visitButterflyImpl(SlotVisitor& visitor)
         // that can happen when the butterfly is used for array storage. We conservatively
         // assume that a contiguous butterfly may transform into an array storage one, though
         // this is probably more conservative than necessary.
-        locker = Locker<JSCell>(*this);
+        locker = holdLock(cellLock());
         break;
     default:
         break;
     }
-    butterfly = consume(this, indexingTypeDependency)->butterfly();
-    Dependency butterflyDependency = dependency(butterfly);
+    butterfly = indexingTypeDependency.consume(this)->butterfly();
+    Dependency butterflyDependency = Dependency::fence(butterfly);
     if (!butterfly)
         return structure;
-    if (consume(this, butterflyDependency)->structureID() != structureID)
+    if (butterflyDependency.consume(this)->structureID() != structureID)
         return nullptr;
-    if (consume(structure, butterflyDependency)->lastOffset() != lastOffset)
+    if (butterflyDependency.consume(structure)->lastOffset() != lastOffset)
         return nullptr;
     
     markAuxiliaryAndVisitOutOfLineProperties(visitor, butterfly, structure, lastOffset);
@@ -589,7 +589,7 @@ bool JSObject::getOwnPropertySlotByIndex(JSObject* thisObject, ExecState* exec, 
         if (i >= butterfly->vectorLength())
             return false;
         
-        JSValue value = butterfly->contiguous()[i].get();
+        JSValue value = butterfly->contiguous().at(thisObject, i).get();
         if (value) {
             slot.setValue(thisObject, static_cast<unsigned>(PropertyAttribute::None), value);
             return true;
@@ -603,7 +603,7 @@ bool JSObject::getOwnPropertySlotByIndex(JSObject* thisObject, ExecState* exec, 
         if (i >= butterfly->vectorLength())
             return false;
         
-        double value = butterfly->contiguousDouble()[i];
+        double value = butterfly->contiguousDouble().at(thisObject, i);
         if (value == value) {
             slot.setValue(thisObject, static_cast<unsigned>(PropertyAttribute::None), JSValue(JSValue::EncodeAsDouble, value));
             return true;
@@ -861,7 +861,7 @@ bool JSObject::putByIndex(JSCell* cell, ExecState* exec, unsigned propertyName, 
         Butterfly* butterfly = thisObject->butterfly();
         if (propertyName >= butterfly->vectorLength())
             break;
-        butterfly->contiguous()[propertyName].set(vm, thisObject, value);
+        butterfly->contiguous().at(thisObject, propertyName).set(vm, thisObject, value);
         if (propertyName >= butterfly->publicLength())
             butterfly->setPublicLength(propertyName + 1);
         return true;
@@ -882,7 +882,7 @@ bool JSObject::putByIndex(JSCell* cell, ExecState* exec, unsigned propertyName, 
         Butterfly* butterfly = thisObject->butterfly();
         if (propertyName >= butterfly->vectorLength())
             break;
-        butterfly->contiguousDouble()[propertyName] = valueAsDouble;
+        butterfly->contiguousDouble().at(thisObject, propertyName) = valueAsDouble;
         if (propertyName >= butterfly->publicLength())
             butterfly->setPublicLength(propertyName + 1);
         return true;
@@ -1040,7 +1040,7 @@ Butterfly* JSObject::createInitialUndecided(VM& vm, unsigned length)
     StructureID oldStructureID = this->structureID();
     Structure* oldStructure = vm.getStructure(oldStructureID);
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, NonPropertyTransition::AllocateUndecided);
-    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly);
+    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly, newStructure->indexingType());
     setStructure(vm, newStructure);
     return newButterfly;
 }
@@ -1049,12 +1049,13 @@ ContiguousJSValues JSObject::createInitialInt32(VM& vm, unsigned length)
 {
     DeferGC deferGC(vm.heap);
     Butterfly* newButterfly = createInitialIndexedStorage(vm, length);
+    uint32_t mask = newButterfly->computeIndexingMask();
     for (unsigned i = newButterfly->vectorLength(); i--;)
-        newButterfly->contiguousInt32()[i].setWithoutWriteBarrier(JSValue());
+        newButterfly->contiguous().at(mask, i).setWithoutWriteBarrier(JSValue());
     StructureID oldStructureID = this->structureID();
     Structure* oldStructure = vm.getStructure(oldStructureID);
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, NonPropertyTransition::AllocateInt32);
-    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly);
+    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly, newStructure->indexingType());
     setStructure(vm, newStructure);
     return newButterfly->contiguousInt32();
 }
@@ -1063,12 +1064,13 @@ ContiguousDoubles JSObject::createInitialDouble(VM& vm, unsigned length)
 {
     DeferGC deferGC(vm.heap);
     Butterfly* newButterfly = createInitialIndexedStorage(vm, length);
+    uint32_t mask = newButterfly->computeIndexingMask();
     for (unsigned i = newButterfly->vectorLength(); i--;)
-        newButterfly->contiguousDouble()[i] = PNaN;
+        newButterfly->contiguousDouble().at(mask, i) = PNaN;
     StructureID oldStructureID = this->structureID();
     Structure* oldStructure = vm.getStructure(oldStructureID);
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, NonPropertyTransition::AllocateDouble);
-    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly);
+    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly, newStructure->indexingType());
     setStructure(vm, newStructure);
     return newButterfly->contiguousDouble();
 }
@@ -1077,12 +1079,13 @@ ContiguousJSValues JSObject::createInitialContiguous(VM& vm, unsigned length)
 {
     DeferGC deferGC(vm.heap);
     Butterfly* newButterfly = createInitialIndexedStorage(vm, length);
+    uint32_t mask = newButterfly->computeIndexingMask();
     for (unsigned i = newButterfly->vectorLength(); i--;)
-        newButterfly->contiguous()[i].setWithoutWriteBarrier(JSValue());
+        newButterfly->contiguous().at(mask, i).setWithoutWriteBarrier(JSValue());
     StructureID oldStructureID = this->structureID();
     Structure* oldStructure = vm.getStructure(oldStructureID);
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, NonPropertyTransition::AllocateContiguous);
-    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly);
+    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly, newStructure->indexingType());
     setStructure(vm, newStructure);
     return newButterfly->contiguous();
 }
@@ -1117,7 +1120,7 @@ ArrayStorage* JSObject::createArrayStorage(VM& vm, unsigned length, unsigned vec
     Butterfly* newButterfly = createArrayStorageButterfly(vm, this, oldStructure, length, vectorLength, butterfly());
     ArrayStorage* result = newButterfly->arrayStorage();
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, suggestedArrayStorageTransition());
-    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly);
+    nukeStructureAndSetButterfly(vm, oldStructureID, newButterfly, newStructure->indexingType());
     setStructure(vm, newStructure);
     return result;
 }
@@ -1134,7 +1137,7 @@ ContiguousJSValues JSObject::convertUndecidedToInt32(VM& vm)
 
     Butterfly* butterfly = this->butterfly();
     for (unsigned i = butterfly->vectorLength(); i--;)
-        butterfly->contiguousInt32()[i].setWithoutWriteBarrier(JSValue());
+        butterfly->contiguous().at(this, i).setWithoutWriteBarrier(JSValue());
 
     setStructure(vm, Structure::nonPropertyTransition(vm, structure(vm), NonPropertyTransition::AllocateInt32));
     return m_butterfly->contiguousInt32();
@@ -1146,7 +1149,7 @@ ContiguousDoubles JSObject::convertUndecidedToDouble(VM& vm)
 
     Butterfly* butterfly = m_butterfly.get();
     for (unsigned i = butterfly->vectorLength(); i--;)
-        butterfly->contiguousDouble()[i] = PNaN;
+        butterfly->contiguousDouble().at(this, i) = PNaN;
     
     setStructure(vm, Structure::nonPropertyTransition(vm, structure(vm), NonPropertyTransition::AllocateDouble));
     return m_butterfly->contiguousDouble();
@@ -1158,7 +1161,7 @@ ContiguousJSValues JSObject::convertUndecidedToContiguous(VM& vm)
 
     Butterfly* butterfly = m_butterfly.get();
     for (unsigned i = butterfly->vectorLength(); i--;)
-        butterfly->contiguous()[i].setWithoutWriteBarrier(JSValue());
+        butterfly->contiguous().at(this, i).setWithoutWriteBarrier(JSValue());
 
     WTF::storeStoreFence();
     setStructure(vm, Structure::nonPropertyTransition(vm, structure(vm), NonPropertyTransition::AllocateContiguous));
@@ -1175,10 +1178,10 @@ ArrayStorage* JSObject::constructConvertedArrayStorageWithoutCopyingElements(VM&
     Butterfly* newButterfly = Butterfly::createUninitialized(
         vm, this, 0, propertyCapacity, true, ArrayStorage::sizeFor(neededLength));
     
-    memcpy(
+    fastCopy(
         newButterfly->propertyStorage() - propertySize,
         m_butterfly->propertyStorage() - propertySize,
-        propertySize * sizeof(EncodedJSValue));
+        propertySize);
     
     ArrayStorage* newStorage = newButterfly->arrayStorage();
     newStorage->setVectorLength(neededLength);
@@ -1204,7 +1207,7 @@ ArrayStorage* JSObject::convertUndecidedToArrayStorage(VM& vm, NonPropertyTransi
     StructureID oldStructureID = this->structureID();
     Structure* oldStructure = vm.getStructure(oldStructureID);
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, transition);
-    nukeStructureAndSetButterfly(vm, oldStructureID, storage->butterfly());
+    nukeStructureAndSetButterfly(vm, oldStructureID, storage->butterfly(), newStructure->indexingType());
     setStructure(vm, newStructure);
     return storage;
 }
@@ -1220,7 +1223,7 @@ ContiguousDoubles JSObject::convertInt32ToDouble(VM& vm)
 
     Butterfly* butterfly = m_butterfly.get();
     for (unsigned i = butterfly->vectorLength(); i--;) {
-        WriteBarrier<Unknown>* current = &butterfly->contiguousInt32()[i];
+        WriteBarrier<Unknown>* current = &butterfly->contiguous().at(this, i);
         double* currentAsDouble = bitwise_cast<double*>(current);
         JSValue v = current->get();
         // NOTE: Since this may be used during initialization, v could be garbage. If it's garbage,
@@ -1253,7 +1256,7 @@ ArrayStorage* JSObject::convertInt32ToArrayStorage(VM& vm, NonPropertyTransition
     ArrayStorage* newStorage = constructConvertedArrayStorageWithoutCopyingElements(vm, vectorLength);
     Butterfly* butterfly = m_butterfly.get();
     for (unsigned i = 0; i < vectorLength; i++) {
-        JSValue v = butterfly->contiguous()[i].get();
+        JSValue v = butterfly->contiguous().at(this, i).get();
         newStorage->m_vector[i].setWithoutWriteBarrier(v);
         if (v)
             newStorage->m_numValuesInVector++;
@@ -1262,7 +1265,7 @@ ArrayStorage* JSObject::convertInt32ToArrayStorage(VM& vm, NonPropertyTransition
     StructureID oldStructureID = this->structureID();
     Structure* oldStructure = vm.getStructure(oldStructureID);
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, transition);
-    nukeStructureAndSetButterfly(vm, oldStructureID, newStorage->butterfly());
+    nukeStructureAndSetButterfly(vm, oldStructureID, newStorage->butterfly(), newStructure->indexingType());
     setStructure(vm, newStructure);
     return newStorage;
 }
@@ -1278,7 +1281,7 @@ ContiguousJSValues JSObject::convertDoubleToContiguous(VM& vm)
 
     Butterfly* butterfly = m_butterfly.get();
     for (unsigned i = butterfly->vectorLength(); i--;) {
-        double* current = &butterfly->contiguousDouble()[i];
+        double* current = &butterfly->contiguousDouble().at(this, i);
         WriteBarrier<Unknown>* currentAsValue = bitwise_cast<WriteBarrier<Unknown>*>(current);
         double value = *current;
         if (value != value) {
@@ -1303,7 +1306,7 @@ ArrayStorage* JSObject::convertDoubleToArrayStorage(VM& vm, NonPropertyTransitio
     ArrayStorage* newStorage = constructConvertedArrayStorageWithoutCopyingElements(vm, vectorLength);
     Butterfly* butterfly = m_butterfly.get();
     for (unsigned i = 0; i < vectorLength; i++) {
-        double value = butterfly->contiguousDouble()[i];
+        double value = butterfly->contiguousDouble().at(this, i);
         if (value != value) {
             newStorage->m_vector[i].clear();
             continue;
@@ -1315,7 +1318,7 @@ ArrayStorage* JSObject::convertDoubleToArrayStorage(VM& vm, NonPropertyTransitio
     StructureID oldStructureID = this->structureID();
     Structure* oldStructure = vm.getStructure(oldStructureID);
     Structure* newStructure = Structure::nonPropertyTransition(vm, oldStructure, transition);
-    nukeStructureAndSetButterfly(vm, oldStructureID, newStorage->butterfly());
+    nukeStructureAndSetButterfly(vm, oldStructureID, newStorage->butterfly(), newStructure->indexingType());
     setStructure(vm, newStructure);
     return newStorage;
 }
@@ -1334,7 +1337,7 @@ ArrayStorage* JSObject::convertContiguousToArrayStorage(VM& vm, NonPropertyTrans
     ArrayStorage* newStorage = constructConvertedArrayStorageWithoutCopyingElements(vm, vectorLength);
     Butterfly* butterfly = m_butterfly.get();
     for (unsigned i = 0; i < vectorLength; i++) {
-        JSValue v = butterfly->contiguous()[i].get();
+        JSValue v = butterfly->contiguous().at(this, i).get();
         newStorage->m_vector[i].setWithoutWriteBarrier(v);
         if (v)
             newStorage->m_numValuesInVector++;
@@ -1355,13 +1358,15 @@ ArrayStorage* JSObject::convertContiguousToArrayStorage(VM& vm, NonPropertyTrans
     // Fortunately, we have the JSCell lock for this purpose!
     
     if (vm.heap.mutatorShouldBeFenced()) {
-        auto locker = holdLock(*this);
+        auto locker = holdLock(cellLock());
+        m_butterflyIndexingMask = newStorage->butterfly()->computeIndexingMask();
         setStructureIDDirectly(nuke(structureID()));
         WTF::storeStoreFence();
         m_butterfly.set(vm, this, newStorage->butterfly());
         WTF::storeStoreFence();
         setStructure(vm, newStructure);
     } else {
+        m_butterflyIndexingMask = newStorage->butterfly()->computeIndexingMask();
         m_butterfly.set(vm, this, newStorage->butterfly());
         setStructure(vm, newStructure);
     }
@@ -1394,19 +1399,19 @@ void JSObject::convertUndecidedForValue(VM& vm, JSValue value)
 void JSObject::createInitialForValueAndSet(VM& vm, unsigned index, JSValue value)
 {
     if (value.isInt32()) {
-        createInitialInt32(vm, index + 1)[index].set(vm, this, value);
+        createInitialInt32(vm, index + 1).at(this, index).set(vm, this, value);
         return;
     }
     
     if (value.isDouble()) {
         double doubleValue = value.asNumber();
         if (doubleValue == doubleValue) {
-            createInitialDouble(vm, index + 1)[index] = doubleValue;
+            createInitialDouble(vm, index + 1).at(this, index) = doubleValue;
             return;
         }
     }
     
-    createInitialContiguous(vm, index + 1)[index].set(vm, this, value);
+    createInitialContiguous(vm, index + 1).at(this, index).set(vm, this, value);
 }
 
 void JSObject::convertInt32ForValue(VM& vm, JSValue value)
@@ -1603,6 +1608,14 @@ ArrayStorage* JSObject::ensureArrayStorageExistsAndEnterDictionaryIndexingMode(V
 void JSObject::switchToSlowPutArrayStorage(VM& vm)
 {
     switch (indexingType()) {
+    case ArrayClass:
+        ensureArrayStorage(vm);
+        RELEASE_ASSERT(hasAnyArrayStorage(indexingType()));
+        if (hasSlowPutArrayStorage(indexingType()))
+            return;
+        switchToSlowPutArrayStorage(vm);
+        break;
+
     case ALL_UNDECIDED_INDEXING_TYPES:
         convertUndecidedToArrayStorage(vm, NonPropertyTransition::AllocateSlowPutArrayStorage);
         break;
@@ -1868,7 +1881,7 @@ bool JSObject::deletePropertyByIndex(JSCell* cell, ExecState* exec, unsigned i)
         Butterfly* butterfly = thisObject->butterfly();
         if (i >= butterfly->vectorLength())
             return true;
-        butterfly->contiguous()[i].clear();
+        butterfly->contiguous().at(thisObject, i).clear();
         return true;
     }
         
@@ -1876,7 +1889,7 @@ bool JSObject::deletePropertyByIndex(JSCell* cell, ExecState* exec, unsigned i)
         Butterfly* butterfly = thisObject->butterfly();
         if (i >= butterfly->vectorLength())
             return true;
-        butterfly->contiguousDouble()[i] = PNaN;
+        butterfly->contiguousDouble().at(thisObject, i) = PNaN;
         return true;
     }
         
@@ -2177,7 +2190,7 @@ void JSObject::getOwnPropertyNames(JSObject* object, ExecState* exec, PropertyNa
             Butterfly* butterfly = object->butterfly();
             unsigned usedLength = butterfly->publicLength();
             for (unsigned i = 0; i < usedLength; ++i) {
-                if (!butterfly->contiguous()[i])
+                if (!butterfly->contiguous().at(object, i))
                     continue;
                 propertyNames.add(i);
             }
@@ -2188,7 +2201,7 @@ void JSObject::getOwnPropertyNames(JSObject* object, ExecState* exec, PropertyNa
             Butterfly* butterfly = object->butterfly();
             unsigned usedLength = butterfly->publicLength();
             for (unsigned i = 0; i < usedLength; ++i) {
-                double value = butterfly->contiguousDouble()[i];
+                double value = butterfly->contiguousDouble().at(object, i);
                 if (value != value)
                     continue;
                 propertyNames.add(i);
@@ -2622,19 +2635,19 @@ bool JSObject::putByIndexBeyondVectorLengthWithoutAttributes(ExecState* exec, un
     switch (indexingShape) {
     case Int32Shape:
         ASSERT(value.isInt32());
-        butterfly->contiguousInt32()[i].setWithoutWriteBarrier(value);
+        butterfly->contiguous().at(this, i).setWithoutWriteBarrier(value);
         return true;
         
     case DoubleShape: {
         ASSERT(value.isNumber());
         double valueAsDouble = value.asNumber();
         ASSERT(valueAsDouble == valueAsDouble);
-        butterfly->contiguousDouble()[i] = valueAsDouble;
+        butterfly->contiguousDouble().at(this, i) = valueAsDouble;
         return true;
     }
         
     case ContiguousShape:
-        butterfly->contiguous()[i].set(vm, this, value);
+        butterfly->contiguous().at(this, i).set(vm, this, value);
         return true;
         
     default:
@@ -3071,12 +3084,12 @@ unsigned JSObject::countElements(Butterfly* butterfly)
         switch (indexingShape) {
         case Int32Shape:
         case ContiguousShape:
-            if (butterfly->contiguous()[i])
+            if (butterfly->contiguous().at(this, i))
                 numValues++;
             break;
             
         case DoubleShape: {
-            double value = butterfly->contiguousDouble()[i];
+            double value = butterfly->contiguousDouble().at(this, i);
             if (value == value)
                 numValues++;
             break;
@@ -3122,6 +3135,7 @@ bool JSObject::increaseVectorLength(VM& vm, unsigned newLength)
         for (unsigned i = vectorLength; i < availableVectorLength; ++i)
             storage->m_vector[i].clear();
         storage->setVectorLength(availableVectorLength);
+        m_butterflyIndexingMask = storage->butterfly()->computeIndexingMask();
         return true;
     }
     
@@ -3173,7 +3187,7 @@ bool JSObject::increaseVectorLength(VM& vm, unsigned newLength)
 
 bool JSObject::ensureLengthSlow(VM& vm, unsigned length)
 {
-    Butterfly* butterfly = this->butterfly()->caged();
+    Butterfly* butterfly = this->butterfly();
     
     ASSERT(length <= MAX_STORAGE_VECTOR_LENGTH);
     ASSERT(hasContiguous(indexingType()) || hasInt32(indexingType()) || hasDouble(indexingType()) || hasUndecided(indexingType()));
@@ -3208,18 +3222,20 @@ bool JSObject::ensureLengthSlow(VM& vm, unsigned length)
     if (hasDouble(indexingType())) {
         for (unsigned i = oldVectorLength; i < newVectorLength; ++i)
             butterfly->indexingPayload<double>()[i] = PNaN;
-    } else if (LIKELY(!hasUndecided(indexingType()))) {
+    } else {
         for (unsigned i = oldVectorLength; i < newVectorLength; ++i)
             butterfly->indexingPayload<WriteBarrier<Unknown>>()[i].clear();
     }
 
     if (newButterfly) {
         butterfly->setVectorLength(newVectorLength);
+        m_butterflyIndexingMask = newButterfly->computeIndexingMask();
         WTF::storeStoreFence();
         m_butterfly.set(vm, this, newButterfly);
     } else {
         WTF::storeStoreFence();
         butterfly->setVectorLength(newVectorLength);
+        m_butterflyIndexingMask = m_butterfly->computeIndexingMask();
     }
 
     return true;
@@ -3233,11 +3249,13 @@ void JSObject::reallocateAndShrinkButterfly(VM& vm, unsigned length)
     ASSERT(!m_butterfly->indexingHeader()->preCapacity(structure()));
 
     DeferGC deferGC(vm.heap);
-    Butterfly* newButterfly = butterfly()->caged()->resizeArray(vm, this, structure(), 0, ArrayStorage::sizeFor(length));
+    Butterfly* newButterfly = butterfly()->resizeArray(vm, this, structure(), 0, ArrayStorage::sizeFor(length));
+    m_butterflyIndexingMask = newButterfly->computeIndexingMask();
     newButterfly->setVectorLength(length);
     newButterfly->setPublicLength(length);
     WTF::storeStoreFence();
     m_butterfly.set(vm, this, newButterfly);
+
 }
 
 Butterfly* JSObject::allocateMoreOutOfLineStorage(VM& vm, size_t oldSize, size_t newSize)
@@ -3562,7 +3580,7 @@ void JSObject::shiftButterflyAfterFlattening(const GCSafeConcurrentJSLocker&, VM
     void* currentBase = oldButterfly->base(0, outOfLineCapacityAfter);
     void* newBase = newButterfly->base(0, outOfLineCapacityAfter);
 
-    memcpy(newBase, currentBase, Butterfly::totalSize(0, outOfLineCapacityAfter, hasIndexingHeader, indexingPayloadSizeInBytes));
+    fastCopyBytes(newBase, currentBase, Butterfly::totalSize(0, outOfLineCapacityAfter, hasIndexingHeader, indexingPayloadSizeInBytes));
     
     setButterfly(vm, newButterfly);
 }
@@ -3583,7 +3601,7 @@ uint32_t JSObject::getEnumerableLength(ExecState* exec, JSObject* object)
         Butterfly* butterfly = object->butterfly();
         unsigned usedLength = butterfly->publicLength();
         for (unsigned i = 0; i < usedLength; ++i) {
-            if (!butterfly->contiguous()[i])
+            if (!butterfly->contiguous().at(object, i))
                 return 0;
         }
         return usedLength;
@@ -3593,7 +3611,7 @@ uint32_t JSObject::getEnumerableLength(ExecState* exec, JSObject* object)
         Butterfly* butterfly = object->butterfly();
         unsigned usedLength = butterfly->publicLength();
         for (unsigned i = 0; i < usedLength; ++i) {
-            double value = butterfly->contiguousDouble()[i];
+            double value = butterfly->contiguousDouble().at(object, i);
             if (value != value)
                 return 0;
         }

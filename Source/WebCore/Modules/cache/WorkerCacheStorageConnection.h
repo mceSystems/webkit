@@ -41,10 +41,10 @@ public:
 private:
     explicit WorkerCacheStorageConnection(WorkerGlobalScope&);
 
-    // WebCore::CacheStorageConnection
-    void doOpen(uint64_t requestIdentifier, const String& origin, const String& cacheName) final;
+    // WebCore::CacheStorageConnection.
+    void doOpen(uint64_t requestIdentifier, const ClientOrigin&, const String& cacheName) final;
     void doRemove(uint64_t requestIdentifier, uint64_t cacheIdentifier) final;
-    void doRetrieveCaches(uint64_t requestIdentifier, const String& origin, uint64_t updateCounter) final;
+    void doRetrieveCaches(uint64_t requestIdentifier, const ClientOrigin&, uint64_t updateCounter) final;
 
     void doRetrieveRecords(uint64_t requestIdentifier, uint64_t cacheIdentifier, const URL&) final;
 
@@ -55,8 +55,6 @@ private:
     void doBatchPutOperation(uint64_t requestIdentifier, uint64_t cacheIdentifier, Vector<DOMCacheEngine::Record>&&) final;
 
     WorkerGlobalScope& m_scope;
-    WorkerLoaderProxy& m_proxy;
-    String m_taskMode;
 
     RefPtr<CacheStorageConnection> m_mainThreadConnection;
 };

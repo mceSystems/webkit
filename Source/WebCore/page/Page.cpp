@@ -23,6 +23,7 @@
 #include "ActivityStateChangeObserver.h"
 #include "AlternativeTextClient.h"
 #include "ApplicationCacheStorage.h"
+#include "ApplicationStateChangeListener.h"
 #include "BackForwardClient.h"
 #include "BackForwardController.h"
 #include "CSSAnimationController.h"
@@ -797,6 +798,8 @@ void Page::setZoomedOutPageScaleFactor(float scale)
 
 void Page::setPageScaleFactor(float scale, const IntPoint& origin, bool inStableState)
 {
+    LOG(Viewports, "Page::setPageScaleFactor %.2f - inStableState %d", scale, inStableState);
+
     Document* document = mainFrame().document();
     FrameView* view = document->view();
 
@@ -2328,7 +2331,7 @@ void Page::disableICECandidateFiltering()
 {
     m_shouldEnableICECandidateFilteringByDefault = false;
 #if ENABLE(WEB_RTC)
-    m_rtcController.disableICECandidateFiltering();
+    m_rtcController.disableICECandidateFilteringForAllOrigins();
 #endif
 }
 
@@ -2345,6 +2348,44 @@ void Page::didChangeMainDocument()
 #if ENABLE(WEB_RTC)
     m_rtcController.reset(m_shouldEnableICECandidateFilteringByDefault);
 #endif
+}
+
+void Page::forEachDocument(const Function<void(Document&)>& functor)
+{
+    for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
+        if (!frame->document())
+            continue;
+
+        functor(*frame->document());
+    }
+}
+
+void Page::applicationWillResignActive()
+{
+    forEachDocument([&] (Document& document) {
+        document.forEachApplicationStateChangeListener([&] (ApplicationStateChangeListener& listener) {
+            listener.applicationWillResignActive();
+        });
+    });
+}
+
+void Page::applicationDidEnterBackground()
+{
+    m_libWebRTCProvider->setActive(false);
+}
+
+void Page::applicationWillEnterForeground()
+{
+    m_libWebRTCProvider->setActive(true);
+}
+
+void Page::applicationDidBecomeActive()
+{
+    forEachDocument([&] (Document& document) {
+        document.forEachApplicationStateChangeListener([&] (ApplicationStateChangeListener& listener) {
+            listener.applicationDidBecomeActive();
+        });
+    });
 }
 
 } // namespace WebCore

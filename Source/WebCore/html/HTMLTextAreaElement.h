@@ -54,7 +54,7 @@ public:
     bool isValidValue(const String&) const;
     
     RefPtr<TextControlInnerTextElement> innerTextElement() const final;
-    RenderStyle createInnerTextStyle(const RenderStyle&) const final;
+    RenderStyle createInnerTextStyle(const RenderStyle&) final;
     void copyNonAttributePropertiesFromElement(const Element&) final;
 
     void rendererWillBeDestroyed();
@@ -102,7 +102,7 @@ private:
     FormControlState saveFormControlState() const final;
     void restoreFormControlState(const FormControlState&) final;
 
-    bool isTextFormControl() const final { return true; }
+    bool isTextField() const final { return true; }
 
     void childrenChanged(const ChildChange&) final;
     void parseAttribute(const QualifiedName&, const AtomicString&) final;
@@ -113,7 +113,7 @@ private:
     void reset() final;
     bool hasCustomFocusLogic() const final;
     bool isMouseFocusable() const final;
-    bool isKeyboardFocusable(KeyboardEvent&) const final;
+    bool isKeyboardFocusable(KeyboardEvent*) const final;
     void updateFocusAppearance(SelectionRestorationMode, SelectionRevealMode) final;
 
     void accessKeyAction(bool sendMouseEvents) final;

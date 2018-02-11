@@ -55,20 +55,19 @@ auto ModuleParser::parse() -> Result
     WASM_PARSER_FAIL_IF(!parseUInt32(versionNumber), "can't parse version number");
     WASM_PARSER_FAIL_IF(versionNumber != expectedVersionNumber, "unexpected version number ", versionNumber, " expected ", expectedVersionNumber);
 
-    Section previousSection = Section::Custom;
+    // This is not really a known section.
+    Section previousKnownSection = Section::Begin;
     while (m_offset < length()) {
         uint8_t sectionByte;
 
         WASM_PARSER_FAIL_IF(!parseUInt7(sectionByte), "can't get section byte");
 
         Section section = Section::Custom;
-        if (sectionByte) {
-            if (isValidSection(sectionByte))
-                section = static_cast<Section>(sectionByte);
-        }
+        WASM_PARSER_FAIL_IF(!decodeSection(sectionByte, section));
+        ASSERT(section != Section::Begin);
 
         uint32_t sectionLength;
-        WASM_PARSER_FAIL_IF(!validateOrder(previousSection, section), "invalid section order, ", previousSection, " followed by ", section);
+        WASM_PARSER_FAIL_IF(!validateOrder(previousKnownSection, section), "invalid section order, ", previousKnownSection, " followed by ", section);
         WASM_PARSER_FAIL_IF(!parseVarUInt32(sectionLength), "can't get ", section, " section's length");
         WASM_PARSER_FAIL_IF(sectionLength > length() - m_offset, section, "section of size ", sectionLength, " would overflow Module's size");
 
@@ -80,18 +79,25 @@ auto ModuleParser::parse() -> Result
             WASM_FAIL_IF_HELPER_FAILS(parse ## NAME());             \
             break;                                                  \
         }
-        FOR_EACH_WASM_SECTION(WASM_SECTION_PARSE)
+        FOR_EACH_KNOWN_WASM_SECTION(WASM_SECTION_PARSE)
 #undef WASM_SECTION_PARSE
 
         case Section::Custom: {
             WASM_FAIL_IF_HELPER_FAILS(parseCustom(sectionLength));
             break;
         }
+
+        case Section::Begin: {
+            RELEASE_ASSERT_NOT_REACHED();
+            break;
+        }
         }
 
         WASM_PARSER_FAIL_IF(end != m_offset, "parsing ended before the end of ", section, " section");
 
-        previousSection = section;
+
+        if (isKnownSection(section))
+            previousKnownSection = section;
     }
 
     return { };
@@ -179,14 +185,14 @@ auto ModuleParser::parseImport() -> PartialResult
             bool isImport = true;
             PartialResult result = parseTableHelper(isImport);
             if (UNLIKELY(!result))
-                return result.getUnexpected();
+                return makeUnexpected(WTFMove(result.error()));
             break;
         }
         case ExternalKind::Memory: {
             bool isImport = true;
             PartialResult result = parseMemoryHelper(isImport);
             if (UNLIKELY(!result))
-                return result.getUnexpected();
+                return makeUnexpected(WTFMove(result.error()));
             break;
         }
         case ExternalKind::Global: {
@@ -263,7 +269,7 @@ auto ModuleParser::parseTableHelper(bool isImport) -> PartialResult
     std::optional<uint32_t> maximum;
     PartialResult limits = parseResizableLimits(initial, maximum);
     if (UNLIKELY(!limits))
-        return limits.getUnexpected();
+        return makeUnexpected(WTFMove(limits.error()));
     WASM_PARSER_FAIL_IF(initial > maxTableEntries, "Table's initial page count of ", initial, " is too big, maximum ", maxTableEntries);
 
     ASSERT(!maximum || *maximum >= initial);
@@ -285,7 +291,7 @@ auto ModuleParser::parseTable() -> PartialResult
     bool isImport = false;
     PartialResult result = parseTableHelper(isImport);
     if (UNLIKELY(!result))
-        return result.getUnexpected();
+        return makeUnexpected(WTFMove(result.error()));
 
     return { };
 }
@@ -303,7 +309,7 @@ auto ModuleParser::parseMemoryHelper(bool isImport) -> PartialResult
         std::optional<uint32_t> maximum;
         PartialResult limits = parseResizableLimits(initial, maximum);
         if (UNLIKELY(!limits))
-            return limits.getUnexpected();
+            return makeUnexpected(WTFMove(limits.error()));
         ASSERT(!maximum || *maximum >= initial);
         WASM_PARSER_FAIL_IF(!PageCount::isValid(initial), "Memory's initial page count of ", initial, " is invalid");
 

@@ -52,12 +52,15 @@ public:
     CurlDownload() = default;
     ~CurlDownload();
 
+    void ref() override { ThreadSafeRefCounted<CurlDownload>::ref(); }
+    void deref() override { ThreadSafeRefCounted<CurlDownload>::deref(); }
+
     void init(CurlDownloadListener&, const URL&);
     void init(CurlDownloadListener&, ResourceHandle*, const ResourceRequest&, const ResourceResponse&);
 
     void setListener(CurlDownloadListener* listener) { m_listener = listener; }
 
-    bool start();
+    void start();
     bool cancel();
 
     bool deletesFileUponFailure() const { return m_deletesFileUponFailure; }
@@ -67,6 +70,7 @@ public:
 
 private:
     Ref<CurlRequest> createCurlRequest(ResourceRequest&);
+    void curlDidSendData(unsigned long long, unsigned long long) override { }
     void curlDidReceiveResponse(const CurlResponse&) override;
     void curlDidReceiveBuffer(Ref<SharedBuffer>&&) override;
     void curlDidComplete() override;

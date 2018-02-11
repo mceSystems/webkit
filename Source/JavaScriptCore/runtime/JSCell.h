@@ -37,6 +37,7 @@
 
 namespace JSC {
 
+class CompleteSubspace;
 class CopyVisitor;
 class GCDeferralContext;
 class ExecState;
@@ -49,11 +50,7 @@ class PropertyDescriptor;
 class PropertyName;
 class PropertyNameArray;
 class Structure;
-
-enum class AllocationFailureMode {
-    ShouldAssertOnFailure,
-    ShouldNotAssertOnFailure
-};
+class JSCellLock;
 
 enum class GCDeferralContextArgPresense {
     HasArg,
@@ -86,8 +83,8 @@ template<typename T> void* tryAllocateCell(Heap&, GCDeferralContext*, size_t = s
 class JSCell : public HeapCell {
     friend class JSValue;
     friend class MarkedBlock;
-    template<typename T, AllocationFailureMode, GCDeferralContextArgPresense>
-    friend void* tryAllocateCellHelper(Heap&, GCDeferralContext*, size_t);
+    template<typename T>
+    friend void* tryAllocateCellHelper(Heap&, size_t, GCDeferralContext*, AllocationFailureMode);
 
 public:
     static const unsigned StructureFlags = 0;
@@ -98,7 +95,7 @@ public:
     // FIXME: Refer to Subspace by reference.
     // https://bugs.webkit.org/show_bug.cgi?id=166988
     template<typename CellType>
-    static Subspace* subspaceFor(VM&);
+    static CompleteSubspace* subspaceFor(VM&);
 
     static JSCell* seenMultipleCalleeObjects() { return bitwise_cast<JSCell*>(static_cast<uintptr_t>(1)); }
 
@@ -112,6 +109,7 @@ protected:
 public:
     // Querying the type.
     bool isString() const;
+    bool isBigInt() const;
     bool isSymbol() const;
     bool isObject() const;
     bool isGetterSetter() const;
@@ -123,10 +121,11 @@ public:
     // Each cell has a built-in lock. Currently it's simply available for use if you need it. It's
     // a full-blown WTF::Lock. Note that this lock is currently used in JSArray and that lock's
     // ordering with the Structure lock is that the Structure lock must be acquired first.
-    void lock();
-    bool tryLock();
-    void unlock();
-    bool isLocked() const;
+
+    // We use this abstraction to make it easier to grep for places where we lock cells.
+    // to lock a cell you can just do:
+    // auto locker = holdLock(cell->cellLocker());
+    JSCellLock& cellLock() { return *reinterpret_cast<JSCellLock*>(this); }
     
     JSType type() const;
     IndexingType indexingTypeAndMisc() const;
@@ -275,16 +274,26 @@ protected:
 
 private:
     friend class LLIntOffsetsExtractor;
+    friend class JSCellLock;
 
     JS_EXPORT_PRIVATE JSObject* toObjectSlow(ExecState*, JSGlobalObject*) const;
-    JS_EXPORT_PRIVATE void lockSlow();
-    JS_EXPORT_PRIVATE void unlockSlow();
 
     StructureID m_structureID;
     IndexingType m_indexingTypeAndMisc; // DO NOT store to this field. Always CAS.
     JSType m_type;
     TypeInfo::InlineTypeFlags m_flags;
     CellState m_cellState;
+};
+
+class JSCellLock : public JSCell {
+public:
+    void lock();
+    bool tryLock();
+    void unlock();
+    bool isLocked() const;
+private:
+    JS_EXPORT_PRIVATE void lockSlow();
+    JS_EXPORT_PRIVATE void unlockSlow();
 };
 
 template<typename To, typename From>
@@ -320,7 +329,7 @@ inline To jsDynamicCast(VM& vm, JSValue from)
 // FIXME: Refer to Subspace by reference.
 // https://bugs.webkit.org/show_bug.cgi?id=166988
 template<typename Type>
-inline Subspace* subspaceFor(VM& vm)
+inline auto subspaceFor(VM& vm)
 {
     return Type::template subspaceFor<Type>(vm);
 }

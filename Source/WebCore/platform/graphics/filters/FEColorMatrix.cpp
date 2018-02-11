@@ -25,7 +25,7 @@
 
 #include "Filter.h"
 #include "GraphicsContext.h"
-#include <runtime/Uint8ClampedArray.h>
+#include <JavaScriptCore/Uint8ClampedArray.h>
 #include <wtf/MathExtras.h>
 #include <wtf/text/TextStream.h>
 
@@ -310,7 +310,7 @@ void FEColorMatrix::platformApplySoftware()
         break;
     }
 
-    resultImage->putByteArray(Unmultiplied, *pixelArray, imageRect.size(), imageRect, IntPoint());
+    resultImage->putByteArray(*pixelArray, AlphaPremultiplication::Unpremultiplied, imageRect.size(), imageRect, IntPoint());
 }
 
 static TextStream& operator<<(TextStream& ts, const ColorMatrixType& type)
@@ -335,10 +335,10 @@ static TextStream& operator<<(TextStream& ts, const ColorMatrixType& type)
     return ts;
 }
 
-TextStream& FEColorMatrix::externalRepresentation(TextStream& ts) const
+TextStream& FEColorMatrix::externalRepresentation(TextStream& ts, RepresentationType representation) const
 {
     ts << indent << "[feColorMatrix";
-    FilterEffect::externalRepresentation(ts);
+    FilterEffect::externalRepresentation(ts, representation);
     ts << " type=\"" << m_type << "\"";
     if (!m_values.isEmpty()) {
         ts << " values=\"";
@@ -355,7 +355,7 @@ TextStream& FEColorMatrix::externalRepresentation(TextStream& ts) const
     ts << "]\n";
     
     TextStream::IndentScope indentScope(ts);
-    inputEffect(0)->externalRepresentation(ts);
+    inputEffect(0)->externalRepresentation(ts, representation);
     return ts;
 }
 

@@ -99,6 +99,8 @@ allowUniversalAccessFromFileURLs:
   initial: true
 allowFileAccessFromFileURLs:
   initial: true
+allowSettingAnyXHRHeaderFromFileURLs:
+  initial: false
 needsStorageAccessFromFileURLsQuirk:
   initial: true
 javaScriptCanOpenWindowsAutomatically:
@@ -475,6 +477,9 @@ serviceControlsEnabled:
 appleMailPaginationQuirkEnabled:
   initial: false
 
+appleMailLinesClampEnabled:
+  initial: false
+
 deferredCSSParserEnabled:
   initial: false
 
@@ -579,7 +584,7 @@ allowMediaContentTypesRequiringHardwareSupportAsFallback:
   initial: false
 
 storageAccessAPIEnabled:
-  initial: false
+  initial: true
 
 timeWithoutMouseMovementBeforeHidingControls:
   type: Seconds
@@ -661,6 +666,10 @@ storageBlockingPolicy:
   initial: SecurityOrigin::AllowAllStorage
   onChange: storageBlockingPolicyChanged
 
+shouldAllowUserInstalledFonts:
+  initial: true
+  onChange: setNeedsRecalcStyleInAllFrames
+
 # Only set by Layout Tests.
 mediaTypeOverride:
   type: String
@@ -692,7 +701,16 @@ needsAdobeFrameReloadingQuirk:
   initial: false
   getter: needsAcrobatFrameReloadingQuirk
 
+passiveTouchListenersAsDefaultOnDocument:
+  initial: true
+
 touchEventEmulationEnabled:
   initial: false
   getter: isTouchEventEmulationEnabled
   conditional: TOUCH_EVENTS
+
+mediaCapabilitiesEnabled:
+  initial: false
+
+resourceLoadStatisticsDebugMode:
+  initial: false

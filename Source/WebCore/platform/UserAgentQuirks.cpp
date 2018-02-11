@@ -67,12 +67,19 @@ static bool urlRequiresChromeBrowser(const URL& url)
     if (baseDomain == "typekit.net" || baseDomain == "typekit.com")
         return true;
 
+    // Washington Post decides the image type based on the user agent,
+    // giving image/jp2 with WebKitGTK+'s standard user agent.
+    // https://bugs.webkit.org/show_bug.cgi?id=181421
+    if (baseDomain == "washingtonpost.com")
+        return true;
+
     return false;
 }
 
 static bool urlRequiresMacintoshPlatform(const URL& url)
 {
-    String baseDomain = topPrivatelyControlledDomain(url.host());
+    String domain = url.host();
+    String baseDomain = topPrivatelyControlledDomain(domain);
 
     // At least finance.yahoo.com displays a mobile version with WebKitGTK+'s standard user agent.
     if (baseDomain == "yahoo.com")
@@ -84,6 +91,12 @@ static bool urlRequiresMacintoshPlatform(const URL& url)
 
     // web.whatsapp.com completely blocks users with WebKitGTK+'s standard user agent.
     if (baseDomain == "whatsapp.com")
+        return true;
+
+    // Microsoft Outlook Web App forces users with WebKitGTK+'s standard user
+    // agent to use the light version. Earlier versions even blocks users from
+    // accessing the calendar.
+    if (domain == "mail.ntu.edu.tw")
         return true;
 
     return false;
@@ -118,7 +131,8 @@ String UserAgentQuirks::stringForQuirk(UserAgentQuirk quirk)
         // Get versions from https://chromium.googlesource.com/chromium/src.git
         return ASCIILiteral("Chrome/58.0.3029.81");
     case NeedsMacintoshPlatform:
-        return ASCIILiteral("Macintosh; Intel Mac OS X 10_12");
+        // Frozen per https://bugs.webkit.org/show_bug.cgi?id=180365
+        return ASCIILiteral("Macintosh; Intel Mac OS X 10_13_4");
     case NeedsLinuxDesktopPlatform:
         return ASCIILiteral("X11; Linux x86_64");
     case NumUserAgentQuirks:

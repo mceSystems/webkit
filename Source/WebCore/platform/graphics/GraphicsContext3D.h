@@ -61,7 +61,7 @@
 OBJC_CLASS CALayer;
 OBJC_CLASS WebGLLayer;
 typedef struct __IOSurface* IOSurfaceRef;
-#elif PLATFORM(GTK) || PLATFORM(WIN_CAIRO) || PLATFORM(WPE)
+#else
 typedef unsigned int GLuint;
 #endif
 
@@ -94,14 +94,10 @@ class Extensions3DOpenGL;
 class HostWindow;
 class Image;
 class ImageBuffer;
-class ImageSource;
 class ImageData;
 class IntRect;
 class IntSize;
 class WebGLRenderingContextBase;
-#if USE(CAIRO)
-class PlatformContextCairo;
-#endif
 #if USE(TEXTURE_MAPPER)
 class TextureMapperGC3DPlatformLayer;
 #endif
@@ -746,6 +742,10 @@ public:
     ~GraphicsContext3D();
 
 #if PLATFORM(COCOA)
+    static Ref<GraphicsContext3D> createShared(GraphicsContext3D& sharedContext);
+#endif
+
+#if PLATFORM(COCOA)
     PlatformGraphicsContext3D platformGraphicsContext3D() const { return m_contextObj; }
     Platform3DObject platformTexture() const { return m_texture; }
     CALayer* platformLayer() const { return reinterpret_cast<CALayer*>(m_webGLLayer.get()); }
@@ -1127,12 +1127,7 @@ public:
     GC3Dboolean isVertexArray(Platform3DObject);
     void bindVertexArray(Platform3DObject);
 
-#if PLATFORM(GTK) || USE(CAIRO)
-    void paintToCanvas(const unsigned char* imagePixels, int imageWidth, int imageHeight,
-                       int canvasWidth, int canvasHeight, PlatformContextCairo* context);
-#elif USE(CG)
-    void paintToCanvas(const unsigned char* imagePixels, int imageWidth, int imageHeight, int canvasWidth, int canvasHeight, GraphicsContext&);
-#endif
+    void paintToCanvas(const unsigned char* imagePixels, const IntSize& imageSize, const IntSize& canvasSize, GraphicsContext&);
 
     void markContextChanged();
     void markLayerComposited();
@@ -1262,7 +1257,6 @@ public:
         bool extractImage(bool premultiplyAlpha, bool ignoreGammaAndColorProfile);
 
 #if USE(CAIRO)
-        ImageSource* m_decoder;
         RefPtr<cairo_surface_t> m_imageSurface;
 #elif USE(CG)
         RetainPtr<CGImageRef> m_cgImage;
@@ -1289,7 +1283,7 @@ public:
     unsigned textureSeed(GC3Duint texture) { return m_state.textureSeedCount.count(texture); }
 
 private:
-    GraphicsContext3D(GraphicsContext3DAttributes, HostWindow*, RenderStyle = RenderOffscreen);
+    GraphicsContext3D(GraphicsContext3DAttributes, HostWindow*, RenderStyle = RenderOffscreen, GraphicsContext3D* sharedContext = nullptr);
 
     // Helper for packImageData/extractImageData/extractTextureData which implement packing of pixel
     // data into the specified OpenGL destination format and type.
@@ -1400,7 +1394,7 @@ private:
 
     std::unique_ptr<ShaderNameHash> nameHashMapForShaders;
 
-#if ((PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(WPE)) && USE(OPENGL_ES_2))
+#if USE(OPENGL_ES_2)
     friend class Extensions3DOpenGLES;
     std::unique_ptr<Extensions3DOpenGLES> m_extensions;
 #else

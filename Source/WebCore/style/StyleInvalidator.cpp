@@ -143,7 +143,11 @@ void Invalidator::invalidateStyleForTree(Element& root, SelectorFilter* filter)
 {
     if (invalidateIfNeeded(root, filter) == CheckDescendants::No)
         return;
+    invalidateStyleForDescendants(root, filter);
+}
 
+void Invalidator::invalidateStyleForDescendants(Element& root, SelectorFilter* filter)
+{
     Vector<Element*, 20> parentStack;
     Element* previousElement = &root;
     auto descendants = descendantsOfType<Element>(root);
@@ -203,6 +207,54 @@ void Invalidator::invalidateStyle(Element& element)
 
     // Don't use SelectorFilter as the rule sets here tend to be small and the filter would have setup cost deep in the tree.
     invalidateStyleForTree(element, nullptr);
+}
+
+void Invalidator::invalidateStyleWithMatchElement(Element& element, MatchElement matchElement)
+{
+    switch (matchElement) {
+    case MatchElement::Subject: {
+        invalidateIfNeeded(element, nullptr);
+        break;
+    }
+    case MatchElement::Parent: {
+        auto children = childrenOfType<Element>(element);
+        for (auto& child : children)
+            invalidateIfNeeded(child, nullptr);
+        break;
+    }
+    case MatchElement::Ancestor: {
+        invalidateStyleForDescendants(element, nullptr);
+        break;
+    }
+    case MatchElement::DirectSibling:
+        if (auto* sibling = element.nextElementSibling())
+            invalidateIfNeeded(*sibling, nullptr);
+        break;
+    case MatchElement::IndirectSibling:
+        for (auto* sibling = element.nextElementSibling(); sibling; sibling = sibling->nextElementSibling())
+            invalidateIfNeeded(*sibling, nullptr);
+        break;
+    case MatchElement::AnySibling: {
+        auto parentChildren = childrenOfType<Element>(*element.parentNode());
+        for (auto& parentChild : parentChildren)
+            invalidateIfNeeded(parentChild, nullptr);
+        break;
+    }
+    case MatchElement::ParentSibling:
+        for (auto* sibling = element.nextElementSibling(); sibling; sibling = sibling->nextElementSibling()) {
+            auto siblingChildren = childrenOfType<Element>(*sibling);
+            for (auto& siblingChild : siblingChildren)
+                invalidateIfNeeded(siblingChild, nullptr);
+        }
+        break;
+    case MatchElement::AncestorSibling:
+        for (auto* sibling = element.nextElementSibling(); sibling; sibling = sibling->nextElementSibling())
+            invalidateStyleForDescendants(*sibling, nullptr);
+        break;
+    case MatchElement::Host:
+        // FIXME: Handle this here as well.
+        break;
+    }
 }
 
 }

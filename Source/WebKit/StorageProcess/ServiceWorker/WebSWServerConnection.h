@@ -38,10 +38,11 @@ class FormDataReference;
 }
 
 namespace WebCore {
+class ServiceWorkerRegistrationKey;
 struct ClientOrigin;
 struct ExceptionData;
+struct MessageWithMessagePorts;
 struct ServiceWorkerClientData;
-class ServiceWorkerRegistrationKey;
 }
 
 namespace WebKit {
@@ -52,8 +53,11 @@ public:
     WebSWServerConnection(const WebSWServerConnection&) = delete;
     ~WebSWServerConnection() final;
 
+    IPC::Connection& ipcConnection() const { return m_contentConnection.get(); }
+
     void disconnectedFromWebProcess();
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
+    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
     PAL::SessionID sessionID() const { return m_sessionID; }
 
@@ -64,40 +68,44 @@ public:
     void didFailFetch(uint64_t fetchIdentifier);
     void didNotHandleFetch(uint64_t fetchIdentifier);
 
-    void postMessageToServiceWorkerClient(WebCore::DocumentIdentifier destinationContextIdentifier, const IPC::DataReference& message, WebCore::ServiceWorkerIdentifier sourceServiceWorkerIdentifier, const String& sourceOrigin);
+    void postMessageToServiceWorkerClient(WebCore::DocumentIdentifier destinationContextIdentifier, WebCore::MessageWithMessagePorts&&, WebCore::ServiceWorkerIdentifier sourceServiceWorkerIdentifier, const String& sourceOrigin);
 
 private:
     // Implement SWServer::Connection (Messages to the client WebProcess)
-    void rejectJobInClient(const WebCore::ServiceWorkerJobDataIdentifier&, const WebCore::ExceptionData&) final;
-    void resolveRegistrationJobInClient(const WebCore::ServiceWorkerJobDataIdentifier&, const WebCore::ServiceWorkerRegistrationData&, WebCore::ShouldNotifyWhenResolved) final;
-    void resolveUnregistrationJobInClient(const WebCore::ServiceWorkerJobDataIdentifier&, const WebCore::ServiceWorkerRegistrationKey&, bool unregistrationResult) final;
-    void startScriptFetchInClient(const WebCore::ServiceWorkerJobDataIdentifier&) final;
+    void rejectJobInClient(WebCore::ServiceWorkerJobIdentifier, const WebCore::ExceptionData&) final;
+    void resolveRegistrationJobInClient(WebCore::ServiceWorkerJobIdentifier, const WebCore::ServiceWorkerRegistrationData&, WebCore::ShouldNotifyWhenResolved) final;
+    void resolveUnregistrationJobInClient(WebCore::ServiceWorkerJobIdentifier, const WebCore::ServiceWorkerRegistrationKey&, bool unregistrationResult) final;
+    void startScriptFetchInClient(WebCore::ServiceWorkerJobIdentifier, const WebCore::ServiceWorkerRegistrationKey&, WebCore::FetchOptions::Cache) final;
     void updateRegistrationStateInClient(WebCore::ServiceWorkerRegistrationIdentifier, WebCore::ServiceWorkerRegistrationState, const std::optional<WebCore::ServiceWorkerData>&) final;
     void updateWorkerStateInClient(WebCore::ServiceWorkerIdentifier, WebCore::ServiceWorkerState) final;
     void fireUpdateFoundEvent(WebCore::ServiceWorkerRegistrationIdentifier) final;
+    void setRegistrationLastUpdateTime(WebCore::ServiceWorkerRegistrationIdentifier, WallTime) final;
+    void setRegistrationUpdateViaCache(WebCore::ServiceWorkerRegistrationIdentifier, WebCore::ServiceWorkerUpdateViaCache) final;
     void notifyClientsOfControllerChange(const HashSet<WebCore::DocumentIdentifier>& contextIdentifiers, const WebCore::ServiceWorkerData& newController);
+    void registrationReady(uint64_t registrationReadyRequestIdentifier, WebCore::ServiceWorkerRegistrationData&&) final;
 
-    void startFetch(uint64_t fetchIdentifier, std::optional<WebCore::ServiceWorkerIdentifier>, const WebCore::ResourceRequest&, const WebCore::FetchOptions&, const IPC::FormDataReference&);
+    void scheduleJobInServer(WebCore::ServiceWorkerJobData&&);
 
-    void postMessageToServiceWorkerGlobalScope(WebCore::ServiceWorkerIdentifier destinationIdentifier, const IPC::DataReference& message, WebCore::DocumentIdentifier sourceContextIdentifier, WebCore::ServiceWorkerClientData&& source);
+    void startFetch(uint64_t fetchIdentifier, WebCore::ServiceWorkerRegistrationIdentifier, WebCore::ResourceRequest&&, WebCore::FetchOptions&&, IPC::FormDataReference&&, String&& referrer);
+
+    void postMessageToServiceWorker(WebCore::ServiceWorkerIdentifier destination, WebCore::MessageWithMessagePorts&&, const WebCore::ServiceWorkerOrClientIdentifier& source);
 
     void matchRegistration(uint64_t registrationMatchRequestIdentifier, const WebCore::SecurityOriginData& topOrigin, const WebCore::URL& clientURL);
     void getRegistrations(uint64_t registrationMatchRequestIdentifier, const WebCore::SecurityOriginData& topOrigin, const WebCore::URL& clientURL);
 
-    void registerServiceWorkerClient(WebCore::SecurityOriginData&& topOrigin, WebCore::DocumentIdentifier, WebCore::ServiceWorkerClientData&&);
-    void unregisterServiceWorkerClient(WebCore::DocumentIdentifier);
+    void registerServiceWorkerClient(WebCore::SecurityOriginData&& topOrigin, WebCore::ServiceWorkerClientData&&, const std::optional<WebCore::ServiceWorkerIdentifier>&);
+    void unregisterServiceWorkerClient(const WebCore::ServiceWorkerClientIdentifier&);
 
     IPC::Connection* messageSenderConnection() final { return m_contentConnection.ptr(); }
     uint64_t messageSenderDestinationID() final { return identifier().toUInt64(); }
     
     template<typename U> void sendToContextProcess(U&& message);
+    template<typename U> static void sendToContextProcess(WebCore::SWServerToContextConnection&, U&& message);
 
     PAL::SessionID m_sessionID;
-
     Ref<IPC::Connection> m_contentConnection;
-    RefPtr<IPC::Connection> m_contextConnection;
-    HashMap<WebCore::DocumentIdentifier, WebCore::ClientOrigin> m_clientOrigins;
-}; // class WebSWServerConnection
+    HashMap<WebCore::ServiceWorkerClientIdentifier, WebCore::ClientOrigin> m_clientOrigins;
+};
 
 } // namespace WebKit
 

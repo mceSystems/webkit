@@ -23,7 +23,7 @@ set(WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/applepay"
     "${WEBCORE_DIR}/Modules/applepay/paymentrequest"
     "${WEBCORE_DIR}/Modules/cache"
-    "${WEBCORE_DIR}/Modules/credentials"
+    "${WEBCORE_DIR}/Modules/credentialmanagement"
     "${WEBCORE_DIR}/Modules/encryptedmedia"
     "${WEBCORE_DIR}/Modules/encryptedmedia/legacy"
     "${WEBCORE_DIR}/Modules/entriesapi"
@@ -33,6 +33,7 @@ set(WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/indexeddb/client"
     "${WEBCORE_DIR}/Modules/indexeddb/server"
     "${WEBCORE_DIR}/Modules/indexeddb/shared"
+    "${WEBCORE_DIR}/Modules/mediacapabilities"
     "${WEBCORE_DIR}/Modules/mediacontrols/"
     "${WEBCORE_DIR}/Modules/mediasession"
     "${WEBCORE_DIR}/Modules/mediasource"
@@ -45,6 +46,7 @@ set(WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/Modules/speech"
     "${WEBCORE_DIR}/Modules/streams"
     "${WEBCORE_DIR}/Modules/webaudio"
+    "${WEBCORE_DIR}/Modules/webauthn"
     "${WEBCORE_DIR}/Modules/webdatabase"
     "${WEBCORE_DIR}/Modules/webdriver"
     "${WEBCORE_DIR}/Modules/websockets"
@@ -66,6 +68,7 @@ set(WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/cssjit"
     "${WEBCORE_DIR}/dom"
     "${WEBCORE_DIR}/dom/default"
+    "${WEBCORE_DIR}/dom/messageports"
     "${WEBCORE_DIR}/domjit"
     "${WEBCORE_DIR}/editing"
     "${WEBCORE_DIR}/fileapi"
@@ -122,6 +125,7 @@ set(WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/rendering/shapes"
     "${WEBCORE_DIR}/rendering/style"
     "${WEBCORE_DIR}/rendering/svg"
+    "${WEBCORE_DIR}/rendering/updating"
     "${WEBCORE_DIR}/replay"
     "${WEBCORE_DIR}/storage"
     "${WEBCORE_DIR}/style"
@@ -138,8 +142,6 @@ set(WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/xml"
     "${WEBCORE_DIR}/xml/parser"
     "${DERIVED_SOURCES_WEBCORE_DIR}"
-    "${PAL_DIR}"
-    "${CMAKE_SOURCE_DIR}/Source"
 )
 
 set(WebCore_SYSTEM_INCLUDE_DIRECTORIES
@@ -165,12 +167,13 @@ set(WebCore_IDL_INCLUDES
 
     Modules/airplay
     Modules/cache
-    Modules/credentials
+    Modules/credentialmanagement
     Modules/encryptedmedia/legacy
     Modules/entriesapi
     Modules/fetch
     Modules/geolocation
     Modules/indexeddb
+    Modules/mediacapabilities
     Modules/mediasession
     Modules/mediastream
     Modules/notifications
@@ -203,18 +206,11 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/cache/DOMWindowCaches.idl
     Modules/cache/WorkerGlobalScopeCaches.idl
 
-    Modules/credentials/BasicCredential.idl
-    Modules/credentials/CredentialCreationOptions.idl
-    Modules/credentials/CredentialData.idl
-    Modules/credentials/CredentialRequestOptions.idl
-    Modules/credentials/CredentialUserData.idl
-    Modules/credentials/CredentialsContainer.idl
-    Modules/credentials/FederatedCredential.idl
-    Modules/credentials/FederatedCredentialInit.idl
-    Modules/credentials/FederatedCredentialRequestOptions.idl
-    Modules/credentials/NavigatorCredentials.idl
-    Modules/credentials/PasswordCredential.idl
-    Modules/credentials/PasswordCredentialData.idl
+    Modules/credentialmanagement/BasicCredential.idl
+    Modules/credentialmanagement/CredentialCreationOptions.idl
+    Modules/credentialmanagement/CredentialRequestOptions.idl
+    Modules/credentialmanagement/CredentialsContainer.idl
+    Modules/credentialmanagement/NavigatorCredentials.idl
 
     Modules/entriesapi/DOMFileSystem.idl
     Modules/entriesapi/ErrorCallback.idl
@@ -264,6 +260,19 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/indexeddb/IDBTransactionMode.idl
     Modules/indexeddb/IDBVersionChangeEvent.idl
     Modules/indexeddb/WorkerGlobalScopeIndexedDatabase.idl
+
+    Modules/mediacapabilities/AudioConfiguration.idl
+    Modules/mediacapabilities/MediaCapabilities.idl
+    Modules/mediacapabilities/MediaCapabilitiesInfo.idl
+    Modules/mediacapabilities/MediaConfiguration.idl
+    Modules/mediacapabilities/MediaDecodingConfiguration.idl
+    Modules/mediacapabilities/MediaDecodingType.idl
+    Modules/mediacapabilities/MediaEncodingConfiguration.idl
+    Modules/mediacapabilities/MediaEncodingType.idl
+    Modules/mediacapabilities/NavigatorMediaCapabilities.idl
+    Modules/mediacapabilities/ScreenColorGamut.idl
+    Modules/mediacapabilities/ScreenLuminance.idl
+    Modules/mediacapabilities/VideoConfiguration.idl
 
     Modules/mediacontrols/MediaControlsHost.idl
 
@@ -325,6 +334,7 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/notifications/NotificationPermission.idl
     Modules/notifications/NotificationPermissionCallback.idl
 
+    Modules/paymentrequest/MerchantValidationEvent.idl
     Modules/paymentrequest/PaymentAddress.idl
     Modules/paymentrequest/PaymentComplete.idl
     Modules/paymentrequest/PaymentCurrencyAmount.idl
@@ -388,6 +398,15 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/webaudio/ScriptProcessorNode.idl
     Modules/webaudio/WaveShaperNode.idl
 
+    Modules/webauthn/AuthenticatorAssertionResponse.idl
+    Modules/webauthn/AuthenticatorAttestationResponse.idl
+    Modules/webauthn/AuthenticatorResponse.idl
+    Modules/webauthn/PublicKeyCredential.idl
+    Modules/webauthn/PublicKeyCredentialCreationOptions.idl
+    Modules/webauthn/PublicKeyCredentialDescriptor.idl
+    Modules/webauthn/PublicKeyCredentialRequestOptions.idl
+    Modules/webauthn/PublicKeyCredentialType.idl
+
     Modules/webdatabase/DOMWindowWebDatabase.idl
     Modules/webdatabase/Database.idl
     Modules/webdatabase/DatabaseCallback.idl
@@ -422,11 +441,23 @@ set(WebCore_NON_SVG_IDL_FILES
     accessibility/AccessibleNode.idl
 
     animation/Animatable.idl
-    animation/AnimationEffect.idl
+    animation/AnimationEffectReadOnly.idl
     animation/AnimationEffectTiming.idl
+    animation/AnimationEffectTimingProperties.idl
+    animation/AnimationEffectTimingReadOnly.idl
+    animation/AnimationPlaybackEvent.idl
+    animation/AnimationPlaybackEventInit.idl
     animation/AnimationTimeline.idl
+    animation/CompositeOperation.idl
+    animation/ComputedTimingProperties.idl
     animation/DocumentTimeline.idl
+    animation/FillMode.idl
+    animation/IterationCompositeOperation.idl
+    animation/KeyframeAnimationOptions.idl
     animation/KeyframeEffect.idl
+    animation/KeyframeEffectOptions.idl
+    animation/KeyframeEffectReadOnly.idl
+    animation/PlaybackDirection.idl
     animation/WebAnimation.idl
 
     crypto/CryptoAlgorithmParameters.idl
@@ -575,6 +606,7 @@ set(WebCore_NON_SVG_IDL_FILES
     dom/ShadowRoot.idl
     dom/ShadowRootMode.idl
     dom/Slotable.idl
+    dom/SpectreGadget.idl
     dom/StaticRange.idl
     dom/StringCallback.idl
     dom/Text.idl
@@ -726,7 +758,9 @@ set(WebCore_NON_SVG_IDL_FILES
     html/canvas/CanvasTransform.idl
     html/canvas/CanvasUserInterface.idl
     html/canvas/ImageBitmapRenderingContext.idl
+    html/canvas/ImageBitmapRenderingContextSettings.idl
     html/canvas/ImageSmoothingQuality.idl
+    html/canvas/OffscreenCanvasRenderingContext2D.idl
     html/canvas/Path2D.idl
     html/canvas/WebGPUBuffer.idl
     html/canvas/WebGPUCommandBuffer.idl
@@ -1052,7 +1086,6 @@ set(WebCore_LIBRARIES
     ${LIBXSLT_LIBRARIES}
     ${SQLITE_LIBRARIES}
     ${ZLIB_LIBRARIES}
-    JavaScriptCore${DEBUG_SUFFIX}
     PAL${DEBUG_SUFFIX}
 )
 
@@ -1093,8 +1126,6 @@ if (ENABLE_ENCRYPTED_MEDIA)
         Modules/encryptedmedia/NavigatorEME.cpp
 
         html/MediaEncryptedEvent.cpp
-    )
-    list(APPEND WebCore_IDL_FILES
     )
     list(APPEND WebCore_IDL_FILES
         Modules/encryptedmedia/MediaKeyMessageEvent.idl
@@ -1163,8 +1194,6 @@ if (ENABLE_WEBGL)
         html/canvas/WebGLVertexArrayObject.cpp
         html/canvas/WebGLVertexArrayObjectBase.cpp
         html/canvas/WebGLVertexArrayObjectOES.cpp
-
-        inspector/InspectorShaderProgram.cpp
     )
     list(APPEND WebCore_IDL_FILES
         html/canvas/ANGLEInstancedArrays.idl
@@ -1341,104 +1370,17 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
     )
 
     list(APPEND ANGLESupport_SOURCES
-        ${THIRDPARTY_DIR}/ANGLE/src/common/Float16ToFloat32.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/common/angleutils.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/common/debug.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/common/event_tracer.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/common/Float16ToFloat32.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/common/mathutil.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/common/MemoryBuffer.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/common/utilities.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/common/string_utils.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/common/third_party/smhasher/src/PMurHash.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/common/tls.cpp
-
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/AddAndTrueToLoopCondition.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/AddDefaultReturnStatements.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ArrayReturnValueToOutParameter.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ASTMetadataHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/blocklayout.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/blocklayoutHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BreakVariableAliasingInInnerLoops.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BuiltInFunctionEmulator.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BuiltInFunctionEmulatorGLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BuiltInFunctionEmulatorHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Cache.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/CallDAG.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/CodeGen.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Compiler.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ConstantUnion.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/DeferGlobalInitializers.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Diagnostics.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/DirectiveHandler.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/EmulateGLFragColorBroadcast.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/EmulatePrecision.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ExpandIntegerPowExpressions.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ExtensionGLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/FindSymbolNode.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/FlagStd140Structs.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/glslang_lex.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/glslang_tab.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/InfoSink.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Initialize.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/InitializeDll.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/InitializeVariables.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Intermediate.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IntermNode.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IntermNodePatternMatcher.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IntermTraverse.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/intermOut.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Operator.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputESSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputGLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputGLSLBase.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputVulkanGLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ParseContext.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/PoolAlloc.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/PruneEmptyDeclarations.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/PrunePureLiteralStatements.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/QualifierTypes.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RecordConstantPrecision.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RegenerateStructNames.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveDynamicIndexing.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveInvariantDeclaration.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemovePow.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveSwitchFallThrough.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteDoWhile.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteElseBlocks.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteUnaryMinusOperatorFloat.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteTexelFetchOffset.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteUnaryMinusOperatorInt.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ScalarizeVecAndMatConstructorArgs.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SearchSymbol.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SeparateArrayInitialization.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SeparateExpressionsReturningArrays.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SeparateDeclarations.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ShaderLang.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ShaderVars.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SimplifyLoopConditions.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SplitSequenceOperator.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/StructureHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SymbolTable.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TextureFunctionHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorESSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorGLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorVulkan.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Types.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UnfoldShortCircuitAST.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UnfoldShortCircuitToIf.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UniformHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UseInterfaceBlockFields.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/util.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UtilsHLSL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateGlobalInitializer.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateLimitations.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateMaxParameters.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateMultiviewWebGL.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateOutputs.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateSwitch.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/VariableInfo.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/VariablePacker.cpp
-        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/VersionGLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/common/uniform_type_info_autogen.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/common/utilities.cpp
 
         ${THIRDPARTY_DIR}/ANGLE/src/compiler/preprocessor/DiagnosticsBase.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/compiler/preprocessor/DirectiveHandlerBase.cpp
@@ -1452,9 +1394,114 @@ if (ENABLE_GRAPHICS_CONTEXT_3D)
         ${THIRDPARTY_DIR}/ANGLE/src/compiler/preprocessor/Token.cpp
         ${THIRDPARTY_DIR}/ANGLE/src/compiler/preprocessor/Tokenizer.cpp
 
-        ${THIRDPARTY_DIR}/ANGLE/src/libANGLE/Platform.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ASTMetadataHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/AddAndTrueToLoopCondition.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/AddDefaultReturnStatements.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ArrayReturnValueToOutParameter.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BreakVariableAliasingInInnerLoops.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BuiltInFunctionEmulator.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BuiltInFunctionEmulatorGLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/BuiltInFunctionEmulatorHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Cache.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/CallDAG.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ClampPointSize.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/CodeGen.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/CollectVariables.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Compiler.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ConstantUnion.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/DeclareAndInitBuiltinsForInstancedMultiview.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/DeferGlobalInitializers.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Diagnostics.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/DirectiveHandler.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/EmulateGLFragColorBroadcast.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/EmulatePrecision.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ExpandIntegerPowExpressions.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ExtensionBehavior.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ExtensionGLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/FindMain.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/FindSymbolNode.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/FlagStd140Structs.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/HashNames.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ImageFunctionHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/InfoSink.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Initialize.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/InitializeDll.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/InitializeVariables.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IntermNode.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IntermNodePatternMatcher.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IntermNode_util.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IntermTraverse.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/IsASTDepthBelowLimit.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Operator.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputESSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputGLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputGLSLBase.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputTree.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/OutputVulkanGLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ParseContext.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/PoolAlloc.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/PruneNoOps.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/QualifierTypes.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RecordConstantPrecision.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RegenerateStructNames.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveArrayLengthMethod.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveDynamicIndexing.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveEmptySwitchStatements.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveInvariantDeclaration.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveNoOpCasesFromEndOfSwitchStatements.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemovePow.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveSwitchFallThrough.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RemoveUnreferencedVariables.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteDoWhile.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteElseBlocks.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteTexelFetchOffset.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteUnaryMinusOperatorFloat.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RewriteUnaryMinusOperatorInt.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/RunAtTheEndOfShader.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ScalarizeVecAndMatConstructorArgs.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SearchSymbol.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SeparateArrayInitialization.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SeparateDeclarations.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SeparateExpressionsReturningArrays.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ShaderLang.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ShaderVars.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SimplifyLoopConditions.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SplitSequenceOperator.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/StructureHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SymbolTable.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/SymbolUniqueId.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TextureFunctionHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorESSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorGLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/TranslatorVulkan.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/Types.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UnfoldShortCircuitAST.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UnfoldShortCircuitToIf.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UniformHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UseInterfaceBlockFields.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/UtilsHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateGlobalInitializer.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateLimitations.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateMaxParameters.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateOutputs.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateSwitch.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/ValidateVaryingLocations.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/VariablePacker.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/VectorizeVectorScalarArithmetic.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/VersionGLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/WrapSwitchStatementsInBlocks.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/blocklayout.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/blocklayoutHLSL.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/emulated_builtin_functions_hlsl_autogen.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/glslang_lex.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/glslang_tab.cpp
+        ${THIRDPARTY_DIR}/ANGLE/src/compiler/translator/util.cpp
 
         ${THIRDPARTY_DIR}/ANGLE/src/third_party/compiler/ArrayBoundsClamper.cpp
+
+        ${THIRDPARTY_DIR}/ANGLE/src/libANGLE/Platform.cpp
     )
 
     list(APPEND WebCore_SOURCES
@@ -1476,6 +1523,11 @@ if (ENABLE_USER_MESSAGE_HANDLERS)
         page/UserMessageHandlersNamespace.cpp
         page/WebKitNamespace.cpp
     )
+endif ()
+
+if (USE_OPENVR)
+  list(APPEND WebCore_INCLUDE_DIRECTORIES "${THIRDPARTY_DIR}/openvr/headers")
+  list(APPEND WebCore_LIBRARIES openvr_api)
 endif ()
 
 if (USE_WOFF2)
@@ -1508,6 +1560,7 @@ set(WebCoreTestSupport_IDL_FILES
     testing/MockCDMFactory.idl
     testing/MockContentFilterSettings.idl
     testing/MockPageOverlay.idl
+    testing/ServiceWorkerInternals.idl
     testing/TypeConversions.idl
 )
 
@@ -1527,7 +1580,7 @@ list(APPEND WebCoreTestSupport_SOURCES
     testing/MockGamepadProvider.cpp
     testing/MockPageOverlay.cpp
     testing/MockPageOverlayClient.cpp
-
+    testing/ServiceWorkerInternals.cpp
     testing/js/WebCoreTestSupport.cpp
 )
 
@@ -1569,7 +1622,7 @@ add_custom_command(
     COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/inline-and-minify-stylesheets-and-scripts.py ${WEBCORE_DIR}/inspector/InspectorOverlayPage.html ${DERIVED_SOURCES_WEBCORE_DIR}/InspectorOverlayPage.combined.html
     COMMAND ${PERL_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/xxd.pl InspectorOverlayPage_html ${DERIVED_SOURCES_WEBCORE_DIR}/InspectorOverlayPage.combined.html ${DERIVED_SOURCES_WEBCORE_DIR}/InspectorOverlayPage.h
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/InspectorOverlayPage.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/InspectorOverlayPage.h)
 
 
 # Generate CommandLineAPIModuleSource.h
@@ -1581,11 +1634,11 @@ add_custom_command(
     COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/jsmin.py < ${WEBCORE_DIR}/inspector/CommandLineAPIModuleSource.js >> ${DERIVED_SOURCES_WEBCORE_DIR}/CommandLineAPIModuleSource.min.js
     COMMAND ${PERL_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/xxd.pl CommandLineAPIModuleSource_js ${DERIVED_SOURCES_WEBCORE_DIR}/CommandLineAPIModuleSource.min.js ${DERIVED_SOURCES_WEBCORE_DIR}/CommandLineAPIModuleSource.h
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/CommandLineAPIModuleSource.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/CommandLineAPIModuleSource.h)
 
 
 MAKE_HASH_TOOLS(${WEBCORE_DIR}/platform/ColorData)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/ColorData.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/ColorData.cpp)
 
 
 # Generate DOMJITAbstractHeapRepository.h
@@ -1595,7 +1648,7 @@ add_custom_command(
     DEPENDS ${WEBCORE_DIR}/domjit/generate-abstract-heap.rb
     COMMAND ${RUBY_EXECUTABLE} ${WEBCORE_DIR}/domjit/generate-abstract-heap.rb ${WEBCORE_DIR}/domjit/DOMJITAbstractHeapRepository.yaml ${DERIVED_SOURCES_WEBCORE_DIR}/DOMJITAbstractHeapRepository.h
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/DOMJITAbstractHeapRepository.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/DOMJITAbstractHeapRepository.h)
 
 # Generate XMLViewerCSS.h
 add_custom_command(
@@ -1605,7 +1658,7 @@ add_custom_command(
     COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/cssmin.py < ${WEBCORE_DIR}/xml/XMLViewer.css > ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewer.min.css
     COMMAND ${PERL_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/xxd.pl XMLViewer_css ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewer.min.css ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewerCSS.h
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewerCSS.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewerCSS.h)
 
 # Generate XMLViewerJS.h
 add_custom_command(
@@ -1615,7 +1668,7 @@ add_custom_command(
     COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/jsmin.py < ${WEBCORE_DIR}/xml/XMLViewer.js > ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewer.min.js
     COMMAND ${PERL_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/xxd.pl XMLViewer_js ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewer.min.js ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewerJS.h
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewerJS.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLViewerJS.h)
 
 # Generate HTML entity table
 add_custom_command(
@@ -1624,7 +1677,7 @@ add_custom_command(
     DEPENDS ${WEBCORE_DIR}/html/parser/create-html-entity-table
     COMMAND ${PYTHON_EXECUTABLE} ${WEBCORE_DIR}/html/parser/create-html-entity-table -o ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLEntityTable.cpp ${WEBCORE_DIR}/html/parser/HTMLEntityNames.in
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLEntityTable.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLEntityTable.cpp)
 
 # Generate HTTP header names
 add_custom_command(
@@ -1634,7 +1687,7 @@ add_custom_command(
     WORKING_DIRECTORY ${DERIVED_SOURCES_WEBCORE_DIR}
     COMMAND ${PYTHON_EXECUTABLE} ${WEBCORE_DIR}/platform/network/create-http-header-name-table ${WEBCORE_DIR}/platform/network/HTTPHeaderNames.in "${GPERF_EXECUTABLE}"
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/HTTPHeaderNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/HTTPHeaderNames.cpp)
 
 # Generate CSS property names
 add_custom_command(
@@ -1645,9 +1698,9 @@ add_custom_command(
     COMMAND ${PERL_EXECUTABLE} -ne "print" ${WebCore_CSS_PROPERTY_NAMES} > ${DERIVED_SOURCES_WEBCORE_DIR}/CSSProperties.json
     COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/css/makeprop.pl --defines "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}" --gperf-executable "${GPERF_EXECUTABLE}"
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/CSSPropertyNames.cpp)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/StyleBuilder.cpp)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/StylePropertyShorthandFunctions.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/CSSPropertyNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/StyleBuilder.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/StylePropertyShorthandFunctions.cpp)
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/CSSParser.cpp CSSValueKeywords.h)
 
 # Generate CSS value keywords
@@ -1659,7 +1712,7 @@ add_custom_command(
     COMMAND ${PERL_EXECUTABLE} -ne "print" ${WebCore_CSS_VALUE_KEYWORDS} > ${DERIVED_SOURCES_WEBCORE_DIR}/CSSValueKeywords.in
     COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/css/makevalues.pl --defines "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}"
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/CSSValueKeywords.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/CSSValueKeywords.cpp)
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/CSSParser.cpp CSSValueKeywords.h)
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/CSSPrimitiveValueMappings.h CSSValueKeywords.h)
 
@@ -1670,14 +1723,14 @@ add_custom_command(
     WORKING_DIRECTORY ${DERIVED_SOURCES_WEBCORE_DIR}
     COMMAND ${PYTHON_EXECUTABLE} ${WEBCORE_DIR}/css/makeSelectorPseudoClassAndCompatibilityElementMap.py ${WEBCORE_DIR}/css/SelectorPseudoClassAndCompatibilityElementMap.in "${GPERF_EXECUTABLE}" "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}"
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoClassAndCompatibilityElementMap.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoClassAndCompatibilityElementMap.cpp)
 add_custom_command(
     OUTPUT ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoElementTypeMap.gperf ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoElementTypeMap.cpp
     MAIN_DEPENDENCY ${WEBCORE_DIR}/css/makeSelectorPseudoElementsMap.py
     WORKING_DIRECTORY ${DERIVED_SOURCES_WEBCORE_DIR}
     COMMAND ${PYTHON_EXECUTABLE} ${WEBCORE_DIR}/css/makeSelectorPseudoElementsMap.py ${WEBCORE_DIR}/css/SelectorPseudoElementTypeMap.in "${GPERF_EXECUTABLE}" "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}"
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoElementTypeMap.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoElementTypeMap.cpp)
 
 # Generate user agent styles
 add_custom_command(
@@ -1686,7 +1739,7 @@ add_custom_command(
     DEPENDS ${WebCore_USER_AGENT_STYLE_SHEETS} ${WEBCORE_DIR}/bindings/scripts/preprocessor.pm
     COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/css/make-css-file-arrays.pl --defines "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}" ${DERIVED_SOURCES_WEBCORE_DIR}/UserAgentStyleSheets.h ${DERIVED_SOURCES_WEBCORE_DIR}/UserAgentStyleSheetsData.cpp ${WebCore_USER_AGENT_STYLE_SHEETS}
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/UserAgentStyleSheetsData.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/UserAgentStyleSheetsData.cpp)
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/StyleResolver.cpp UserAgentStyleSheetsData.cpp UserAgentStyleSheets.h)
 
 if (WebCore_USER_AGENT_SCRIPTS)
@@ -1702,7 +1755,7 @@ if (WebCore_USER_AGENT_SCRIPTS)
         WebCore_USER_AGENT_SCRIPTS
         WebCore_USER_AGENT_SCRIPTS_DEPENDENCIES
     )
-    list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/UserAgentScriptsData.cpp)
+    list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/UserAgentScriptsData.cpp)
 endif ()
 
 # Generate plug-in resources
@@ -1712,14 +1765,14 @@ add_custom_command(
     DEPENDS ${WebCore_PLUG_INS_RESOURCES} ${WEBCORE_DIR}/bindings/scripts/preprocessor.pm
     COMMAND ${PERL_EXECUTABLE} ${WEBCORE_DIR}/css/make-css-file-arrays.pl --defines "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}" --preprocessor "${CODE_GENERATOR_PREPROCESSOR}" ${DERIVED_SOURCES_WEBCORE_DIR}/PlugInsResources.h ${DERIVED_SOURCES_WEBCORE_DIR}/PlugInsResourcesData.cpp ${WebCore_PLUG_INS_RESOURCES}
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/PlugInsResourcesData.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/PlugInsResourcesData.cpp)
 ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/StyleResolver.cpp PlugInsResourcesData.cpp PlugInsResources.h)
 
 set(FEATURE_DEFINES_JAVASCRIPT "LANGUAGE_JAVASCRIPT ${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}")
 list(APPEND WebCoreTestSupport_IDL_FILES ${DERIVED_SOURCES_WEBCORE_DIR}/InternalSettingsGenerated.idl)
 
 GENERATE_BINDINGS(WebCoreBindings
-    OUTPUT_SOURCE WebCore_DERIVED_SOURCES
+    OUTPUT_SOURCE WebCore_SOURCES
     INPUT_FILES ${WebCore_IDL_FILES}
     BASE_DIR ${WEBCORE_DIR}
     IDL_INCLUDES ${WebCore_IDL_INCLUDES} ${DERIVED_SOURCES_WEBCORE_DIR}
@@ -1745,7 +1798,7 @@ GENERATE_BINDINGS(WebCoreTestSupportBindings
     GENERATOR JS)
 
 # WebCoreTestSupportBindings needs InternalSettingsGenerated.idl
-add_dependencies(WebCoreTestSupportBindings WebCoreDerivedSources)
+add_dependencies(WebCoreTestSupportBindings WebCore)
 
 # WebCore JS Builtins
 
@@ -1795,8 +1848,6 @@ foreach (_builtinSource ${WebCore_BUILTINS_SOURCES})
         DEPENDS ${BUILTINS_GENERATOR_SCRIPTS}
         COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/generate-js-builtins.py --framework WebCore --output-directory ${DERIVED_SOURCES_WEBCORE_DIR} ${_builtinSource}
         VERBATIM)
-    list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/${_objectName}Builtins.cpp)
-    list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/${_objectName}Builtins.h)
     list(APPEND WebCore_DERIVED_BUILTIN_HEADERS ${DERIVED_SOURCES_WEBCORE_DIR}/${_objectName}Builtins.h)
 endforeach ()
 
@@ -1809,7 +1860,7 @@ add_custom_command(
     DEPENDS ${BUILTINS_GENERATOR_SCRIPTS} ${WebCore_DERIVED_BUILTIN_HEADERS}
     COMMAND ${PYTHON_EXECUTABLE} ${JavaScriptCore_SCRIPTS_DIR}/generate-js-builtins.py --wrappers-only --framework WebCore --output-directory ${DERIVED_SOURCES_WEBCORE_DIR} ${WebCore_BUILTINS_SOURCES}
     VERBATIM)
-list(APPEND WebCore_DERIVED_SOURCES
+list(APPEND WebCore_SOURCES
     ${DERIVED_SOURCES_WEBCORE_DIR}/WebCoreJSBuiltins.cpp
     ${DERIVED_SOURCES_WEBCORE_DIR}/WebCoreJSBuiltinInternals.cpp
     ${DERIVED_SOURCES_WEBCORE_DIR}/WebCoreJSBuiltins.h
@@ -1819,31 +1870,31 @@ ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/html/HTMLTreeBuilder.cpp 
 
 
 GENERATE_DOM_NAMES(HTML ${WEBCORE_DIR}/html/HTMLAttributeNames.in ${WEBCORE_DIR}/html/HTMLTagNames.in "")
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLNames.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLElementFactory.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/JSHTMLElementWrapperFactory.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLNames.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLElementFactory.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/JSHTMLElementWrapperFactory.cpp)
 
 
 GENERATE_EVENT_FACTORY(${WEBCORE_DIR}/dom/EventNames.in EventInterfaces.h)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventInterfaces.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventInterfaces.h)
 
 
 GENERATE_EVENT_FACTORY(${WEBCORE_DIR}/dom/EventTargetFactory.in EventTargetInterfaces.h)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventTargetInterfaces.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventTargetInterfaces.h)
 
 
 GENERATE_SETTINGS_MACROS(${WEBCORE_DIR}/page/Settings.yaml Settings.h)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/Settings.h)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/Settings.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/Settings.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/Settings.cpp)
 list(APPEND WebCoreTestSupport_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/InternalSettingsGenerated.cpp)
 
 
 GENERATE_FONT_NAMES(${WEBCORE_DIR}/css/WebKitFontFamilyNames.in)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/WebKitFontFamilyNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/WebKitFontFamilyNames.cpp)
 
 
 GENERATE_DOM_NAMES(MathML ${WEBCORE_DIR}/mathml/mathattrs.in ${WEBCORE_DIR}/mathml/mathtags.in "")
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/MathMLNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/MathMLNames.cpp)
 if (ENABLE_MATHML)
-    list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/MathMLElementFactory.cpp)
+    list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/MathMLElementFactory.cpp)
 endif ()
 
 # SVG extra defines need to map to a numerical value for correct preprocessing of svgtags.in.
@@ -1853,58 +1904,37 @@ if (ENABLE_SVG_FONTS)
 endif ()
 
 GENERATE_DOM_NAMES(SVG ${WEBCORE_DIR}/svg/svgattrs.in ${WEBCORE_DIR}/svg/svgtags.in "${SVG_EXTRA_DEFINES}")
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SVGNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SVGNames.cpp)
 
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SVGElementFactory.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/JSSVGElementWrapperFactory.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SVGElementFactory.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/JSSVGElementWrapperFactory.cpp)
 
 GENERATE_DOM_NAMES(XLink ${WEBCORE_DIR}/svg/xlinkattrs.in)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XLinkNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XLinkNames.cpp)
 
 
 GENERATE_DOM_NAMES(XMLNS ${WEBCORE_DIR}/xml/xmlnsattrs.in)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLNSNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLNSNames.cpp)
 
 
 GENERATE_DOM_NAMES(XML ${WEBCORE_DIR}/xml/xmlattrs.in)
-list(APPEND WebCore_DERIVED_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLNames.cpp)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/XMLNames.cpp)
 
-if (WIN32)
-    PROCESS_ALLINONE_FILE("${WebCore_DERIVED_SOURCES}" DerivedSources.cpp newSources TRUE)
-    set(WebCore_DERIVED_SOURCES DerivedSources.cpp ${newSources})
-endif ()
-
-WEBKIT_WRAP_SOURCELIST(${WebCore_IDL_FILES} ${WebCore_DERIVED_SOURCES})
+WEBKIT_WRAP_SOURCELIST(${WebCore_IDL_FILES})
 WEBKIT_COMPUTE_SOURCES(WebCore)
 WEBKIT_WRAP_SOURCELIST(${WebCore_SOURCES})
 WEBKIT_WRAP_SOURCELIST(${WebCoreTestSupport_IDL_FILES} ${WebCoreTestSupport_SOURCES})
 
 if (MSVC)
     WEBKIT_ADD_PRECOMPILED_HEADER("WebCorePrefix.h" "WebCorePrefix.cpp" WebCore_SOURCES)
-    WEBKIT_ADD_PRECOMPILED_HEADER("WebCorePrefix.h" "WebCoreDerivedSourcesPrefix.cpp" WebCore_DERIVED_SOURCES)
 endif ()
 
-# This is split into a separate library as a workaround for command line length
-# limits. This should no longer be needed when CMake supports Ninja response
-# files on OS X.
-add_library(WebCoreDerivedSources STATIC ${WebCore_DERIVED_SOURCES})
-set_target_properties(WebCoreDerivedSources PROPERTIES OUTPUT_NAME WebCoreDerivedSources${DEBUG_SUFFIX})
-target_link_libraries(WebCoreDerivedSources ${WebCore_LIBRARIES})
-target_include_directories(WebCoreDerivedSources PUBLIC ${WebCore_INCLUDE_DIRECTORIES})
-add_dependencies(WebCoreDerivedSources WebCoreBindings)
-if (NOT WIN32)
-    list(APPEND WebCore_LIBRARIES WebCoreDerivedSources)
-endif ()
 
 WEBKIT_FRAMEWORK(WebCore)
 
+add_dependencies(WebCore WebCoreBindings)
+
 if (APPLE)
     set_target_properties(WebCore PROPERTIES LINK_FLAGS "-sub_library libobjc -umbrella WebKit -allowable_client WebCoreTestSupport -allowable_client WebKit2 -allowable_client WebKitLegacy")
-endif ()
-
-if (WIN32)
-    add_custom_target(WebCoreDerivedSources_PreBuild COMMAND ${WebCore_DERIVED_SOURCES_PRE_BUILD_COMMAND} VERBATIM)
-    add_dependencies(WebCoreDerivedSources WebCoreDerivedSources_PreBuild)
-    add_dependencies(WebCore WebCoreDerivedSources)
 endif ()
 
 # The -ftree-sra optimization (implicit with -O2) causes crashes when
@@ -1922,6 +1952,7 @@ endif ()
 add_library(WebCoreTestSupport ${WebCoreTestSupport_LIBRARY_TYPE} ${WebCoreTestSupport_SOURCES})
 add_dependencies(WebCoreTestSupport WebCore WebCoreTestSupportBindings)
 target_include_directories(WebCoreTestSupport PUBLIC ${WebCoreTestSupport_INCLUDE_DIRECTORIES} ${WebCore_INCLUDE_DIRECTORIES})
+target_include_directories(WebCoreTestSupport SYSTEM PUBLIC ${WebCore_SYSTEM_INCLUDE_DIRECTORIES})
 target_link_libraries(WebCoreTestSupport ${WebCoreTestSupport_LIBRARIES})
 
 if (WebCoreTestSupport_OUTPUT_NAME)
@@ -1946,7 +1977,7 @@ if (ENABLE_GRAPHICS_CONTEXT_3D AND NOT WIN32)
         "${THIRDPARTY_DIR}/ANGLE/include"
         "${THIRDPARTY_DIR}/ANGLE/include/KHR"
         "${THIRDPARTY_DIR}/ANGLE/src"
-        "${THIRDPARTY_DIR}/ANGLE/src/common/third_party/numerics"
+        "${THIRDPARTY_DIR}/ANGLE/src/common/third_party/base"
     )
     list(APPEND WebCore_LIBRARIES ANGLESupport)
 
@@ -1962,7 +1993,7 @@ endif ()
 
 target_link_libraries(WebCore ${WebCore_LIBRARIES})
 
-if (SHARED_CORE)
+if (${WebCore_LIBRARY_TYPE} MATCHES "SHARED")
     set_target_properties(WebCore PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
     install(TARGETS WebCore DESTINATION "${LIB_INSTALL_DIR}")
 endif ()

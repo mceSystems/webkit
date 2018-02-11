@@ -25,11 +25,12 @@
 #include "FilterEffect.h"
 
 #include "Filter.h"
+#include "GeometryUtilities.h"
 #include "ImageBuffer.h"
 #include "Logging.h"
-#include <runtime/JSCInlines.h>
-#include <runtime/TypedArrayInlines.h>
-#include <runtime/Uint8ClampedArray.h>
+#include <JavaScriptCore/JSCInlines.h>
+#include <JavaScriptCore/TypedArrayInlines.h>
+#include <JavaScriptCore/Uint8ClampedArray.h>
 #include <wtf/text/TextStream.h>
 
 #if HAVE(ARM_NEON_INTRINSICS)
@@ -64,6 +65,13 @@ void FilterEffect::clipAbsolutePaintRect()
         m_absolutePaintRect.intersect(enclosingIntRect(m_maxEffectRect));
     else
         m_absolutePaintRect.unite(enclosingIntRect(m_maxEffectRect));
+}
+
+FloatPoint FilterEffect::mapPointFromUserSpaceToBuffer(FloatPoint userSpacePoint) const
+{
+    FloatPoint absolutePoint = mapPoint(userSpacePoint, m_filterPrimitiveSubregion, m_absoluteUnclippedSubregion);
+    absolutePoint.moveBy(-m_absolutePaintRect.location());
+    return absolutePoint;
 }
 
 IntRect FilterEffect::requestedRegionOfInputImageData(const IntRect& effectRect) const
@@ -225,9 +233,9 @@ ImageBuffer* FilterEffect::imageBufferResult()
 
     IntRect destinationRect(IntPoint(), m_absolutePaintRect.size());
     if (m_premultipliedImageResult)
-        m_imageBufferResult->putByteArray(Premultiplied, *m_premultipliedImageResult, destinationRect.size(), destinationRect, IntPoint());
+        m_imageBufferResult->putByteArray(*m_premultipliedImageResult, AlphaPremultiplication::Premultiplied, destinationRect.size(), destinationRect, IntPoint());
     else
-        m_imageBufferResult->putByteArray(Unmultiplied, *m_unmultipliedImageResult, destinationRect.size(), destinationRect, IntPoint());
+        m_imageBufferResult->putByteArray(*m_unmultipliedImageResult, AlphaPremultiplication::Unpremultiplied, destinationRect.size(), destinationRect, IntPoint());
     return m_imageBufferResult.get();
 }
 
@@ -434,7 +442,7 @@ void FilterEffect::copyPremultipliedResult(Uint8ClampedArray& destination, const
 
 ImageBuffer* FilterEffect::createImageBufferResult()
 {
-    LOG(Filters, "FilterEffect %s %p createImageBufferResult", filterName(), this);
+    LOG(Filters, "FilterEffect %s %p createImageBufferResult %dx%d", filterName(), this, m_absolutePaintRect.size().width(), m_absolutePaintRect.size().height());
 
     // Only one result type is allowed.
     ASSERT(!hasResult());
@@ -503,11 +511,28 @@ void FilterEffect::transformResultColorSpace(ColorSpace dstColorSpace)
 #endif
 }
 
-TextStream& FilterEffect::externalRepresentation(TextStream& ts) const
+TextStream& FilterEffect::externalRepresentation(TextStream& ts, RepresentationType representationType) const
 {
     // FIXME: We should dump the subRegions of the filter primitives here later. This isn't
     // possible at the moment, because we need more detailed informations from the target object.
+    
+    if (representationType == RepresentationType::Debugging) {
+        TextStream::IndentScope indentScope(ts);
+        ts.dumpProperty("alpha image", m_alphaImage);
+        ts.dumpProperty("operating colorspace", m_operatingColorSpace);
+        ts.dumpProperty("result colorspace", m_resultColorSpace);
+        ts << "\n" << indent;
+    }
     return ts;
+}
+
+TextStream& operator<<(TextStream& ts, const FilterEffect& filter)
+{
+    // Use a new stream because we want multiline mode for logging filters.
+    TextStream filterStream;
+    filter.externalRepresentation(filterStream, FilterEffect::RepresentationType::Debugging);
+    
+    return ts << filterStream.release();
 }
 
 } // namespace WebCore

@@ -341,25 +341,6 @@ IntRect HitTestResult::imageRect() const
     return m_innerNonSharedNode->renderBox()->absoluteContentQuad().enclosingBoundingBox();
 }
 
-#if ENABLE(ATTACHMENT_ELEMENT)
-URL HitTestResult::absoluteAttachmentURL() const
-{
-    if (!m_innerNonSharedNode)
-        return URL();
-    
-    if (!(m_innerNonSharedNode->renderer() && m_innerNonSharedNode->renderer()->isAttachment()))
-        return URL();
-    
-    if (!is<HTMLAttachmentElement>(*m_innerNonSharedNode))
-        return URL();
-    File* attachmentFile = downcast<HTMLAttachmentElement>(*m_innerNonSharedNode).file();
-    if (!attachmentFile)
-        return URL();
-    
-    return URL::fileURLWithFileSystemPath(attachmentFile->path());
-}
-#endif
-
 URL HitTestResult::absoluteImageURL() const
 {
     if (!m_innerNonSharedNode)
@@ -572,7 +553,7 @@ bool HitTestResult::isOverTextInsideFormControlElement() const
     if (!node)
         return false;
 
-    if (!is<HTMLTextFormControlElement>(*node))
+    if (!is<Element>(*node) || !downcast<Element>(*node).isTextField())
         return false;
 
     Frame* frame = node->document().frame();

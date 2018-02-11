@@ -217,6 +217,8 @@ void Graph::dump(PrintStream& out, const char* prefix, Node* node, DumpContext* 
         out.print(comma, NodeFlagsDump(node->flags()));
     if (node->prediction())
         out.print(comma, SpeculationDump(node->prediction()));
+    if (node->hasNumberOfArgumentsToSkip())
+        out.print(comma, "numberOfArgumentsToSkip = ", node->numberOfArgumentsToSkip());
     if (node->hasArrayMode())
         out.print(comma, node->arrayMode());
     if (node->hasArithUnaryType())
@@ -311,15 +313,8 @@ void Graph::dump(PrintStream& out, const char* prefix, Node* node, DumpContext* 
     }
     if (node->hasUnlinkedLocal()) 
         out.print(comma, node->unlinkedLocal());
-    if (node->hasConstantBuffer()) {
-        out.print(comma);
-        out.print(node->startConstant(), ":[");
-        CommaPrinter anotherComma;
-        for (unsigned i = 0; i < node->numConstants(); ++i)
-            out.print(anotherComma, pointerDumpInContext(freeze(m_codeBlock->constantBuffer(node->startConstant())[i]), context));
-        out.print("]");
+    if (node->hasVectorLengthHint())
         out.print(comma, "vectorLengthHint = ", node->vectorLengthHint());
-    }
     if (node->hasLazyJSValue())
         out.print(comma, node->lazyJSValue());
     if (node->hasIndexingType())
@@ -353,6 +348,8 @@ void Graph::dump(PrintStream& out, const char* prefix, Node* node, DumpContext* 
         out.print(comma, "id", data->identifierNumber, "{", identifiers()[data->identifierNumber], "}");
         out.print(", domJIT = ", RawPointer(data->domJIT));
     }
+    if (node->hasIgnoreLastIndexIsWritable())
+        out.print(comma, "ignoreLastIndexIsWritable = ", node->ignoreLastIndexIsWritable());
     if (node->isConstant())
         out.print(comma, pointerDumpInContext(node->constant(), context));
     if (node->isJump())
@@ -1624,9 +1621,11 @@ ControlEquivalenceAnalysis& Graph::ensureControlEquivalenceAnalysis()
 
 MethodOfGettingAValueProfile Graph::methodOfGettingAValueProfileFor(Node* currentNode, Node* operandNode)
 {
+    // This represents IR like `CurrentNode(@operandNode)`. For example: `GetByVal(..., Int32:@GetLocal)`.
+
     for (Node* node = operandNode; node;) {
         // currentNode is null when we're doing speculation checks for checkArgumentTypes().
-        if (!currentNode || node->origin.semantic != currentNode->origin.semantic) {
+        if (!currentNode || node->origin.semantic != currentNode->origin.semantic || !currentNode->hasResult()) {
             CodeBlock* profiledBlock = baselineCodeBlockFor(node->origin.semantic);
 
             if (node->accessesStack(*this)) {

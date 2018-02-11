@@ -20,10 +20,10 @@ function test()
     };
 
     function getHighlight(callback) {
-        InspectorTest.evaluateInPage("window.internals.inspectorHighlightObject()", (error, payload, wasThrown) => {
+        InspectorTest.evaluateInPage("window.internals.inspectorHighlightObject()", (error, value, wasThrown) => {
             InspectorTest.assert(!error, "Unexpected error dumping highlight: " + error);
             InspectorTest.assert(!wasThrown, "Unexpected exception when dumping highlight.");
-            callback(JSON.parse(payload.value));
+            callback(JSON.parse(value));
         });
     }
 
@@ -111,11 +111,9 @@ function test()
     suite.addTestCase({
         name: "MissingNodeAndObjectIdShouldError",
         description: "Missing identifiers should cause an error.",
-        test(resolve, reject) {
-            DOMAgent.highlightNode(highlightConfig, undefined, undefined, (error) => {
-                InspectorTest.expectThat(error, "Should produce an error.");
-                InspectorTest.log("Error: " + error);
-                resolve();
+        async test() {
+            await InspectorTest.expectException(async () => {
+                await DOMAgent.highlightNode(highlightConfig, undefined, undefined);
             });
         }
     });
@@ -123,11 +121,9 @@ function test()
     suite.addTestCase({
         name: "BadNodeId",
         description: "Bad node id should cause an error.",
-        test(resolve, reject) {
-            DOMAgent.highlightNode(highlightConfig, 9999999, undefined, (error) => {
-                InspectorTest.expectThat(error, "Should produce an error.");
-                InspectorTest.log("Error: " + error);
-                resolve();
+        async test() {
+            await InspectorTest.expectException(async () => {
+                await DOMAgent.highlightNode(highlightConfig, 9999999, undefined);
             });
         }
     });
@@ -135,11 +131,9 @@ function test()
     suite.addTestCase({
         name: "BadObjectId",
         description: "Bad object id should cause an error.",
-        test(resolve, reject) {
-            DOMAgent.highlightNode(highlightConfig, undefined, "bad-object-id", (error) => {
-                InspectorTest.expectThat(error, "Should produce an error.");
-                InspectorTest.log("Error: " + error);
-                resolve();
+        async test() {
+            await InspectorTest.expectException(async () => {
+                await DOMAgent.highlightNode(highlightConfig, undefined, "bad-object-id");
             });
         }
     });

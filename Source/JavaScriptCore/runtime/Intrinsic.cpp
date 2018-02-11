@@ -111,6 +111,8 @@ const char* intrinsicName(Intrinsic intrinsic)
         return "RegExpTestIntrinsic";
     case RegExpTestFastIntrinsic:
         return "RegExpTestFastIntrinsic";
+    case RegExpMatchFastIntrinsic:
+        return "RegExpMatchFastIntrinsic";
     case ObjectGetPrototypeOfIntrinsic:
         return "ObjectGetPrototypeOfIntrinsic";
     case ReflectGetPrototypeOfIntrinsic:
@@ -165,6 +167,14 @@ const char* intrinsicName(Intrinsic intrinsic)
         return "JSSetBucketKeyIntrinsic";
     case JSWeakMapGetIntrinsic:
         return "JSWeakMapGetIntrinsic";
+    case JSWeakMapHasIntrinsic:
+        return "JSWeakMapHasIntrinsic";
+    case JSWeakMapSetIntrinsic:
+        return "JSWeakMapSetIntrinsic";
+    case JSWeakSetHasIntrinsic:
+        return "JSWeakSetHasIntrinsic";
+    case JSWeakSetAddIntrinsic:
+        return "JSWeakSetAddIntrinsic";
     case HasOwnPropertyIntrinsic:
         return "HasOwnPropertyIntrinsic";
     case AtomicsAddIntrinsic:

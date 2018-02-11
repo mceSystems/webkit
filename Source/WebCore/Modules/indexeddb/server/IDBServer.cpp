@@ -53,24 +53,17 @@ Ref<IDBServer> IDBServer::create(const String& databaseDirectoryPath, IDBBacking
 }
 
 IDBServer::IDBServer(IDBBackingStoreTemporaryFileHandler& fileHandler)
-    : m_backingStoreTemporaryFileHandler(fileHandler)
+    : CrossThreadTaskHandler("IndexedDatabase Server")
+    , m_backingStoreTemporaryFileHandler(fileHandler)
 {
-    Locker<Lock> locker(m_databaseThreadCreationLock);
-    m_thread = Thread::create("IndexedDatabase Server", [this] {
-        databaseRunLoop();
-    });
 }
 
 IDBServer::IDBServer(const String& databaseDirectoryPath, IDBBackingStoreTemporaryFileHandler& fileHandler)
-    : m_databaseDirectoryPath(databaseDirectoryPath)
+    : CrossThreadTaskHandler("IndexedDatabase Server")
+    , m_databaseDirectoryPath(databaseDirectoryPath)
     , m_backingStoreTemporaryFileHandler(fileHandler)
 {
     LOG(IndexedDB, "IDBServer created at path %s", databaseDirectoryPath.utf8().data());
-
-    Locker<Lock> locker(m_databaseThreadCreationLock);
-    m_thread = Thread::create("IndexedDatabase Server", [this] {
-        databaseRunLoop();
-    });
 }
 
 void IDBServer::registerConnection(IDBConnectionToClient& connection)
@@ -488,43 +481,12 @@ void IDBServer::didGetAllDatabaseNames(uint64_t serverConnectionIdentifier, uint
 
 void IDBServer::postDatabaseTask(CrossThreadTask&& task)
 {
-    m_databaseQueue.append(WTFMove(task));
+    postTask(WTFMove(task));
 }
 
 void IDBServer::postDatabaseTaskReply(CrossThreadTask&& task)
 {
-    m_databaseReplyQueue.append(WTFMove(task));
-
-    Locker<Lock> locker(m_mainThreadReplyLock);
-    if (m_mainThreadReplyScheduled)
-        return;
-
-    m_mainThreadReplyScheduled = true;
-    callOnMainThread([this] {
-        handleTaskRepliesOnMainThread();
-    });
-}
-
-void IDBServer::databaseRunLoop()
-{
-    ASSERT(!isMainThread());
-    {
-        Locker<Lock> locker(m_databaseThreadCreationLock);
-    }
-
-    while (!m_databaseQueue.isKilled())
-        m_databaseQueue.waitForMessage().performTask();
-}
-
-void IDBServer::handleTaskRepliesOnMainThread()
-{
-    {
-        Locker<Lock> locker(m_mainThreadReplyLock);
-        m_mainThreadReplyScheduled = false;
-    }
-
-    while (auto task = m_databaseReplyQueue.tryGetMessage())
-        task->performTask();
+    postTaskReply(WTFMove(task));
 }
 
 static uint64_t generateDeleteCallbackID()
@@ -534,14 +496,14 @@ static uint64_t generateDeleteCallbackID()
     return ++currentID;
 }
 
-void IDBServer::closeAndDeleteDatabasesModifiedSince(std::chrono::system_clock::time_point modificationTime, Function<void ()>&& completionHandler)
+void IDBServer::closeAndDeleteDatabasesModifiedSince(WallTime modificationTime, Function<void ()>&& completionHandler)
 {
     uint64_t callbackID = generateDeleteCallbackID();
     auto addResult = m_deleteDatabaseCompletionHandlers.add(callbackID, WTFMove(completionHandler));
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
 
     // If the modification time is in the future, don't both doing anything.
-    if (modificationTime > std::chrono::system_clock::now()) {
+    if (modificationTime > WallTime::now()) {
         postDatabaseTaskReply(createCrossThreadTask(*this, &IDBServer::didPerformCloseAndDeleteDatabases, callbackID));
         return;
     }
@@ -579,19 +541,19 @@ void IDBServer::closeAndDeleteDatabasesForOrigins(const Vector<SecurityOriginDat
     postDatabaseTask(createCrossThreadTask(*this, &IDBServer::performCloseAndDeleteDatabasesForOrigins, origins, callbackID));
 }
 
-static void removeAllDatabasesForOriginPath(const String& originPath, std::chrono::system_clock::time_point modifiedSince)
+static void removeAllDatabasesForOriginPath(const String& originPath, WallTime modifiedSince)
 {
     Vector<String> databasePaths = FileSystem::listDirectory(originPath, "*");
 
     for (auto& databasePath : databasePaths) {
         String databaseFile = FileSystem::pathByAppendingComponent(databasePath, "IndexedDB.sqlite3");
 
-        if (modifiedSince > std::chrono::system_clock::time_point::min() && FileSystem::fileExists(databaseFile)) {
-            time_t modificationTime;
-            if (!FileSystem::getFileModificationTime(databaseFile, modificationTime))
+        if (modifiedSince > -WallTime::infinity() && FileSystem::fileExists(databaseFile)) {
+            auto modificationTime = FileSystem::getFileModificationTime(databaseFile);
+            if (!modificationTime)
                 continue;
 
-            if (std::chrono::system_clock::from_time_t(modificationTime) < modifiedSince)
+            if (modificationTime.value() < modifiedSince)
                 continue;
         }
 
@@ -644,7 +606,7 @@ static void removeAllDatabasesForOriginPath(const String& originPath, std::chron
     FileSystem::deleteEmptyDirectory(originPath);
 }
 
-void IDBServer::performCloseAndDeleteDatabasesModifiedSince(std::chrono::system_clock::time_point modifiedSince, uint64_t callbackID)
+void IDBServer::performCloseAndDeleteDatabasesModifiedSince(WallTime modifiedSince, uint64_t callbackID)
 {
     if (!m_databaseDirectoryPath.isEmpty()) {
         Vector<String> originPaths = FileSystem::listDirectory(m_databaseDirectoryPath, "*");
@@ -660,7 +622,7 @@ void IDBServer::performCloseAndDeleteDatabasesForOrigins(const Vector<SecurityOr
     if (!m_databaseDirectoryPath.isEmpty()) {
         for (const auto& origin : origins) {
             String originPath = FileSystem::pathByAppendingComponent(m_databaseDirectoryPath, origin.databaseIdentifier());
-            removeAllDatabasesForOriginPath(originPath, std::chrono::system_clock::time_point::min());
+            removeAllDatabasesForOriginPath(originPath, -WallTime::infinity());
         }
     }
 

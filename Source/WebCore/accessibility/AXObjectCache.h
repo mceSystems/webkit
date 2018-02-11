@@ -158,7 +158,7 @@ public:
     AccessibilityObject* get(Node*);
     
     void remove(RenderObject*);
-    void remove(Node*);
+    void remove(Node&);
     void remove(Widget*);
     void remove(AXID);
 
@@ -185,7 +185,7 @@ public:
     void handleModalChange(Node*);
     Node* modalNode();
 
-    void handleAttributeChanged(const QualifiedName& attrName, Element*);
+    void deferAttributeChangeIfNeeded(const QualifiedName&, Element*);
     void recomputeIsIgnored(RenderObject* renderer);
 
 #if HAVE(ACCESSIBILITY)
@@ -320,7 +320,7 @@ public:
 
     void frameLoadingEventNotification(Frame*, AXLoadingEvent);
 
-    void clearTextMarkerNodesInUse(Document*);
+    void prepareForDocumentDestruction(const Document&);
 
     void startCachingComputedObjectAttributesUntilTreeMutates();
     void stopCachingComputedObjectAttributes();
@@ -337,7 +337,8 @@ public:
     void deferTextChangedIfNeeded(Node*);
     void deferSelectedChildrenChangedIfNeeded(Element&);
     void performDeferredCacheUpdate();
-    
+    void deferTextReplacementNotificationForTextControl(HTMLTextFormControlElement&, const String& previousValue);
+
     RefPtr<Range> rangeMatchesTextNearRange(RefPtr<Range>, const String&);
     
 
@@ -361,7 +362,7 @@ protected:
 
     // This is a weak reference cache for knowing if Nodes used by TextMarkers are valid.
     void setNodeInUse(Node* n) { m_textMarkerNodes.add(n); }
-    void removeNodeForUse(Node* n) { m_textMarkerNodes.remove(n); }
+    void removeNodeForUse(Node& n) { m_textMarkerNodes.remove(&n); }
     bool isNodeInUse(Node* n) { return m_textMarkerNodes.contains(n); }
     
     // CharacterOffset functions.
@@ -408,6 +409,8 @@ private:
     void handleMenuOpened(Node*);
     void handleLiveRegionCreated(Node*);
     void handleMenuItemSelected(Node*);
+    void handleAttributeChange(const QualifiedName&, Element*);
+    bool shouldProcessAttributeChange(const QualifiedName&, Element*);
     
     // aria-modal related
     void findModalNodes();
@@ -419,7 +422,7 @@ private:
     HashMap<RenderObject*, AXID> m_renderObjectMapping;
     HashMap<Widget*, AXID> m_widgetObjectMapping;
     HashMap<Node*, AXID> m_nodeObjectMapping;
-    HashSet<Node*> m_textMarkerNodes;
+    ListHashSet<Node*> m_textMarkerNodes;
     std::unique_ptr<AXComputedObjectAttributeCache> m_computedObjectAttributeCache;
     WEBCORE_EXPORT static bool gAccessibilityEnabled;
     WEBCORE_EXPORT static bool gAccessibilityEnhancedUserInterfaceEnabled;
@@ -444,6 +447,8 @@ private:
     ListHashSet<Element*> m_deferredRecomputeIsIgnoredList;
     ListHashSet<Node*> m_deferredTextChangedList;
     ListHashSet<Element*> m_deferredSelectedChildredChangedList;
+    HashMap<Element*, String> m_deferredTextFormControlValue;
+    HashMap<Element*, QualifiedName> m_deferredAttributeChange;
     bool m_isSynchronizingSelection { false };
     bool m_performingDeferredCacheUpdate { false };
 };
@@ -496,6 +501,7 @@ inline void AXObjectCache::deferRecomputeIsIgnoredIfNeeded(Element*) { }
 inline void AXObjectCache::deferRecomputeIsIgnored(Element*) { }
 inline void AXObjectCache::deferTextChangedIfNeeded(Node*) { }
 inline void AXObjectCache::deferSelectedChildrenChangedIfNeeded(Element&) { }
+inline void AXObjectCache::deferTextReplacementNotificationForTextControl(HTMLTextFormControlElement&, const String&) { }
 inline void AXObjectCache::detachWrapper(AccessibilityObject*, AccessibilityDetachmentType) { }
 inline void AXObjectCache::focusModalNodeTimerFired() { }
 inline void AXObjectCache::frameLoadingEventNotification(Frame*, AXLoadingEvent) { }
@@ -504,7 +510,9 @@ inline void AXObjectCache::handleActiveDescendantChanged(Node*) { }
 inline void AXObjectCache::handleAriaExpandedChange(Node*) { }
 inline void AXObjectCache::handleModalChange(Node*) { }
 inline void AXObjectCache::handleAriaRoleChanged(Node*) { }
-inline void AXObjectCache::handleAttributeChanged(const QualifiedName&, Element*) { }
+inline void AXObjectCache::deferAttributeChangeIfNeeded(const QualifiedName&, Element*) { }
+inline void AXObjectCache::handleAttributeChange(const QualifiedName&, Element*) { }
+inline bool AXObjectCache::shouldProcessAttributeChange(const QualifiedName&, Element*) { return false; }
 inline void AXObjectCache::handleFocusedUIElementChanged(Node*, Node*) { }
 inline void AXObjectCache::handleScrollbarUpdate(ScrollView*) { }
 inline void AXObjectCache::handleScrolledToAnchor(const Node*) { }
@@ -528,7 +536,7 @@ inline void AXObjectCache::updateCacheAfterNodeIsAttached(Node*) { }
 inline RefPtr<Range> AXObjectCache::rangeForNodeContents(Node*) { return nullptr; }
 inline void AXObjectCache::remove(AXID) { }
 inline void AXObjectCache::remove(RenderObject*) { }
-inline void AXObjectCache::remove(Node*) { }
+inline void AXObjectCache::remove(Node&) { }
 inline void AXObjectCache::remove(Widget*) { }
 inline void AXObjectCache::selectedChildrenChanged(RenderObject*) { }
 inline void AXObjectCache::selectedChildrenChanged(Node*) { }

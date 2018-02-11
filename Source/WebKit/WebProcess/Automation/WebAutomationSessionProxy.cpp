@@ -572,32 +572,37 @@ void WebAutomationSessionProxy::computeElementLayout(uint64_t pageID, uint64_t f
         return;
     }
 
-    WebCore::FloatRect elementBounds = coreElement->boundingClientRect();
-
-    auto* coreFrameView = frame->coreFrame()->view();
+    WebCore::FrameView* frameView = frame->coreFrame()->view();
+    WebCore::FrameView* mainView = frame->coreFrame()->mainFrame().view();
+    WebCore::IntRect frameElementBounds = roundedIntRect(coreElement->boundingClientRect());
+    WebCore::IntRect rootElementBounds = mainView->rootViewToContents(frameView->contentsToRootView(frameElementBounds));
+    WebCore::IntRect resultElementBounds;
     switch (coordinateSystem) {
     case CoordinateSystem::Page:
-        elementBounds = coreFrameView->clientToDocumentRect(elementBounds);
+        resultElementBounds = WebCore::IntRect(mainView->clientToDocumentRect(WebCore::FloatRect(rootElementBounds)));
         break;
     case CoordinateSystem::LayoutViewport:
         // The element bounds are already in client coordinates.
+        resultElementBounds = rootElementBounds;
         break;
     case CoordinateSystem::VisualViewport:
         ASSERT_NOT_REACHED();
         break;
     }
 
-    std::optional<WebCore::FloatPoint> inViewCenterPoint;
+    std::optional<WebCore::IntPoint> resultInViewCenterPoint;
     bool isObscured = false;
     if (containerElement) {
-        inViewCenterPoint = elementInViewClientCenterPoint(*containerElement, isObscured);
-        if (inViewCenterPoint.has_value()) {
+        std::optional<WebCore::FloatPoint> frameInViewCenterPoint = elementInViewClientCenterPoint(*containerElement, isObscured);
+        if (frameInViewCenterPoint.has_value()) {
+            WebCore::IntPoint rootInViewCenterPoint = mainView->rootViewToContents(frameView->contentsToRootView(WebCore::IntPoint(frameInViewCenterPoint.value())));
             switch (coordinateSystem) {
             case CoordinateSystem::Page:
-                inViewCenterPoint = coreFrameView->clientToDocumentPoint(inViewCenterPoint.value());
+                resultInViewCenterPoint = WebCore::IntPoint(mainView->clientToDocumentPoint(rootInViewCenterPoint));
                 break;
             case CoordinateSystem::LayoutViewport:
                 // The point is already in client coordinates.
+                resultInViewCenterPoint = rootInViewCenterPoint;
                 break;
             case CoordinateSystem::VisualViewport:
                 ASSERT_NOT_REACHED();
@@ -606,7 +611,7 @@ void WebAutomationSessionProxy::computeElementLayout(uint64_t pageID, uint64_t f
         }
     }
 
-    WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidComputeElementLayout(callbackID, enclosingIntRect(elementBounds), WebCore::IntPoint(inViewCenterPoint.value()), isObscured, String()), 0);
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidComputeElementLayout(callbackID, resultElementBounds, resultInViewCenterPoint.value(), isObscured, String()), 0);
 }
 
 void WebAutomationSessionProxy::selectOptionElement(uint64_t pageID, uint64_t frameID, String nodeHandle, uint64_t callbackID)
@@ -657,7 +662,7 @@ void WebAutomationSessionProxy::selectOptionElement(uint64_t pageID, uint64_t fr
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidSelectOptionElement(callbackID, { }), 0);
 }
 
-static WebCore::IntRect snapshotRectForScreenshot(WebPage& page, WebCore::Element* element)
+static WebCore::IntRect snapshotRectForScreenshot(WebPage& page, WebCore::Element* element, bool clipToViewport)
 {
     if (element) {
         if (!element->renderer())
@@ -668,12 +673,12 @@ static WebCore::IntRect snapshotRectForScreenshot(WebPage& page, WebCore::Elemen
     }
 
     if (auto* frameView = page.mainFrameView())
-        return frameView->visibleContentRect();
+        return clipToViewport ? frameView->visibleContentRect() : WebCore::IntRect(WebCore::IntPoint(0, 0), frameView->contentsSize());
 
     return { };
 }
 
-void WebAutomationSessionProxy::takeScreenshot(uint64_t pageID, uint64_t frameID, String nodeHandle, bool scrollIntoViewIfNeeded, uint64_t callbackID)
+void WebAutomationSessionProxy::takeScreenshot(uint64_t pageID, uint64_t frameID, String nodeHandle, bool scrollIntoViewIfNeeded, bool clipToViewport, uint64_t callbackID)
 {
     ShareableBitmap::Handle handle;
 
@@ -702,7 +707,7 @@ void WebAutomationSessionProxy::takeScreenshot(uint64_t pageID, uint64_t frameID
     }
 
     String screenshotErrorType = Inspector::Protocol::AutomationHelpers::getEnumConstantValue(Inspector::Protocol::Automation::ErrorMessage::ScreenshotError);
-    WebCore::IntRect snapshotRect = snapshotRectForScreenshot(*page, coreElement);
+    WebCore::IntRect snapshotRect = snapshotRectForScreenshot(*page, coreElement, clipToViewport);
     if (snapshotRect.isEmpty()) {
         WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidTakeScreenshot(callbackID, handle, screenshotErrorType), 0);
         return;

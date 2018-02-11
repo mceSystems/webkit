@@ -75,7 +75,8 @@ public:
     void setAsPotentiallyCrossOrigin(const String&, Document&);
     void updateForAccessControl(Document&);
 
-    void updateReferrerOriginAndUserAgentHeaders(FrameLoader&, ReferrerPolicy);
+    void updateReferrerPolicy(ReferrerPolicy);
+    void updateReferrerOriginAndUserAgentHeaders(FrameLoader&);
     void upgradeInsecureRequestIfNeeded(Document&);
     void setAcceptHeaderIfNone(CachedResource::Type);
     void updateAccordingCacheMode();
@@ -98,7 +99,8 @@ public:
     static String splitFragmentIdentifierFromRequestURL(ResourceRequest&);
 
 #if ENABLE(SERVICE_WORKER)
-    void setSelectedServiceWorkerIdentifierIfNeeded(ServiceWorkerIdentifier);
+    void setClientIdentifierIfNeeded(DocumentIdentifier);
+    void setSelectedServiceWorkerRegistrationIdentifierIfNeeded(ServiceWorkerRegistrationIdentifier);
     void setNavigationServiceWorkerRegistrationData(const std::optional<ServiceWorkerRegistrationData>&);
 #endif
 

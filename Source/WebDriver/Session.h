@@ -46,12 +46,15 @@ public:
     }
     ~Session();
 
-    const String& id() const { return m_id; }
+    const String& id() const;
     const Capabilities& capabilities() const;
+    bool isConnected() const;
+    Seconds scriptTimeout() const  { return m_scriptTimeout; }
+    Seconds pageLoadTimeout() const { return m_pageLoadTimeout; }
+    Seconds implicitWaitTimeout() const { return m_implicitWaitTimeout; }
 
     enum class FindElementsMode { Single, Multiple };
     enum class ExecuteScriptMode { Sync, Async };
-    enum class Timeout { Script, PageLoad, Implicit };
 
     struct Cookie {
         String name;
@@ -60,7 +63,7 @@ public:
         std::optional<String> domain;
         std::optional<bool> secure;
         std::optional<bool> httpOnly;
-        std::optional<unsigned> expiry;
+        std::optional<uint64_t> expiry;
     };
 
     void waitForNavigationToComplete(Function<void (CommandResult&&)>&&);
@@ -86,16 +89,17 @@ public:
     void findElements(const String& strategy, const String& selector, FindElementsMode, const String& rootElementID, Function<void (CommandResult&&)>&&);
     void getActiveElement(Function<void (CommandResult&&)>&&);
     void isElementSelected(const String& elementID, Function<void (CommandResult&&)>&&);
+    void getElementAttribute(const String& elementID, const String& attribute, Function<void (CommandResult&&)>&&);
+    void getElementProperty(const String& elementID, const String& attribute, Function<void (CommandResult&&)>&&);
+    void getElementCSSValue(const String& elementID, const String& cssProperty, Function<void (CommandResult&&)>&&);
     void getElementText(const String& elementID, Function<void (CommandResult&&)>&&);
     void getElementTagName(const String& elementID, Function<void (CommandResult&&)>&&);
     void getElementRect(const String& elementID, Function<void (CommandResult&&)>&&);
     void isElementEnabled(const String& elementID, Function<void (CommandResult&&)>&&);
     void isElementDisplayed(const String& elementID, Function<void (CommandResult&&)>&&);
-    void getElementAttribute(const String& elementID, const String& attribute, Function<void (CommandResult&&)>&&);
     void elementClick(const String& elementID, Function<void (CommandResult&&)>&&);
     void elementClear(const String& elementID, Function<void (CommandResult&&)>&&);
     void elementSendKeys(const String& elementID, Vector<String>&& keys, Function<void (CommandResult&&)>&&);
-    void elementSubmit(const String& elementID, Function<void (CommandResult&&)>&&);
     void executeScript(const String& script, RefPtr<JSON::Array>&& arguments, ExecuteScriptMode, Function<void (CommandResult&&)>&&);
     void getAllCookies(Function<void (CommandResult&&)>&&);
     void getNamedCookie(const String& name, Function<void (CommandResult&&)>&&);
@@ -123,6 +127,9 @@ private:
     std::optional<String> pageLoadStrategyString() const;
 
     void handleUserPrompts(Function<void (CommandResult&&)>&&);
+    void handleUnexpectedAlertOpen(Function<void (CommandResult&&)>&&);
+    void dismissAndNotifyAlert(Function<void (CommandResult&&)>&&);
+    void acceptAndNotifyAlert(Function<void (CommandResult&&)>&&);
     void reportUnexpectedAlertOpen(Function<void (CommandResult&&)>&&);
 
     RefPtr<JSON::Object> createElement(RefPtr<JSON::Value>&&);
@@ -175,8 +182,9 @@ private:
     void performKeyboardInteractions(Vector<KeyboardInteraction>&&, Function<void (CommandResult&&)>&&);
 
     std::unique_ptr<SessionHost> m_host;
-    Timeouts m_timeouts;
-    String m_id;
+    Seconds m_scriptTimeout;
+    Seconds m_pageLoadTimeout;
+    Seconds m_implicitWaitTimeout;
     std::optional<String> m_toplevelBrowsingContext;
     std::optional<String> m_currentBrowsingContext;
 };

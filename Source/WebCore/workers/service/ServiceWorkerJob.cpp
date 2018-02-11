@@ -28,6 +28,7 @@
 
 #if ENABLE(SERVICE_WORKER)
 
+#include "HTTPHeaderNames.h"
 #include "JSDOMPromiseDeferred.h"
 #include "MIMETypeRegistry.h"
 #include "ResourceError.h"
@@ -37,66 +38,72 @@
 
 namespace WebCore {
 
-ServiceWorkerJob::ServiceWorkerJob(ServiceWorkerJobClient& client, Ref<DeferredPromise>&& promise, ServiceWorkerJobData&& jobData)
+ServiceWorkerJob::ServiceWorkerJob(ServiceWorkerJobClient& client, RefPtr<DeferredPromise>&& promise, ServiceWorkerJobData&& jobData)
     : m_client(client)
     , m_jobData(WTFMove(jobData))
     , m_promise(WTFMove(promise))
+    , m_contextIdentifier(client.contextIdentifier())
 {
 }
 
 ServiceWorkerJob::~ServiceWorkerJob()
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
 }
 
 void ServiceWorkerJob::failedWithException(const Exception& exception)
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
 
     m_completed = true;
     m_client->jobFailedWithException(*this, exception);
 }
 
-void ServiceWorkerJob::resolvedWithRegistration(ServiceWorkerRegistrationData&& data, WTF::Function<void()>&& promiseResolvedHandler)
+void ServiceWorkerJob::resolvedWithRegistration(ServiceWorkerRegistrationData&& data, ShouldNotifyWhenResolved shouldNotifyWhenResolved)
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
 
     m_completed = true;
-    m_client->jobResolvedWithRegistration(*this, WTFMove(data), WTFMove(promiseResolvedHandler));
+    m_client->jobResolvedWithRegistration(*this, WTFMove(data), shouldNotifyWhenResolved);
 }
 
 void ServiceWorkerJob::resolvedWithUnregistrationResult(bool unregistrationResult)
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
 
     m_completed = true;
     m_client->jobResolvedWithUnregistrationResult(*this, unregistrationResult);
 }
 
-void ServiceWorkerJob::startScriptFetch()
+void ServiceWorkerJob::startScriptFetch(FetchOptions::Cache cachePolicy)
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
 
-    m_client->startScriptFetchForJob(*this);
+    m_client->startScriptFetchForJob(*this, cachePolicy);
 }
 
-void ServiceWorkerJob::fetchScriptWithContext(ScriptExecutionContext& context)
+void ServiceWorkerJob::fetchScriptWithContext(ScriptExecutionContext& context, FetchOptions::Cache cachePolicy)
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
 
     // FIXME: WorkerScriptLoader is the wrong loader class to use here, but there's nothing else better right now.
     m_scriptLoader = WorkerScriptLoader::create();
-    m_scriptLoader->loadAsynchronously(&context, m_jobData.scriptURL, FetchOptions::Mode::SameOrigin, ContentSecurityPolicyEnforcement::DoNotEnforce, "serviceWorkerScriptLoad:", this);
+
+    ResourceRequest request { m_jobData.scriptURL };
+    request.setInitiatorIdentifier("serviceWorkerScriptLoad:");
+    request.addHTTPHeaderField(ASCIILiteral("Service-Worker"), ASCIILiteral("script"));
+
+    m_scriptLoader->loadAsynchronously(context, WTFMove(request), FetchOptions::Mode::SameOrigin, cachePolicy, FetchOptions::Redirect::Error, ContentSecurityPolicyEnforcement::DoNotEnforce, *this);
 }
 
 void ServiceWorkerJob::didReceiveResponse(unsigned long, const ResourceResponse& response)
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
     ASSERT(m_scriptLoader);
 
@@ -110,18 +117,46 @@ void ServiceWorkerJob::didReceiveResponse(unsigned long, const ResourceResponse&
         m_client->jobFailedLoadingScript(*this, WTFMove(error), WTFMove(exception));
         m_scriptLoader = nullptr;
     }
+    String serviceWorkerAllowed = response.httpHeaderField(HTTPHeaderName::ServiceWorkerAllowed);
+    String maxScopeString;
+    if (serviceWorkerAllowed.isNull()) {
+        String path = m_jobData.scriptURL.path();
+        // Last part of the path is the script's filename.
+        maxScopeString = path.substring(0, path.reverseFind('/') + 1);
+    } else {
+        auto maxScope = URL(m_jobData.scriptURL, serviceWorkerAllowed);
+        maxScopeString = maxScope.path();
+    }
+    String scopeString = m_jobData.scopeURL.path();
+    if (!scopeString.startsWith(maxScopeString)) {
+        Exception exception { SecurityError, ASCIILiteral("Scope URL should start with the given script URL") };
+        ResourceError error { errorDomainWebKitInternal, 0, response.url(), ASCIILiteral("Scope URL should start with the given script URL") };
+        m_client->jobFailedLoadingScript(*this, WTFMove(error), WTFMove(exception));
+        m_scriptLoader = nullptr;
+    }
 }
 
 void ServiceWorkerJob::notifyFinished()
 {
-    ASSERT(currentThread() == m_creationThread);
+    ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(m_scriptLoader);
     
     if (!m_scriptLoader->failed())
-        m_client->jobFinishedLoadingScript(*this, m_scriptLoader->script());
-    else
-        m_client->jobFailedLoadingScript(*this, m_scriptLoader->error(), std::nullopt);
+        m_client->jobFinishedLoadingScript(*this, m_scriptLoader->script(), m_scriptLoader->contentSecurityPolicy());
+    else {
+        auto& error =  m_scriptLoader->error();
+        ASSERT(!error.isNull());
+        m_client->jobFailedLoadingScript(*this, error, std::nullopt);
+    }
 
+    m_scriptLoader = nullptr;
+}
+
+void ServiceWorkerJob::cancelPendingLoad()
+{
+    if (!m_scriptLoader)
+        return;
+    m_scriptLoader->cancel();
     m_scriptLoader = nullptr;
 }
 

@@ -36,7 +36,7 @@
 #include "WorkerCacheStorageConnection.h"
 #include "WorkerEventQueue.h"
 #include "WorkerScriptController.h"
-#include <inspector/ConsoleMessage.h>
+#include <JavaScriptCore/ConsoleMessage.h>
 #include <memory>
 #include <pal/SessionID.h>
 
@@ -71,7 +71,7 @@ public:
     void stopIndexedDatabase();
 #endif
 
-    CacheStorageConnection& cacheStorageConnection();
+    WorkerCacheStorageConnection& cacheStorageConnection();
 
     WorkerScriptController* script() { return m_script.get(); }
     void clearScript() { m_script = nullptr; }

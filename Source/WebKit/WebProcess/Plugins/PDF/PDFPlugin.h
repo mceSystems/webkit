@@ -108,7 +108,7 @@ public:
 
     bool showContextMenuAtPoint(const WebCore::IntPoint&);
 
-    std::tuple<String, RetainPtr<PDFSelection>, RetainPtr<NSDictionary>> lookupTextAtLocation(const WebCore::FloatPoint&, WebHitTestResultData&) const;
+    std::tuple<String, PDFSelection *, NSDictionary *> lookupTextAtLocation(const WebCore::FloatPoint&, WebHitTestResultData&) const;
     WebCore::FloatRect rectForSelectionInRootView(PDFSelection *) const;
 
     CGFloat scaleFactor() const;
@@ -169,7 +169,7 @@ private:
     bool getFormValue(String& formValue) final { return false; }
     bool handleScroll(WebCore::ScrollDirection, WebCore::ScrollGranularity) final;
     RefPtr<WebCore::SharedBuffer> liveResourceData() const final;
-    void willDetatchRenderer() final;
+    void willDetachRenderer() final;
     bool pluginHandlesContentOffsetForAccessibilityHitTest() const final;
     
     bool isBeingAsynchronouslyInitialized() const final { return false; }

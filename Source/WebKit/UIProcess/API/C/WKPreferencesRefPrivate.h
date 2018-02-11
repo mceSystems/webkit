@@ -493,6 +493,10 @@ WK_EXPORT bool WKPreferencesGetUserTimingEnabled(WKPreferencesRef);
 WK_EXPORT void WKPreferencesSetResourceTimingEnabled(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetResourceTimingEnabled(WKPreferencesRef);
 
+// Defaults to false
+WK_EXPORT void WKPreferencesSetFetchAPIKeepAliveEnabled(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetFetchAPIKeepAliveEnabled(WKPreferencesRef);
+
 // Defaults to true.
 WK_EXPORT void WKPreferencesSetLargeImageAsyncDecodingEnabled(WKPreferencesRef preferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetLargeImageAsyncDecodingEnabled(WKPreferencesRef preferencesRef);
@@ -514,8 +518,8 @@ WK_EXPORT void WKPreferencesSetMediaPreloadingEnabled(WKPreferencesRef, bool fla
 WK_EXPORT bool WKPreferencesGetMediaPreloadingEnabled(WKPreferencesRef);
 
 // Defaults to false
-WK_EXPORT void WKPreferencesSetCredentialManagementEnabled(WKPreferencesRef, bool flag);
-WK_EXPORT bool WKPreferencesGetCredentialManagementEnabled(WKPreferencesRef);
+WK_EXPORT void WKPreferencesSetWebAuthenticationEnabled(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetWebAuthenticationEnabled(WKPreferencesRef);
 
 // Defaults to true.
 WK_EXPORT void WKPreferencesSetInvisibleMediaAutoplayPermitted(WKPreferencesRef, bool flag);
@@ -544,6 +548,10 @@ WK_EXPORT bool WKPreferencesGetStorageAccessAPIEnabled(WKPreferencesRef);
 // Defaults to false
 WK_EXPORT void WKPreferencesSetAccessibilityObjectModelEnabled(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetAccessibilityObjectModelEnabled(WKPreferencesRef);
+
+// Defaults to false.
+WK_EXPORT void WKPreferencesSetShouldAllowUserInstalledFonts(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetShouldAllowUserInstalledFonts(WKPreferencesRef);
     
 #ifdef __cplusplus
 }

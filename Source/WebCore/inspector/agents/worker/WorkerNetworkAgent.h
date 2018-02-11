@@ -30,6 +30,7 @@
 namespace WebCore {
 
 class WorkerNetworkAgent final : public InspectorNetworkAgent {
+    WTF_MAKE_NONCOPYABLE(WorkerNetworkAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WorkerNetworkAgent(WorkerAgentContext&);
@@ -41,6 +42,7 @@ private:
     Vector<WebSocket*> activeWebSockets(const LockHolder&) final;
     void setResourceCachingDisabled(bool) final;
     ScriptExecutionContext* scriptExecutionContext(ErrorString&, const String& frameId) final;
+    bool shouldForceBufferingNetworkResourceData() const final { return true; }
 
     WorkerGlobalScope& m_workerGlobalScope;
 };

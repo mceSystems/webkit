@@ -37,14 +37,15 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
         this._style = style;
         this._propertiesEditor = null;
         this._selectorElements = [];
-        this._wasFocused = false;
+        this._mediaElements = [];
+        this._filterText = null;
+        this._shouldFocusSelectorElement = false;
+        this._wasEditing = false;
     }
 
     // Public
 
     get style() { return this._style; }
-
-    get propertiesEditor() { return this._propertiesEditor; }
 
     get editable()
     {
@@ -82,6 +83,7 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
 
         this._propertiesEditor = new WI.SpreadsheetCSSStyleDeclarationEditor(this, this._style);
         this._propertiesEditor.element.classList.add("properties");
+        this._propertiesEditor.addEventListener(WI.SpreadsheetCSSStyleDeclarationEditor.Event.FilterApplied, this._handleEditorFilterApplied, this);
 
         this._closeBrace = document.createElement("span");
         this._closeBrace.classList.add("close-brace");
@@ -100,6 +102,9 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
         if (this._style.editable) {
             this.element.addEventListener("click", this._handleClick.bind(this));
             this.element.addEventListener("mousedown", this._handleMouseDown.bind(this));
+
+            new WI.KeyboardShortcut(WI.KeyboardShortcut.Modifier.CommandOrControl, "S", this._save.bind(this), this._element);
+            new WI.KeyboardShortcut(WI.KeyboardShortcut.Modifier.CommandOrControl | WI.KeyboardShortcut.Modifier.Shift, "S", this._save.bind(this), this._element);
         }
     }
 
@@ -109,11 +114,25 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
 
         this._renderOrigin();
         this._renderSelector();
+
+        if (this._shouldFocusSelectorElement)
+            this.startEditingRuleSelector();
+    }
+
+    hidden()
+    {
+        this._propertiesEditor.hidden();
     }
 
     startEditingRuleSelector()
     {
+        if (!this._selectorElement) {
+            this._shouldFocusSelectorElement = true;
+            return;
+        }
+
         this._selectorElement.focus();
+        this._shouldFocusSelectorElement = false;
     }
 
     highlightProperty(property)
@@ -135,6 +154,8 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
     {
         this.startEditingRuleSelector();
     }
+
+    // SpreadsheetSelectorField delegate
 
     spreadsheetSelectorFieldDidChange(direction)
     {
@@ -165,6 +186,8 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
         this._discardSelectorChange();
     }
 
+    // SpreadsheetCSSStyleDeclarationEditor delegate
+
     cssStyleDeclarationEditorStartEditingAdjacentRule(toPreviousRule)
     {
         if (!this._delegate)
@@ -174,6 +197,18 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
             this._delegate.cssStyleDeclarationSectionStartEditingPreviousRule(this);
         else if (!toPreviousRule && typeof this._delegate.cssStyleDeclarationSectionStartEditingNextRule === "function")
             this._delegate.cssStyleDeclarationSectionStartEditingNextRule(this);
+    }
+
+    applyFilter(filterText)
+    {
+        this._filterText = filterText;
+
+        if (!this.didInitialLayout)
+            return;
+
+        this._element.classList.remove(WI.GeneralStyleDetailsSidebarPanel.NoFilterMatchInSectionClassName);
+
+        this._propertiesEditor.applyFilter(this._filterText);
     }
 
     // Private
@@ -257,6 +292,9 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
             appendSelectorTextKnownToMatch(this._style.node.displayName);
             break;
         }
+
+        if (this._filterText)
+            this.applyFilter(this._filterText);
     }
 
     _renderOrigin()
@@ -326,14 +364,8 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
 
     _createMediaHeader()
     {
-        if (!this._style.ownerRule)
-            return "";
-
-        console.assert(Array.isArray(this._style.ownerRule.mediaList));
-
-        let mediaList = this._style.ownerRule.mediaList;
-        let mediaText = mediaList.map((media) => media.text).join(", ");
-        if (!mediaText || mediaText === "all" || mediaText === "screen")
+        let mediaList = this._style.mediaList;
+        if (!mediaList.length || (mediaList.length === 1 && (mediaList[0].text === "all" || mediaList[0].text === "screen")))
             return "";
 
         let mediaElement = document.createElement("div");
@@ -341,20 +373,67 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
 
         let mediaLabel = mediaElement.appendChild(document.createElement("div"));
         mediaLabel.className = "media-label";
-        mediaLabel.append("@media ", mediaText);
-        mediaElement.append(mediaLabel);
+        mediaLabel.append("@media ");
+
+        this._mediaElements = mediaList.map((media, i) => {
+            if (i)
+                mediaLabel.append(", ");
+
+            let span = mediaLabel.appendChild(document.createElement("span"));
+            span.textContent = media.text;
+            return span;
+        });
 
         return mediaElement;
     }
 
+    _save(event)
+    {
+        event.stop();
+
+        if (this._style.type !== WI.CSSStyleDeclaration.Type.Rule) {
+            // FIXME: Can't save CSS inside <style></style> <https://webkit.org/b/150357>
+            InspectorFrontendHost.beep();
+            return;
+        }
+
+        console.assert(this._style.ownerRule instanceof WI.CSSRule);
+        console.assert(this._style.ownerRule.sourceCodeLocation instanceof WI.SourceCodeLocation);
+
+        let sourceCode = this._style.ownerRule.sourceCodeLocation.sourceCode;
+        if (sourceCode.type !== WI.Resource.Type.Stylesheet) {
+            // FIXME: Can't save CSS inside style="" <https://webkit.org/b/150357>
+            InspectorFrontendHost.beep();
+            return;
+        }
+
+        let url;
+        if (sourceCode.urlComponents.scheme === "data") {
+            let mainResource = WI.frameResourceManager.mainFrame.mainResource;
+            if (mainResource.urlComponents.lastPathComponent.endsWith(".html"))
+                url = mainResource.url.replace(/\.html$/, "-data.css");
+            else {
+                let pathDirectory = mainResource.url.slice(0, -mainResource.urlComponents.lastPathComponent.length);
+                url = pathDirectory + "data.css";
+            }
+        } else
+            url = sourceCode.url;
+
+        const saveAs = event.shiftKey;
+        WI.saveDataToFile({url: url, content: sourceCode.content}, saveAs);
+    }
+
     _handleMouseDown(event)
     {
-        this._wasFocused = this._propertiesEditor.isFocused();
+        this._wasEditing = this._propertiesEditor.editing || document.activeElement === this._selectorElement;
     }
 
     _handleClick(event)
     {
-        if (this._wasFocused)
+        if (this._wasEditing)
+            return;
+
+        if (window.getSelection().type === "Range")
             return;
 
         event.stop();
@@ -391,6 +470,39 @@ WI.SpreadsheetCSSStyleDeclarationSection = class SpreadsheetCSSStyleDeclarationS
     {
         WI.domTreeManager.hideDOMNodeHighlight();
     }
+
+    _handleEditorFilterApplied(event)
+    {
+        let matchesMedia = false;
+        for (let mediaElement of this._mediaElements) {
+            mediaElement.classList.remove(WI.GeneralStyleDetailsSidebarPanel.FilterMatchSectionClassName);
+
+            if (mediaElement.textContent.includes(this._filterText)) {
+                mediaElement.classList.add(WI.GeneralStyleDetailsSidebarPanel.FilterMatchSectionClassName);
+                matchesMedia = true;
+            }
+        }
+
+        let matchesSelector = false;
+        for (let selectorElement of this._selectorElements) {
+            selectorElement.classList.remove(WI.GeneralStyleDetailsSidebarPanel.FilterMatchSectionClassName);
+
+            if (selectorElement.textContent.includes(this._filterText)) {
+                selectorElement.classList.add(WI.GeneralStyleDetailsSidebarPanel.FilterMatchSectionClassName);
+                matchesSelector = true;
+            }
+        }
+
+        let matches = event.data.matches || matchesMedia || matchesSelector;
+        if (!matches)
+            this._element.classList.add(WI.GeneralStyleDetailsSidebarPanel.NoFilterMatchInSectionClassName);
+
+        this.dispatchEventToListeners(WI.SpreadsheetCSSStyleDeclarationSection.Event.FilterApplied, {matches});
+    }
+};
+
+WI.SpreadsheetCSSStyleDeclarationSection.Event = {
+    FilterApplied: "spreadsheet-css-style-declaration-section-filter-applied",
 };
 
 WI.SpreadsheetCSSStyleDeclarationSection.MatchedSelectorElementStyleClassName = "matched";

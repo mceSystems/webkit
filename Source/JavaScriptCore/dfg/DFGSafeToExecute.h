@@ -172,6 +172,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CreateThis:
     case GetCallee:
     case GetArgumentCountIncludingThis:
+    case SetArgumentCountIncludingThis:
     case GetRestLength:
     case GetLocal:
     case SetLocal:
@@ -240,7 +241,6 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CheckStructureOrEmpty:
     case GetExecutable:
     case GetButterfly:
-    case GetButterflyWithoutCaging:
     case CallDOMGetter:
     case CallDOM:
     case CheckSubClass:
@@ -259,9 +259,12 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case CheckCell:
     case CheckBadCell:
     case CheckNotEmpty:
+    case AssertNotEmpty:
     case CheckStringIdent:
     case RegExpExec:
+    case RegExpExecNonGlobalOrSticky:
     case RegExpTest:
+    case RegExpMatchFast:
     case CompareLess:
     case CompareLessEq:
     case CompareGreater:
@@ -392,6 +395,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case PhantomNewAsyncGeneratorFunction:
     case PhantomNewAsyncFunction:
     case PhantomCreateActivation:
+    case PhantomNewRegexp:
     case PutHint:
     case CheckStructureImmediate:
     case MaterializeNewObject:
@@ -400,6 +404,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case PhantomCreateRest:
     case PhantomSpread:
     case PhantomNewArrayWithSpread:
+    case PhantomNewArrayBuffer:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
     case GetMyArgumentByValOutOfBounds:
@@ -424,7 +429,10 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node)
     case GetMapBucketNext:
     case LoadKeyFromMapBucket:
     case LoadValueFromMapBucket:
+    case ExtractValueFromWeakMapGet:
     case WeakMapGet:
+    case WeakSetAdd:
+    case WeakMapSet:
     case AtomicsAdd:
     case AtomicsAnd:
     case AtomicsCompareExchange:

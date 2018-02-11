@@ -72,19 +72,19 @@ SWServerToContextConnection* SWServerToContextConnection::globalServerToContextC
     return allConnections().begin()->value;
 }
 
-void SWServerToContextConnection::scriptContextFailedToStart(const ServiceWorkerJobDataIdentifier& jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, const String& message)
+void SWServerToContextConnection::scriptContextFailedToStart(const std::optional<ServiceWorkerJobDataIdentifier>& jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, const String& message)
 {
     if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier))
         worker->scriptContextFailedToStart(jobDataIdentifier, message);
 }
 
-void SWServerToContextConnection::scriptContextStarted(const ServiceWorkerJobDataIdentifier& jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier)
+void SWServerToContextConnection::scriptContextStarted(const std::optional<ServiceWorkerJobDataIdentifier>& jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier)
 {
     if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier))
         worker->scriptContextStarted(jobDataIdentifier);
 }
     
-void SWServerToContextConnection::didFinishInstall(const ServiceWorkerJobDataIdentifier& jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, bool wasSuccessful)
+void SWServerToContextConnection::didFinishInstall(const std::optional<ServiceWorkerJobDataIdentifier>& jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, bool wasSuccessful)
 {
     if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier))
         worker->didFinishInstall(jobDataIdentifier, wasSuccessful);
@@ -106,6 +106,37 @@ void SWServerToContextConnection::workerTerminated(ServiceWorkerIdentifier servi
 {
     if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier))
         worker->contextTerminated();
+}
+
+void SWServerToContextConnection::findClientByIdentifier(uint64_t requestIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, ServiceWorkerClientIdentifier clientId)
+{
+    if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier))
+        globalServerToContextConnection()->findClientByIdentifierCompleted(requestIdentifier, worker->findClientByIdentifier(clientId), false);
+}
+
+void SWServerToContextConnection::matchAll(uint64_t requestIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, const ServiceWorkerClientQueryOptions& options)
+{
+    if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier)) {
+        worker->matchAll(options, [requestIdentifier] (auto&& data) {
+            globalServerToContextConnection()->matchAllCompleted(requestIdentifier, data);
+        });
+    }
+}
+
+void SWServerToContextConnection::claim(uint64_t requestIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier)
+{
+    if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier)) {
+        worker->claim();
+        globalServerToContextConnection()->claimCompleted(requestIdentifier);
+    }
+}
+
+void SWServerToContextConnection::skipWaiting(ServiceWorkerIdentifier serviceWorkerIdentifier, uint64_t callbackID)
+{
+    if (auto* worker = SWServerWorker::existingWorkerForIdentifier(serviceWorkerIdentifier))
+        worker->skipWaiting();
+
+    didFinishSkipWaiting(callbackID);
 }
 
 } // namespace WebCore

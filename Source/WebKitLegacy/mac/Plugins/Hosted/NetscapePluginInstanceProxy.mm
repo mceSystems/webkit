@@ -56,13 +56,12 @@
 #import <WebCore/FrameTree.h>
 #import <WebCore/PlatformEventFactoryMac.h>
 #import <WebCore/ProxyServer.h>
-#import <WebCore/SecurityOrigin.h>
 #import <WebCore/ScriptController.h>
+#import <WebCore/SecurityOrigin.h>
 #import <WebCore/URL.h>
 #import <WebCore/UserGestureIndicator.h>
 #import <WebCore/npruntime_impl.h>
 #import <WebCore/runtime_object.h>
-#import <bindings/ScriptValue.h>
 #import <mach/mach.h>
 #import <utility>
 #import <wtf/NeverDestroyed.h>

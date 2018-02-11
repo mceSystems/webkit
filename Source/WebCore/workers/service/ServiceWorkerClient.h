@@ -30,7 +30,7 @@
 #include "ContextDestructionObserver.h"
 #include "ExceptionOr.h"
 #include "ServiceWorkerClientData.h"
-#include <heap/Strong.h>
+#include <JavaScriptCore/Strong.h>
 #include <wtf/RefCounted.h>
 
 namespace JSC {
@@ -39,6 +39,8 @@ class JSValue;
 
 namespace WebCore {
 
+class ServiceWorkerGlobalScope;
+
 class ServiceWorkerClient : public RefCounted<ServiceWorkerClient>, public ContextDestructionObserver {
 public:
     using Identifier = ServiceWorkerClientIdentifier;
@@ -46,10 +48,7 @@ public:
     using Type = ServiceWorkerClientType;
     using FrameType = ServiceWorkerClientFrameType;
 
-    static Ref<ServiceWorkerClient> create(ScriptExecutionContext& context, ServiceWorkerClientIdentifier identifier, ServiceWorkerClientData&& data)
-    {
-        return adoptRef(*new ServiceWorkerClient(context, identifier, WTFMove(data)));
-    }
+    static Ref<ServiceWorkerClient> getOrCreate(ServiceWorkerGlobalScope&, ServiceWorkerClientData&&);
 
     ~ServiceWorkerClient();
 
@@ -58,14 +57,13 @@ public:
     Type type() const;
     String id() const;
 
-    Identifier identifier() const { return m_identifier; }
+    Identifier identifier() const { return m_data.identifier; }
 
     ExceptionOr<void> postMessage(ScriptExecutionContext&, JSC::JSValue message, Vector<JSC::Strong<JSC::JSObject>>&& transfer);
 
 protected:
-    ServiceWorkerClient(ScriptExecutionContext&, ServiceWorkerClientIdentifier, ServiceWorkerClientData&&);
+    ServiceWorkerClient(ServiceWorkerGlobalScope&, ServiceWorkerClientData&&);
 
-    ServiceWorkerClientIdentifier m_identifier;
     ServiceWorkerClientData m_data;
 };
 

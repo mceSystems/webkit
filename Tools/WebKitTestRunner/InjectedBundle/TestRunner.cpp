@@ -651,7 +651,10 @@ enum {
     StatisticsDidScanDataRecordsCallbackID,
     StatisticsDidRunTelemetryCallbackID,
     StatisticsDidClearThroughWebsiteDataRemovalCallbackID,
+    StatisticsDidSetPartitionOrBlockCookiesForHostCallbackID,
+    AllStorageAccessEntriesCallbackID,
     DidRemoveAllSessionCredentialsCallbackID,
+    GetApplicationManifestCallbackID,
     FirstUIScriptCallbackID = 100
 };
 
@@ -783,15 +786,6 @@ void TestRunner::setCookieStoragePartitioningEnabled(bool enabled)
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
 }
 
-void TestRunner::setStorageAccessAPIEnabled(bool enabled)
-{
-    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetStorageAccessAPIEnabled"));
-    
-    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(enabled));
-    
-    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
-}
-    
 double TestRunner::preciseTime()
 {
     return currentTime();
@@ -1134,6 +1128,12 @@ void TestRunner::setShouldDownloadUndisplayableMIMETypes(bool value)
 void TestRunner::terminateNetworkProcess()
 {
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("TerminateNetworkProcess"));
+    WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), nullptr);
+}
+
+void TestRunner::terminateServiceWorkerProcess()
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("TerminateServiceWorkerProcess"));
     WKBundlePagePostMessage(InjectedBundle::singleton().page()->page(), messageName.get(), nullptr);
 }
 
@@ -1546,14 +1546,18 @@ void TestRunner::statisticsProcessStatisticsAndDataRecords()
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), 0, nullptr);
 }
 
-void TestRunner::statisticsUpdateCookiePartitioning()
+void TestRunner::statisticsUpdateCookiePartitioning(JSValueRef callback)
 {
+    cacheTestRunnerCallback(StatisticsDidSetPartitionOrBlockCookiesForHostCallbackID, callback);
+
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("StatisticsUpdateCookiePartitioning"));
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), 0, nullptr);
 }
 
-void TestRunner::statisticsSetShouldPartitionCookiesForHost(JSStringRef hostName, bool value)
+void TestRunner::statisticsSetShouldPartitionCookiesForHost(JSStringRef hostName, bool value, JSValueRef callback)
 {
+    cacheTestRunnerCallback(StatisticsDidSetPartitionOrBlockCookiesForHostCallbackID, callback);
+
     Vector<WKRetainPtr<WKStringRef>> keys;
     Vector<WKRetainPtr<WKTypeRef>> values;
     
@@ -1575,6 +1579,11 @@ void TestRunner::statisticsSetShouldPartitionCookiesForHost(JSStringRef hostName
     WKRetainPtr<WKDictionaryRef> messageBody(AdoptWK, WKDictionaryCreate(rawKeys.data(), rawValues.data(), rawKeys.size()));
     
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
+}
+
+void TestRunner::statisticsCallDidSetPartitionOrBlockCookiesForHostCallback()
+{
+    callTestRunnerCallback(StatisticsDidSetPartitionOrBlockCookiesForHostCallbackID);
 }
 
 void TestRunner::statisticsSubmitTelemetry()
@@ -1632,14 +1641,18 @@ void TestRunner::setStatisticsPruneEntriesDownTo(unsigned entries)
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
 }
     
-void TestRunner::statisticsClearInMemoryAndPersistentStore()
+void TestRunner::statisticsClearInMemoryAndPersistentStore(JSValueRef callback)
 {
+    cacheTestRunnerCallback(StatisticsDidClearThroughWebsiteDataRemovalCallbackID, callback);
+
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("StatisticsClearInMemoryAndPersistentStore"));
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), 0, nullptr);
 }
 
-void TestRunner::statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours)
+void TestRunner::statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours, JSValueRef callback)
 {
+    cacheTestRunnerCallback(StatisticsDidClearThroughWebsiteDataRemovalCallbackID, callback);
+
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("StatisticsClearInMemoryAndPersistentStoreModifiedSinceHours"));
     WKRetainPtr<WKTypeRef> messageBody(AdoptWK, WKUInt64Create(hours));
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
@@ -1662,6 +1675,47 @@ void TestRunner::statisticsResetToConsistentState()
 {
     WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("StatisticsResetToConsistentState"));
     WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), 0, nullptr);
+}
+
+void TestRunner::setStorageAccessAPIEnabled(bool enabled)
+{
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("SetStorageAccessAPIEnabled"));
+    
+    WKRetainPtr<WKBooleanRef> messageBody(AdoptWK, WKBooleanCreate(enabled));
+    
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), messageBody.get(), nullptr);
+}
+
+void TestRunner::getAllStorageAccessEntries(JSValueRef callback)
+{
+    cacheTestRunnerCallback(AllStorageAccessEntriesCallbackID, callback);
+    
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("GetAllStorageAccessEntries"));
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), 0, nullptr);
+}
+
+void TestRunner::callDidReceiveAllStorageAccessEntriesCallback(Vector<String>& domains)
+{
+    WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
+    JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
+    
+    StringBuilder stringBuilder;
+    stringBuilder.appendLiteral("[");
+    bool firstDomain = true;
+    for (auto& domain : domains) {
+        if (firstDomain)
+            firstDomain = false;
+        else
+            stringBuilder.appendLiteral(", ");
+        stringBuilder.appendLiteral("\"");
+        stringBuilder.append(domain);
+        stringBuilder.appendLiteral("\"");
+    }
+    stringBuilder.appendLiteral("]");
+    
+    JSValueRef result = JSValueMakeFromJSONString(context, JSStringCreateWithUTF8CString(stringBuilder.toString().utf8().data()));
+
+    callTestRunnerCallback(AllStorageAccessEntriesCallbackID, 1, &result);
 }
 
 #if PLATFORM(MAC)
@@ -1872,6 +1926,19 @@ uint64_t TestRunner::domCacheSize(JSStringRef origin)
     WKTypeRef returnData = 0;
     WKBundlePagePostSynchronousMessageForTesting(InjectedBundle::singleton().page()->page(), messageName.get(), messageBody.get(), &returnData);
     return WKUInt64GetValue(static_cast<WKUInt64Ref>(returnData));
+}
+
+void TestRunner::getApplicationManifestThen(JSValueRef callback)
+{
+    cacheTestRunnerCallback(GetApplicationManifestCallbackID, callback);
+    
+    WKRetainPtr<WKStringRef> messageName(AdoptWK, WKStringCreateWithUTF8CString("GetApplicationManifest"));
+    WKBundlePostSynchronousMessage(InjectedBundle::singleton().bundle(), messageName.get(), nullptr, nullptr);
+}
+
+void TestRunner::didGetApplicationManifest()
+{
+    callTestRunnerCallback(GetApplicationManifestCallbackID);
 }
 
 } // namespace WTR

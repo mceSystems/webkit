@@ -77,6 +77,10 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
+#if ENABLE(APPLICATION_MANIFEST)
+#include "CachedApplicationManifest.h"
+#endif
+
 #if ENABLE(VIDEO_TRACK)
 #include "CachedTextTrack.h"
 #endif
@@ -133,6 +137,10 @@ static CachedResource* createResource(CachedResource::Type type, CachedResourceR
 #if ENABLE(VIDEO_TRACK)
     case CachedResource::TextTrackResource:
         return new CachedTextTrack(WTFMove(request), sessionID);
+#endif
+#if ENABLE(APPLICATION_MANIFEST)
+    case CachedResource::ApplicationManifest:
+        return new CachedApplicationManifest(WTFMove(request), sessionID);
 #endif
     }
     ASSERT_NOT_REACHED();
@@ -322,6 +330,13 @@ ResourceErrorOr<CachedResourceHandle<CachedRawResource>> CachedResourceLoader::r
     return castCachedResourceTo<CachedRawResource>(requestResource(CachedResource::MainResource, WTFMove(request)));
 }
 
+#if ENABLE(APPLICATION_MANIFEST)
+ResourceErrorOr<CachedResourceHandle<CachedApplicationManifest>> CachedResourceLoader::requestApplicationManifest(CachedResourceRequest&& request)
+{
+    return castCachedResourceTo<CachedApplicationManifest>(requestResource(CachedResource::ApplicationManifest, WTFMove(request)));
+}
+#endif // ENABLE(APPLICATION_MANIFEST)
+
 static MixedContentChecker::ContentType contentTypeFromResourceType(CachedResource::Type type)
 {
     switch (type) {
@@ -360,6 +375,10 @@ static MixedContentChecker::ContentType contentTypeFromResourceType(CachedResour
 
 #if ENABLE(VIDEO_TRACK)
     case CachedResource::TextTrackResource:
+        return MixedContentChecker::ContentType::Active;
+#endif
+#if ENABLE(APPLICATION_MANIFEST)
+    case CachedResource::ApplicationManifest:
         return MixedContentChecker::ContentType::Active;
 #endif
     default:
@@ -418,6 +437,9 @@ bool CachedResourceLoader::checkInsecureContent(CachedResource::Type type, const
     case CachedResource::LinkSubresource:
         // Prefetch cannot affect the current document.
 #endif
+#if ENABLE(APPLICATION_MANIFEST)
+    case CachedResource::ApplicationManifest:
+#endif
         break;
     }
     return true;
@@ -466,6 +488,12 @@ bool CachedResourceLoader::allowedByContentSecurityPolicy(CachedResource::Type t
     case CachedResource::Beacon:
     case CachedResource::RawResource:
         return true;
+#if ENABLE(APPLICATION_MANIFEST)
+    case CachedResource::ApplicationManifest:
+        if (!m_document->contentSecurityPolicy()->allowManifestFromSource(url, redirectResponseReceived))
+            return false;
+        break;
+#endif
     default:
         ASSERT_NOT_REACHED();
     }
@@ -479,6 +507,7 @@ static inline bool isSameOriginDataURL(const URL& url, const ResourceLoaderOptio
     return url.protocolIsData() && options.sameOriginDataURLFlag == SameOriginDataURLFlag::Set;
 }
 
+// Security checks defined in https://fetch.spec.whatwg.org/#main-fetch step 2 and 5.
 bool CachedResourceLoader::canRequest(CachedResource::Type type, const URL& url, const CachedResourceRequest& request, ForPreload forPreload)
 {
     auto& options = request.options();
@@ -492,6 +521,12 @@ bool CachedResourceLoader::canRequest(CachedResource::Type type, const URL& url,
 
     if (options.mode == FetchOptions::Mode::SameOrigin && !m_document->securityOrigin().canRequest(url) && !isSameOriginDataURL(url, options)) {
         printAccessDeniedMessage(url);
+        return false;
+    }
+
+    if (options.mode == FetchOptions::Mode::NoCors && options.redirect != FetchOptions::Redirect::Follow) {
+        ASSERT(type != CachedResource::Type::MainResource);
+        frame()->document()->addConsoleMessage(MessageSource::Security, MessageLevel::Error, ASCIILiteral("No-Cors mode requires follow redirect mode"));
         return false;
     }
 
@@ -693,8 +728,9 @@ void CachedResourceLoader::prepareFetch(CachedResource::Type type, CachedResourc
         if (!request.origin())
             request.setOrigin(document->securityOrigin());
 #if ENABLE(SERVICE_WORKER)
+        request.setClientIdentifierIfNeeded(document->identifier());
         if (auto* activeServiceWorker = document->activeServiceWorker())
-            request.setSelectedServiceWorkerIdentifierIfNeeded(activeServiceWorker->identifier());
+            request.setSelectedServiceWorkerRegistrationIdentifierIfNeeded(activeServiceWorker->registrationIdentifier());
 #endif
     }
 
@@ -713,7 +749,7 @@ void CachedResourceLoader::updateHTTPRequestHeaders(CachedResource::Type type, C
         // In some cases we may try to load resources in frameless documents. Such loads always fail.
         // FIXME: We shouldn't need to do the check on frame.
         if (auto* frame = this->frame())
-            request.updateReferrerOriginAndUserAgentHeaders(frame->loader(), document() ? document()->referrerPolicy() : ReferrerPolicy::NoReferrerWhenDowngrade);
+            request.updateReferrerOriginAndUserAgentHeaders(frame->loader());
     }
 
     request.updateAccordingCacheMode();
@@ -721,6 +757,7 @@ void CachedResourceLoader::updateHTTPRequestHeaders(CachedResource::Type type, C
 
 ResourceErrorOr<CachedResourceHandle<CachedResource>> CachedResourceLoader::requestResource(CachedResource::Type type, CachedResourceRequest&& request, ForPreload forPreload, DeferOption defer)
 {
+    // Entry point to https://fetch.spec.whatwg.org/#main-fetch.
     std::unique_ptr<ResourceRequest> originalRequest;
     if (CachedResource::shouldUsePingLoad(type))
         originalRequest = std::make_unique<ResourceRequest>(request.resourceRequest());
@@ -728,6 +765,7 @@ ResourceErrorOr<CachedResourceHandle<CachedResource>> CachedResourceLoader::requ
     if (Document* document = this->document())
         request.upgradeInsecureRequestIfNeeded(*document);
 
+    request.updateReferrerPolicy(document() ? document()->referrerPolicy() : ReferrerPolicy::NoReferrerWhenDowngrade);
     URL url = request.resourceRequest().url();
 
     LOG(ResourceLoading, "CachedResourceLoader::requestResource '%s', charset '%s', priority=%d, forPreload=%u", url.stringCenterEllipsizedToLength().latin1().data(), request.charset().latin1().data(), request.priority() ? static_cast<int>(request.priority().value()) : -1, forPreload == ForPreload::Yes);
@@ -995,6 +1033,14 @@ CachedResourceLoader::RevalidationPolicy CachedResourceLoader::determineRevalida
     if (request.cachePolicy() == RefreshAnyCacheData)
         return Reload;
 
+#if ENABLE(SERVICE_WORKER)
+    // FIXME: We should validate/specify this behavior.
+    if (cachedResourceRequest.options().serviceWorkerRegistrationIdentifier != existingResource->options().serviceWorkerRegistrationIdentifier) {
+        LOG(ResourceLoading, "CachedResourceLoader::determineRevalidationPolicy reloading because selected service worker differs");
+        return Reload;
+    }
+#endif
+
     // We already have a preload going for this URL.
     if (forPreload == ForPreload::Yes && existingResource->isPreloaded())
         return Use;
@@ -1079,7 +1125,7 @@ CachedResourceLoader::RevalidationPolicy CachedResourceLoader::determineRevalida
     // This helps with the case where the server sends back
     // "Access-Control-Allow-Origin: *" all the time, but some of the
     // client's requests are made without CORS and some with.
-    if (existingResource->resourceRequest().allowCookies() != request.allowCookies()) {
+    if (existingResource->resourceRequest().allowCookies() != request.allowCookies() || existingResource->options().credentials != cachedResourceRequest.options().credentials) {
         LOG(ResourceLoading, "CachedResourceLoader::determineRevalidationPolicy reloading due to difference in credentials settings.");
         logMemoryCacheResourceRequest(frame(), DiagnosticLoggingKeys::inMemoryCacheKey(), DiagnosticLoggingKeys::unusedReasonCredentialSettingsKey());
         return Reload;

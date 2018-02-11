@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -191,7 +191,7 @@ static const uint8_t characterClassTable[256] = {
     0, // '$'
     ForbiddenHost, // '%'
     0, // '&'
-    0, // '''
+    0, // '\''
     0, // '('
     0, // ')'
     0, // '*'
@@ -212,9 +212,9 @@ static const uint8_t characterClassTable[256] = {
     ValidScheme, // '9'
     UserInfo | ForbiddenHost, // ':'
     UserInfo, // ';'
-    UserInfo | Default | QueryPercent, // '<'
+    UserInfo | Default | QueryPercent | ForbiddenHost, // '<'
     UserInfo, // '='
-    UserInfo | Default | QueryPercent, // '>'
+    UserInfo | Default | QueryPercent | ForbiddenHost, // '>'
     UserInfo | Default | SlashQuestionOrHash | ForbiddenHost, // '?'
     UserInfo | ForbiddenHost, // '@'
     ValidScheme, // 'A'
@@ -621,9 +621,9 @@ template<typename CharacterType>
 void URLParser::encodeQuery(const Vector<UChar>& source, const TextEncoding& encoding, CodePointIterator<CharacterType> iterator)
 {
     // FIXME: It is unclear in the spec what to do when encoding fails. The behavior should be specified and tested.
-    CString encoded = encoding.encode(StringView(source.data(), source.size()), URLEncodedEntitiesForUnencodables);
-    const char* data = encoded.data();
-    size_t length = encoded.length();
+    auto encoded = encoding.encode(StringView(source.data(), source.size()), UnencodableHandling::URLEncodedEntities);
+    auto* data = encoded.data();
+    size_t length = encoded.size();
     
     if (!length == !iterator.atEnd()) {
         syntaxViolation(iterator);
@@ -2314,11 +2314,11 @@ Expected<URLParser::IPv4Address, URLParser::IPv4ParsingError> URLParser::parseIP
     if (!iterator.atEnd() || !items.size() || items.size() > 4)
         return makeUnexpected(IPv4ParsingError::NotIPv4);
     for (const auto& item : items) {
-        if (!item.hasValue() && item.error() == IPv4PieceParsingError::Failure)
+        if (!item.has_value() && item.error() == IPv4PieceParsingError::Failure)
             return makeUnexpected(IPv4ParsingError::NotIPv4);
     }
     for (const auto& item : items) {
-        if (!item.hasValue() && item.error() == IPv4PieceParsingError::Overflow)
+        if (!item.has_value() && item.error() == IPv4PieceParsingError::Overflow)
             return makeUnexpected(IPv4ParsingError::Failure);
     }
     if (items.size() > 1) {

@@ -27,6 +27,7 @@
 #import "EventHandler.h"
 
 #import "AXObjectCache.h"
+#import "AutoscrollController.h"
 #import "Chrome.h"
 #import "ChromeClient.h"
 #import "DataTransfer.h"
@@ -124,14 +125,14 @@ void EventHandler::touchEvent(WebEvent *event)
 }
 #endif
 
-bool EventHandler::tabsToAllFormControls(KeyboardEvent& event) const
+bool EventHandler::tabsToAllFormControls(KeyboardEvent* event) const
 {
     Page* page = m_frame.page();
     if (!page)
         return false;
 
     KeyboardUIMode keyboardUIMode = page->chrome().client().keyboardUIMode();
-    bool handlingOptionTab = isKeyboardOptionTab(event);
+    bool handlingOptionTab = event && isKeyboardOptionTab(*event);
 
     // If tab-to-links is off, option-tab always highlights all controls.
     if ((keyboardUIMode & KeyboardAccessTabsToLinks) == 0 && handlingOptionTab)
@@ -557,6 +558,29 @@ OptionSet<PlatformEvent::Modifier> EventHandler::accessKeyModifiers()
 PlatformMouseEvent EventHandler::currentPlatformMouseEvent() const
 {
     return PlatformEventFactory::createPlatformMouseEvent(currentEvent());
+}
+    
+void EventHandler::startTextAutoscroll(RenderObject* renderer, const FloatPoint& positionInWindow)
+{
+    m_targetAutoscrollPositionInWindow = roundedIntPoint(positionInWindow);
+    m_isAutoscrolling = true;
+    m_autoscrollController->startAutoscrollForSelection(renderer);
+}
+
+void EventHandler::cancelTextAutoscroll()
+{
+    m_isAutoscrolling = false;
+    m_autoscrollController->stopAutoscrollTimer();
+}
+    
+IntPoint EventHandler::targetPositionInWindowForSelectionAutoscroll() const
+{
+    return m_targetAutoscrollPositionInWindow;
+}
+    
+bool EventHandler::shouldUpdateAutoscroll()
+{
+    return m_isAutoscrolling;
 }
 
 #if ENABLE(DRAG_SUPPORT)

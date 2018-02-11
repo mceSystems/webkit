@@ -53,12 +53,13 @@
 #include "Pasteboard.h"
 #include "ScriptState.h"
 #include "UserGestureIndicator.h"
-#include <bindings/ScriptFunctionCall.h>
+#include <JavaScriptCore/ScriptFunctionCall.h>
 #include <pal/system/Sound.h>
 #include <wtf/StdLibExtras.h>
 
 
 namespace WebCore {
+
 using namespace Inspector;
 
 #if ENABLE(CONTEXT_MENUS)

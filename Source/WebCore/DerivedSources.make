@@ -33,7 +33,7 @@ VPATH = \
     $(WebCore)/Modules/applepay/paymentrequest \
     $(WebCore)/Modules/beacon \
     $(WebCore)/Modules/cache \
-    $(WebCore)/Modules/credentials \
+    $(WebCore)/Modules/credentialmanagement \
     $(WebCore)/Modules/encryptedmedia \
     $(WebCore)/Modules/encryptedmedia/legacy \
     $(WebCore)/Modules/entriesapi \
@@ -42,6 +42,7 @@ VPATH = \
     $(WebCore)/Modules/geolocation \
     $(WebCore)/Modules/indexeddb \
     $(WebCore)/Modules/indieui \
+    $(WebCore)/Modules/mediacapabilities \
     $(WebCore)/Modules/mediacontrols \
     $(WebCore)/Modules/mediasession \
     $(WebCore)/Modules/mediasource \
@@ -53,6 +54,7 @@ VPATH = \
     $(WebCore)/Modules/speech \
     $(WebCore)/Modules/streams \
     $(WebCore)/Modules/webaudio \
+    $(WebCore)/Modules/webauthn \
     $(WebCore)/Modules/webdatabase \
     $(WebCore)/Modules/webdriver \
     $(WebCore)/Modules/websockets \
@@ -97,6 +99,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/applepay/ApplePayPaymentContact.idl \
     $(WebCore)/Modules/applepay/ApplePayPaymentMethod.idl \
     $(WebCore)/Modules/applepay/ApplePayPaymentMethodSelectedEvent.idl \
+    $(WebCore)/Modules/applepay/ApplePayPaymentMethodType.idl \
 	$(WebCore)/Modules/applepay/ApplePayPaymentMethodUpdate.idl \
     $(WebCore)/Modules/applepay/ApplePayPaymentPass.idl \
     $(WebCore)/Modules/applepay/ApplePayPaymentRequest.idl \
@@ -108,8 +111,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/applepay/ApplePayShippingMethodSelectedEvent.idl \
 	$(WebCore)/Modules/applepay/ApplePayShippingMethodUpdate.idl \
     $(WebCore)/Modules/applepay/ApplePayValidateMerchantEvent.idl \
-    $(WebCore)/Modules/applepay/paymentrequest/ApplePayMerchantValidationEvent.idl \
-    $(WebCore)/Modules/applepay/paymentrequest/ApplePayPaymentMethodUpdateEvent.idl \
+    $(WebCore)/Modules/applepay/paymentrequest/ApplePayModifier.idl \
     $(WebCore)/Modules/applepay/paymentrequest/ApplePayRequest.idl \
     $(WebCore)/Modules/beacon/NavigatorBeacon.idl \
     $(WebCore)/Modules/cache/DOMWindowCaches.idl \
@@ -117,18 +119,11 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/cache/DOMCache.idl \
     $(WebCore)/Modules/cache/DOMCacheStorage.idl \
     $(WebCore)/Modules/cache/WorkerGlobalScopeCaches.idl \
-    $(WebCore)/Modules/credentials/BasicCredential.idl \
-    $(WebCore)/Modules/credentials/CredentialCreationOptions.idl \
-    $(WebCore)/Modules/credentials/CredentialData.idl \
-    $(WebCore)/Modules/credentials/CredentialRequestOptions.idl \
-    $(WebCore)/Modules/credentials/CredentialUserData.idl \
-    $(WebCore)/Modules/credentials/CredentialsContainer.idl \
-    $(WebCore)/Modules/credentials/FederatedCredential.idl \
-    $(WebCore)/Modules/credentials/FederatedCredentialRequestOptions.idl \
-    $(WebCore)/Modules/credentials/FederatedCredentialInit.idl \
-    $(WebCore)/Modules/credentials/NavigatorCredentials.idl \
-    $(WebCore)/Modules/credentials/PasswordCredential.idl \
-    $(WebCore)/Modules/credentials/PasswordCredentialData.idl \
+    $(WebCore)/Modules/credentialmanagement/BasicCredential.idl \
+    $(WebCore)/Modules/credentialmanagement/CredentialCreationOptions.idl \
+    $(WebCore)/Modules/credentialmanagement/CredentialRequestOptions.idl \
+    $(WebCore)/Modules/credentialmanagement/CredentialsContainer.idl \
+    $(WebCore)/Modules/credentialmanagement/NavigatorCredentials.idl \
     $(WebCore)/Modules/encryptedmedia/MediaKeyMessageEvent.idl \
     $(WebCore)/Modules/encryptedmedia/MediaKeySession.idl \
     $(WebCore)/Modules/encryptedmedia/MediaKeySessionType.idl \
@@ -192,6 +187,18 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/indexeddb/IDBTransactionMode.idl \
     $(WebCore)/Modules/indexeddb/IDBVersionChangeEvent.idl \
     $(WebCore)/Modules/indexeddb/WorkerGlobalScopeIndexedDatabase.idl \
+    $(WebCore)/Modules/mediacapabilities/AudioConfiguration.idl \
+    $(WebCore)/Modules/mediacapabilities/MediaCapabilities.idl \
+    $(WebCore)/Modules/mediacapabilities/MediaCapabilitiesInfo.idl \
+    $(WebCore)/Modules/mediacapabilities/MediaConfiguration.idl \
+    $(WebCore)/Modules/mediacapabilities/MediaDecodingConfiguration.idl \
+    $(WebCore)/Modules/mediacapabilities/MediaDecodingType.idl \
+    $(WebCore)/Modules/mediacapabilities/MediaEncodingConfiguration.idl \
+    $(WebCore)/Modules/mediacapabilities/MediaEncodingType.idl \
+    $(WebCore)/Modules/mediacapabilities/NavigatorMediaCapabilities.idl \
+    $(WebCore)/Modules/mediacapabilities/ScreenColorGamut.idl \
+    $(WebCore)/Modules/mediacapabilities/ScreenLuminance.idl \
+    $(WebCore)/Modules/mediacapabilities/VideoConfiguration.idl \
     $(WebCore)/Modules/mediacontrols/MediaControlsHost.idl \
     $(WebCore)/Modules/mediasession/HTMLMediaElementMediaSession.idl \
     $(WebCore)/Modules/mediasession/MediaRemoteControls.idl \
@@ -248,6 +255,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/notifications/Notification.idl \
     $(WebCore)/Modules/notifications/NotificationPermission.idl \
     $(WebCore)/Modules/notifications/NotificationPermissionCallback.idl \
+    $(WebCore)/Modules/paymentrequest/MerchantValidationEvent.idl \
     $(WebCore)/Modules/paymentrequest/PaymentAddress.idl \
     $(WebCore)/Modules/paymentrequest/PaymentComplete.idl \
     $(WebCore)/Modules/paymentrequest/PaymentCurrencyAmount.idl \
@@ -316,6 +324,14 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/webaudio/PeriodicWave.idl \
     $(WebCore)/Modules/webaudio/ScriptProcessorNode.idl \
     $(WebCore)/Modules/webaudio/WaveShaperNode.idl \
+    $(WebCore)/Modules/webauthn/AuthenticatorAssertionResponse.idl \
+    $(WebCore)/Modules/webauthn/AuthenticatorAttestationResponse.idl \
+    $(WebCore)/Modules/webauthn/AuthenticatorResponse.idl \
+    $(WebCore)/Modules/webauthn/PublicKeyCredential.idl \
+	$(WebCore)/Modules/webauthn/PublicKeyCredentialCreationOptions.idl \
+    $(WebCore)/Modules/webauthn/PublicKeyCredentialDescriptor.idl \
+	$(WebCore)/Modules/webauthn/PublicKeyCredentialRequestOptions.idl \
+    $(WebCore)/Modules/webauthn/PublicKeyCredentialType.idl \
     $(WebCore)/Modules/webdatabase/DOMWindowWebDatabase.idl \
     $(WebCore)/Modules/webdatabase/Database.idl \
     $(WebCore)/Modules/webdatabase/DatabaseCallback.idl \
@@ -346,11 +362,23 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/webvr/VRStageParameters.idl \
     $(WebCore)/accessibility/AccessibleNode.idl \
     $(WebCore)/animation/Animatable.idl \
-    $(WebCore)/animation/AnimationEffect.idl \
+    $(WebCore)/animation/AnimationEffectReadOnly.idl \
     $(WebCore)/animation/AnimationEffectTiming.idl \
+    $(WebCore)/animation/AnimationEffectTimingProperties.idl \
+    $(WebCore)/animation/AnimationEffectTimingReadOnly.idl \
+    $(WebCore)/animation/AnimationPlaybackEvent.idl \
+    $(WebCore)/animation/AnimationPlaybackEventInit.idl \
     $(WebCore)/animation/AnimationTimeline.idl \
+    $(WebCore)/animation/CompositeOperation.idl \
+    $(WebCore)/animation/ComputedTimingProperties.idl \
     $(WebCore)/animation/DocumentTimeline.idl \
+    $(WebCore)/animation/FillMode.idl \
+    $(WebCore)/animation/IterationCompositeOperation.idl \
+    $(WebCore)/animation/KeyframeAnimationOptions.idl \
     $(WebCore)/animation/KeyframeEffect.idl \
+    $(WebCore)/animation/KeyframeEffectOptions.idl \
+    $(WebCore)/animation/KeyframeEffectReadOnly.idl \
+    $(WebCore)/animation/PlaybackDirection.idl \
     $(WebCore)/animation/WebAnimation.idl \
     $(WebCore)/crypto/CryptoAlgorithmParameters.idl \
     $(WebCore)/crypto/CryptoKey.idl \
@@ -495,6 +523,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/dom/ShadowRoot.idl \
     $(WebCore)/dom/ShadowRootMode.idl \
     $(WebCore)/dom/Slotable.idl \
+    $(WebCore)/dom/SpectreGadget.idl \
     $(WebCore)/dom/StaticRange.idl \
     $(WebCore)/dom/StringCallback.idl \
     $(WebCore)/dom/Text.idl \
@@ -657,6 +686,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/html/canvas/OESTextureHalfFloat.idl \
     $(WebCore)/html/canvas/OESTextureHalfFloatLinear.idl \
     $(WebCore)/html/canvas/OESVertexArrayObject.idl \
+    $(WebCore)/html/canvas/OffscreenCanvasRenderingContext2D.idl \
     $(WebCore)/html/canvas/Path2D.idl \
     $(WebCore)/html/canvas/WebGL2RenderingContext.idl \
     $(WebCore)/html/canvas/WebGLActiveInfo.idl \
@@ -921,6 +951,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/testing/MockPageOverlay.idl \
     $(WebCore)/testing/MockPaymentAddress.idl \
     $(WebCore)/testing/MockPaymentCoordinator.idl \
+    $(WebCore)/testing/ServiceWorkerInternals.idl \
     $(WebCore)/testing/TypeConversions.idl \
     $(WebCore)/workers/AbstractWorker.idl \
     $(WebCore)/workers/DedicatedWorkerGlobalScope.idl \
@@ -1020,13 +1051,9 @@ endif
 endif # IOS
 
 vpath %.in $(WEBKITADDITIONS_HEADER_SEARCH_PATHS)
-vpath %.css $(WEBKITADDITIONS_HEADER_SEARCH_PATHS)
 
 ADDITIONAL_EVENT_NAMES =
 ADDITIONAL_EVENT_TARGET_FACTORY =
-ADDITIONAL_USER_AGENT_STYLE_SHEETS =
-
--include WebCoreDerivedSourcesAdditions.make
 
 JS_BINDING_IDLS += $(ADDITIONAL_BINDING_IDLS)
 
@@ -1217,40 +1244,38 @@ ColorData.cpp : platform/ColorData.gperf $(WebCore)/make-hash-tools.pl
 
 # user agent style sheets
 
-USER_AGENT_STYLE_SHEETS = css/html.css css/quirks.css css/plugIns.css css/svg.css
+USER_AGENT_STYLE_SHEETS = $(WebCore)/css/html.css $(WebCore)/css/quirks.css $(WebCore)/css/plugIns.css $(WebCore)/css/svg.css
 
 ifeq ($(findstring ENABLE_MATHML,$(FEATURE_DEFINES)), ENABLE_MATHML)
-    USER_AGENT_STYLE_SHEETS += css/mathml.css
+    USER_AGENT_STYLE_SHEETS += $(WebCore)/css/mathml.css
 endif
 
 ifeq ($(findstring ENABLE_VIDEO,$(FEATURE_DEFINES)), ENABLE_VIDEO)
-    USER_AGENT_STYLE_SHEETS += css/mediaControls.css
+    USER_AGENT_STYLE_SHEETS += $(WebCore)/css/mediaControls.css
 endif
 
 ifeq ($(findstring ENABLE_FULLSCREEN_API,$(FEATURE_DEFINES)), ENABLE_FULLSCREEN_API)
-    USER_AGENT_STYLE_SHEETS += css/fullscreen.css
+    USER_AGENT_STYLE_SHEETS += $(WebCore)/css/fullscreen.css
 endif
 
 ifeq ($(findstring ENABLE_SERVICE_CONTROLS,$(FEATURE_DEFINES)), ENABLE_SERVICE_CONTROLS)
-    USER_AGENT_STYLE_SHEETS += html/shadow/mac/imageControlsMac.css
+    USER_AGENT_STYLE_SHEETS += $(WebCore)/html/shadow/mac/imageControlsMac.css
 endif
 
 ifeq ($(OS),MACOS)
-    USER_AGENT_STYLE_SHEETS += Modules/plugins/QuickTimePluginReplacement.css
+    USER_AGENT_STYLE_SHEETS += $(WebCore)/Modules/plugins/QuickTimePluginReplacement.css
 endif
 
 ifeq ($(OS), Windows_NT)
-    USER_AGENT_STYLE_SHEETS += css/themeWin.css css/themeWinQuirks.css
+    USER_AGENT_STYLE_SHEETS += $(WebCore)/css/themeWin.css $(WebCore)/css/themeWinQuirks.css
 endif
 
 ifeq ($(findstring ENABLE_METER_ELEMENT,$(FEATURE_DEFINES)), ENABLE_METER_ELEMENT)
-	USER_AGENT_STYLE_SHEETS += html/shadow/meterElementShadow.css
+	USER_AGENT_STYLE_SHEETS += $(WebCore)/html/shadow/meterElementShadow.css
 endif
 
-USER_AGENT_STYLE_SHEETS += $(ADDITIONAL_USER_AGENT_STYLE_SHEETS)
-
 UserAgentStyleSheets.h : css/make-css-file-arrays.pl bindings/scripts/preprocessor.pm $(USER_AGENT_STYLE_SHEETS) $(PLATFORM_FEATURE_DEFINES)
-	$(PERL) $< --defines "$(FEATURE_DEFINES)" $@ UserAgentStyleSheetsData.cpp $(foreach file, $^, $(if $(findstring $(notdir $(file)), $(USER_AGENT_STYLE_SHEETS)), $(file)))
+	$(PERL) $< --defines "$(FEATURE_DEFINES)" $@ UserAgentStyleSheetsData.cpp $(USER_AGENT_STYLE_SHEETS)
 
 # --------
 

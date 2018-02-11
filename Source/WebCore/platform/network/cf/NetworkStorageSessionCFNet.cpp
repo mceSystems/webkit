@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -166,9 +166,9 @@ void NetworkStorageSession::setStorageAccessAPIEnabled(bool enabled)
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
 
-String NetworkStorageSession::cookieStoragePartition(const ResourceRequest& request) const
+String NetworkStorageSession::cookieStoragePartition(const ResourceRequest& request, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID) const
 {
-    return cookieStoragePartition(request.firstPartyForCookies(), request.url());
+    return cookieStoragePartition(request.firstPartyForCookies(), request.url(), frameID, pageID);
 }
 
 static inline String getPartitioningDomain(const URL& url) 
@@ -183,7 +183,7 @@ static inline String getPartitioningDomain(const URL& url)
     return domain;
 }
 
-String NetworkStorageSession::cookieStoragePartition(const URL& firstPartyForCookies, const URL& resource) const
+String NetworkStorageSession::cookieStoragePartition(const URL& firstPartyForCookies, const URL& resource, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID) const
 {
     if (!cookieStoragePartitioningEnabled)
         return emptyString();
@@ -196,7 +196,7 @@ String NetworkStorageSession::cookieStoragePartition(const URL& firstPartyForCoo
     if (firstPartyDomain == resourceDomain)
         return emptyString();
 
-    if (storageAccessAPIEnabled && isStorageAccessGranted(resourceDomain, firstPartyDomain))
+    if (frameID && pageID && hasStorageAccessForFrame(resourceDomain, firstPartyDomain, frameID.value(), pageID.value()))
         return emptyString();
 
     return firstPartyDomain;
@@ -250,7 +250,7 @@ void NetworkStorageSession::setPrevalentDomainsToPartitionOrBlockCookies(const V
     if (clearFirst) {
         m_topPrivatelyControlledDomainsToPartition.clear();
         m_topPrivatelyControlledDomainsToBlock.clear();
-        m_domainsGrantedStorageAccess.clear();
+        m_framesGrantedStorageAccess.clear();
     }
 
     for (auto& domain : domainsToPartition) {
@@ -260,11 +260,9 @@ void NetworkStorageSession::setPrevalentDomainsToPartitionOrBlockCookies(const V
     }
 
     for (auto& domain : domainsToBlock) {
-        // FIXME: https://bugs.webkit.org/show_bug.cgi?id=177394
-        // m_topPrivatelyControlledDomainsToBlock.add(domain);
-        // if (!clearFirst)
-        //     m_topPrivatelyControlledDomainsToPartition.remove(domain);
-        m_topPrivatelyControlledDomainsToPartition.add(domain);
+        m_topPrivatelyControlledDomainsToBlock.add(domain);
+        if (!clearFirst)
+            m_topPrivatelyControlledDomainsToPartition.remove(domain);
     }
     
     if (!clearFirst) {
@@ -283,30 +281,59 @@ void NetworkStorageSession::removePrevalentDomains(const Vector<String>& domains
     }
 }
 
-bool NetworkStorageSession::isStorageAccessGranted(const String& resourceDomain, const String& firstPartyDomain) const
+bool NetworkStorageSession::hasStorageAccessForFrame(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID) const
 {
-    auto it = m_domainsGrantedStorageAccess.find(firstPartyDomain);
-    if (it == m_domainsGrantedStorageAccess.end())
+    UNUSED_PARAM(firstPartyDomain);
+
+    auto it1 = m_framesGrantedStorageAccess.find(pageID);
+    if (it1 == m_framesGrantedStorageAccess.end())
         return false;
 
-    return it->value.contains(resourceDomain);
+    auto it2 = it1->value.find(frameID);
+    if (it2 == it1->value.end())
+        return false;
+    
+    return it2->value == resourceDomain;
 }
 
-void NetworkStorageSession::setStorageAccessGranted(const String& resourceDomain, const String& firstPartyDomain, bool value)
+Vector<String> NetworkStorageSession::getAllStorageAccessEntries() const
 {
-    auto iterator = m_domainsGrantedStorageAccess.find(firstPartyDomain);
-    if (value) {
-        if (iterator == m_domainsGrantedStorageAccess.end())
-            m_domainsGrantedStorageAccess.add(firstPartyDomain, HashSet<String>({ resourceDomain }));
-        else
-            iterator->value.add(resourceDomain);
-    } else {
-        if (iterator == m_domainsGrantedStorageAccess.end())
-            return;
-        iterator->value.remove(resourceDomain);
-        if (iterator->value.isEmpty())
-            m_domainsGrantedStorageAccess.remove(firstPartyDomain);
+    Vector<String> entries;
+    for (auto& pageID : m_framesGrantedStorageAccess.keys()) {
+        auto it1 = m_framesGrantedStorageAccess.find(pageID);
+        for (auto& frameID : it1->value.keys())
+            entries.append(it1->value.find(frameID)->value);
     }
+    return entries;
+}
+    
+void NetworkStorageSession::grantStorageAccessForFrame(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID)
+{
+    UNUSED_PARAM(firstPartyDomain);
+
+    auto it1 = m_framesGrantedStorageAccess.find(pageID);
+    if (it1 == m_framesGrantedStorageAccess.end()) {
+        HashMap<uint64_t, String, DefaultHash<uint64_t>::Hash, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>> entry;
+        entry.add(frameID, resourceDomain);
+        m_framesGrantedStorageAccess.add(pageID, entry);
+    } else {
+        auto it2 = it1->value.find(frameID);
+        it2->value = resourceDomain;
+    }
+}
+
+void NetworkStorageSession::removeStorageAccessForFrame(uint64_t frameID, uint64_t pageID)
+{
+    auto iteration = m_framesGrantedStorageAccess.find(pageID);
+    if (iteration == m_framesGrantedStorageAccess.end())
+        return;
+
+    iteration->value.remove(frameID);
+}
+
+void NetworkStorageSession::removeStorageAccessForAllFramesOnPage(uint64_t pageID)
+{
+    m_framesGrantedStorageAccess.remove(pageID);
 }
 
 #endif // HAVE(CFNETWORK_STORAGE_PARTITIONING)

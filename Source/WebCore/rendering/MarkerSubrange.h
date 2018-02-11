@@ -44,6 +44,8 @@ struct MarkerSubrange {
         // FIXME: See <rdar://problem/8933352>. Also, remove the PLATFORM(IOS)-guard.
         DictationPhraseWithAlternatives,
 #endif
+        Selection,
+        DraggedContent,
     };
 #if !COMPILER_SUPPORTS(NSDMI_FOR_AGGREGATES)
     MarkerSubrange() = default;
@@ -59,6 +61,13 @@ struct MarkerSubrange {
     unsigned endOffset;
     Type type;
     const RenderedDocumentMarker* marker { nullptr };
+
+    bool isEmpty() const { return endOffset <= startOffset; }
+    bool operator!=(const MarkerSubrange& other) const { return !(*this == other); }
+    bool operator==(const MarkerSubrange& other) const
+    {
+        return startOffset == other.startOffset && endOffset == other.endOffset && type == other.type && marker == other.marker;
+    }
 };
 
 enum class OverlapStrategy { None, Frontmost };

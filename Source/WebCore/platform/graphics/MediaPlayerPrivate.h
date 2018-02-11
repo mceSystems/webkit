@@ -219,7 +219,7 @@ public:
     virtual unsigned videoDecodedByteCount() const { return 0; }
 
     HashSet<RefPtr<SecurityOrigin>> originsInMediaCache(const String&) { return { }; }
-    void clearMediaCache(const String&, std::chrono::system_clock::time_point) { }
+    void clearMediaCache(const String&, WallTime) { }
     void clearMediaCacheForOrigins(const String&, const HashSet<RefPtr<SecurityOrigin>>&) { }
 
     virtual void setPrivateBrowsingMode(bool) { }
@@ -237,9 +237,9 @@ public:
 #endif
 
 #if ENABLE(ENCRYPTED_MEDIA)
-    virtual void cdmInstanceAttached(const CDMInstance&) { }
-    virtual void cdmInstanceDetached(const CDMInstance&) { }
-    virtual void attemptToDecryptWithInstance(const CDMInstance&) { }
+    virtual void cdmInstanceAttached(CDMInstance&) { }
+    virtual void cdmInstanceDetached(CDMInstance&) { }
+    virtual void attemptToDecryptWithInstance(CDMInstance&) { }
 #endif
 
 #if ENABLE(VIDEO_TRACK)
@@ -280,6 +280,9 @@ public:
     virtual void notifyActiveSourceBuffersChanged() { }
 
     virtual void setShouldDisableSleep(bool) { }
+
+    virtual void applicationWillResignActive() { }
+    virtual void applicationDidBecomeActive() { }
 };
 
 }

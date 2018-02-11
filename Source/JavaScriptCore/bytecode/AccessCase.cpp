@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -320,7 +320,7 @@ bool AccessCase::propagateTransitions(SlotVisitor& visitor) const
 
     switch (m_type) {
     case Transition:
-        if (Heap::isMarkedConcurrently(m_structure->previousID()))
+        if (Heap::isMarked(m_structure->previousID()))
             visitor.appendUnbarriered(m_structure.get());
         else
             result = false;
@@ -692,7 +692,7 @@ void AccessCase::generateImpl(AccessGenerationState& state)
         if (m_type == Getter || m_type == Setter) {
             auto& access = this->as<GetterSetterAccessCase>();
             ASSERT(baseGPR != loadedValueGPR);
-            ASSERT(m_type != Setter || (baseGPR != valueRegsPayloadGPR && loadedValueGPR != valueRegsPayloadGPR));
+            ASSERT(m_type != Setter || valueRegsPayloadGPR != loadedValueGPR);
 
             // Create a JS call using a JS call inline cache. Assume that:
             //
@@ -955,15 +955,9 @@ void AccessCase::generateImpl(AccessGenerationState& state)
             size_t newSize = newStructure()->outOfLineCapacity() * sizeof(JSValue);
 
             if (allocatingInline) {
-                MarkedAllocator* allocator = vm.jsValueGigacageAuxiliarySpace.allocatorFor(newSize);
+                Allocator allocator = vm.jsValueGigacageAuxiliarySpace.allocatorFor(newSize, AllocatorForMode::AllocatorIfExists);
 
-                if (!allocator) {
-                    // Yuck, this case would suck!
-                    slowPath.append(jit.jump());
-                }
-
-                jit.move(CCallHelpers::TrustedImmPtr(allocator), scratchGPR2);
-                jit.emitAllocate(scratchGPR, allocator, scratchGPR2, scratchGPR3, slowPath);
+                jit.emitAllocate(scratchGPR, JITAllocator::constant(allocator), scratchGPR2, scratchGPR3, slowPath);
                 jit.addPtr(CCallHelpers::TrustedImm32(newSize + sizeof(IndexingHeader)), scratchGPR);
 
                 size_t oldSize = structure()->outOfLineCapacity() * sizeof(JSValue);
@@ -1062,6 +1056,8 @@ void AccessCase::generateImpl(AccessGenerationState& state)
         }
         
         if (allocatingInline) {
+            // If we were to have any indexed properties, then we would need to update the indexing mask on the base object.
+            RELEASE_ASSERT(!newStructure()->couldHaveIndexingHeader());
             // We set the new butterfly and the structure last. Doing it this way ensures that
             // whatever we had done up to this point is forgotten if we choose to branch to slow
             // path.

@@ -4492,6 +4492,12 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parsePrimaryExpre
 
         return createResolveAndUseVariable(context, ident, *ident == m_vm->propertyNames->eval, start, location);
     }
+    case BIGINT: {
+        const Identifier* ident = m_token.m_data.bigIntString;
+        JSTokenLocation location(tokenLocation());
+        next();
+        return context.createBigInt(location, ident, m_token.m_data.radix);
+    }
     case STRING: {
         const Identifier* ident = m_token.m_data.ident;
         JSTokenLocation location(tokenLocation());
@@ -4541,8 +4547,8 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parsePrimaryExpre
         next();
         TreeExpression re = context.createRegExp(location, *pattern, *flags, start);
         if (!re) {
-            const char* yarrErrorMsg = Yarr::checkSyntax(pattern->string(), flags->string());
-            regexFail(yarrErrorMsg);
+            Yarr::ErrorCode errorCode = Yarr::checkSyntax(pattern->string(), flags->string());
+            regexFail(Yarr::errorMessage(errorCode));
         }
         return re;
     }

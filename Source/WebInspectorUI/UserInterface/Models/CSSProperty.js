@@ -70,6 +70,11 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
     update(text, name, value, priority, enabled, overridden, implicit, anonymous, valid, styleSheetTextRange, dontFireEvents)
     {
+        // Locked CSSProperty can still be updated from the back-end when the text matches.
+        // We need to do this to keep attributes such as valid and overridden up to date.
+        if (this._ownerStyle && this._ownerStyle.locked && text !== this._text)
+            return;
+
         text = text || "";
         name = name || "";
         value = value || "";
@@ -124,6 +129,11 @@ WI.CSSProperty = class CSSProperty extends WI.Object
         this._name = "";
         const forceRemove = true;
         this._updateStyleText(forceRemove);
+    }
+
+    replaceWithText(text)
+    {
+        this._updateOwnerStyleText(this._text, text, true);
     }
 
     commentOut(disabled)
@@ -361,7 +371,7 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
         console.assert(oldText === styleText.slice(range.startOffset, range.endOffset), "_styleSheetTextRange data is invalid.");
 
-        let newStyleText = styleText.slice(0, range.startOffset) + newText + styleText.slice(range.endOffset);
+        let newStyleText = this._appendSemicolonIfNeeded(styleText.slice(0, range.startOffset)) + newText + styleText.slice(range.endOffset);
 
         let lineDelta = newText.lineCount - oldText.lineCount;
         let columnDelta = newText.lastLine.length - oldText.lastLine.length;
@@ -371,6 +381,14 @@ WI.CSSProperty = class CSSProperty extends WI.Object
 
         let propertyWasRemoved = !newText;
         this._ownerStyle.shiftPropertiesAfter(this, lineDelta, columnDelta, propertyWasRemoved);
+    }
+
+    _appendSemicolonIfNeeded(styleText)
+    {
+        if (/[^;\s]\s*$/.test(styleText))
+            return styleText.trimRight() + "; ";
+
+        return styleText;
     }
 };
 

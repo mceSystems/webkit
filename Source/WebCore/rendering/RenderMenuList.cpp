@@ -42,6 +42,7 @@
 #include "RenderScrollbar.h"
 #include "RenderText.h"
 #include "RenderTheme.h"
+#include "RenderTreeBuilder.h"
 #include "RenderView.h"
 #include "StyleResolver.h"
 #include "TextRun.h"
@@ -88,7 +89,7 @@ RenderMenuList::~RenderMenuList()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderMenuList::willBeDestroyed()
+void RenderMenuList::willBeDestroyed(RenderTreeBuilder& builder)
 {
 #if !PLATFORM(IOS)
     if (m_popup)
@@ -96,23 +97,14 @@ void RenderMenuList::willBeDestroyed()
     m_popup = nullptr;
 #endif
 
-    RenderFlexibleBox::willBeDestroyed();
+    RenderFlexibleBox::willBeDestroyed(builder);
 }
 
-void RenderMenuList::createInnerBlock()
+void RenderMenuList::setInnerRenderer(RenderBlock& innerRenderer)
 {
-    if (m_innerBlock) {
-        ASSERT(firstChild() == m_innerBlock);
-        ASSERT(!m_innerBlock->nextSibling());
-        return;
-    }
-
-    // Create an anonymous block.
-    ASSERT(!firstChild());
-    auto newInnerBlock = createAnonymousBlock();
-    m_innerBlock = makeWeakPtr(*newInnerBlock.get());
+    ASSERT(!m_innerBlock.get());
+    m_innerBlock = makeWeakPtr(innerRenderer);
     adjustInnerStyle();
-    RenderFlexibleBox::addChild(WTFMove(newInnerBlock));
 }
 
 void RenderMenuList::adjustInnerStyle()
@@ -174,22 +166,17 @@ HTMLSelectElement& RenderMenuList::selectElement() const
     return downcast<HTMLSelectElement>(nodeForNonAnonymous());
 }
 
-void RenderMenuList::addChild(RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
+void RenderMenuList::addChild(RenderTreeBuilder&, RenderPtr<RenderObject> child, RenderObject*)
 {
-    createInnerBlock();
-    auto& child = *newChild;
-    m_innerBlock->addChild(WTFMove(newChild), beforeChild);
-    ASSERT(m_innerBlock == firstChild());
-
     if (AXObjectCache* cache = document().existingAXObjectCache())
-        cache->childrenChanged(this, &child);
+        cache->childrenChanged(this, child.get());
 }
 
-RenderPtr<RenderObject> RenderMenuList::takeChild(RenderObject& oldChild)
+RenderPtr<RenderObject> RenderMenuList::takeChild(RenderTreeBuilder& builder, RenderObject& oldChild)
 {
     if (!m_innerBlock || &oldChild == m_innerBlock)
-        return RenderFlexibleBox::takeChild(oldChild);
-    return m_innerBlock->takeChild(oldChild);
+        return RenderFlexibleBox::takeChild(builder, oldChild);
+    return m_innerBlock->takeChild(builder, oldChild);
 }
 
 void RenderMenuList::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
@@ -298,7 +285,11 @@ void RenderMenuList::setText(const String& s)
     else {
         auto newButtonText = createRenderer<RenderText>(document(), textToUse);
         m_buttonText = makeWeakPtr(*newButtonText);
-        addChild(WTFMove(newButtonText));
+        // FIXME: This mutation should go through the normal RenderTreeBuilder path.
+        if (RenderTreeBuilder::current())
+            RenderTreeBuilder::current()->insertChild(*this, WTFMove(newButtonText));
+        else
+            RenderTreeBuilder(*document().renderView()).insertChild(*this, WTFMove(newButtonText));
     }
 
     adjustInnerStyle();
@@ -373,10 +364,7 @@ void RenderMenuList::showPopup()
     if (m_popupIsVisible)
         return;
 
-    // Create m_innerBlock here so it ends up as the first child.
-    // This is important because otherwise we might try to create m_innerBlock
-    // inside the showPopup call and it would fail.
-    createInnerBlock();
+    ASSERT(m_innerBlock);
     if (!m_popup)
         m_popup = document().page()->chrome().createPopupMenu(*this);
     m_popupIsVisible = true;

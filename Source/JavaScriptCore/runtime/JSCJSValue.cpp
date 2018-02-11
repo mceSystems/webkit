@@ -29,12 +29,12 @@
 #include "Error.h"
 #include "ExceptionHelpers.h"
 #include "GetterSetter.h"
+#include "JSBigInt.h"
 #include "JSCInlines.h"
 #include "JSFunction.h"
 #include "JSGlobalObject.h"
 #include "NumberObject.h"
 #include <wtf/MathExtras.h>
-#include <wtf/StringExtras.h>
 
 namespace JSC {
 
@@ -130,6 +130,8 @@ JSObject* JSValue::synthesizePrototype(ExecState* exec) const
     if (isCell()) {
         if (isString())
             return exec->lexicalGlobalObject()->stringPrototype();
+        if (isBigInt())
+            return exec->lexicalGlobalObject()->bigIntPrototype();
         ASSERT(isSymbol());
         return exec->lexicalGlobalObject()->symbolPrototype();
     }
@@ -375,6 +377,14 @@ JSString* JSValue::toStringSlowCase(ExecState* exec, bool returnEmptyStringOnErr
     if (isSymbol()) {
         throwTypeError(exec, scope, ASCIILiteral("Cannot convert a symbol to a string"));
         return errorValue();
+    }
+    if (isBigInt()) {
+        JSBigInt* bigInt = asBigInt(*this);
+        if (auto digit = bigInt->singleDigitValueForString())
+            return vm.smallStrings.singleCharacterString(*digit + '0');
+        JSString* returnString = jsNontrivialString(&vm, bigInt->toString(*exec, 10));
+        RETURN_IF_EXCEPTION(scope, errorValue());
+        return returnString;
     }
 
     ASSERT(isCell());

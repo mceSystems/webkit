@@ -59,15 +59,18 @@ public:
 
     String text() const;
 
+    RenderBlock* innerRenderer() const { return m_innerBlock.get(); }
+    void setInnerRenderer(RenderBlock&);
+
 private:
-    void willBeDestroyed() override;
+    void willBeDestroyed(RenderTreeBuilder&) override;
 
     void element() const = delete;
 
     bool isMenuList() const override { return true; }
 
-    void addChild(RenderPtr<RenderObject> newChild, RenderObject* beforeChild = 0) override;
-    RenderPtr<RenderObject> takeChild(RenderObject&) override;
+    void addChild(RenderTreeBuilder&, RenderPtr<RenderObject> newChild, RenderObject* beforeChild = 0) override;
+    RenderPtr<RenderObject> takeChild(RenderTreeBuilder&, RenderObject&) override;
     bool createsAnonymousWrapper() const override { return true; }
 
     void updateFromElement() override;
@@ -127,7 +130,6 @@ private:
 
     void getItemBackgroundColor(unsigned listIndex, Color&, bool& itemHasCustomBackgroundColor) const;
 
-    void createInnerBlock();
     void adjustInnerStyle();
     void setText(const String&);
     void setTextFromOption(int optionIndex);

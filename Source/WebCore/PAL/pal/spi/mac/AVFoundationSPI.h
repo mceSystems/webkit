@@ -76,12 +76,7 @@ NS_ASSUME_NONNULL_END
 
 #endif // ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS)
 
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 101200) || PLATFORM(IOS)
 #import <AVFoundation/AVAssetCache.h>
-#else
-@interface AVAssetCache : NSObject
-@end
-#endif
 NS_ASSUME_NONNULL_BEGIN
 @interface AVAssetCache ()
 + (AVAssetCache *)assetCacheWithURL:(NSURL *)URL;
@@ -146,10 +141,16 @@ typedef NS_ENUM(NSUInteger, AVStreamDataParserStreamDataFlags) {
 
 NS_ASSUME_NONNULL_END
 
+#if HAVE(AVCONTENTKEYSESSION)
+#import <AVFoundation/AVContentKeySession.h>
+@interface AVStreamDataParser () <AVContentKeyRecipient>
+@end
+#endif
+
 #endif // !PLATFORM(IOS)
 #endif // USE(APPLE_INTERNAL_SDK)
 
-#if PLATFORM(MAC) && (!USE(APPLE_INTERNAL_SDK) || __MAC_OS_X_VERSION_MIN_REQUIRED < 101200)
+#if PLATFORM(MAC) && !USE(APPLE_INTERNAL_SDK)
 NS_ASSUME_NONNULL_BEGIN
 @interface AVStreamDataParser (AVStreamDataParserPrivate)
 + (NSString *)outputMIMECodecParameterForInputMIMECodecParameter:(NSString *)inputMIMECodecParameter;

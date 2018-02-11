@@ -380,6 +380,11 @@ WI.Resource = class Resource extends WI.SourceCode
         if (content instanceof Blob)
             return URL.createObjectURL(content);
 
+        if (typeof content === "string") {
+            let blob = textToBlob(content, this._mimeType);
+            return URL.createObjectURL(blob);
+        }
+
         return null;
     }
 
@@ -527,11 +532,6 @@ WI.Resource = class Resource extends WI.SourceCode
         return this.timingData.responseEnd || this.lastDataReceivedTimestamp || this.responseReceivedTimestamp || this.lastRedirectReceivedTimestamp || this.requestSentTimestamp;
     }
 
-    get duration()
-    {
-        return this.timingData.responseEnd - this.timingData.requestStart;
-    }
-
     get latency()
     {
         return this.timingData.responseStart - this.timingData.requestStart;
@@ -540,6 +540,11 @@ WI.Resource = class Resource extends WI.SourceCode
     get receiveDuration()
     {
         return this.timingData.responseEnd - this.timingData.responseStart;
+    }
+
+    get totalDuration()
+    {
+        return this.timingData.responseEnd - this.timingData.startTime;
     }
 
     get cached()
@@ -1129,7 +1134,6 @@ WI.Resource._mimeTypeMap = {
     "text/xml": WI.Resource.Type.Document,
     "text/plain": WI.Resource.Type.Document,
     "application/xhtml+xml": WI.Resource.Type.Document,
-    "image/svg+xml": WI.Resource.Type.Document,
 
     "text/css": WI.Resource.Type.Stylesheet,
     "text/xsl": WI.Resource.Type.Stylesheet,
@@ -1138,6 +1142,7 @@ WI.Resource._mimeTypeMap = {
     "text/x-scss": WI.Resource.Type.Stylesheet,
 
     "application/pdf": WI.Resource.Type.Image,
+    "image/svg+xml": WI.Resource.Type.Image,
 
     "application/x-font-type1": WI.Resource.Type.Font,
     "application/x-font-ttf": WI.Resource.Type.Font,
@@ -1160,6 +1165,8 @@ WI.Resource._mimeTypeMap = {
     "text/livescript": WI.Resource.Type.Script,
     "text/x-livescript": WI.Resource.Type.Script,
     "text/typescript": WI.Resource.Type.Script,
+    "text/typescript-jsx": WI.Resource.Type.Script,
+    "text/jsx": WI.Resource.Type.Script,
     "text/x-clojure": WI.Resource.Type.Script,
-    "text/x-coffeescript": WI.Resource.Type.Script
+    "text/x-coffeescript": WI.Resource.Type.Script,
 };

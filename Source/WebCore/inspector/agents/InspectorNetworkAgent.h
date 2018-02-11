@@ -34,12 +34,12 @@
 #include "InspectorInstrumentation.h"
 #include "InspectorPageAgent.h"
 #include "InspectorWebAgentBase.h"
-#include <inspector/InspectorBackendDispatchers.h>
-#include <inspector/InspectorFrontendDispatchers.h>
+#include <JavaScriptCore/InspectorBackendDispatchers.h>
+#include <JavaScriptCore/InspectorFrontendDispatchers.h>
+#include <JavaScriptCore/RegularExpression.h>
 #include <wtf/HashSet.h>
 #include <wtf/JSONValues.h>
 #include <wtf/text/WTFString.h>
-#include <yarr/RegularExpression.h>
 
 namespace Inspector {
 class InjectedScriptManager;
@@ -57,6 +57,7 @@ class ResourceError;
 class ResourceLoader;
 class ResourceRequest;
 class ResourceResponse;
+class TextResourceDecoder;
 class URL;
 class WebSocket;
 
@@ -65,10 +66,16 @@ struct WebSocketFrame;
 typedef String ErrorString;
 
 class InspectorNetworkAgent : public InspectorAgentBase, public Inspector::NetworkBackendDispatcherHandler {
+    WTF_MAKE_NONCOPYABLE(InspectorNetworkAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit InspectorNetworkAgent(WebAgentContext&);
     virtual ~InspectorNetworkAgent();
+
+    static bool shouldTreatAsText(const String& mimeType);
+    static Ref<TextResourceDecoder> createTextDecoder(const String& mimeType, const String& textEncodingName);
+    static std::optional<String> textContentForCachedResource(CachedResource&);
+    static bool cachedResourceContent(CachedResource&, String* result, bool* base64Encoded);
 
     void didCreateFrontendAndBackend(Inspector::FrontendRouter*, Inspector::BackendDispatcher*) override;
     void willDestroyFrontendAndBackend(Inspector::DisconnectReason) override;
@@ -84,7 +91,6 @@ public:
     void didFailLoading(unsigned long identifier, DocumentLoader*, const ResourceError&);
     void didLoadResourceFromMemoryCache(DocumentLoader*, CachedResource&);
     void didReceiveThreadableLoaderResponse(unsigned long identifier, DocumentThreadableLoader&);
-    void didFinishXHRLoading(unsigned long identifier, const String& decodedText);
     void willLoadXHRSynchronously();
     void didLoadXHRSynchronously();
     void didReceiveScriptResponse(unsigned long identifier);
@@ -100,10 +106,8 @@ public:
     void setInitialScriptContent(unsigned long identifier, const String& sourceString);
     void didScheduleStyleRecalculation(Document&);
 
-    void searchOtherRequests(const JSC::Yarr::RegularExpression&, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::Page::SearchResult>>&);
-    void searchInRequest(ErrorString&, const String& requestId, const String& query, bool caseSensitive, bool isRegex, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::GenericTypes::SearchMatch>>&);
-
-    RefPtr<Inspector::Protocol::Network::Initiator> buildInitiatorObject(Document*);
+    void searchOtherRequests(const JSC::Yarr::RegularExpression&, RefPtr<JSON::ArrayOf<Inspector::Protocol::Page::SearchResult>>&);
+    void searchInRequest(ErrorString&, const String& requestId, const String& query, bool caseSensitive, bool isRegex, RefPtr<JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>>&);
 
     // Called from frontend.
     void enable(ErrorString&) final;
@@ -119,6 +123,7 @@ public:
     virtual Vector<WebSocket*> activeWebSockets(const LockHolder&) = 0;
     virtual void setResourceCachingDisabled(bool) = 0;
     virtual ScriptExecutionContext* scriptExecutionContext(ErrorString&, const String& frameId) = 0;
+    virtual bool shouldForceBufferingNetworkResourceData() const = 0;
 
 private:
     void enable();
@@ -127,6 +132,7 @@ private:
 
     WebSocket* webSocketForRequestId(const String& requestId);
 
+    RefPtr<Inspector::Protocol::Network::Initiator> buildInitiatorObject(Document*);
     Ref<Inspector::Protocol::Network::ResourceTiming> buildObjectForTiming(const NetworkLoadMetrics&, ResourceLoader&);
     Ref<Inspector::Protocol::Network::Metrics> buildObjectForMetrics(const NetworkLoadMetrics&);
     RefPtr<Inspector::Protocol::Network::Response> buildObjectForResourceResponse(const ResourceResponse&, ResourceLoader*);

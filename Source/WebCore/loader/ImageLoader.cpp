@@ -192,7 +192,7 @@ void ImageLoader::updateFromElement()
             document.cachedResourceLoader().m_documentResources.set(newImage->url(), newImage.get());
             document.cachedResourceLoader().setAutoLoadImages(autoLoadOtherImages);
         } else
-            newImage = document.cachedResourceLoader().requestImage(WTFMove(request)).valueOr(nullptr);
+            newImage = document.cachedResourceLoader().requestImage(WTFMove(request)).value_or(nullptr);
 
         // If we do not have an image here, it means that a cross-site
         // violation occurred, or that the image was blocked via Content
@@ -412,12 +412,12 @@ void ImageLoader::decode()
         return;
     }
 
-    Image* image = m_image->image();
-    if (!image || m_image->errorOccurred()) {
+    if (!m_image || !m_image->image() || m_image->errorOccurred()) {
         decodeError("Loading error.");
         return;
     }
 
+    Image* image = m_image->image();
     if (!image->isBitmapImage()) {
         decodeError("Invalid image type.");
         return;

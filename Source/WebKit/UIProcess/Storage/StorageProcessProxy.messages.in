@@ -32,6 +32,7 @@ messages -> StorageProcessProxy LegacyReceiver {
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    GetWorkerContextProcessConnection()
+    EstablishWorkerContextConnectionToStorageProcess()
+    EstablishWorkerContextConnectionToStorageProcessForExplicitSession(PAL::SessionID explicitSession)
 #endif
 }

@@ -280,7 +280,6 @@ public:
     // Cookies testing
     void setAlwaysAcceptCookies(bool);
     void setCookieStoragePartitioningEnabled(bool);
-    void setStorageAccessAPIEnabled(bool);
 
     // Custom full screen behavior.
     void setHasCustomFullScreenBehavior(bool value) { m_customFullScreenBehavior = value; }
@@ -367,8 +366,9 @@ public:
     void statisticsDidRunTelemetryCallback(unsigned totalPrevalentResources, unsigned totalPrevalentResourcesWithUserInteraction, unsigned top3SubframeUnderTopFrameOrigins);
     void statisticsNotifyObserver();
     void statisticsProcessStatisticsAndDataRecords();
-    void statisticsUpdateCookiePartitioning();
-    void statisticsSetShouldPartitionCookiesForHost(JSStringRef hostName, bool value);
+    void statisticsUpdateCookiePartitioning(JSValueRef callback);
+    void statisticsSetShouldPartitionCookiesForHost(JSStringRef hostName, bool value, JSValueRef callback);
+    void statisticsCallDidSetPartitionOrBlockCookiesForHostCallback();
     void statisticsSubmitTelemetry();
     void setStatisticsLastSeen(JSStringRef hostName, double seconds);
     void setStatisticsPrevalentResource(JSStringRef hostName, bool value);
@@ -392,19 +392,30 @@ public:
     void setStatisticsGrandfatheringTime(double seconds);
     void setStatisticsMaxStatisticsEntries(unsigned);
     void setStatisticsPruneEntriesDownTo(unsigned);
-    void statisticsClearInMemoryAndPersistentStore();
-    void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours);
+    void statisticsClearInMemoryAndPersistentStore(JSValueRef callback);
+    void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours, JSValueRef callback);
     void statisticsClearThroughWebsiteDataRemoval(JSValueRef callback);
     void statisticsCallClearThroughWebsiteDataRemovalCallback();
     void statisticsResetToConsistentState();
+
+    // Storage Access API
+    void setStorageAccessAPIEnabled(bool);
+    void getAllStorageAccessEntries(JSValueRef callback);
+    void callDidReceiveAllStorageAccessEntriesCallback(Vector<String>& domains);
 
     // Open panel
     void setOpenPanelFiles(JSValueRef);
 
     void terminateNetworkProcess();
+    void terminateServiceWorkerProcess();
 
     void removeAllSessionCredentials(JSValueRef);
     void callDidRemoveAllSessionCredentialsCallback();
+    
+    void getApplicationManifestThen(JSValueRef);
+    void didGetApplicationManifest();
+
+    void installFakeHelvetica(JSStringRef configuration);
 
 private:
     TestRunner();

@@ -70,7 +70,6 @@ inline CapabilityLevel canCompile(Node* node)
     case ArrayifyToStructure:
     case PutStructure:
     case GetButterfly:
-    case GetButterflyWithoutCaging:
     case NewObject:
     case NewStringObject:
     case NewArray:
@@ -137,6 +136,7 @@ inline CapabilityLevel canCompile(Node* node)
     case CheckCell:
     case CheckBadCell:
     case CheckNotEmpty:
+    case AssertNotEmpty:
     case CheckStringIdent:
     case CheckTraps:
     case StringCharCodeAt:
@@ -180,6 +180,7 @@ inline CapabilityLevel canCompile(Node* node)
     case GetScope:
     case GetCallee:
     case GetArgumentCountIncludingThis:
+    case SetArgumentCountIncludingThis:
     case ToNumber:
     case ToString:
     case ToObject:
@@ -208,9 +209,12 @@ inline CapabilityLevel canCompile(Node* node)
     case GetMapBucketNext:
     case LoadKeyFromMapBucket:
     case LoadValueFromMapBucket:
+    case ExtractValueFromWeakMapGet:
     case SetAdd:
     case MapSet:
     case WeakMapGet:
+    case WeakSetAdd:
+    case WeakMapSet:
     case IsEmpty:
     case IsUndefined:
     case IsBoolean:
@@ -245,6 +249,7 @@ inline CapabilityLevel canCompile(Node* node)
     case PhantomNewAsyncGeneratorFunction:
     case PhantomNewAsyncFunction:
     case PhantomCreateActivation:
+    case PhantomNewRegexp:
     case PutHint:
     case CheckStructureImmediate:
     case MaterializeNewObject:
@@ -253,6 +258,7 @@ inline CapabilityLevel canCompile(Node* node)
     case PhantomCreateRest:
     case PhantomSpread:
     case PhantomNewArrayWithSpread:
+    case PhantomNewArrayBuffer:
     case PhantomClonedArguments:
     case GetMyArgumentByVal:
     case GetMyArgumentByValOutOfBounds:
@@ -274,7 +280,9 @@ inline CapabilityLevel canCompile(Node* node)
     case CreateRest:
     case GetRestLength:
     case RegExpExec:
+    case RegExpExecNonGlobalOrSticky:
     case RegExpTest:
+    case RegExpMatchFast:
     case NewRegexp:
     case StringReplace:
     case StringReplaceRegExp: 

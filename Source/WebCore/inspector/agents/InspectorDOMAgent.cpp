@@ -97,17 +97,17 @@
 #include "WebInjectedScriptManager.h"
 #include "XPathResult.h"
 #include "markup.h"
-#include <inspector/IdentifiersFactory.h>
-#include <inspector/InjectedScript.h>
-#include <inspector/InjectedScriptManager.h>
+#include <JavaScriptCore/IdentifiersFactory.h>
+#include <JavaScriptCore/InjectedScript.h>
+#include <JavaScriptCore/InjectedScriptManager.h>
+#include <JavaScriptCore/JSCInlines.h>
 #include <pal/crypto/CryptoDigest.h>
-#include <runtime/JSCInlines.h>
 #include <wtf/text/Base64.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
-
 namespace WebCore {
+
 using namespace Inspector;
 
 using namespace HTMLNames;
@@ -549,7 +549,7 @@ void InspectorDOMAgent::querySelector(ErrorString& errorString, int nodeId, cons
         *elementId = pushNodePathToFrontend(element);
 }
 
-void InspectorDOMAgent::querySelectorAll(ErrorString& errorString, int nodeId, const String& selectors, RefPtr<Inspector::Protocol::Array<int>>& result)
+void InspectorDOMAgent::querySelectorAll(ErrorString& errorString, int nodeId, const String& selectors, RefPtr<JSON::ArrayOf<int>>& result)
 {
     Node* node = assertNode(errorString, nodeId);
     if (!node)
@@ -566,7 +566,7 @@ void InspectorDOMAgent::querySelectorAll(ErrorString& errorString, int nodeId, c
     }
 
     auto nodes = queryResult.releaseReturnValue();
-    result = Inspector::Protocol::Array<int>::create();
+    result = JSON::ArrayOf<int>::create();
     for (unsigned i = 0; i < nodes->length(); ++i)
         result->addItem(pushNodePathToFrontend(nodes->item(i)));
 }
@@ -596,7 +596,7 @@ int InspectorDOMAgent::pushNodePathToFrontend(Node* nodeToPush)
             auto newMap = std::make_unique<NodeToIdMap>();
             danglingMap = newMap.get();
             m_danglingNodeToIdMaps.append(newMap.release());
-            auto children = Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>::create();
+            auto children = JSON::ArrayOf<Inspector::Protocol::DOM::Node>::create();
             children->addItem(buildObjectForNode(node, 0, danglingMap));
             m_frontendDispatcher->setChildNodes(0, WTFMove(children));
             break;
@@ -829,9 +829,9 @@ void InspectorDOMAgent::setNodeValue(ErrorString& errorString, int nodeId, const
     m_domEditor->replaceWholeText(downcast<Text>(*node), value, errorString);
 }
 
-void InspectorDOMAgent::getEventListenersForNode(ErrorString& errorString, int nodeId, const String* objectGroup, RefPtr<Inspector::Protocol::Array<Inspector::Protocol::DOM::EventListener>>& listenersArray)
+void InspectorDOMAgent::getEventListenersForNode(ErrorString& errorString, int nodeId, const String* objectGroup, RefPtr<JSON::ArrayOf<Inspector::Protocol::DOM::EventListener>>& listenersArray)
 {
-    listenersArray = Inspector::Protocol::Array<Inspector::Protocol::DOM::EventListener>::create();
+    listenersArray = JSON::ArrayOf<Inspector::Protocol::DOM::EventListener>::create();
     Node* node = assertNode(errorString, nodeId);
     if (!node)
         return;
@@ -968,7 +968,7 @@ void InspectorDOMAgent::performSearch(ErrorString& errorString, const String& wh
     *resultCount = resultsVector.size();
 }
 
-void InspectorDOMAgent::getSearchResults(ErrorString& errorString, const String& searchId, int fromIndex, int toIndex, RefPtr<Inspector::Protocol::Array<int>>& nodeIds)
+void InspectorDOMAgent::getSearchResults(ErrorString& errorString, const String& searchId, int fromIndex, int toIndex, RefPtr<JSON::ArrayOf<int>>& nodeIds)
 {
     SearchResults::iterator it = m_searchResults.find(searchId);
     if (it == m_searchResults.end()) {
@@ -982,7 +982,7 @@ void InspectorDOMAgent::getSearchResults(ErrorString& errorString, const String&
         return;
     }
 
-    nodeIds = Inspector::Protocol::Array<int>::create();
+    nodeIds = JSON::ArrayOf<int>::create();
     for (int i = fromIndex; i < toIndex; ++i)
         nodeIds->addItem(pushNodePathToFrontend((it->value)[i].get()));
 }
@@ -1339,7 +1339,7 @@ void InspectorDOMAgent::resolveNode(ErrorString& errorString, int nodeId, const 
     result = object;
 }
 
-void InspectorDOMAgent::getAttributes(ErrorString& errorString, int nodeId, RefPtr<Inspector::Protocol::Array<String>>& result)
+void InspectorDOMAgent::getAttributes(ErrorString& errorString, int nodeId, RefPtr<JSON::ArrayOf<String>>& result)
 {
     Element* element = assertElement(errorString, nodeId);
     if (!element)
@@ -1415,10 +1415,10 @@ static String computeContentSecurityPolicySHA256Hash(const Element& element)
     // See <https://bugs.webkit.org/show_bug.cgi?id=155184>.
     TextEncoding documentEncoding = element.document().textEncoding();
     const TextEncoding& encodingToUse = documentEncoding.isValid() ? documentEncoding : UTF8Encoding();
-    CString content = encodingToUse.encode(TextNodeTraversal::contentsAsString(element), EntitiesForUnencodables);
+    auto content = encodingToUse.encode(TextNodeTraversal::contentsAsString(element), UnencodableHandling::Entities);
     auto cryptoDigest = PAL::CryptoDigest::create(PAL::CryptoDigest::Algorithm::SHA_256);
-    cryptoDigest->addBytes(content.data(), content.length());
-    Vector<uint8_t> digest = cryptoDigest->computeHash();
+    cryptoDigest->addBytes(content.data(), content.size());
+    auto digest = cryptoDigest->computeHash();
     return makeString("sha256-", base64Encode(digest.data(), digest.size()));
 }
 
@@ -1466,7 +1466,7 @@ Ref<Inspector::Protocol::DOM::Node> InspectorDOMAgent::buildObjectForNode(Node* 
     if (node->isContainerNode()) {
         int nodeCount = innerChildNodeCount(node);
         value->setChildNodeCount(nodeCount);
-        Ref<Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>> children = buildArrayForContainerChildren(node, depth, nodesMap);
+        Ref<JSON::ArrayOf<Inspector::Protocol::DOM::Node>> children = buildArrayForContainerChildren(node, depth, nodesMap);
         if (children->length() > 0)
             value->setChildren(WTFMove(children));
     }
@@ -1485,7 +1485,7 @@ Ref<Inspector::Protocol::DOM::Node> InspectorDOMAgent::buildObjectForNode(Node* 
         }
 
         if (ShadowRoot* root = element.shadowRoot()) {
-            auto shadowRoots = Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>::create();
+            auto shadowRoots = JSON::ArrayOf<Inspector::Protocol::DOM::Node>::create();
             shadowRoots->addItem(buildObjectForNode(root, 0, nodesMap));
             value->setShadowRoots(WTFMove(shadowRoots));
         }
@@ -1540,9 +1540,9 @@ Ref<Inspector::Protocol::DOM::Node> InspectorDOMAgent::buildObjectForNode(Node* 
     return value;
 }
 
-Ref<Inspector::Protocol::Array<String>> InspectorDOMAgent::buildArrayForElementAttributes(Element* element)
+Ref<JSON::ArrayOf<String>> InspectorDOMAgent::buildArrayForElementAttributes(Element* element)
 {
-    auto attributesValue = Inspector::Protocol::Array<String>::create();
+    auto attributesValue = JSON::ArrayOf<String>::create();
     // Go through all attributes and serialize them.
     if (!element->hasAttributes())
         return attributesValue;
@@ -1554,9 +1554,9 @@ Ref<Inspector::Protocol::Array<String>> InspectorDOMAgent::buildArrayForElementA
     return attributesValue;
 }
 
-Ref<Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>> InspectorDOMAgent::buildArrayForContainerChildren(Node* container, int depth, NodeToIdMap* nodesMap)
+Ref<JSON::ArrayOf<Inspector::Protocol::DOM::Node>> InspectorDOMAgent::buildArrayForContainerChildren(Node* container, int depth, NodeToIdMap* nodesMap)
 {
-    auto children = Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>::create();
+    auto children = JSON::ArrayOf<Inspector::Protocol::DOM::Node>::create();
     if (depth == 0) {
         // Special-case the only text child - pretend that container's children have been requested.
         Node* firstChild = container->firstChild();
@@ -1578,14 +1578,14 @@ Ref<Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>> InspectorDOMAgen
     return children;
 }
 
-RefPtr<Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>> InspectorDOMAgent::buildArrayForPseudoElements(const Element& element, NodeToIdMap* nodesMap)
+RefPtr<JSON::ArrayOf<Inspector::Protocol::DOM::Node>> InspectorDOMAgent::buildArrayForPseudoElements(const Element& element, NodeToIdMap* nodesMap)
 {
     PseudoElement* beforeElement = element.beforePseudoElement();
     PseudoElement* afterElement = element.afterPseudoElement();
     if (!beforeElement && !afterElement)
         return nullptr;
 
-    auto pseudoElements = Inspector::Protocol::Array<Inspector::Protocol::DOM::Node>::create();
+    auto pseudoElements = JSON::ArrayOf<Inspector::Protocol::DOM::Node>::create();
     if (beforeElement)
         pseudoElements->addItem(buildObjectForNode(beforeElement, 0, nodesMap));
     if (afterElement)
@@ -1604,10 +1604,11 @@ Ref<Inspector::Protocol::DOM::EventListener> InspectorDOMAgent::buildObjectForEv
     int columnNumber = 0;
     String scriptID;
     String sourceName;
-    if (auto scriptListener = JSEventListener::cast(eventListener.ptr())) {
-        JSC::JSLockHolder lock(scriptListener->isolatedWorld().vm());
-        state = execStateFromNode(scriptListener->isolatedWorld(), &node->document());
-        handler = scriptListener->jsFunction(node->document());
+    if (is<JSEventListener>(eventListener.get())) {
+        auto& scriptListener = downcast<JSEventListener>(eventListener.get());
+        JSC::JSLockHolder lock(scriptListener.isolatedWorld().vm());
+        state = execStateFromNode(scriptListener.isolatedWorld(), &node->document());
+        handler = scriptListener.jsFunction(node->document());
         if (handler && state) {
             body = handler->toString(state)->value(state);
             if (auto function = jsDynamicDowncast<JSC::JSFunction*>(state->vm(), handler)) {
@@ -1655,14 +1656,14 @@ Ref<Inspector::Protocol::DOM::EventListener> InspectorDOMAgent::buildObjectForEv
     return value;
 }
     
-void InspectorDOMAgent::processAccessibilityChildren(RefPtr<AccessibilityObject>&& axObject, RefPtr<Inspector::Protocol::Array<int>>&& childNodeIds)
+void InspectorDOMAgent::processAccessibilityChildren(RefPtr<AccessibilityObject>&& axObject, RefPtr<JSON::ArrayOf<int>>&& childNodeIds)
 {
     const auto& children = axObject->children();
     if (!children.size())
         return;
     
     if (!childNodeIds)
-        childNodeIds = Inspector::Protocol::Array<int>::create();
+        childNodeIds = JSON::ArrayOf<int>::create();
     
     for (const auto& childObject : children) {
         if (Node* childNode = childObject->node())
@@ -1684,13 +1685,13 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
     Node* activeDescendantNode = nullptr;
     bool busy = false;
     auto checked = Inspector::Protocol::DOM::AccessibilityProperties::Checked::False;
-    RefPtr<Inspector::Protocol::Array<int>> childNodeIds;
-    RefPtr<Inspector::Protocol::Array<int>> controlledNodeIds;
+    RefPtr<JSON::ArrayOf<int>> childNodeIds;
+    RefPtr<JSON::ArrayOf<int>> controlledNodeIds;
     auto currentState = Inspector::Protocol::DOM::AccessibilityProperties::Current::False;
     bool exists = false;
     bool expanded = false;
     bool disabled = false;
-    RefPtr<Inspector::Protocol::Array<int>> flowedNodeIds;
+    RefPtr<JSON::ArrayOf<int>> flowedNodeIds;
     bool focused = false;
     bool ignored = true;
     bool ignoredByDefault = false;
@@ -1698,17 +1699,17 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
     bool hidden = false;
     String label;
     bool liveRegionAtomic = false;
-    RefPtr<Inspector::Protocol::Array<String>> liveRegionRelevant;
+    RefPtr<JSON::ArrayOf<String>> liveRegionRelevant;
     auto liveRegionStatus = Inspector::Protocol::DOM::AccessibilityProperties::LiveRegionStatus::Off;
     Node* mouseEventNode = nullptr;
-    RefPtr<Inspector::Protocol::Array<int>> ownedNodeIds;
+    RefPtr<JSON::ArrayOf<int>> ownedNodeIds;
     Node* parentNode = nullptr;
     bool pressed = false;
     bool readonly = false;
     bool required = false;
     String role;
     bool selected = false;
-    RefPtr<Inspector::Protocol::Array<int>> selectedChildNodeIds;
+    RefPtr<JSON::ArrayOf<int>> selectedChildNodeIds;
     bool supportsChecked = false;
     bool supportsExpanded = false;
     bool supportsLiveRegion = false;
@@ -1749,7 +1750,7 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
             Vector<Element*> controlledElements;
             axObject->elementsFromAttribute(controlledElements, aria_controlsAttr);
             if (controlledElements.size()) {
-                controlledNodeIds = Inspector::Protocol::Array<int>::create();
+                controlledNodeIds = JSON::ArrayOf<int>::create();
                 for (Element* controlledElement : controlledElements)
                     controlledNodeIds->addItem(pushNodePathToFrontend(controlledElement));
             }
@@ -1788,7 +1789,7 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
             Vector<Element*> flowedElements;
             axObject->elementsFromAttribute(flowedElements, aria_flowtoAttr);
             if (flowedElements.size()) {
-                flowedNodeIds = Inspector::Protocol::Array<int>::create();
+                flowedNodeIds = JSON::ArrayOf<int>::create();
                 for (Element* flowedElement : flowedElements)
                     flowedNodeIds->addItem(pushNodePathToFrontend(flowedElement));
             }
@@ -1827,7 +1828,7 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
                     String ariaRelevantAdditions = Inspector::Protocol::InspectorHelpers::getEnumConstantValue(Inspector::Protocol::DOM::LiveRegionRelevant::Additions);
                     String ariaRelevantRemovals = Inspector::Protocol::InspectorHelpers::getEnumConstantValue(Inspector::Protocol::DOM::LiveRegionRelevant::Removals);
                     String ariaRelevantText = Inspector::Protocol::InspectorHelpers::getEnumConstantValue(Inspector::Protocol::DOM::LiveRegionRelevant::Text);
-                    liveRegionRelevant = Inspector::Protocol::Array<String>::create();
+                    liveRegionRelevant = JSON::ArrayOf<String>::create();
                     const SpaceSplitString& values = SpaceSplitString(ariaRelevantAttrValue, true);
                     // @aria-relevant="all" is exposed as ["additions","removals","text"], in order.
                     // This order is controlled in WebCore and expected in WebInspectorUI.
@@ -1859,7 +1860,7 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
                 Vector<Element*> ownedElements;
                 axObject->elementsFromAttribute(ownedElements, aria_ownsAttr);
                 if (ownedElements.size()) {
-                    ownedNodeIds = Inspector::Protocol::Array<int>::create();
+                    ownedNodeIds = JSON::ArrayOf<int>::create();
                     for (Element* ownedElement : ownedElements)
                         ownedNodeIds->addItem(pushNodePathToFrontend(ownedElement));
                 }
@@ -1885,7 +1886,7 @@ RefPtr<Inspector::Protocol::DOM::AccessibilityProperties> InspectorDOMAgent::bui
             AccessibilityObject::AccessibilityChildrenVector selectedChildren;
             axObject->selectedChildren(selectedChildren);
             if (selectedChildren.size()) {
-                selectedChildNodeIds = Inspector::Protocol::Array<int>::create();
+                selectedChildNodeIds = JSON::ArrayOf<int>::create();
                 for (auto& selectedChildObject : selectedChildren) {
                     if (Node* selectedChildNode = selectedChildObject->node())
                         selectedChildNodeIds->addItem(pushNodePathToFrontend(selectedChildNode));
@@ -2140,7 +2141,7 @@ void InspectorDOMAgent::didRemoveDOMAttr(Element& element, const AtomicString& n
 
 void InspectorDOMAgent::styleAttributeInvalidated(const Vector<Element*>& elements)
 {
-    auto nodeIds = Inspector::Protocol::Array<int>::create();
+    auto nodeIds = JSON::ArrayOf<int>::create();
     for (auto& element : elements) {
         int id = boundNodeId(element);
         // If node is not mapped yet -> ignore the event.

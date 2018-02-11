@@ -63,6 +63,11 @@ bool WKWebsiteDataStoreGetResourceLoadStatisticsEnabled(WKWebsiteDataStoreRef da
     return WebKit::toImpl(dataStoreRef)->resourceLoadStatisticsEnabled();
 }
 
+void WKWebsiteDataStoreSetResourceLoadStatisticsDebugMode(WKWebsiteDataStoreRef dataStoreRef, bool enable)
+{
+    WebKit::toImpl(dataStoreRef)->setResourceLoadStatisticsDebugMode(enable);
+}
+
 void WKWebsiteDataStoreSetStatisticsLastSeen(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, double seconds)
 {
     auto* store = WebKit::toImpl(dataStoreRef)->websiteDataStore().resourceLoadStatistics();
@@ -94,6 +99,32 @@ void WKWebsiteDataStoreIsStatisticsPrevalentResource(WKWebsiteDataStoreRef dataS
 
     store->isPrevalentResource(WebCore::URL(WebCore::URL(), WebKit::toImpl(host)->string()), [context, callback](bool isPrevalentResource) {
         callback(isPrevalentResource, context);
+    });
+}
+
+void WKWebsiteDataStoreIsStatisticsRegisteredAsSubFrameUnder(WKWebsiteDataStoreRef dataStoreRef, WKStringRef subFrameHost, WKStringRef topFrameHost, void* context, WKWebsiteDataStoreIsStatisticsRegisteredAsSubFrameUnderFunction callback)
+{
+    auto* store = WebKit::toImpl(dataStoreRef)->websiteDataStore().resourceLoadStatistics();
+    if (!store) {
+        callback(false, context);
+        return;
+    }
+
+    store->isRegisteredAsSubFrameUnder(WebCore::URL(WebCore::URL(), WebKit::toImpl(subFrameHost)->string()), WebCore::URL(WebCore::URL(), WebKit::toImpl(topFrameHost)->string()), [context, callback](bool isRegisteredAsSubFrameUnder) {
+        callback(isRegisteredAsSubFrameUnder, context);
+    });
+}
+
+void WKWebsiteDataStoreIsStatisticsRegisteredAsRedirectingTo(WKWebsiteDataStoreRef dataStoreRef, WKStringRef hostRedirectedFrom, WKStringRef hostRedirectedTo, void* context, WKWebsiteDataStoreIsStatisticsRegisteredAsRedirectingToFunction callback)
+{
+    auto* store = WebKit::toImpl(dataStoreRef)->websiteDataStore().resourceLoadStatistics();
+    if (!store) {
+        callback(false, context);
+        return;
+    }
+
+    store->isRegisteredAsRedirectingTo(WebCore::URL(WebCore::URL(), WebKit::toImpl(hostRedirectedFrom)->string()), WebCore::URL(WebCore::URL(), WebKit::toImpl(hostRedirectedTo)->string()), [context, callback](bool isRegisteredAsRedirectingTo) {
+        callback(isRegisteredAsRedirectingTo, context);
     });
 }
 
@@ -207,25 +238,31 @@ void WKWebsiteDataStoreStatisticsProcessStatisticsAndDataRecords(WKWebsiteDataSt
     store->scheduleStatisticsAndDataRecordsProcessing();
 }
 
-void WKWebsiteDataStoreStatisticsUpdateCookiePartitioning(WKWebsiteDataStoreRef dataStoreRef)
+void WKWebsiteDataStoreStatisticsUpdateCookiePartitioning(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsUpdateCookiePartitioningFunction callback)
 {
     auto* store = WebKit::toImpl(dataStoreRef)->websiteDataStore().resourceLoadStatistics();
     if (!store)
         return;
 
-    store->scheduleCookiePartitioningUpdate();
+    store->scheduleCookiePartitioningUpdate([context, callback]() {
+        callback(context);
+    });
 }
 
-void WKWebsiteDataStoreSetStatisticsShouldPartitionCookiesForHost(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool value)
+void WKWebsiteDataStoreSetStatisticsShouldPartitionCookiesForHost(WKWebsiteDataStoreRef dataStoreRef, WKStringRef host, bool value, void* context, WKWebsiteDataStoreSetStatisticsShouldPartitionCookiesForHostFunction callback)
 {
     auto* store = WebKit::toImpl(dataStoreRef)->websiteDataStore().resourceLoadStatistics();
     if (!store)
         return;
 
     if (value)
-        store->scheduleCookiePartitioningUpdateForDomains({ WebKit::toImpl(host)->string() }, { }, { }, WebKit::ShouldClearFirst::No);
+        store->scheduleCookiePartitioningUpdateForDomains({ WebKit::toImpl(host)->string() }, { }, { }, WebKit::ShouldClearFirst::No, [context, callback]() {
+            callback(context);
+        });
     else
-        store->scheduleClearPartitioningStateForDomains({ WebKit::toImpl(host)->string() });
+        store->scheduleClearPartitioningStateForDomains({ WebKit::toImpl(host)->string() }, [context, callback]() {
+            callback(context);
+        });
 }
 
 void WKWebsiteDataStoreStatisticsSubmitTelemetry(WKWebsiteDataStoreRef dataStoreRef)
@@ -296,28 +333,32 @@ void WKWebsiteDataStoreSetStatisticsPruneEntriesDownTo(WKWebsiteDataStoreRef dat
     store->setPruneEntriesDownTo(entries);
 }
 
-void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStore(WKWebsiteDataStoreRef dataStoreRef)
+void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStore(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreFunction callback)
 {
     auto* store = WebKit::toImpl(dataStoreRef)->websiteDataStore().resourceLoadStatistics();
     if (!store)
         return;
 
-    store->scheduleClearInMemoryAndPersistent(WebKit::WebResourceLoadStatisticsStore::ShouldGrandfather::Yes);
+    store->scheduleClearInMemoryAndPersistent(WebKit::WebResourceLoadStatisticsStore::ShouldGrandfather::Yes, [context, callback]() {
+        callback(context);
+    });
 }
 
-void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreModifiedSinceHours(WKWebsiteDataStoreRef dataStoreRef, unsigned hours)
+void WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreModifiedSinceHours(WKWebsiteDataStoreRef dataStoreRef, unsigned hours, void* context, WKWebsiteDataStoreStatisticsClearInMemoryAndPersistentStoreModifiedSinceHoursFunction callback)
 {
     auto* store = WebKit::toImpl(dataStoreRef)->websiteDataStore().resourceLoadStatistics();
     if (!store)
         return;
 
-    store->scheduleClearInMemoryAndPersistent(std::chrono::system_clock::now() - std::chrono::hours(hours), WebKit::WebResourceLoadStatisticsStore::ShouldGrandfather::Yes);
+    store->scheduleClearInMemoryAndPersistent(WallTime::now() - Seconds::fromHours(hours), WebKit::WebResourceLoadStatisticsStore::ShouldGrandfather::Yes, [context, callback]() {
+        callback(context);
+    });
 }
 
 void WKWebsiteDataStoreStatisticsClearThroughWebsiteDataRemoval(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreStatisticsClearThroughWebsiteDataRemovalFunction callback)
 {
     OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::ResourceLoadStatistics;
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, std::chrono::system_clock::from_time_t(0), [context, callback] {
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, WallTime::fromRawSeconds(0), [context, callback] {
         callback(context);
     });
 }
@@ -335,7 +376,7 @@ void WKWebsiteDataStoreStatisticsResetToConsistentState(WKWebsiteDataStoreRef da
 void WKWebsiteDataStoreRemoveAllFetchCaches(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreRemoveFetchCacheRemovalFunction callback)
 {
     OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::DOMCache;
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, std::chrono::system_clock::time_point::min(), [context, callback] {
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, -WallTime::infinity(), [context, callback] {
         callback(context);
     });
 }
@@ -355,14 +396,16 @@ void WKWebsiteDataStoreRemoveFetchCacheForOrigin(WKWebsiteDataStoreRef dataStore
 void WKWebsiteDataStoreRemoveAllIndexedDatabases(WKWebsiteDataStoreRef dataStoreRef)
 {
     OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::IndexedDBDatabases;
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, std::chrono::system_clock::time_point::min(), [] { });
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, -WallTime::infinity(), [] { });
 }
 
-void WKWebsiteDataStoreRemoveAllServiceWorkerRegistrations(WKWebsiteDataStoreRef dataStoreRef)
+void WKWebsiteDataStoreRemoveAllServiceWorkerRegistrations(WKWebsiteDataStoreRef dataStoreRef, void* context, WKWebsiteDataStoreRemoveAllServiceWorkerRegistrationsCallback callback)
 {
 #if ENABLE(SERVICE_WORKER)
     OptionSet<WebKit::WebsiteDataType> dataTypes = WebKit::WebsiteDataType::ServiceWorkerRegistrations;
-    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, std::chrono::system_clock::time_point::min(), [] { });
+    WebKit::toImpl(dataStoreRef)->websiteDataStore().removeData(dataTypes, -WallTime::infinity(), [context, callback] {
+        callback(context);
+    });
 #else
     UNUSED_PARAM(dataStoreRef);
 #endif

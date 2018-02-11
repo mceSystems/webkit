@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl
 
 # Copyright (C) 2015 Apple Inc. All rights reserved.
 #
@@ -23,6 +23,7 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 # THE POSSIBILITY OF SUCH DAMAGE.
 
+use warnings;
 use English;
 use File::Copy qw(copy);
 use File::Path qw(make_path remove_tree);
@@ -46,6 +47,16 @@ sub ditto($$)
         File::Copy::Recursive::dircopy($source, $destination) or die "Unable to copy directory $source to $destination: $!";
     } elsif ($^O eq 'darwin') {
         system('ditto', $source, $destination);
+    } elsif ($^O ne 'MSWin32') {
+        # Ditto copies the *contents* of the source directory, not the directory itself.
+        opendir(my $dh, $source) or die "Can't open $source: $!";
+        make_path($destination);
+        while (readdir $dh) {
+            if ($_ ne '..' and $_ ne '.') {
+                system('cp', '-R', "${source}/$_", $destination) == 0 or die "Failed to copy ${source}/$_ to $destination";
+            }
+        }
+        closedir $dh;
     } else {
         die "Please install the PEP module File::Copy::Recursive";
     }

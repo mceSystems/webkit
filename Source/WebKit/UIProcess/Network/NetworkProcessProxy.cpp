@@ -28,7 +28,9 @@
 
 #include "AuthenticationChallengeProxy.h"
 #include "DownloadProxyMessages.h"
+#if ENABLE(LEGACY_CUSTOM_PROTOCOL_MANAGER)
 #include "LegacyCustomProtocolManagerProxyMessages.h"
+#endif
 #include "Logging.h"
 #include "NetworkProcessCreationParameters.h"
 #include "NetworkProcessMessages.h"
@@ -70,7 +72,9 @@ NetworkProcessProxy::NetworkProcessProxy(WebProcessPool& processPool)
     : ChildProcessProxy(processPool.alwaysRunsAtBackgroundPriority())
     , m_processPool(processPool)
     , m_numPendingConnectionRequests(0)
+#if ENABLE(LEGACY_CUSTOM_PROTOCOL_MANAGER)
     , m_customProtocolManagerProxy(*this)
+#endif
     , m_throttler(*this, processPool.shouldTakeUIBackgroundAssertion())
 {
     connect();
@@ -138,7 +142,7 @@ void NetworkProcessProxy::fetchWebsiteData(PAL::SessionID sessionID, OptionSet<W
     send(Messages::NetworkProcess::FetchWebsiteData(sessionID, dataTypes, fetchOptions, callbackID), 0);
 }
 
-void NetworkProcessProxy::deleteWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, std::chrono::system_clock::time_point modifiedSince, WTF::Function<void ()>&& completionHandler)
+void NetworkProcessProxy::deleteWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDataType> dataTypes, WallTime modifiedSince, WTF::Function<void ()>&& completionHandler)
 {
     auto callbackID = generateCallbackID();
     RELEASE_LOG_IF(sessionID.isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NetworkProcessProxy is taking a background assertion because the Network process is deleting Website data", this);
@@ -235,9 +239,15 @@ void NetworkProcessProxy::didClose(IPC::Connection&)
 {
     if (m_downloadProxyMap)
         m_downloadProxyMap->processDidClose();
+#if ENABLE(LEGACY_CUSTOM_PROTOCOL_MANAGER)
     m_customProtocolManagerProxy.invalidate();
+#endif
 
     m_tokenForHoldingLockedFiles = nullptr;
+
+    for (auto& callback : m_writeBlobToFilePathCallbackMap.values())
+        callback(false);
+    m_writeBlobToFilePathCallbackMap.clear();
 
     // This may cause us to be deleted.
     networkProcessCrashed();
@@ -402,18 +412,40 @@ static uint64_t nextRequestStorageAccessContextId()
     return ++nextContextId;
 }
 
-void NetworkProcessProxy::updateStorageAccessForPrevalentDomains(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, bool value, WTF::CompletionHandler<void(bool)>&& callback)
+void NetworkProcessProxy::hasStorageAccessForFrame(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool)>&& callback)
 {
     auto contextId = nextRequestStorageAccessContextId();
     auto addResult = m_storageAccessResponseCallbackMap.add(contextId, WTFMove(callback));
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
-    send(Messages::NetworkProcess::UpdateStorageAccessForPrevalentDomains(sessionID, resourceDomain, firstPartyDomain, value, contextId), 0);
+    send(Messages::NetworkProcess::HasStorageAccessForFrame(sessionID, resourceDomain, firstPartyDomain, frameID, pageID, contextId), 0);
+}
+
+void NetworkProcessProxy::grantStorageAccessForFrame(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool)>&& callback)
+{
+    auto contextId = nextRequestStorageAccessContextId();
+    auto addResult = m_storageAccessResponseCallbackMap.add(contextId, WTFMove(callback));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+    send(Messages::NetworkProcess::GrantStorageAccessForFrame(sessionID, resourceDomain, firstPartyDomain, frameID, pageID, contextId), 0);
 }
 
 void NetworkProcessProxy::storageAccessRequestResult(bool wasGranted, uint64_t contextId)
 {
     auto callback = m_storageAccessResponseCallbackMap.take(contextId);
     callback(wasGranted);
+}
+
+void NetworkProcessProxy::getAllStorageAccessEntries(PAL::SessionID sessionID, CompletionHandler<void(Vector<String>&& domains)>&& callback)
+{
+    auto contextId = nextRequestStorageAccessContextId();
+    auto addResult = m_allStorageAccessEntriesCallbackMap.add(contextId, WTFMove(callback));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+    send(Messages::NetworkProcess::GetAllStorageAccessEntries(sessionID, contextId), 0);
+}
+
+void NetworkProcessProxy::allStorageAccessEntriesResult(Vector<String>&& domains, uint64_t contextId)
+{
+    auto callback = m_allStorageAccessEntriesCallbackMap.take(contextId);
+    callback(WTFMove(domains));
 }
 #endif
 
@@ -442,6 +474,30 @@ void NetworkProcessProxy::sendProcessDidResume()
 {
     if (canSendMessage())
         send(Messages::NetworkProcess::ProcessDidResume(), 0);
+}
+
+void NetworkProcessProxy::writeBlobToFilePath(const WebCore::URL& url, const String& path, CompletionHandler<void(bool)>&& callback)
+{
+    if (!canSendMessage()) {
+        callback(false);
+        return;
+    }
+
+    static uint64_t writeBlobToFilePathCallbackIdentifiers = 0;
+    uint64_t callbackID = ++writeBlobToFilePathCallbackIdentifiers;
+    m_writeBlobToFilePathCallbackMap.add(callbackID, WTFMove(callback));
+
+    SandboxExtension::Handle handleForWriting;
+    SandboxExtension::createHandle(path, SandboxExtension::Type::ReadWrite, handleForWriting);
+    send(Messages::NetworkProcess::WriteBlobToFilePath(url, path, handleForWriting, callbackID), 0);
+}
+
+void NetworkProcessProxy::didWriteBlobToFilePath(bool success, uint64_t callbackID)
+{
+    if (auto handler = m_writeBlobToFilePathCallbackMap.take(callbackID))
+        handler(success);
+    else
+        ASSERT_NOT_REACHED();
 }
 
 void NetworkProcessProxy::processReadyToSuspend()

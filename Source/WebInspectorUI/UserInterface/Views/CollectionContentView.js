@@ -25,7 +25,7 @@
 
 WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 {
-    constructor(collection, contentViewConstructor, contentPlaceholderText)
+    constructor(collection, contentViewConstructor, contentPlaceholder)
     {
         console.assert(collection instanceof WI.Collection);
 
@@ -33,7 +33,8 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 
         this.element.classList.add("collection");
 
-        this._contentPlaceholderText = contentPlaceholderText || collection.displayName;
+        this._contentPlaceholder = contentPlaceholder || collection.displayName;
+        this._contentPlaceholderElement = null;
         this._contentViewConstructor = contentViewConstructor;
         this._contentViewMap = new Map;
         this._handleClickMap = new WeakMap;
@@ -48,6 +49,22 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         if (this._selectedItem)
             return [this._selectedItem];
         return [];
+    }
+
+    shown()
+    {
+        super.shown();
+
+        for (let contentView of this._contentViewMap.values())
+            contentView.shown();
+    }
+
+    hidden()
+    {
+        for (let contentView of this._contentViewMap.values())
+            contentView.hidden();
+
+        super.hidden();
     }
 
     get selectionEnabled()
@@ -114,6 +131,10 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         this.addSubview(contentView);
         this.contentViewAdded(contentView);
 
+        if (!this.visible)
+            return;
+
+        contentView.visible = true;
         contentView.shown();
     }
 
@@ -134,7 +155,10 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
         this._contentViewMap.delete(item);
         this.contentViewRemoved(contentView);
 
-        contentView.hidden();
+        if (this.visible) {
+            contentView.visible = false;
+            contentView.hidden();
+        }
 
         contentView.removeEventListener(null, null, this);
 
@@ -248,18 +272,20 @@ WI.CollectionContentView = class CollectionContentView extends WI.ContentView
 
     _showContentPlaceholder()
     {
-        if (!this._contentPlaceholder)
-            this._contentPlaceholder = new WI.TitleView(this._contentPlaceholderText);
+        if (!this._contentPlaceholderElement) {
+            if (typeof this._contentPlaceholder === "string")
+                this._contentPlaceholderElement = WI.createMessageTextView(this._contentPlaceholder);
+            else if (this._contentPlaceholder instanceof HTMLElement)
+                this._contentPlaceholderElement =  this._contentPlaceholder;
+        }
 
-        if (!this._contentPlaceholder.parentView)
-            this.addSubview(this._contentPlaceholder);
+        if (!this._contentPlaceholderElement.parentNode)
+            this.element.appendChild(this._contentPlaceholderElement);
     }
 
     _hideContentPlaceholder()
     {
-        this.addSubview.cancelDebounce();
-
-        if (this._contentPlaceholder && this._contentPlaceholder.parentView)
-            this.removeSubview(this._contentPlaceholder);
+        if (this._contentPlaceholderElement)
+            this._contentPlaceholderElement.remove();
     }
 };

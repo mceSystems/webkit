@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003, 2006, 2007, 2013 Apple Inc.  All rights reserved.
+ * Copyright (C) 2003-2017 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -197,16 +197,18 @@ WTF_EXPORT_PRIVATE void WTFSetLogChannelLevel(WTFLogChannel*, WTFLogLevel);
 WTF_EXPORT_PRIVATE bool WTFWillLogWithLevel(WTFLogChannel*, WTFLogLevel);
 
 WTF_EXPORT_PRIVATE void WTFGetBacktrace(void** stack, int* size);
-WTF_EXPORT_PRIVATE void WTFReportBacktrace();
+WTF_EXPORT_PRIVATE void WTFReportBacktrace(void);
 WTF_EXPORT_PRIVATE void WTFPrintBacktrace(void** stack, int size);
 
-typedef void (*WTFCrashHookFunction)();
+typedef void (*WTFCrashHookFunction)(void);
 WTF_EXPORT_PRIVATE void WTFSetCrashHook(WTFCrashHookFunction);
-WTF_EXPORT_PRIVATE void WTFInstallReportBacktraceOnCrashHook();
+WTF_EXPORT_PRIVATE void WTFInstallReportBacktraceOnCrashHook(void);
 
-WTF_EXPORT_PRIVATE bool WTFIsDebuggerAttached();
+WTF_EXPORT_PRIVATE bool WTFIsDebuggerAttached(void);
 
-#if CPU(X86_64) || CPU(X86)
+#if ASAN_ENABLED
+#define WTFBreakpointTrap()  __builtin_trap()
+#elif CPU(X86_64) || CPU(X86)
 #define WTFBreakpointTrap()  __asm__ volatile ("int3")
 #elif CPU(ARM_THUMB2)
 #define WTFBreakpointTrap()  __asm__ volatile ("bkpt #0")
@@ -232,13 +234,13 @@ WTF_EXPORT_PRIVATE bool WTFIsDebuggerAttached();
 
 #endif // !defined(CRASH)
 
-WTF_EXPORT_PRIVATE NO_RETURN_DUE_TO_CRASH void WTFCrash();
+WTF_EXPORT_PRIVATE NO_RETURN_DUE_TO_CRASH void WTFCrash(void);
 
 #ifndef CRASH_WITH_SECURITY_IMPLICATION
 #define CRASH_WITH_SECURITY_IMPLICATION() WTFCrashWithSecurityImplication()
 #endif
 
-WTF_EXPORT_PRIVATE NO_RETURN_DUE_TO_CRASH void WTFCrashWithSecurityImplication();
+WTF_EXPORT_PRIVATE NO_RETURN_DUE_TO_CRASH void WTFCrashWithSecurityImplication(void);
 
 #ifdef __cplusplus
 }

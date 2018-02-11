@@ -46,14 +46,15 @@
 #include "ScriptExecutionContext.h"
 #include "ScriptState.h"
 #include "Timer.h"
-#include <inspector/InjectedScript.h>
-#include <inspector/InjectedScriptManager.h>
-#include <inspector/ScriptCallStack.h>
-#include <inspector/ScriptCallStackFactory.h>
+#include <JavaScriptCore/InjectedScript.h>
+#include <JavaScriptCore/InjectedScriptManager.h>
+#include <JavaScriptCore/ScriptCallStack.h>
+#include <JavaScriptCore/ScriptCallStackFactory.h>
 #include <wtf/NeverDestroyed.h>
 
 
 namespace WebCore {
+
 using namespace Inspector;
 
 PageDebuggerAgent::PageDebuggerAgent(PageAgentContext& context, InspectorPageAgent* pageAgent, InspectorOverlay* overlay)

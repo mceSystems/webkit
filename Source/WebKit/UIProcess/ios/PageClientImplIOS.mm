@@ -52,9 +52,11 @@
 #import "_WKDownloadInternal.h"
 #import <WebCore/NotImplemented.h>
 #import <WebCore/PlatformScreen.h>
+#import <WebCore/PromisedBlobInfo.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/TextIndicator.h>
 #import <WebCore/ValidationBubble.h>
+#import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
 #import <wtf/BlockPtr.h>
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, m_webView->_page->process().connection())
@@ -209,7 +211,6 @@ void PageClientImpl::processDidExit()
 void PageClientImpl::didRelaunchProcess()
 {
     [m_contentView _didRelaunchProcess];
-    [m_webView _didRelaunchProcess];
 }
 
 void PageClientImpl::pageClosed()
@@ -362,11 +363,6 @@ bool PageClientImpl::executeSavedCommandBySelector(const String&)
     return false;
 }
 
-void PageClientImpl::setDragImage(const IntPoint&, Ref<ShareableBitmap>&&, DragSourceAction)
-{
-    notImplemented();
-}
-
 void PageClientImpl::selectionDidChange()
 {
     [m_contentView _selectionChanged];
@@ -446,13 +442,6 @@ RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy&)
 {
     return nullptr;
 }
-
-#if ENABLE(CONTEXT_MENUS)
-RefPtr<WebContextMenuProxy> PageClientImpl::createContextMenuProxy(WebPageProxy&, const UserData&)
-{
-    return nullptr;
-}
-#endif
 
 void PageClientImpl::setTextIndicator(Ref<TextIndicator> textIndicator, TextIndicatorWindowLifetime)
 {
@@ -540,15 +529,14 @@ void PageClientImpl::restorePageCenterAndScale(std::optional<WebCore::FloatPoint
     [m_webView _restorePageStateToUnobscuredCenter:center scale:scale];
 }
 
-void PageClientImpl::startAssistingNode(const AssistedNodeInformation& nodeInformation, bool userIsInteracting, bool blurPreviousNode, API::Object* userData)
+void PageClientImpl::startAssistingNode(const AssistedNodeInformation& nodeInformation, bool userIsInteracting, bool blurPreviousNode, bool changingActivityState, API::Object* userData)
 {
     MESSAGE_CHECK(!userData || userData->type() == API::Object::Type::Data);
 
     NSObject <NSSecureCoding> *userObject = nil;
     if (API::Data* data = static_cast<API::Data*>(userData)) {
         auto nsData = adoptNS([[NSData alloc] initWithBytesNoCopy:const_cast<void*>(static_cast<const void*>(data->bytes())) length:data->size() freeWhenDone:NO]);
-        auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingWithData:nsData.get()]);
-        [unarchiver setRequiresSecureCoding:YES];
+        auto unarchiver = secureUnarchiverFromData(nsData.get());
         @try {
             userObject = [unarchiver decodeObjectOfClass:[NSObject class] forKey:@"userObject"];
         } @catch (NSException *exception) {
@@ -556,7 +544,7 @@ void PageClientImpl::startAssistingNode(const AssistedNodeInformation& nodeInfor
         }
     }
 
-    [m_contentView _startAssistingNode:nodeInformation userIsInteracting:userIsInteracting blurPreviousNode:blurPreviousNode userObject:userObject];
+    [m_contentView _startAssistingNode:nodeInformation userIsInteracting:userIsInteracting blurPreviousNode:blurPreviousNode changingActivityState:changingActivityState userObject:userObject];
 }
 
 bool PageClientImpl::isAssistingNode()
@@ -568,6 +556,14 @@ void PageClientImpl::stopAssistingNode()
 {
     [m_contentView _stopAssistingNode];
 }
+    
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 120000
+void PageClientImpl::didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold)
+{
+    [m_contentView _didUpdateBlockSelectionWithTouch:(SelectionTouch)touch withFlags:(SelectionFlags)flags growThreshold:growThreshold shrinkThreshold:shrinkThreshold];
+}
+#endif
+    
 
 void PageClientImpl::showPlaybackTargetPicker(bool hasVideo, const IntRect& elementRect)
 {

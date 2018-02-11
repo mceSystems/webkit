@@ -60,7 +60,7 @@ static unsigned fontSelectorId;
 
 CSSFontSelector::CSSFontSelector(Document& document)
     : m_document(&document)
-    , m_cssFontFaceSet(CSSFontFaceSet::create())
+    , m_cssFontFaceSet(CSSFontFaceSet::create(this))
     , m_beginLoadingTimer(*this, &CSSFontSelector::beginLoadTimerFired)
     , m_uniqueId(++fontSelectorId)
     , m_version(0)
@@ -241,6 +241,15 @@ void CSSFontSelector::dispatchInvalidationCallbacks()
 
     for (auto& client : copyToVector(m_clients))
         client->fontsNeedUpdate(*this);
+}
+
+void CSSFontSelector::opportunisticallyStartFontDataURLLoading(const FontCascadeDescription& description, const AtomicString& familyName)
+{
+    const auto& segmentedFontFace = m_cssFontFaceSet->fontFace(description.fontSelectionRequest(), familyName);
+    if (!segmentedFontFace)
+        return;
+    for (auto& face : segmentedFontFace->constituentFaces())
+        face->opportunisticallyStartFontDataURLLoading(*this);
 }
 
 void CSSFontSelector::fontLoaded()

@@ -109,7 +109,7 @@ MediaQueryEvaluator::MediaQueryEvaluator(const String& acceptedMediaType, bool m
 
 MediaQueryEvaluator::MediaQueryEvaluator(const String& acceptedMediaType, const Document& document, const RenderStyle* style)
     : m_mediaType(acceptedMediaType)
-    , m_frame(document.frame())
+    , m_document(const_cast<Document&>(document).createWeakPtr())
     , m_style(style)
 {
 }
@@ -137,7 +137,7 @@ static bool applyRestrictor(MediaQuery::Restrictor r, bool value)
 
 bool MediaQueryEvaluator::evaluate(const MediaQuerySet& querySet, StyleResolver* styleResolver) const
 {
-    LOG_WITH_STREAM(MediaQueries, stream << "MediaQueryEvaluator::evaluate on " << (m_frame && m_frame->document() ? m_frame->document()->url().string() : emptyString()));
+    LOG_WITH_STREAM(MediaQueries, stream << "MediaQueryEvaluator::evaluate on " << (m_document ? m_document->url().string() : emptyString()));
 
     auto& queries = querySet.queryVector();
     if (!queries.size()) {
@@ -722,7 +722,7 @@ static bool prefersReducedMotionEvaluate(CSSValue* value, const CSSToLengthConve
     case Settings::ForcedAccessibilityValue::Off:
         break;
     case Settings::ForcedAccessibilityValue::System:
-#if USE(NEW_THEME)
+#if USE(NEW_THEME) || PLATFORM(IOS)
         userPrefersReducedMotion = Theme::singleton().userPrefersReducedMotion();
 #endif
         break;
@@ -734,6 +734,33 @@ static bool prefersReducedMotionEvaluate(CSSValue* value, const CSSToLengthConve
     return downcast<CSSPrimitiveValue>(*value).valueID() == (userPrefersReducedMotion ? CSSValueReduce : CSSValueNoPreference);
 }
 
+#if ENABLE(APPLICATION_MANIFEST)
+static bool displayModeEvaluate(CSSValue* value, const CSSToLengthConversionData&, Frame& frame, MediaFeaturePrefix)
+{
+    if (!value)
+        return true;
+
+    auto keyword = downcast<CSSPrimitiveValue>(*value).valueID();
+
+    auto manifest = frame.mainFrame().applicationManifest();
+    if (!manifest)
+        return keyword == CSSValueBrowser;
+
+    switch (manifest->display) {
+    case ApplicationManifest::Display::Fullscreen:
+        return keyword == CSSValueFullscreen;
+    case ApplicationManifest::Display::Standalone:
+        return keyword == CSSValueStandalone;
+    case ApplicationManifest::Display::MinimalUI:
+        return keyword == CSSValueMinimalUi;
+    case ApplicationManifest::Display::Browser:
+        return keyword == CSSValueBrowser;
+    }
+
+    return false;
+}
+#endif // ENABLE(APPLICATION_MANIFEST)
+
 // Use this function instead of calling add directly to avoid inlining.
 static void add(MediaQueryFunctionMap& map, AtomicStringImpl* key, MediaQueryFunction value)
 {
@@ -742,7 +769,12 @@ static void add(MediaQueryFunctionMap& map, AtomicStringImpl* key, MediaQueryFun
 
 bool MediaQueryEvaluator::evaluate(const MediaQueryExpression& expression) const
 {
-    if (!m_frame || !m_frame->view() || !m_style)
+    if (!m_document)
+        return m_fallbackResult;
+
+    Document& document = *m_document;
+    auto* frame = document.frame();
+    if (!frame || !frame->view() || !m_style)
         return m_fallbackResult;
 
     if (!expression.isValid())
@@ -760,10 +792,9 @@ bool MediaQueryEvaluator::evaluate(const MediaQueryExpression& expression) const
     if (!function)
         return false;
 
-    Document& document = *m_frame->document();
     if (!document.documentElement())
         return false;
-    return function(expression.value(), { m_style, document.documentElement()->renderStyle(), document.renderView(), 1, false }, *m_frame, NoPrefix);
+    return function(expression.value(), { m_style, document.documentElement()->renderStyle(), document.renderView(), 1, false }, *frame, NoPrefix);
 }
 
 bool MediaQueryEvaluator::mediaAttributeMatches(Document& document, const String& attributeValue)

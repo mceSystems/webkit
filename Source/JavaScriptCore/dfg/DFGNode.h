@@ -97,11 +97,16 @@ struct MultiPutByOffsetData {
 };
 
 struct NewArrayBufferData {
-    unsigned startConstant;
-    unsigned numConstants;
-    unsigned vectorLengthHint;
-    IndexingType indexingType;
+    union {
+        struct {
+            unsigned vectorLengthHint;
+            unsigned indexingType;
+        };
+        uint64_t asQuadWord;
+    };
 };
+static_assert(sizeof(IndexingType) <= sizeof(unsigned), "");
+static_assert(sizeof(NewArrayBufferData) == sizeof(uint64_t), "");
 
 struct BranchTarget {
     BranchTarget()
@@ -513,7 +518,7 @@ public:
             m_op = Int52Constant;
         else
             m_op = JSConstant;
-        m_flags &= ~NodeMustGenerate;
+        m_flags &= ~(NodeMustGenerate | NodeHasVarArgs);
         m_opInfo = value;
         children.reset();
     }
@@ -581,12 +586,6 @@ public:
         m_op = MultiPutByOffset;
     }
     
-    void convertToPutHint(const PromotedLocationDescriptor&, Node* base, Node* value);
-    
-    void convertToPutByOffsetHint();
-    void convertToPutStructureHint(Node* structure);
-    void convertToPutClosureVarHint();
-    
     void convertToPhantomNewObject()
     {
         ASSERT(m_op == NewObject || m_op == MaterializeNewObject);
@@ -644,6 +643,15 @@ public:
         m_op = PhantomCreateActivation;
         m_flags &= ~NodeHasVarArgs;
         m_flags |= NodeMustGenerate;
+        m_opInfo = OpInfoWrapper();
+        m_opInfo2 = OpInfoWrapper();
+        children = AdjacencyList();
+    }
+
+    void convertToPhantomNewRegexp()
+    {
+        ASSERT(m_op == NewRegexp);
+        setOpAndDefaultFlags(PhantomNewRegexp);
         m_opInfo = OpInfoWrapper();
         m_opInfo2 = OpInfoWrapper();
         children = AdjacencyList();
@@ -728,6 +736,14 @@ public:
     void convertToDirectCall(FrozenValue*);
 
     void convertToCallDOM(Graph&);
+
+    void convertToRegExpExecNonGlobalOrSticky(FrozenValue* regExp);
+
+    void convertToSetRegExpObjectLastIndex()
+    {
+        setOp(SetRegExpObjectLastIndex);
+        m_opInfo = false;
+    }
     
     JSValue asJSValue()
     {
@@ -955,6 +971,12 @@ public:
         ASSERT(hasStackAccessData());
         return m_opInfo.as<StackAccessData*>();
     }
+
+    unsigned argumentCountIncludingThis()
+    {
+        ASSERT(op() == SetArgumentCountIncludingThis);
+        return m_opInfo.as<unsigned>();
+    }
     
     bool hasPhi()
     {
@@ -1085,30 +1107,26 @@ public:
         return m_flags & NodeMayHaveNonNumberResult;
     }
 
-    bool hasConstantBuffer()
+    bool hasNewArrayBufferData()
     {
-        return op() == NewArrayBuffer;
+        return op() == NewArrayBuffer || op() == PhantomNewArrayBuffer;
     }
     
-    NewArrayBufferData* newArrayBufferData()
+    NewArrayBufferData newArrayBufferData()
     {
-        ASSERT(hasConstantBuffer());
-        return m_opInfo.as<NewArrayBufferData*>();
-    }
-    
-    unsigned startConstant()
-    {
-        return newArrayBufferData()->startConstant;
-    }
-    
-    unsigned numConstants()
-    {
-        return newArrayBufferData()->numConstants;
+        ASSERT(hasNewArrayBufferData());
+        return m_opInfo2.asNewArrayBufferData();
     }
 
+    unsigned hasVectorLengthHint()
+    {
+        return op() == NewArrayBuffer || op() == PhantomNewArrayBuffer;
+    }
+    
     unsigned vectorLengthHint()
     {
-        return newArrayBufferData()->vectorLengthHint;
+        ASSERT(hasVectorLengthHint());
+        return newArrayBufferData().vectorLengthHint;
     }
     
     bool hasIndexingType()
@@ -1117,6 +1135,7 @@ public:
         case NewArray:
         case NewArrayWithSize:
         case NewArrayBuffer:
+        case PhantomNewArrayBuffer:
             return true;
         default:
             return false;
@@ -1140,8 +1159,8 @@ public:
     IndexingType indexingType()
     {
         ASSERT(hasIndexingType());
-        if (op() == NewArrayBuffer)
-            return newArrayBufferData()->indexingType;
+        if (op() == NewArrayBuffer || op() == PhantomNewArrayBuffer)
+            return static_cast<IndexingType>(newArrayBufferData().indexingType);
         return static_cast<IndexingType>(m_opInfo.as<uint32_t>());
     }
     
@@ -1567,7 +1586,9 @@ public:
         case ArrayPop:
         case ArrayPush:
         case RegExpExec:
+        case RegExpExecNonGlobalOrSticky:
         case RegExpTest:
+        case RegExpMatchFast:
         case GetGlobalVar:
         case GetGlobalLexicalVariable:
         case StringReplace:
@@ -1590,7 +1611,8 @@ public:
         case AtomicsSub:
         case AtomicsXor:
         case GetDynamicVar:
-        case WeakMapGet:
+        case ExtractValueFromWeakMapGet:
+        case ToThis:
             return true;
         default:
             return false;
@@ -1639,12 +1661,15 @@ public:
         case CreateActivation:
         case MaterializeCreateActivation:
         case NewRegexp:
+        case NewArrayBuffer:
+        case PhantomNewArrayBuffer:
         case CompareEqPtr:
         case CallObjectConstructor:
         case DirectCall:
         case DirectTailCall:
         case DirectConstruct:
         case DirectTailCallInlinedCaller:
+        case RegExpExecNonGlobalOrSticky:
             return true;
         default:
             return false;
@@ -1902,12 +1927,14 @@ public:
         case PhantomCreateRest:
         case PhantomSpread:
         case PhantomNewArrayWithSpread:
+        case PhantomNewArrayBuffer:
         case PhantomClonedArguments:
         case PhantomNewFunction:
         case PhantomNewGeneratorFunction:
         case PhantomNewAsyncFunction:
         case PhantomNewAsyncGeneratorFunction:
         case PhantomCreateActivation:
+        case PhantomNewRegexp:
             return true;
         default:
             return false;
@@ -2613,10 +2640,15 @@ public:
     {
         m_misc.epoch = epoch.toUnsigned();
     }
+    
+    bool hasNumberOfArgumentsToSkip()
+    {
+        return op() == CreateRest || op() == PhantomCreateRest || op() == GetRestLength || op() == GetMyArgumentByVal || op() == GetMyArgumentByValOutOfBounds;
+    }
 
     unsigned numberOfArgumentsToSkip()
     {
-        ASSERT(op() == CreateRest || op() == PhantomCreateRest || op() == GetRestLength || op() == GetMyArgumentByVal || op() == GetMyArgumentByValOutOfBounds);
+        ASSERT(hasNumberOfArgumentsToSkip());
         return m_opInfo.as<unsigned>();
     }
 
@@ -2651,6 +2683,17 @@ public:
     {
         ASSERT(hasValidRadixConstant());
         return m_opInfo.as<int32_t>();
+    }
+
+    bool hasIgnoreLastIndexIsWritable()
+    {
+        return op() == SetRegExpObjectLastIndex;
+    }
+
+    bool ignoreLastIndexIsWritable()
+    {
+        ASSERT(hasIgnoreLastIndexIsWritable());
+        return m_opInfo.as<uint32_t>();
     }
 
     uint32_t errorType()
@@ -2756,6 +2799,11 @@ private:
             u.pointer = bitwise_cast<void*>(structure);
             return *this;
         }
+        OpInfoWrapper& operator=(NewArrayBufferData newArrayBufferData)
+        {
+            u.int64 = bitwise_cast<uint64_t>(newArrayBufferData);
+            return *this;
+        }
         template <typename T>
         ALWAYS_INLINE auto as() const -> typename std::enable_if<std::is_pointer<T>::value && !std::is_const<typename std::remove_pointer<T>::type>::value, T>::type
         {
@@ -2779,6 +2827,10 @@ private:
         ALWAYS_INLINE RegisteredStructure asRegisteredStructure() const
         {
             return bitwise_cast<RegisteredStructure>(u.pointer);
+        }
+        ALWAYS_INLINE NewArrayBufferData asNewArrayBufferData() const
+        {
+            return bitwise_cast<NewArrayBufferData>(u.int64);
         }
 
         union {

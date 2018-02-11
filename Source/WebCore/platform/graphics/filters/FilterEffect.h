@@ -24,7 +24,7 @@
 #include "ColorSpace.h"
 #include "FloatRect.h"
 #include "IntRect.h"
-#include <runtime/Uint8ClampedArray.h>
+#include <JavaScriptCore/Uint8ClampedArray.h>
 #include <wtf/MathExtras.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
@@ -114,7 +114,8 @@ public:
 
     virtual FilterEffectType filterEffectType() const { return FilterEffectTypeUnknown; }
 
-    virtual WTF::TextStream& externalRepresentation(WTF::TextStream&) const;
+    enum class RepresentationType { TestOutput, Debugging };
+    virtual WTF::TextStream& externalRepresentation(WTF::TextStream&, RepresentationType = RepresentationType::TestOutput) const;
 
     // The following functions are SVG specific and will move to RenderSVGResourceFilterPrimitive.
     // See bug https://bugs.webkit.org/show_bug.cgi?id=45614.
@@ -135,6 +136,10 @@ public:
 
     FloatRect effectBoundaries() const { return m_effectBoundaries; }
     void setEffectBoundaries(const FloatRect& effectBoundaries) { m_effectBoundaries = effectBoundaries; }
+    
+    void setUnclippedAbsoluteSubregion(const FloatRect& r) { m_absoluteUnclippedSubregion = r; }
+    
+    FloatPoint mapPointFromUserSpaceToBuffer(FloatPoint) const;
 
     Filter& filter() { return m_filter; }
     const Filter& filter() const { return m_filter; }
@@ -207,6 +212,9 @@ private:
     // x, y, width and height of the actual SVGFE*Element. Is needed to determine the subregion of the
     // filter primitive on a later step.
     FloatRect m_effectBoundaries;
+    
+    // filterPrimitiveSubregion mapped to absolute coordinates before clipping.
+    FloatRect m_absoluteUnclippedSubregion;
 
     bool m_alphaImage { false };
     bool m_hasX { false };
@@ -220,6 +228,8 @@ private:
     ColorSpace m_operatingColorSpace { ColorSpaceLinearRGB };
     ColorSpace m_resultColorSpace { ColorSpaceSRGB };
 };
+
+WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const FilterEffect&);
 
 } // namespace WebCore
 

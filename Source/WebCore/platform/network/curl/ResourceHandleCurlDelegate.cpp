@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2006 Apple Inc.  All rights reserved.
  * Copyright (C) 2005, 2006 Michael Emmel mike.emmel@gmail.com
- * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2018 Sony Interactive Entertainment Inc.
  * All rights reserved.
  * Copyright (C) 2017 NAVER Corp. All rights reserved.
  *
@@ -33,11 +33,12 @@
 #if USE(CURL)
 
 #include "AuthenticationChallenge.h"
+#include "CookieJarCurl.h"
 #include "CredentialStorage.h"
 #include "CurlCacheManager.h"
 #include "CurlRequest.h"
 #include "HTTPParsers.h"
-#include "MultipartHandle.h"
+#include "NetworkStorageSession.h"
 #include "ResourceHandleInternal.h"
 #include "SharedBuffer.h"
 #include "TextEncoding.h"
@@ -75,7 +76,7 @@ void ResourceHandleCurlDelegate::releaseHandle()
     m_handle = nullptr;
 }
 
-bool ResourceHandleCurlDelegate::start()
+void ResourceHandleCurlDelegate::start()
 {
     ASSERT(isMainThread());
 
@@ -84,8 +85,6 @@ bool ResourceHandleCurlDelegate::start()
     m_curlRequest = createCurlRequest(m_currentRequest);
     m_curlRequest->setUserPass(credential.first, credential.second);
     m_curlRequest->start();
-
-    return true;
 }
 
 void ResourceHandleCurlDelegate::cancel()
@@ -171,7 +170,8 @@ Ref<CurlRequest> ResourceHandleCurlDelegate::createCurlRequest(ResourceRequest& 
         }
     }
 
-    return CurlRequest::create(request, this, m_defersLoading);
+    CurlRequest::ShouldSuspend shouldSuspend = m_defersLoading ? CurlRequest::ShouldSuspend::Yes : CurlRequest::ShouldSuspend::No;
+    return CurlRequest::create(request, this, shouldSuspend, CurlRequest::EnableMultipart::Yes);
 }
 
 bool ResourceHandleCurlDelegate::cancelledOrClientless()
@@ -180,6 +180,30 @@ bool ResourceHandleCurlDelegate::cancelledOrClientless()
         return true;
 
     return !m_handle->client();
+}
+
+void ResourceHandleCurlDelegate::curlDidSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent)
+{
+    ASSERT(isMainThread());
+
+    if (cancelledOrClientless())
+        return;
+
+    m_handle->client()->didSendData(m_handle, bytesSent, totalBytesToBeSent);
+}
+
+static void handleCookieHeaders(const CurlResponse& response)
+{
+    static const auto setCookieHeader = "set-cookie: ";
+
+    auto& defaultStorageSession = NetworkStorageSession::defaultStorageSession();
+    const CookieJarCurl& cookieJar = defaultStorageSession.cookieStorage();
+    for (auto header : response.headers) {
+        if (header.startsWithIgnoringASCIICase(setCookieHeader)) {
+            String setCookieString = header.right(header.length() - strlen(setCookieHeader));
+            cookieJar.setCookiesFromHTTPResponse(defaultStorageSession, response.url, setCookieString);
+        }
+    }
 }
 
 void ResourceHandleCurlDelegate::curlDidReceiveResponse(const CurlResponse& receivedResponse)
@@ -195,12 +219,7 @@ void ResourceHandleCurlDelegate::curlDidReceiveResponse(const CurlResponse& rece
     if (m_curlRequest)
         m_handle->getInternal()->m_response.setDeprecatedNetworkLoadMetrics(m_curlRequest->getNetworkLoadMetrics());
 
-    if (response().isMultipart()) {
-        String boundary;
-        bool parsed = MultipartHandle::extractBoundary(response().httpHeaderField(HTTPHeaderName::ContentType), boundary);
-        if (parsed)
-            m_multipartHandle = std::make_unique<MultipartHandle>(m_handle, boundary);
-    }
+    handleCookieHeaders(receivedResponse);
 
     if (response().shouldRedirect()) {
         willSendRequest();
@@ -230,7 +249,9 @@ void ResourceHandleCurlDelegate::curlDidReceiveResponse(const CurlResponse& rece
         CurlCacheManager::singleton().didReceiveResponse(*m_handle, response());
 
         auto protectedThis = makeRef(*m_handle);
-        m_handle->didReceiveResponse(ResourceResponse(response()));
+        m_handle->didReceiveResponse(ResourceResponse(response()), [this, protectedThis = makeRef(*this)] {
+            continueAfterDidReceiveResponse();
+        });
     }
 }
 
@@ -241,12 +262,8 @@ void ResourceHandleCurlDelegate::curlDidReceiveBuffer(Ref<SharedBuffer>&& buffer
     if (cancelledOrClientless())
         return;
 
-    if (m_multipartHandle)
-        m_multipartHandle->contentReceived(buffer->data(), buffer->size());
-    else if (m_handle->client()) {
-        CurlCacheManager::singleton().didReceiveData(*m_handle, buffer->data(), buffer->size());
-        m_handle->client()->didReceiveBuffer(m_handle, WTFMove(buffer), buffer->size());
-    }
+    CurlCacheManager::singleton().didReceiveData(*m_handle, buffer->data(), buffer->size());
+    m_handle->client()->didReceiveBuffer(m_handle, WTFMove(buffer), buffer->size());
 }
 
 void ResourceHandleCurlDelegate::curlDidComplete()
@@ -258,9 +275,6 @@ void ResourceHandleCurlDelegate::curlDidComplete()
 
     if (m_curlRequest)
         m_handle->getInternal()->m_response.setDeprecatedNetworkLoadMetrics(m_curlRequest->getNetworkLoadMetrics());
-
-    if (m_multipartHandle)
-        m_multipartHandle->contentEnded();
 
     if (m_handle->client()) {
         CurlCacheManager::singleton().didFinishLoading(*m_handle);
@@ -336,7 +350,7 @@ void ResourceHandleCurlDelegate::willSendRequest()
     }
 
     String location = response().httpHeaderField(HTTPHeaderName::Location);
-    URL newURL = URL(m_firstRequest.url(), location);
+    URL newURL = URL(m_handle->getInternal()->m_response.url(), location);
     bool crossOrigin = !protocolHostAndPortAreEqual(m_firstRequest.url(), newURL);
 
     ResourceRequest newRequest = m_firstRequest;
@@ -442,7 +456,9 @@ void ResourceHandleCurlDelegate::handleDataURL()
 
     if (base64) {
         data = decodeURLEscapeSequences(data);
-        m_handle->didReceiveResponse(WTFMove(response));
+        m_handle->didReceiveResponse(WTFMove(response), [this, protectedThis = makeRef(*this)] {
+            continueAfterDidReceiveResponse();
+        });
 
         // didReceiveResponse might cause the client to be deleted.
         if (m_handle->client()) {
@@ -453,13 +469,15 @@ void ResourceHandleCurlDelegate::handleDataURL()
     } else {
         TextEncoding encoding(charset);
         data = decodeURLEscapeSequences(data, encoding);
-        m_handle->didReceiveResponse(WTFMove(response));
+        m_handle->didReceiveResponse(WTFMove(response), [this, protectedThis = makeRef(*this)] {
+            continueAfterDidReceiveResponse();
+        });
 
         // didReceiveResponse might cause the client to be deleted.
         if (m_handle->client()) {
-            CString encodedData = encoding.encode(data, URLEncodedEntitiesForUnencodables);
-            if (encodedData.length())
-                m_handle->client()->didReceiveBuffer(m_handle, SharedBuffer::create(encodedData.data(), encodedData.length()), originalSize);
+            auto encodedData = encoding.encode(data, UnencodableHandling::URLEncodedEntities);
+            if (encodedData.size())
+                m_handle->client()->didReceiveBuffer(m_handle, SharedBuffer::create(WTFMove(encodedData)), originalSize);
         }
     }
 

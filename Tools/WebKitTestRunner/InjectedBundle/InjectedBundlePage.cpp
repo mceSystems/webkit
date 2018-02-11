@@ -26,6 +26,7 @@
 #include "config.h"
 #include "InjectedBundlePage.h"
 
+#include "ActivateFonts.h"
 #include "InjectedBundle.h"
 #include "StringFunctions.h"
 #include "WebCoreTestSupport.h"
@@ -357,8 +358,8 @@ InjectedBundlePage::InjectedBundlePage(WKBundlePageRef page)
     };
     WKBundlePageSetUIClient(m_page, &uiClient.base);
 
-    WKBundlePageEditorClientV1 editorClient = {
-        { 1, this },
+    WKBundlePageEditorClientV2 editorClient = {
+        { 2, this },
         shouldBeginEditing,
         shouldEndEditing,
         shouldInsertNode,
@@ -374,6 +375,7 @@ InjectedBundlePage::InjectedBundlePage(WKBundlePageRef page)
         0, /* getPasteboardDataForRange */
         0, /* didWriteToPasteboard */
         0, /* performTwoStepDrop */
+        0, /* replacementURLForResource */
     };
     WKBundlePageSetEditorClient(m_page, &editorClient.base);
 
@@ -435,6 +437,8 @@ void InjectedBundlePage::resetAfterTest()
 
     // User scripts need to be removed after the test and before loading about:blank, as otherwise they would run in about:blank, and potentially leak results into a subsequest test.
     WKBundlePageRemoveAllUserContent(m_page);
+
+    uninstallFakeHelvetica();
 }
 
 // Loader Client Callbacks

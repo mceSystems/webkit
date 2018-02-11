@@ -26,12 +26,18 @@ from webkitpy.common.memoized import memoized
 from webkitpy.common.version import Version
 
 
+PUBLIC_TABLE = 'public'
+
+
 class VersionNameMap(object):
 
     # Allows apple_additions to define a custom mapping
     @staticmethod
     @memoized
     def map(platform=None):
+        from webkitpy.port.config import apple_additions
+        if apple_additions():
+            return apple_additions().version_name_mapping(platform)
         return VersionNameMap(platform=platform)
 
     def __init__(self, platform=None):
@@ -41,7 +47,7 @@ class VersionNameMap(object):
         self.mapping = {}
 
         self.default_system_platform = platform.os_name
-        self.mapping['public'] = {
+        self.mapping[PUBLIC_TABLE] = {
             'mac': {
                 'Leopard': Version(10, 5),
                 'Snow Leopard': Version(10, 6),
@@ -55,6 +61,8 @@ class VersionNameMap(object):
                 'Future': Version(10, 14),
             },
             'ios': self._automap_to_major_version('iOS', minimum=Version(10), maximum=Version(12)),
+            'tvos': self._automap_to_major_version('tvOS', minimum=Version(10), maximum=Version(12)),
+            'watchos': self._automap_to_major_version('watchOS', minimum=Version(1), maximum=Version(5)),
             'win': {
                 'Win10': Version(10),
                 '8.1': Version(6, 3),
@@ -63,7 +71,14 @@ class VersionNameMap(object):
                 'Vista': Version(6),
                 'XP': Version(5, 1),
             },
+
+            # This entry avoids hitting the assert in mapping_for_platform() on Linux,
+            # but otherwise shouldn't contain any useful key-value pairs.
+            'linux': {},
         }
+
+        # wincairo uses the same versions as Windows
+        self.mapping[PUBLIC_TABLE]['wincairo'] = self.mapping[PUBLIC_TABLE]['win']
 
     @classmethod
     def _automap_to_major_version(cls, prefix, minimum=Version(1), maximum=Version(1)):
@@ -73,16 +88,13 @@ class VersionNameMap(object):
             result['{} {}'.format(prefix, str(Version(minimum.major + i)))] = Version(minimum.major + i)
         return result
 
-    def to_name(self, version, platform=None, table='public'):
-        platform = self.default_system_platform if platform is None else platform
-        assert table in self.mapping
-        assert platform in self.mapping[table]
+    def to_name(self, version, platform=None, table=PUBLIC_TABLE):
         closest_match = (None, None)
-        for os_name, os_version in self.mapping[table][platform].iteritems():
+        for os_name, os_version in self.mapping_for_platform(platform, table).iteritems():
             if version == os_version:
                 return os_name
-            elif version.contained_in(os_version):
-                if closest_match[1] and closest_match[1].contained_in(os_version):
+            elif version in os_version:
+                if closest_match[1] and closest_match[1] in os_version:
                     continue
                 closest_match = (os_name, os_version)
         return closest_match[0]
@@ -121,3 +133,16 @@ class VersionNameMap(object):
                     if self.strip_name_formatting(version_name) == unformatted:
                         return (os_name, version)
         return (None, None)
+
+    def names(self, platform=None, table=PUBLIC_TABLE):
+        """return list of os_name for platform"""
+        mapping = self.mapping_for_platform(platform, table)
+        names = [os_name for os_name in mapping]
+        return sorted(names, key=lambda os_name: mapping[os_name])
+
+    def mapping_for_platform(self, platform=None, table=PUBLIC_TABLE):
+        """return proper os_name: os_version mapping for platform"""
+        platform = self.default_system_platform if platform is None else platform
+        assert table in self.mapping
+        assert platform in self.mapping[table]
+        return self.mapping[table][platform]

@@ -43,13 +43,14 @@
 #include "ScriptController.h"
 #include "ScriptState.h"
 #include "SecurityOrigin.h"
-#include <inspector/InjectedScript.h>
-#include <inspector/InjectedScriptManager.h>
+#include <JavaScriptCore/InjectedScript.h>
+#include <JavaScriptCore/InjectedScriptManager.h>
 
 using Inspector::Protocol::Runtime::ExecutionContextDescription;
 
 
 namespace WebCore {
+
 using namespace Inspector;
 
 PageRuntimeAgent::PageRuntimeAgent(PageAgentContext& context, InspectorPageAgent* pageAgent)

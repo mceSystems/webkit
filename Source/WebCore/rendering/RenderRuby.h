@@ -56,8 +56,7 @@ public:
     RenderRubyAsInline(Element&, RenderStyle&&);
     virtual ~RenderRubyAsInline();
 
-    void addChild(RenderPtr<RenderObject> child, RenderObject* beforeChild = 0) override;
-    RenderPtr<RenderObject> takeChild(RenderObject& child) override;
+    RenderPtr<RenderObject> takeChild(RenderTreeBuilder&, RenderObject& child) override;
 
 protected:
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
@@ -77,8 +76,7 @@ public:
 
     Element& element() const { return downcast<Element>(nodeForNonAnonymous()); }
 
-    void addChild(RenderPtr<RenderObject> child, RenderObject* beforeChild = 0) override;
-    RenderPtr<RenderObject> takeChild(RenderObject& child) override;
+    RenderPtr<RenderObject> takeChild(RenderTreeBuilder&, RenderObject& child) override;
 
 protected:
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
@@ -87,7 +85,6 @@ private:
     bool isRubyBlock() const final { return true; }
     const char* renderName() const override { return "RenderRuby (block)"; }
     bool createsAnonymousWrapper() const override { return true; }
-    void removeLeftoverAnonymousBlock(RenderBlock*) override { ASSERT_NOT_REACHED(); }
 };
 
 

@@ -58,16 +58,12 @@ OBJC_CLASS AVAssetResourceLoadingRequest;
 
 typedef struct CGImage *CGImageRef;
 typedef struct __CVBuffer *CVPixelBufferRef;
-#if PLATFORM(IOS)
-typedef struct  __CVOpenGLESTextureCache *CVOpenGLESTextureCacheRef;
-#else
-typedef struct __CVOpenGLTextureCache* CVOpenGLTextureCacheRef;
-#endif
 
 namespace WebCore {
 
 class AudioSourceProviderAVFObjC;
 class AudioTrackPrivateAVFObjC;
+class CDMInstanceFairPlayStreamingAVFObjC;
 class CDMSessionAVFoundationObjC;
 class InbandMetadataTextTrackPrivateAVF;
 class InbandTextTrackPrivateAVFObjC;
@@ -90,7 +86,7 @@ public:
     static void registerMediaEngine(MediaEngineRegistrar);
 
     static HashSet<RefPtr<SecurityOrigin>> originsInMediaCache(const String&);
-    static void clearMediaCache(const String&, std::chrono::system_clock::time_point modifiedSince);
+    static void clearMediaCache(const String&, WallTime modifiedSince);
     static void clearMediaCacheForOrigins(const String&, const HashSet<RefPtr<SecurityOrigin>>&);
 
     void setAsset(RetainPtr<id>);
@@ -105,7 +101,6 @@ public:
     
 #if HAVE(AVFOUNDATION_LOADER_DELEGATE)
     bool shouldWaitForLoadingOfResource(AVAssetResourceLoadingRequest*);
-    bool shouldWaitForResponseToAuthenticationChallenge(NSURLAuthenticationChallenge*);
     void didCancelLoadingRequest(AVAssetResourceLoadingRequest*);
     void didStopLoadingRequest(AVAssetResourceLoadingRequest *);
 #endif
@@ -156,6 +151,12 @@ public:
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     void removeSession(LegacyCDMSession&);
+#endif
+
+#if ENABLE(ENCRYPTED_MEDIA)
+    void cdmInstanceAttached(CDMInstance&) final;
+    void cdmInstanceDetached(CDMInstance&) final;
+    void attemptToDecryptWithInstance(CDMInstance&) final;
 #endif
 
     WeakPtr<MediaPlayerPrivateAVFoundationObjC> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
@@ -265,16 +266,12 @@ private:
 #if HAVE(AVFOUNDATION_VIDEO_OUTPUT)
     void createVideoOutput();
     void destroyVideoOutput();
-    RetainPtr<CVPixelBufferRef> createPixelBuffer();
+    bool updateLastPixelBuffer();
     void updateLastImage();
     bool videoOutputHasAvailableFrame();
     void paintWithVideoOutput(GraphicsContext&, const FloatRect&);
     NativeImagePtr nativeImageForCurrentTime() override;
     void waitForVideoOutputMediaDataWillChange();
-
-    void createOpenGLVideoOutput();
-    void destroyOpenGLVideoOutput();
-    void updateLastOpenGLImage();
 
     bool copyVideoTextureToPlatformTexture(GraphicsContext3D*, Platform3DObject, GC3Denum target, GC3Dint level, GC3Denum internalFormat, GC3Denum format, GC3Denum type, bool premultiplyAlpha, bool flipY) override;
 #endif
@@ -363,13 +360,10 @@ private:
 #if HAVE(AVFOUNDATION_VIDEO_OUTPUT)
     RetainPtr<AVPlayerItemVideoOutput> m_videoOutput;
     RetainPtr<WebCoreAVFPullDelegate> m_videoOutputDelegate;
+    RetainPtr<CVPixelBufferRef> m_lastPixelBuffer;
     RetainPtr<CGImageRef> m_lastImage;
     dispatch_semaphore_t m_videoOutputSemaphore;
-
-    RetainPtr<AVPlayerItemVideoOutput> m_openGLVideoOutput;
-    std::unique_ptr<TextureCacheCV> m_textureCache;
     std::unique_ptr<VideoTextureCopierCV> m_videoTextureCopier;
-    RetainPtr<CVPixelBufferRef> m_lastOpenGLImage;
 #endif
 
     std::unique_ptr<PixelBufferConformerCV> m_pixelBufferConformer;
@@ -408,6 +402,9 @@ private:
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     WeakPtr<CDMSessionAVFoundationObjC> m_session;
+#endif
+#if ENABLE(ENCRYPTED_MEDIA) && HAVE(AVCONTENTKEYSESSION)
+    RefPtr<CDMInstanceFairPlayStreamingAVFObjC> m_cdmInstance;
 #endif
 
     mutable RetainPtr<NSArray> m_cachedSeekableRanges;

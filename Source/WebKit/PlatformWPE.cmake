@@ -16,6 +16,10 @@ add_definitions(-DWEBKIT2_COMPILATION)
 add_definitions(-DLIBEXECDIR="${LIBEXEC_INSTALL_DIR}")
 add_definitions(-DLOCALEDIR="${CMAKE_INSTALL_FULL_LOCALEDIR}")
 
+if (NOT DEVELOPER_MODE AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
+    WEBKIT_ADD_TARGET_PROPERTIES(WebKit LINK_FLAGS "-Wl,--version-script,${CMAKE_CURRENT_SOURCE_DIR}/webkitglib-symbols.map")
+endif ()
+
 # Temporary workaround to allow the build to succeed.
 file(REMOVE "${FORWARDING_HEADERS_DIR}/WebCore/Settings.h")
 
@@ -61,6 +65,8 @@ list(APPEND StorageProcess_SOURCES
 )
 
 list(APPEND WebKit_SOURCES
+    NetworkProcess/CustomProtocols/LegacyCustomProtocolManager.cpp
+
     NetworkProcess/CustomProtocols/soup/LegacyCustomProtocolManagerSoup.cpp
 
     NetworkProcess/cache/NetworkCacheCodersSoup.cpp
@@ -97,8 +103,6 @@ list(APPEND WebKit_SOURCES
     Shared/API/glib/WebKitHitTestResult.cpp
     Shared/API/glib/WebKitURIRequest.cpp
     Shared/API/glib/WebKitURIResponse.cpp
-
-    Shared/Authentication/soup/AuthenticationManagerSoup.cpp
 
     Shared/CoordinatedGraphics/CoordinatedBackingStore.cpp
     Shared/CoordinatedGraphics/CoordinatedGraphicsScene.cpp
@@ -209,6 +213,8 @@ list(APPEND WebKit_SOURCES
 
     UIProcess/Launcher/glib/ProcessLauncherGLib.cpp
 
+    UIProcess/Network/CustomProtocols/LegacyCustomProtocolManagerProxy.cpp
+
     UIProcess/Plugins/unix/PluginInfoStoreUnix.cpp
     UIProcess/Plugins/unix/PluginProcessProxyUnix.cpp
 
@@ -256,11 +262,9 @@ list(APPEND WebKit_SOURCES
     WebProcess/WebPage/AcceleratedDrawingArea.cpp
     WebProcess/WebPage/AcceleratedSurface.cpp
 
-    WebProcess/WebPage/CoordinatedGraphics/AreaAllocator.cpp
     WebProcess/WebPage/CoordinatedGraphics/CompositingCoordinator.cpp
     WebProcess/WebPage/CoordinatedGraphics/CoordinatedLayerTreeHost.cpp
     WebProcess/WebPage/CoordinatedGraphics/ThreadedCoordinatedLayerTreeHost.cpp
-    WebProcess/WebPage/CoordinatedGraphics/UpdateAtlas.cpp
 
     WebProcess/WebPage/gstreamer/WebPageGStreamer.cpp
 
@@ -276,7 +280,11 @@ list(APPEND WebKit_SOURCES
 )
 
 list(APPEND WebKit_MESSAGES_IN_FILES
+    NetworkProcess/CustomProtocols/LegacyCustomProtocolManager.messages.in
+
     UIProcess/API/wpe/CompositingManagerProxy.messages.in
+
+    UIProcess/Network/CustomProtocols/LegacyCustomProtocolManagerProxy.messages.in
 )
 
 list(APPEND WebKit_DERIVED_SOURCES
@@ -415,6 +423,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/UIProcess/gstreamer"
     "${WEBKIT_DIR}/UIProcess/linux"
     "${WEBKIT_DIR}/UIProcess/soup"
+    "${WEBKIT_DIR}/UIProcess/wpe"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib"
     "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/wpe"
     "${WEBKIT_DIR}/WebProcess/soup"
@@ -438,7 +447,6 @@ list(APPEND WebKit_SYSTEM_INCLUDE_DIRECTORIES
 )
 
 list(APPEND WebKit_LIBRARIES
-    WebCore
     ${CAIRO_LIBRARIES}
     ${FREETYPE2_LIBRARIES}
     ${GLIB_LIBRARIES}
@@ -470,6 +478,9 @@ install(TARGETS WPEWebInspectorResources DESTINATION "${LIB_INSTALL_DIR}")
 add_library(WPEInjectedBundle MODULE "${WEBKIT_DIR}/WebProcess/InjectedBundle/API/glib/WebKitInjectedBundleMain.cpp")
 ADD_WEBKIT_PREFIX_HEADER(WPEInjectedBundle)
 target_link_libraries(WPEInjectedBundle WebKit)
+
+target_include_directories(WPEInjectedBundle PRIVATE ${WebKit_INCLUDE_DIRECTORIES})
+target_include_directories(WPEInjectedBundle SYSTEM PRIVATE ${WebKit_SYSTEM_INCLUDE_DIRECTORIES})
 
 install(FILES "${CMAKE_BINARY_DIR}/wpe-webkit.pc"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"

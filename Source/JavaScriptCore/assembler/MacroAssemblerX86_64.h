@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -364,7 +364,7 @@ public:
         m_assembler.leaq_mr(index.offset, index.base, index.index, index.scale, dest);
     }
 
-    void getEffectiveAddress64(BaseIndex address, RegisterID dest)
+    void getEffectiveAddress(BaseIndex address, RegisterID dest)
     {
         return x86Lea64(address, dest);
     }
@@ -619,6 +619,12 @@ public:
         m_assembler.negq_r(dest);
     }
 
+    void neg64(RegisterID src, RegisterID dest)
+    {
+        move(src, dest);
+        m_assembler.negq_r(dest);
+    }
+
     void neg64(Address dest)
     {
         m_assembler.negq_m(dest.offset, dest.base);
@@ -801,6 +807,12 @@ public:
     void xor64(TrustedImm32 imm, RegisterID srcDest)
     {
         m_assembler.xorq_ir(imm.m_value, srcDest);
+    }
+
+    void xor64(TrustedImm64 imm, RegisterID srcDest)
+    {
+        move(imm, scratchRegister());
+        xor64(scratchRegister(), srcDest);
     }
 
     void not64(RegisterID srcDest)

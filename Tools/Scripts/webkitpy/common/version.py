@@ -37,6 +37,11 @@ class Version(object):
             result[i] = int(val[i])
         return result
 
+    @staticmethod
+    def from_name(name):
+        from version_name_map import VersionNameMap
+        return VersionNameMap.map().from_name(name)[1]
+
     def __init__(self, major=0, minor=0, tiny=0, micro=0, nano=0):
         self.major = int(major)
         self.minor = int(minor)
@@ -90,13 +95,14 @@ class Version(object):
             raise ValueError('Version key must be major, minor, tiny, micro or nano')
         raise ValueError('Expected version key to be string or integer')
 
-    # 11.2 is contained in 11, but 11 is not contained in 11.2
-    def contained_in(self, version):
+    # 11.2 is in 11, but 11 is not in 11.2
+    def __contains__(self, version):
+        assert isinstance(version, Version)
         does_match = True
-        for i in xrange(len(self)):
+        for i in xrange(len(version)):
             if self[i] != version[i]:
                 does_match = False
-            if not does_match and version[i] != 0:
+            if not does_match and self[i] != 0:
                 return False
         return True
 
@@ -111,6 +117,8 @@ class Version(object):
         return result
 
     def __cmp__(self, other):
+        if other is None:
+            return 1
         for i in xrange(len(self)):
             if cmp(self[i], other[i]):
                 return cmp(self[i], other[i])

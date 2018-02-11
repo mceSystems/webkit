@@ -33,7 +33,7 @@
 #include "OrientationNotifier.h"
 #include "PageConsoleClient.h"
 #include "RealtimeMediaSource.h"
-#include <runtime/Float32Array.h>
+#include <JavaScriptCore/Float32Array.h>
 #include <wtf/Optional.h>
 
 #if ENABLE(MEDIA_SESSION)
@@ -52,7 +52,6 @@ class DOMWindow;
 class Document;
 class Element;
 class ExtendableEvent;
-class FetchEvent;
 class FetchResponse;
 class File;
 class Frame;
@@ -89,6 +88,10 @@ class TypeConversions;
 class VoidCallback;
 class WebGLRenderingContext;
 class XMLHttpRequest;
+
+#if ENABLE(SERVICE_WORKER)
+class ServiceWorker;
+#endif
 
 class Internals final : public RefCounted<Internals>, private ContextDestructionObserver
 #if ENABLE(MEDIA_STREAM)
@@ -136,7 +139,9 @@ public:
     bool isImageAnimating(HTMLImageElement&);
     void setClearDecoderAfterAsyncFrameRequestForTesting(HTMLImageElement&, bool enabled);
     unsigned imageDecodeCount(HTMLImageElement&);
+    unsigned pdfDocumentCachingCount(HTMLImageElement&);
     void setLargeImageAsyncDecodingEnabledForTesting(HTMLImageElement&, bool enabled);
+    void setForceUpdateImageDataEnabledForTesting(HTMLImageElement&, bool enabled);
 
     void setGridMaxTracksLimit(unsigned);
 
@@ -230,8 +235,10 @@ public:
     bool elementShouldAutoComplete(HTMLInputElement&);
     void setEditingValue(HTMLInputElement&, const String&);
     void setAutofilled(HTMLInputElement&, bool enabled);
-    enum class AutoFillButtonType { AutoFillButtonTypeNone, AutoFillButtonTypeContacts, AutoFillButtonTypeCredentials };
+    enum class AutoFillButtonType { None, Contacts, Credentials, StrongPassword, StrongConfirmationPassword };
     void setShowAutoFillButton(HTMLInputElement&, AutoFillButtonType);
+    AutoFillButtonType autoFillButtonType(const HTMLInputElement&);
+    AutoFillButtonType lastAutoFillButtonType(const HTMLInputElement&);
     ExceptionOr<void> scrollElementToRect(Element&, int x, int y, int w, int h);
 
     ExceptionOr<String> autofillFieldName(Element&);
@@ -524,6 +531,7 @@ public:
     String pageMediaState();
 
     void setPageDefersLoading(bool);
+    ExceptionOr<bool> pageDefersLoading();
 
     RefPtr<File> createFile(const String&);
     void queueMicroTask(int);
@@ -619,24 +627,21 @@ public:
     void setConsoleMessageListener(RefPtr<StringCallback>&&);
 
 #if ENABLE(SERVICE_WORKER)
-    void waitForFetchEventToFinish(FetchEvent&, DOMPromiseDeferred<IDLInterface<FetchResponse>>&&);
-    Ref<FetchEvent> createBeingDispatchedFetchEvent(ScriptExecutionContext&);
     using HasRegistrationPromise = DOMPromiseDeferred<IDLBoolean>;
     void hasServiceWorkerRegistration(const String& clientURL, HasRegistrationPromise&&);
+    void terminateServiceWorker(ServiceWorker&);
+    bool hasServiceWorkerConnection();
 #endif
 
 #if ENABLE(APPLE_PAY)
     MockPaymentCoordinator& mockPaymentCoordinator() const;
 #endif
 
-#if ENABLE(ALTERNATIVE_PRESENTATION_BUTTON_ELEMENT)
-    ExceptionOr<void> substituteWithAlternativePresentationButton(Vector<RefPtr<Element>>&&, const String&);
-    ExceptionOr<void> removeAlternativePresentationButton(const String&);
-#endif
-
     String timelineDescription(AnimationTimeline&);
     void pauseTimeline(AnimationTimeline&);
     void setTimelineCurrentTime(AnimationTimeline&, double);
+
+    void testIncomingSyncIPCMessageWhileWaitingForSyncReply();
 
 private:
     explicit Internals(Document&);

@@ -160,6 +160,8 @@ public:
 
     // The content area of the box (excludes padding - and intrinsic padding for table cells, etc... - and border).
     LayoutRect contentBoxRect() const;
+    LayoutPoint contentBoxLocation() const;
+
     // The content box in absolute coords. Ignores transforms.
     IntRect absoluteContentBox() const;
     // The content box converted to absolute coords (taking transforms into account).
@@ -629,7 +631,7 @@ protected:
     void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
     void updateFromStyle() override;
 
-    void willBeDestroyed() override;
+    void willBeDestroyed(RenderTreeBuilder&) override;
 
     bool createsNewFormattingContext() const;
 
@@ -662,8 +664,6 @@ protected:
     void mapAbsoluteToLocalPoint(MapCoordinatesFlags, TransformState&) const override;
 
     void paintRootBoxFillLayers(const PaintInfo&);
-
-    RenderObject* splitAnonymousBoxesAroundChild(RenderObject* beforeChild);
 
     bool skipContainingBlockForPercentHeightCalculation(const RenderBox& containingBlock, bool isPerpendicularWritingMode) const;
 

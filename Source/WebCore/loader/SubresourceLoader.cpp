@@ -206,7 +206,7 @@ void SubresourceLoader::willSendRequestInternal(ResourceRequest&& newRequest, co
     if (!redirectResponse.isNull()) {
         if (options().redirect != FetchOptions::Redirect::Follow) {
             if (options().redirect == FetchOptions::Redirect::Error) {
-                cancel();
+                cancel(ResourceError { errorDomainWebKitInternal, 0, redirectResponse.url(), "Redirections are not allowed", ResourceError::Type::AccessControl });
                 return completionHandler(WTFMove(newRequest));
             }
 
@@ -214,6 +214,8 @@ void SubresourceLoader::willSendRequestInternal(ResourceRequest&& newRequest, co
             opaqueRedirectedResponse.setType(ResourceResponse::Type::Opaqueredirect);
             opaqueRedirectedResponse.setTainting(ResourceResponse::Tainting::Opaqueredirect);
             m_resource->responseReceived(opaqueRedirectedResponse);
+            if (reachedTerminalState())
+                return;
 
             NetworkLoadMetrics emptyMetrics;
             didFinishLoading(emptyMetrics);
@@ -293,6 +295,16 @@ void SubresourceLoader::didReceiveResponse(const ResourceResponse& response)
     if (shouldCreatePreviewLoaderForResponse(response)) {
         m_previewLoader = PreviewLoader::create(*this, response);
         return;
+    }
+#endif
+#if ENABLE(SERVICE_WORKER)
+    // Implementing step 10 of https://fetch.spec.whatwg.org/#main-fetch for service worker responses.
+    if (response.source() == ResourceResponse::Source::ServiceWorker && response.url() != request().url()) {
+        auto& loader = m_documentLoader->cachedResourceLoader();
+        if (!loader.allowedByContentSecurityPolicy(m_resource->type(), response.url(), options(), ContentSecurityPolicy::RedirectResponseReceived::Yes)) {
+            cancel(ResourceError({ }, 0, response.url(), { }, ResourceError::Type::General));
+            return;
+        }
     }
 #endif
 
@@ -471,6 +483,11 @@ static void logResourceLoaded(Frame* frame, CachedResource::Type type)
     case CachedResource::SVGDocumentResource:
         resourceType = DiagnosticLoggingKeys::svgDocumentKey();
         break;
+#if ENABLE(APPLICATION_MANIFEST)
+    case CachedResource::ApplicationManifest:
+        resourceType = DiagnosticLoggingKeys::applicationManifestKey();
+        break;
+#endif
 #if ENABLE(LINK_PREFETCH)
     case CachedResource::LinkPrefetch:
     case CachedResource::LinkSubresource:
@@ -492,7 +509,7 @@ bool SubresourceLoader::checkResponseCrossOriginAccessControl(const ResourceResp
 
 #if ENABLE(SERVICE_WORKER)
     if (response.source() == ResourceResponse::Source::ServiceWorker)
-        return true;
+        return response.tainting() != ResourceResponse::Tainting::Opaque;
 #endif
 
     ASSERT(m_origin);
@@ -535,7 +552,7 @@ bool SubresourceLoader::checkRedirectionCrossOriginAccessControl(const ResourceR
         m_origin = SecurityOrigin::createUnique();
 
     if (redirectingToNewOrigin) {
-        cleanRedirectedRequestForAccessControl(newRequest);
+        cleanHTTPRequestHeadersForAccessControl(newRequest);
         updateRequestForAccessControl(newRequest, *m_origin, options().storedCredentialsPolicy);
     }
 

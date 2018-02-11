@@ -55,6 +55,13 @@ enum {
     kCTRunStatusHasOrigins = (1 << 4),
 };
 
+typedef CF_OPTIONS(CFOptionFlags, CTFontFallbackOption) {
+    kCTFontFallbackOptionNone = 0,
+    kCTFontFallbackOptionSystem = 1 << 0,
+    kCTFontFallbackOptionUserInstalled = 1 << 1,
+    kCTFontFallbackOptionDefault = kCTFontFallbackOptionSystem | kCTFontFallbackOptionUserInstalled,
+};
+
 #endif
 
 WTF_EXTERN_C_BEGIN
@@ -65,6 +72,8 @@ typedef void (*CTUniCharDisposeCallback)(const UniChar* chars, void* refCon);
 extern const CFStringRef kCTFontReferenceURLAttribute;
 extern const CFStringRef kCTFontOpticalSizeAttribute;
 extern const CFStringRef kCTFontPostScriptNameAttribute;
+extern const CFStringRef kCTFontUserInstalledAttribute;
+extern const CFStringRef kCTFontFallbackOptionAttribute;
 
 bool CTFontTransformGlyphs(CTFontRef, CGGlyph glyphs[], CGSize advances[], CFIndex count, CTFontTransformOptions);
 
@@ -82,6 +91,8 @@ CFBitVectorRef CTFontCopyGlyphCoverageForFeature(CTFontRef, CFDictionaryRef feat
 
 CTFontDescriptorRef CTFontDescriptorCreateWithAttributesAndOptions(CFDictionaryRef attributes, CTFontDescriptorOptions);
 CTFontDescriptorRef CTFontDescriptorCreateLastResort();
+
+CFArrayRef CTFontManagerCreateFontDescriptorsFromData(CFDataRef);
 
 extern const CFStringRef kCTFontCSSWeightAttribute;
 extern const CFStringRef kCTFontCSSWidthAttribute;

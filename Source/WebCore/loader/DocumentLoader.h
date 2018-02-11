@@ -50,6 +50,10 @@
 #include <wtf/RefPtr.h>
 #include <wtf/Vector.h>
 
+#if ENABLE(APPLICATION_MANIFEST)
+#include "ApplicationManifest.h"
+#endif
+
 #if HAVE(RUNLOOP_TIMER)
 #include <wtf/RunLoopTimer.h>
 #endif
@@ -61,6 +65,7 @@
 namespace WebCore {
 
 class ApplicationCacheHost;
+class ApplicationManifestLoader;
 class Archive;
 class ArchiveResource;
 class ArchiveResourceCollection;
@@ -92,6 +97,12 @@ enum class AutoplayQuirk {
     SynthesizedPauseEvents = 1 << 0,
     InheritedUserGestures = 1 << 1,
     ArbitraryUserGestures = 1 << 2,
+};
+
+enum class PopUpPolicy {
+    Default, // Uses policies specified in frame settings.
+    Allow,
+    Block,
 };
 
 class DocumentLoader : public RefCounted<DocumentLoader>, public FrameDestructionObserver, private CachedRawResourceClient {
@@ -244,6 +255,9 @@ public:
     OptionSet<AutoplayQuirk> allowedAutoplayQuirks() const { return m_allowedAutoplayQuirks; }
     void setAllowedAutoplayQuirks(OptionSet<AutoplayQuirk> allowedQuirks) { m_allowedAutoplayQuirks = allowedQuirks; }
 
+    PopUpPolicy popUpPolicy() const { return m_popUpPolicy; }
+    void setPopUpPolicy(PopUpPolicy popUpPolicy) { m_popUpPolicy = popUpPolicy; }
+
     void addSubresourceLoader(ResourceLoader*);
     void removeSubresourceLoader(ResourceLoader*);
     void addPlugInStreamLoader(ResourceLoader&);
@@ -297,6 +311,11 @@ public:
 
     const Vector<LinkIcon>& linkIcons() const { return m_linkIcons; }
 
+#if ENABLE(APPLICATION_MANIFEST)
+    WEBCORE_EXPORT uint64_t loadApplicationManifest();
+    void finishedLoadingApplicationManifest(ApplicationManifestLoader&);
+#endif
+
     WEBCORE_EXPORT void setCustomHeaderFields(Vector<HTTPHeaderField>&& fields);
     const Vector<HTTPHeaderField>& customHeaderFields() { return m_customHeaderFields; }
     
@@ -309,6 +328,10 @@ protected:
 
 private:
     Document* document() const;
+
+#if ENABLE(SERVICE_WORKER)
+    void matchRegistration(const URL&, CompletionHandler<void(std::optional<ServiceWorkerRegistrationData>&&)>&&);
+#endif
 
     void loadMainResource(ResourceRequest&&);
 
@@ -369,6 +392,10 @@ private:
     void becomeMainResourceClient();
 
     void notifyFinishedLoadingIcon(uint64_t callbackIdentifier, SharedBuffer*);
+
+#if ENABLE(APPLICATION_MANIFEST)
+    void notifyFinishedLoadingApplicationManifest(uint64_t callbackIdentifier, std::optional<ApplicationManifest>);
+#endif
 
     Ref<CachedResourceLoader> m_cachedResourceLoader;
 
@@ -459,6 +486,10 @@ private:
     HashMap<std::unique_ptr<IconLoader>, uint64_t> m_iconLoaders;
     Vector<LinkIcon> m_linkIcons;
 
+#if ENABLE(APPLICATION_MANIFEST)
+    HashMap<std::unique_ptr<ApplicationManifestLoader>, uint64_t> m_applicationManifestLoaders;
+#endif
+
     Vector<HTTPHeaderField> m_customHeaderFields;
     
     bool m_subresourceLoadersArePageCacheAcceptable { false };
@@ -481,6 +512,7 @@ private:
     bool m_userContentExtensionsEnabled { true };
     AutoplayPolicy m_autoplayPolicy { AutoplayPolicy::Default };
     OptionSet<AutoplayQuirk> m_allowedAutoplayQuirks;
+    PopUpPolicy m_popUpPolicy { PopUpPolicy::Default };
 
 #if ENABLE(SERVICE_WORKER)
     std::optional<ServiceWorkerRegistrationData> m_serviceWorkerRegistrationData;

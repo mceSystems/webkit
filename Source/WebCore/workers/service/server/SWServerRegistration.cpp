@@ -54,6 +54,10 @@ SWServerRegistration::SWServerRegistration(SWServer& server, const ServiceWorker
 
 SWServerRegistration::~SWServerRegistration()
 {
+    ASSERT(!m_preInstallationWorker || !m_preInstallationWorker->isRunning());
+    ASSERT(!m_installingWorker || !m_installingWorker->isRunning());
+    ASSERT(!m_waitingWorker || !m_waitingWorker->isRunning());
+    ASSERT(!m_activeWorker || !m_activeWorker->isRunning());
 }
 
 SWServerWorker* SWServerRegistration::getNewestWorker()
@@ -66,18 +70,26 @@ SWServerWorker* SWServerRegistration::getNewestWorker()
     return m_activeWorker.get();
 }
 
+void SWServerRegistration::setPreInstallationWorker(SWServerWorker* worker)
+{
+    m_preInstallationWorker = worker;
+}
+
 void SWServerRegistration::updateRegistrationState(ServiceWorkerRegistrationState state, SWServerWorker* worker)
 {
     LOG(ServiceWorker, "(%p) Updating registration state to %i with worker %p", this, (int)state, worker);
     
     switch (state) {
     case ServiceWorkerRegistrationState::Installing:
+        ASSERT(!m_installingWorker || !m_installingWorker->isRunning() || m_waitingWorker == m_installingWorker);
         m_installingWorker = worker;
         break;
     case ServiceWorkerRegistrationState::Waiting:
+        ASSERT(!m_waitingWorker || !m_waitingWorker->isRunning() || m_activeWorker == m_waitingWorker);
         m_waitingWorker = worker;
         break;
     case ServiceWorkerRegistrationState::Active:
+        ASSERT(!m_activeWorker || !m_activeWorker->isRunning());
         m_activeWorker = worker;
         break;
     };
@@ -96,9 +108,21 @@ void SWServerRegistration::updateWorkerState(SWServerWorker& worker, ServiceWork
     LOG(ServiceWorker, "Updating worker %p state to %i (%p)", &worker, (int)state, this);
 
     worker.setState(state);
+}
 
+void SWServerRegistration::setUpdateViaCache(ServiceWorkerUpdateViaCache updateViaCache)
+{
+    m_updateViaCache = updateViaCache;
     forEachConnection([&](auto& connection) {
-        connection.updateWorkerStateInClient(worker.identifier(), state);
+        connection.setRegistrationUpdateViaCache(identifier(), updateViaCache);
+    });
+}
+
+void SWServerRegistration::setLastUpdateTime(WallTime time)
+{
+    m_lastUpdateTime = time;
+    forEachConnection([&](auto& connection) {
+        connection.setRegistrationLastUpdateTime(identifier(), time);
     });
 }
 
@@ -131,7 +155,7 @@ ServiceWorkerRegistrationData SWServerRegistration::data() const
     if (m_activeWorker)
         activeWorkerData = m_activeWorker->data();
 
-    return { m_registrationKey, identifier(), m_scopeURL, m_updateViaCache, WTFMove(installingWorkerData), WTFMove(waitingWorkerData), WTFMove(activeWorkerData) };
+    return { m_registrationKey, identifier(), m_scopeURL, m_updateViaCache, m_lastUpdateTime, WTFMove(installingWorkerData), WTFMove(waitingWorkerData), WTFMove(activeWorkerData) };
 }
 
 void SWServerRegistration::addClientServiceWorkerRegistration(SWServerConnectionIdentifier connectionIdentifier)
@@ -156,11 +180,16 @@ void SWServerRegistration::removeClientUsingRegistration(const ServiceWorkerClie
 {
     auto iterator = m_clientsUsingRegistration.find(clientIdentifier.serverConnectionIdentifier);
     ASSERT(iterator != m_clientsUsingRegistration.end());
+    if (iterator == m_clientsUsingRegistration.end())
+        return;
+
     bool wasRemoved = iterator->value.remove(clientIdentifier.contextIdentifier);
     ASSERT_UNUSED(wasRemoved, wasRemoved);
 
     if (iterator->value.isEmpty())
         m_clientsUsingRegistration.remove(iterator);
+
+    handleClientUnload();
 }
 
 // https://w3c.github.io/ServiceWorker/#notify-controller-change
@@ -178,6 +207,162 @@ void SWServerRegistration::unregisterServerConnection(SWServerConnectionIdentifi
 {
     m_connectionsWithClientRegistrations.removeAll(serverConnectionIdentifier);
     m_clientsUsingRegistration.remove(serverConnectionIdentifier);
+}
+
+// https://w3c.github.io/ServiceWorker/#try-clear-registration-algorithm
+bool SWServerRegistration::tryClear()
+{
+    if (hasClientsUsingRegistration())
+        return false;
+
+    if (installingWorker() && installingWorker()->hasPendingEvents())
+        return false;
+    if (waitingWorker() && waitingWorker()->hasPendingEvents())
+        return false;
+    if (activeWorker() && activeWorker()->hasPendingEvents())
+        return false;
+
+    clear();
+    return true;
+}
+
+// https://w3c.github.io/ServiceWorker/#clear-registration
+void SWServerRegistration::clear()
+{
+    if (m_preInstallationWorker) {
+        ASSERT(m_preInstallationWorker->state() == ServiceWorkerState::Redundant);
+        m_preInstallationWorker->terminate();
+        m_preInstallationWorker = nullptr;
+    }
+
+    RefPtr<SWServerWorker> installingWorker = this->installingWorker();
+    if (installingWorker) {
+        installingWorker->terminate();
+        updateRegistrationState(ServiceWorkerRegistrationState::Installing, nullptr);
+    }
+    RefPtr<SWServerWorker> waitingWorker = this->waitingWorker();
+    if (waitingWorker) {
+        waitingWorker->terminate();
+        updateRegistrationState(ServiceWorkerRegistrationState::Waiting, nullptr);
+    }
+    RefPtr<SWServerWorker> activeWorker = this->activeWorker();
+    if (activeWorker) {
+        activeWorker->terminate();
+        updateRegistrationState(ServiceWorkerRegistrationState::Active, nullptr);
+    }
+
+    if (installingWorker)
+        updateWorkerState(*installingWorker, ServiceWorkerState::Redundant);
+    if (waitingWorker)
+        updateWorkerState(*waitingWorker, ServiceWorkerState::Redundant);
+    if (activeWorker)
+        updateWorkerState(*activeWorker, ServiceWorkerState::Redundant);
+
+    // Remove scope to registration map[scopeString].
+    m_server.removeRegistration(key());
+}
+
+// https://w3c.github.io/ServiceWorker/#try-activate-algorithm
+void SWServerRegistration::tryActivate()
+{
+    // If registration's waiting worker is null, return.
+    if (!waitingWorker())
+        return;
+    // If registration's active worker is not null and registration's active worker's state is activating, return.
+    if (activeWorker() && activeWorker()->state() == ServiceWorkerState::Activating)
+        return;
+
+    // Invoke Activate with registration if either of the following is true:
+    // - registration's active worker is null.
+    // - The result of running Service Worker Has No Pending Events with registration's active worker is true,
+    //   and no service worker client is using registration or registration's waiting worker's skip waiting flag is set.
+    if (!activeWorker() || (!activeWorker()->hasPendingEvents() && (!hasClientsUsingRegistration() || waitingWorker()->isSkipWaitingFlagSet())))
+        activate();
+}
+
+// https://w3c.github.io/ServiceWorker/#activate
+void SWServerRegistration::activate()
+{
+    // If registration's waiting worker is null, abort these steps.
+    if (!waitingWorker())
+        return;
+
+    // If registration's active worker is not null, then:
+    if (auto* worker = activeWorker()) {
+        // Terminate registration's active worker.
+        worker->terminate();
+        // Run the Update Worker State algorithm passing registration's active worker and redundant as the arguments.
+        updateWorkerState(*worker, ServiceWorkerState::Redundant);
+    }
+    // Run the Update Registration State algorithm passing registration, "active" and registration's waiting worker as the arguments.
+    updateRegistrationState(ServiceWorkerRegistrationState::Active, waitingWorker());
+    // Run the Update Registration State algorithm passing registration, "waiting" and null as the arguments.
+    updateRegistrationState(ServiceWorkerRegistrationState::Waiting, nullptr);
+    // Run the Update Worker State algorithm passing registration's active worker and activating as the arguments.
+    updateWorkerState(*activeWorker(), ServiceWorkerState::Activating);
+    // FIXME: For each service worker client whose creation URL matches registration's scope url...
+
+    // The registration now has an active worker so we need to check if there are any ready promises that were waiting for this.
+    m_server.resolveRegistrationReadyRequests(*this);
+
+    // For each service worker client who is using registration:
+    // - Set client's active worker to registration's active worker.
+    for (auto keyValue : m_clientsUsingRegistration) {
+        for (auto& clientIdentifier : keyValue.value)
+            m_server.setClientActiveWorker(ServiceWorkerClientIdentifier { keyValue.key, clientIdentifier }, activeWorker()->identifier());
+    }
+    // - Invoke Notify Controller Change algorithm with client as the argument.
+    notifyClientsOfControllerChange();
+
+    // FIXME: Invoke Run Service Worker algorithm with activeWorker as the argument.
+
+    // Queue a task to fire the activate event.
+    ASSERT(activeWorker());
+    m_server.fireActivateEvent(*activeWorker());
+}
+
+// https://w3c.github.io/ServiceWorker/#activate (post activate event steps).
+void SWServerRegistration::didFinishActivation(ServiceWorkerIdentifier serviceWorkerIdentifier)
+{
+    if (!activeWorker() || activeWorker()->identifier() != serviceWorkerIdentifier)
+        return;
+
+    // Run the Update Worker State algorithm passing registration's active worker and activated as the arguments.
+    updateWorkerState(*activeWorker(), ServiceWorkerState::Activated);
+}
+
+// https://w3c.github.io/ServiceWorker/#on-client-unload-algorithm
+void SWServerRegistration::handleClientUnload()
+{
+    if (hasClientsUsingRegistration())
+        return;
+    if (isUninstalling() && tryClear())
+        return;
+    tryActivate();
+}
+
+void SWServerRegistration::controlClient(ServiceWorkerClientIdentifier identifier)
+{
+    ASSERT(activeWorker());
+
+    addClientUsingRegistration(identifier);
+
+    HashSet<DocumentIdentifier> identifiers;
+    identifiers.add(identifier.contextIdentifier);
+    m_server.getConnection(identifier.serverConnectionIdentifier)->notifyClientsOfControllerChange(identifiers, activeWorker()->data());
+}
+
+void SWServerRegistration::setIsUninstalling(bool value)
+{
+    if (m_uninstalling == value)
+        return;
+
+    m_uninstalling = value;
+
+    if (!m_uninstalling && activeWorker()) {
+        // Registration with active worker has been resurrected, we need to check if any ready promises were waiting for this.
+        m_server.resolveRegistrationReadyRequests(*this);
+    }
 }
 
 } // namespace WebCore

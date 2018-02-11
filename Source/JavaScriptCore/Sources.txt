@@ -1,4 +1,4 @@
-// Copyright (C) 2017 Apple Inc. All rights reserved.
+// Copyright (C) 2017-2018 Apple Inc. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -47,6 +47,7 @@ assembler/MacroAssemblerARM.cpp
 assembler/MacroAssemblerARM64.cpp
 assembler/MacroAssemblerARMv7.cpp
 assembler/MacroAssemblerCodeRef.cpp
+assembler/MacroAssemblerMIPS.cpp
 assembler/MacroAssemblerPrinter.cpp
 assembler/MacroAssemblerX86Common.cpp
 assembler/Printer.cpp
@@ -209,6 +210,7 @@ bytecode/DeferredCompilationCallback.cpp
 bytecode/DeferredSourceDump.cpp
 bytecode/DirectEvalCodeCache.cpp
 bytecode/EvalCodeBlock.cpp
+bytecode/ExecutableToCodeBlockEdge.cpp
 bytecode/ExecutionCounter.cpp
 bytecode/ExitKind.cpp
 bytecode/ExitingJITType.cpp
@@ -314,7 +316,6 @@ dfg/DFGEdge.cpp
 dfg/DFGEpoch.cpp
 dfg/DFGFailedFinalizer.cpp
 dfg/DFGFinalizer.cpp
-dfg/DFGFixedButterflyAccessUncagingPhase.cpp
 dfg/DFGFixupPhase.cpp
 dfg/DFGFlowIndexing.cpp
 dfg/DFGFlushFormat.cpp
@@ -465,11 +466,14 @@ ftl/FTLThunks.cpp
 ftl/FTLValueRange.cpp
 
 heap/AlignedMemoryAllocator.cpp
-heap/AllocatorAttributes.cpp
+heap/Allocator.cpp
+heap/BlockDirectory.cpp
+heap/CellAttributes.cpp
 heap/CellContainer.cpp
 heap/CodeBlockSet.cpp
 heap/CollectionScope.cpp
 heap/CollectorPhase.cpp
+heap/CompleteSubspace.cpp
 heap/ConservativeRoots.cpp
 heap/DeferGC.cpp
 heap/DestructionMode.cpp
@@ -483,26 +487,33 @@ heap/GCLogging.cpp
 heap/GCRequest.cpp
 heap/GigacageAlignedMemoryAllocator.cpp
 heap/HandleSet.cpp
-heap/HandleStack.cpp
 heap/Heap.cpp
 heap/HeapCell.cpp
+heap/HeapCellType.cpp
 heap/HeapFinalizerCallback.cpp
 heap/HeapHelperPool.cpp
 heap/HeapProfiler.cpp
 heap/HeapSnapshot.cpp
 heap/HeapSnapshotBuilder.cpp
 heap/IncrementalSweeper.cpp
+heap/IsoAlignedMemoryAllocator.cpp
+heap/IsoCellSet.cpp
+heap/IsoSubspace.cpp
 heap/JITStubRoutineSet.cpp
 heap/LargeAllocation.cpp
+heap/LocalAllocator.cpp
 heap/MachineStackMarker.cpp
 heap/MarkStack.cpp
-heap/MarkedAllocator.cpp
+heap/MarkStackMergingConstraint.cpp
 heap/MarkedBlock.cpp
 heap/MarkedSpace.cpp
 heap/MarkingConstraint.cpp
 heap/MarkingConstraintSet.cpp
+heap/MarkingConstraintSolver.cpp
 heap/MutatorScheduler.cpp
 heap/MutatorState.cpp
+heap/SecurityOriginToken.cpp
+heap/SimpleMarkingConstraint.cpp
 heap/SlotVisitor.cpp
 heap/SpaceTimeMutatorScheduler.cpp
 heap/StochasticSpaceTimeMutatorScheduler.cpp
@@ -510,6 +521,8 @@ heap/StopIfNecessaryTimer.cpp
 heap/Subspace.cpp
 heap/SynchronousStopTheWorldMutatorScheduler.cpp
 heap/Synchronousness.cpp
+heap/ThreadLocalCache.cpp
+heap/ThreadLocalCacheLayout.cpp
 heap/VisitRaceKey.cpp
 heap/Weak.cpp
 heap/WeakBlock.cpp
@@ -677,6 +690,9 @@ runtime/AtomicsObject.cpp
 runtime/AsyncFunctionConstructor.cpp
 runtime/AsyncFunctionPrototype.cpp
 runtime/BasicBlockLocation.cpp
+runtime/BigIntConstructor.cpp
+runtime/BigIntObject.cpp
+runtime/BigIntPrototype.cpp
 runtime/BooleanConstructor.cpp
 runtime/BooleanObject.cpp
 runtime/BooleanPrototype.cpp
@@ -736,6 +752,8 @@ runtime/HashMapImpl.cpp
 runtime/Identifier.cpp
 runtime/IndexingType.cpp
 runtime/IndirectEvalExecutable.cpp
+runtime/InferredStructure.cpp
+runtime/InferredStructureWatchpoint.cpp
 runtime/InferredType.cpp
 runtime/InferredTypeTable.cpp
 runtime/InferredValue.cpp
@@ -763,15 +781,17 @@ runtime/JSArrayBufferPrototype.cpp
 runtime/JSArrayBufferView.cpp
 runtime/JSAsyncFunction.cpp
 runtime/JSAsyncGeneratorFunction.cpp
+runtime/JSBigInt.cpp
 runtime/JSBoundFunction.cpp
 runtime/JSCJSValue.cpp
+runtime/JSCPoison.cpp
 runtime/JSCallee.cpp
 runtime/JSCell.cpp
 runtime/JSCustomGetterSetterFunction.cpp
 runtime/JSDataView.cpp
 runtime/JSDataViewPrototype.cpp
 runtime/JSDateMath.cpp
-runtime/JSDestructibleObjectSubspace.cpp
+runtime/JSDestructibleObjectHeapCellType.cpp
 runtime/JSFixedArray.cpp
 runtime/JSFunction.cpp
 runtime/JSGeneratorFunction.cpp
@@ -806,14 +826,14 @@ runtime/JSScope.cpp
 runtime/JSScriptFetcher.cpp
 runtime/JSScriptFetchParameters.cpp
 runtime/JSSegmentedVariableObject.cpp
-runtime/JSSegmentedVariableObjectSubspace.cpp
+runtime/JSSegmentedVariableObjectHeapCellType.cpp
 runtime/JSSet.cpp
 runtime/JSSetIterator.cpp
 runtime/JSSourceCode.cpp
 runtime/JSString.cpp
 runtime/JSStringIterator.cpp
 runtime/JSStringJoiner.cpp
-runtime/JSStringSubspace.cpp
+runtime/JSStringHeapCellType.cpp
 runtime/JSSymbolTableObject.cpp
 runtime/JSTemplateRegistryKey.cpp
 runtime/JSTypedArrayConstructors.cpp
@@ -914,8 +934,8 @@ runtime/VMEntryScope.cpp
 runtime/VMTraps.cpp
 runtime/VarOffset.cpp
 runtime/Watchdog.cpp
-runtime/WeakMapBase.cpp
 runtime/WeakMapConstructor.cpp
+runtime/WeakMapImpl.cpp
 runtime/WeakMapPrototype.cpp
 runtime/WeakSetConstructor.cpp
 runtime/WeakSetPrototype.cpp
@@ -970,7 +990,7 @@ wasm/js/JSToWasm.cpp
 wasm/js/JSToWasm.h
 wasm/js/JSWebAssembly.cpp
 wasm/js/JSWebAssemblyCodeBlock.cpp
-wasm/js/JSWebAssemblyCodeBlockSubspace.cpp
+wasm/js/JSWebAssemblyCodeBlockHeapCellType.cpp
 wasm/js/JSWebAssemblyCompileError.cpp
 wasm/js/JSWebAssemblyInstance.cpp
 wasm/js/JSWebAssemblyLinkError.cpp
@@ -1003,6 +1023,7 @@ wasm/js/WebAssemblyWrapperFunction.cpp
 
 yarr/RegularExpression.cpp
 yarr/YarrCanonicalizeUCS2.cpp
+yarr/YarrErrorCode.cpp
 yarr/YarrInterpreter.cpp
 yarr/YarrJIT.cpp
 yarr/YarrPattern.cpp

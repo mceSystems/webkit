@@ -184,12 +184,17 @@ public:
     void statisticsClearThroughWebsiteDataRemoval();
     void statisticsResetToConsistentState();
 
+    void getAllStorageAccessEntries();
+
     WKArrayRef openPanelFileURLs() const { return m_openPanelFileURLs.get(); }
     void setOpenPanelFileURLs(WKArrayRef fileURLs) { m_openPanelFileURLs = fileURLs; }
 
     void terminateNetworkProcess();
+    void terminateServiceWorkerProcess();
 
     void removeAllSessionCredentials();
+
+    void clearServiceWorkerRegistrations();
 
     void clearDOMCache(WKStringRef origin);
     void clearDOMCaches();
@@ -332,8 +337,6 @@ private:
 
     static const char* libraryPathForTesting();
     static const char* platformLibraryPathForTesting();
-
-    static void statisticsClearThroughWebsiteDataRemovalCallback(void*);
 
     std::unique_ptr<TestInvocation> m_currentInvocation;
 

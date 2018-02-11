@@ -246,8 +246,8 @@ void ScrollingTreeScrollingNodeDelegateIOS::updateChildNodesAfterScroll(const Fl
         return;
 
     FloatRect fixedPositionRect;
-    ScrollingTreeFrameScrollingNode* frameNode = scrollingNode().enclosingFrameNode();
-    if (frameNode && frameNode->parent())
+    auto* frameNode = scrollingNode().enclosingFrameNodeIncludingSelf();
+    if (frameNode && frameNode->nodeType() == SubframeScrollingNode)
         fixedPositionRect = frameNode->fixedPositionRect();
     else
         fixedPositionRect = scrollingTree().fixedPositionRect();

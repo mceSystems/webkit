@@ -99,6 +99,9 @@ WI.RecordingAction = class RecordingAction extends WI.Object
     get hasVisibleEffect() { return this._hasVisibleEffect; }
     get stateModifiers() { return this._stateModifiers; }
 
+    get state() { return this._state; }
+    set state(state) { this._state = state; }
+
     markInvalid()
     {
         let wasValid = this._valid;
@@ -121,13 +124,15 @@ WI.RecordingAction = class RecordingAction extends WI.Object
             return;
 
         function getContent() {
-            if (context instanceof CanvasRenderingContext2D)
-                return context.getImageData(0, 0, context.canvas.width, context.canvas.height);
+            if (context instanceof CanvasRenderingContext2D) {
+                let imageData = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
+                return [imageData.width, imageData.height, ...imageData.data];
+            }
 
             if (context instanceof WebGLRenderingContext || context instanceof WebGL2RenderingContext) {
                 let pixels = new Uint8Array(context.drawingBufferWidth * context.drawingBufferHeight * 4);
                 context.readPixels(0, 0, context.canvas.width, context.canvas.height, context.RGBA, context.UNSIGNED_BYTE, pixels);
-                return pixels;
+                return [...pixels];
             }
 
             if (context.canvas instanceof HTMLCanvasElement)
@@ -154,7 +159,7 @@ WI.RecordingAction = class RecordingAction extends WI.Object
             }
 
             if (shouldCheckForChange) {
-                this._hasVisibleEffect = Array.shallowEqual(contentBefore, getContent());
+                this._hasVisibleEffect = !Array.shallowEqual(contentBefore, getContent());
                 if (!this._hasVisibleEffect)
                     this.dispatchEventToListeners(WI.RecordingAction.Event.HasVisibleEffectChanged);
             }
@@ -267,7 +272,6 @@ WI.RecordingAction = class RecordingAction extends WI.Object
         case "strokeStyle":
         // 2D (non-standard)
         case "drawImageFromRect":
-        case "webkitPutImageDataHD":
             return this._parameters.slice(0, 1);
         }
 
@@ -338,8 +342,6 @@ WI.RecordingAction._functionNames = {
         "strokeText",
         "transform",
         "translate",
-        "webkitGetImageDataHD",
-        "webkitPutImageDataHD",
     ]),
     [WI.Recording.Type.CanvasWebGL]: new Set([
         "activeTexture",
@@ -496,7 +498,6 @@ WI.RecordingAction._visualNames = {
         "stroke",
         "strokeRect",
         "strokeText",
-        "webkitPutImageDataHD",
     ]),
     [WI.Recording.Type.CanvasWebGL]: new Set([
         "clear",

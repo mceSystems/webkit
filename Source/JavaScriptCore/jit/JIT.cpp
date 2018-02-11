@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -84,6 +84,7 @@ JIT::JIT(VM* vm, CodeBlock* codeBlock, unsigned loopOSREntryBytecodeOffset)
     , m_pcToCodeOriginMapBuilder(*vm)
     , m_canBeOptimized(false)
     , m_shouldEmitProfiling(false)
+    , m_shouldUseIndexMasking(Options::enableSpectreMitigations())
     , m_loopOSREntryBytecodeOffset(loopOSREntryBytecodeOffset)
 {
 }
@@ -263,7 +264,6 @@ void JIT::privateCompileMainPass()
         unsigned bytecodeOffset = m_bytecodeOffset;
 
         switch (opcodeID) {
-        DEFINE_SLOW_OP(assert)
         DEFINE_SLOW_OP(in)
         DEFINE_SLOW_OP(less)
         DEFINE_SLOW_OP(lesseq)
@@ -284,6 +284,7 @@ void JIT::privateCompileMainPass()
         DEFINE_SLOW_OP(unreachable)
         DEFINE_SLOW_OP(throw_static_error)
         DEFINE_SLOW_OP(new_array_with_spread)
+        DEFINE_SLOW_OP(new_array_buffer)
         DEFINE_SLOW_OP(spread)
         DEFINE_SLOW_OP(get_enumerable_length)
         DEFINE_SLOW_OP(has_generic_property)
@@ -372,7 +373,6 @@ void JIT::privateCompileMainPass()
         DEFINE_OP(op_neq_null)
         DEFINE_OP(op_new_array)
         DEFINE_OP(op_new_array_with_size)
-        DEFINE_OP(op_new_array_buffer)
         DEFINE_OP(op_new_func)
         DEFINE_OP(op_new_func_exp)
         DEFINE_OP(op_new_generator_func)

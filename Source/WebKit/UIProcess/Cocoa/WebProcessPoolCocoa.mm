@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,6 +49,7 @@
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/SharedBuffer.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
+#import <pal/spi/cocoa/NSKeyedArchiverSPI.h>
 #import <sys/param.h>
 
 #if PLATFORM(IOS)
@@ -61,6 +62,7 @@
 using namespace WebCore;
 
 NSString *WebDatabaseDirectoryDefaultsKey = @"WebDatabaseDirectory";
+NSString *WebServiceWorkerRegistrationDirectoryDefaultsKey = @"WebServiceWorkerRegistrationDirectory";
 NSString *WebKitLocalCacheDefaultsKey = @"WebKitLocalCache";
 NSString *WebStorageDirectoryDefaultsKey = @"WebKitLocalStorageDatabasePathPreferenceKey";
 NSString *WebKitJSCJITEnabledDefaultsKey = @"WebKitJSCJITEnabledDefaultsKey";
@@ -83,6 +85,10 @@ static NSString * const WebKitNetworkCacheEfficacyLoggingEnabledDefaultsKey = @"
 
 static NSString * const WebKitSuppressMemoryPressureHandlerDefaultsKey = @"WebKitSuppressMemoryPressureHandler";
 static NSString * const WebKitNetworkLoadThrottleLatencyMillisecondsDefaultsKey = @"WebKitNetworkLoadThrottleLatencyMilliseconds";
+
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
+static NSString * const WebKitLogCookieInformationDefaultsKey = @"WebKitLogCookieInformation";
+#endif
 
 #if ENABLE(NETWORK_CAPTURE)
 static NSString * const WebKitRecordReplayModeDefaultsKey = @"WebKitRecordReplayMode";
@@ -214,10 +220,14 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
     parameters.fontWhitelist = m_fontWhitelist;
 
     if (m_bundleParameters) {
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200)
         auto data = adoptNS([[NSMutableData alloc] init]);
         auto keyedArchiver = adoptNS([[NSKeyedArchiver alloc] initForWritingWithMutableData:data.get()]);
 
         [keyedArchiver setRequiresSecureCoding:YES];
+#else
+        auto keyedArchiver = secureArchiver();
+#endif
 
         @try {
             [keyedArchiver encodeObject:m_bundleParameters.get() forKey:@"parameters"];
@@ -225,6 +235,10 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
         } @catch (NSException *exception) {
             LOG_ERROR("Failed to encode bundle parameters: %@", exception);
         }
+
+#if (!PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101200)
+        auto data = retainPtr(keyedArchiver.get().encodedData);
+#endif
 
         parameters.bundleParameterData = API::Data::createWithoutCopying((const unsigned char*)[data bytes], [data length], [] (unsigned char*, const void* data) {
             [(NSData *)data release];
@@ -254,11 +268,16 @@ void WebProcessPool::platformInitializeWebProcess(WebProcessCreationParameters& 
 
 #if !LOG_DISABLED || !RELEASE_LOG_DISABLED
     parameters.webCoreLoggingChannels = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebCoreLogging"];
+    parameters.webKitLoggingChannels = [[NSUserDefaults standardUserDefaults] stringForKey:@"WebKit2Logging"];
 #endif
 
     // FIXME: Remove this and related parameter when <rdar://problem/29448368> is fixed.
     if (isSafari && !parameters.shouldCaptureAudioInUIProcess && mediaDevicesEnabled)
         SandboxExtension::createHandleForGenericExtension("com.apple.webkit.microphone", parameters.audioCaptureExtensionHandle);
+#endif
+
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
+    parameters.shouldLogUserInteraction = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
 #endif
 }
 
@@ -296,6 +315,10 @@ void WebProcessPool::platformInitializeNetworkProcess(NetworkProcessCreationPara
 
     parameters.cookieStoragePartitioningEnabled = cookieStoragePartitioningEnabled();
     parameters.storageAccessAPIEnabled = storageAccessAPIEnabled();
+
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
+    parameters.logCookieInformation = [defaults boolForKey:WebKitLogCookieInformationDefaultsKey];
+#endif
 
 #if ENABLE(NETWORK_CAPTURE)
     parameters.recordReplayMode = [defaults stringForKey:WebKitRecordReplayModeDefaultsKey];

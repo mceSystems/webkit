@@ -166,6 +166,11 @@ void GraphicsLayer::willBeDestroyed()
     if (m_replicatedLayer)
         m_replicatedLayer->setReplicatedByLayer(0);
 
+    if (m_maskLayer) {
+        m_maskLayer->setParent(nullptr);
+        m_maskLayer->setIsMaskLayer(false);
+    }
+
     removeAllChildren();
     removeFromParent();
 }
@@ -718,6 +723,9 @@ static void dumpChildren(TextStream& ts, const Vector<GraphicsLayer*>& children,
 void GraphicsLayer::dumpProperties(TextStream& ts, LayerTreeAsTextBehavior behavior) const
 {
     TextStream::IndentScope indentScope(ts);
+    if (!m_offsetFromRenderer.isZero())
+        ts << indent << "(offsetFromRenderer " << m_offsetFromRenderer << ")\n";
+
     if (m_position != FloatPoint())
         ts << indent << "(position " << m_position.x() << " " << m_position.y() << ")\n";
 

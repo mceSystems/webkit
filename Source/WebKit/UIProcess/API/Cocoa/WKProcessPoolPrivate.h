@@ -74,6 +74,7 @@
 // Test only. Should be called only while no web content processes are running.
 - (void)_terminateStorageProcess;
 - (void)_terminateNetworkProcess;
+- (void)_terminateServiceWorkerProcess;
 
 // Test only.
 - (pid_t)_networkProcessIdentifier WK_API_AVAILABLE(macosx(10.13), ios(11.0));
@@ -84,6 +85,9 @@
 - (size_t)_pluginProcessCount WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
 - (void)_syncNetworkProcessCookies WK_API_AVAILABLE(macosx(10.13), ios(11.0));
 
+// Test only. Returns web processes running web pages (does not include web processes running service workers)
+- (size_t)_webPageContentProcessCount WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+
 // Test only. Should be called before any web content processes are launched.
 + (void)_forceGameControllerFramework WK_API_AVAILABLE(macosx(10.13), ios(11.0));
 
@@ -91,6 +95,8 @@
 
 // Test only.
 - (void)_setAllowsAnySSLCertificateForServiceWorker:(BOOL)allows WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)_registerURLSchemeServiceWorkersCanHandle:(NSString *)scheme WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)_setMaximumNumberOfProcesses:(NSUInteger)value WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
 
 @property (nonatomic, getter=_isCookieStoragePartitioningEnabled, setter=_setCookieStoragePartitioningEnabled:) BOOL _cookieStoragePartitioningEnabled WK_API_AVAILABLE(macosx(10.12.3), ios(10.3));
 @property (nonatomic, getter=_isStorageAccessAPIEnabled, setter=_setStorageAccessAPIEnabled:) BOOL _storageAccessAPIEnabled WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));

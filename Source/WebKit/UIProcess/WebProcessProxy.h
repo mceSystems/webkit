@@ -38,6 +38,9 @@
 #include "VisibleWebPageCounter.h"
 #include "WebConnectionToWebProcess.h"
 #include "WebProcessProxyMessages.h"
+#include <WebCore/MessagePortChannelProvider.h>
+#include <WebCore/MessagePortIdentifier.h>
+#include <WebCore/Process.h>
 #include <WebCore/SharedStringHash.h>
 #include <memory>
 #include <pal/SessionID.h>
@@ -77,6 +80,15 @@ struct WebNavigationDataStore;
 struct WebPageCreationParameters;
 struct WebsiteData;
 
+#if PLATFORM(IOS)
+enum ForegroundWebProcessCounterType { };
+typedef RefCounter<ForegroundWebProcessCounterType> ForegroundWebProcessCounter;
+typedef ForegroundWebProcessCounter::Token ForegroundWebProcessToken;
+enum BackgroundWebProcessCounterType { };
+typedef RefCounter<BackgroundWebProcessCounterType> BackgroundWebProcessCounter;
+typedef BackgroundWebProcessCounter::Token BackgroundWebProcessToken;
+#endif
+
 class WebProcessProxy : public ChildProcessProxy, public ResponsivenessTimer::Client, private ProcessThrottlerClient {
 public:
     typedef HashMap<uint64_t, RefPtr<WebBackForwardListItem>> WebBackForwardListItemMap;
@@ -94,6 +106,7 @@ public:
     // FIXME: WebsiteDataStores should be made per-WebPageProxy throughout WebKit2
     WebsiteDataStore& websiteDataStore() const { return m_websiteDataStore.get(); }
 
+    static WebProcessProxy* processForIdentifier(WebCore::ProcessIdentifier);
     static WebPageProxy* webPage(uint64_t pageID);
     Ref<WebPageProxy> createWebPage(PageClient&, Ref<API::PageConfiguration>&&);
     void addExistingWebPage(WebPageProxy&, uint64_t pageID);
@@ -102,6 +115,8 @@ public:
     typename WebPageProxyMap::ValuesConstIteratorRange pages() const { return m_pageMap.values(); }
     unsigned pageCount() const { return m_pageMap.size(); }
     unsigned visiblePageCount() const { return m_visiblePageCounter.value(); }
+
+    virtual bool isServiceWorkerProcess() const { return false; }
 
     void addVisitedLinkStore(VisitedLinkStore&);
     void addWebUserContentControllerProxy(WebUserContentControllerProxy&, WebPageCreationParameters&);
@@ -122,6 +137,8 @@ public:
 
     VisibleWebPageToken visiblePageToken() const;
 
+    void testIncomingSyncIPCMessageWhileWaitingForSyncReply(bool& handled);
+
     void updateTextCheckerState();
 
     void registerNewWebBackForwardListItem(WebBackForwardListItem&);
@@ -140,7 +157,7 @@ public:
     void releasePageCache();
 
     void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, Function<void(WebsiteData)>&& completionHandler);
-    void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, std::chrono::system_clock::time_point modifiedSince, Function<void()>&& completionHandler);
+    void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WallTime modifiedSince, Function<void()>&& completionHandler);
     void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>&, Function<void()>&& completionHandler);
     static void deleteWebsiteDataForTopPrivatelyControlledDomainsInAllPersistentDataStores(OptionSet<WebsiteDataType>, Vector<String>&& topPrivatelyControlledDomains, bool shouldNotifyPages, Function<void (const HashSet<String>&)>&& completionHandler);
     static void topPrivatelyControlledDomainsWithWebsiteData(OptionSet<WebsiteDataType> dataTypes, bool shouldNotifyPage, Function<void(HashSet<String>&&)>&& completionHandler);
@@ -172,8 +189,6 @@ public:
 
     ProcessThrottler& throttler() { return m_throttler; }
 
-    void reinstateNetworkProcessAssertionState(NetworkProcessProxy&);
-
     void isResponsive(WTF::Function<void(bool isWebProcessResponsive)>&&);
     void didReceiveMainThreadPing();
     void didReceiveBackgroundResponsivenessPing();
@@ -182,15 +197,13 @@ public:
     bool isUnderMemoryPressure() const { return m_isUnderMemoryPressure; }
     void didExceedInactiveMemoryLimitWhileActive();
 
-#if ENABLE(SERVICE_WORKER)
-    void didGetWorkerContextConnection(const IPC::Attachment& connection);
-#endif
-
     void processTerminated();
 
     void didExceedCPULimit();
     void didExceedActiveMemoryLimit();
     void didExceedInactiveMemoryLimit();
+
+    void checkProcessLocalPortForActivity(const WebCore::MessagePortIdentifier&, CompletionHandler<void(WebCore::MessagePortChannelProvider::HasActivity)>&&);
 
 protected:
     static uint64_t generatePageID();
@@ -213,6 +226,16 @@ private:
 
     void shouldTerminate(bool& shouldTerminate);
 
+    void createNewMessagePortChannel(const WebCore::MessagePortIdentifier& port1, const WebCore::MessagePortIdentifier& port2);
+    void entangleLocalPortInThisProcessToRemote(const WebCore::MessagePortIdentifier& local, const WebCore::MessagePortIdentifier& remote);
+    void messagePortDisentangled(const WebCore::MessagePortIdentifier&);
+    void messagePortClosed(const WebCore::MessagePortIdentifier&);
+    void takeAllMessagesForPort(const WebCore::MessagePortIdentifier&, uint64_t messagesCallbackIdentifier);
+    void postMessageToRemote(WebCore::MessageWithMessagePorts&&, const WebCore::MessagePortIdentifier&);
+    void checkRemotePortForActivity(const WebCore::MessagePortIdentifier, uint64_t callbackIdentifier);
+    void didDeliverMessagePortMessages(uint64_t messageBatchIdentifier);
+    void didCheckProcessLocalPortForActivity(uint64_t callbackIdentifier, bool isLocallyReachable);
+
     // Plugins
 #if ENABLE(NETSCAPE_PLUGIN_API)
     void getPlugins(bool refresh, Vector<WebCore::PluginInfo>& plugins, Vector<WebCore::PluginInfo>& applicationPlugins);
@@ -221,9 +244,10 @@ private:
     void getPluginProcessConnection(uint64_t pluginProcessToken, Ref<Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply>&&);
 #endif
     void getNetworkProcessConnection(Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&&);
-    void getStorageProcessConnection(Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
+    void getStorageProcessConnection(PAL::SessionID initialSessionID, Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
 
     bool platformIsBeingDebugged() const;
+    bool shouldAllowNonValidInjectedCode() const;
 
     static const HashSet<String>& platformPathsWithAssumedReadAccess();
 
@@ -282,8 +306,8 @@ private:
     ProcessThrottler m_throttler;
     ProcessThrottler::BackgroundActivityToken m_tokenForHoldingLockedFiles;
 #if PLATFORM(IOS)
-    ProcessThrottler::ForegroundActivityToken m_foregroundTokenForNetworkProcess;
-    ProcessThrottler::BackgroundActivityToken m_backgroundTokenForNetworkProcess;
+    ForegroundWebProcessToken m_foregroundToken;
+    BackgroundWebProcessToken m_backgroundToken;
 #endif
 
     HashMap<String, uint64_t> m_pageURLRetainCountMap;
@@ -301,6 +325,10 @@ private:
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
     std::unique_ptr<UserMediaCaptureManagerProxy> m_userMediaCaptureManagerProxy;
 #endif
+
+    HashSet<WebCore::MessagePortIdentifier> m_processEntangledPorts;
+    HashMap<uint64_t, CompletionHandler<void()>> m_messageBatchDeliveryCompletionHandlers;
+    HashMap<uint64_t, CompletionHandler<void(WebCore::MessagePortChannelProvider::HasActivity)>> m_localPortActivityCompletionHandlers;
 };
 
 } // namespace WebKit

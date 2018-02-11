@@ -279,10 +279,7 @@ String StackVisitor::Frame::functionName() const
 
     switch (codeType()) {
     case CodeType::Wasm:
-        if (m_wasmFunctionIndexOrName.isEmpty())
-            traceLine = makeString("wasm function");
-        else
-            traceLine = makeString("wasm function: ", makeString(m_wasmFunctionIndexOrName));
+        traceLine = makeString(m_wasmFunctionIndexOrName);
         break;
     case CodeType::Eval:
         traceLine = ASCIILiteral("eval code");
@@ -462,8 +459,8 @@ void StackVisitor::Frame::dump(PrintStream& out, Indenter indent, std::function<
         out.print(indent, "callee: ", RawPointer(callee().rawPtr()), "\n");
         out.print(indent, "returnPC: ", RawPointer(returnPC), "\n");
         out.print(indent, "callerFrame: ", RawPointer(callerFrame), "\n");
-        unsigned locationRawBits = callFrame->callSiteAsRawBits();
-        out.print(indent, "rawLocationBits: ", static_cast<uintptr_t>(locationRawBits),
+        uintptr_t locationRawBits = callFrame->callSiteAsRawBits();
+        out.print(indent, "rawLocationBits: ", locationRawBits,
             " ", RawPointer(reinterpret_cast<void*>(locationRawBits)), "\n");
         out.print(indent, "codeBlock: ", RawPointer(codeBlock));
         if (codeBlock)

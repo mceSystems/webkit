@@ -25,11 +25,10 @@
 #include "FEConvolveMatrix.h"
 
 #include "Filter.h"
-#include <wtf/text/TextStream.h>
-
-#include <runtime/Uint8ClampedArray.h>
+#include <JavaScriptCore/Uint8ClampedArray.h>
 #include <wtf/ParallelJobs.h>
 #include <wtf/WorkQueue.h>
+#include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
@@ -455,10 +454,10 @@ static TextStream& operator<<(TextStream& ts, const EdgeModeType& type)
     return ts;
 }
 
-TextStream& FEConvolveMatrix::externalRepresentation(TextStream& ts) const
+TextStream& FEConvolveMatrix::externalRepresentation(TextStream& ts, RepresentationType representation) const
 {
     ts << indent << "[feConvolveMatrix";
-    FilterEffect::externalRepresentation(ts);
+    FilterEffect::externalRepresentation(ts, representation);
     ts << " order=\"" << m_kernelSize << "\" "
        << "kernelMatrix=\"" << m_kernelMatrix  << "\" "
        << "divisor=\"" << m_divisor << "\" "
@@ -469,7 +468,7 @@ TextStream& FEConvolveMatrix::externalRepresentation(TextStream& ts) const
        << "preserveAlpha=\"" << m_preserveAlpha << "\"]\n";
 
     TextStream::IndentScope indentScope(ts);
-    inputEffect(0)->externalRepresentation(ts);
+    inputEffect(0)->externalRepresentation(ts, representation);
     return ts;
 }
 

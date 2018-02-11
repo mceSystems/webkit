@@ -33,11 +33,13 @@
 #include "IDBConnectionProxy.h"
 #include "ImageBitmapOptions.h"
 #include "InspectorInstrumentation.h"
+#include "MIMETypeRegistry.h"
 #include "Performance.h"
 #include "ScheduledAction.h"
 #include "ScriptSourceCode.h"
 #include "SecurityOrigin.h"
 #include "SecurityOriginPolicy.h"
+#include "ServiceWorkerGlobalScope.h"
 #include "SocketProvider.h"
 #include "WorkerInspectorController.h"
 #include "WorkerLoaderProxy.h"
@@ -46,8 +48,8 @@
 #include "WorkerReportingProxy.h"
 #include "WorkerScriptLoader.h"
 #include "WorkerThread.h"
-#include <inspector/ScriptArguments.h>
-#include <inspector/ScriptCallStack.h>
+#include <JavaScriptCore/ScriptArguments.h>
+#include <JavaScriptCore/ScriptCallStack.h>
 
 namespace WebCore {
 using namespace Inspector;
@@ -86,7 +88,7 @@ WorkerGlobalScope::WorkerGlobalScope(const URL& url, const String& identifier, c
 
 WorkerGlobalScope::~WorkerGlobalScope()
 {
-    ASSERT(currentThread() == thread().threadID());
+    ASSERT(thread().thread() == &Thread::current());
 
     m_performance = nullptr;
     m_crypto = nullptr;
@@ -261,6 +263,20 @@ ExceptionOr<void> WorkerGlobalScope::importScripts(const Vector<String>& urls)
         completedURLs.uncheckedAppend(WTFMove(url));
     }
 
+    FetchOptions::Cache cachePolicy = FetchOptions::Cache::Default;
+
+#if ENABLE(SERVICE_WORKER)
+    bool isServiceWorkerGlobalScope = is<ServiceWorkerGlobalScope>(*this);
+    if (isServiceWorkerGlobalScope) {
+        // FIXME: We need to add support for the 'imported scripts updated' flag as per:
+        // https://w3c.github.io/ServiceWorker/#importscripts
+        auto& serviceWorkerGlobalScope = downcast<ServiceWorkerGlobalScope>(*this);
+        auto& registration = serviceWorkerGlobalScope.registration();
+        if (registration.updateViaCache() == ServiceWorkerUpdateViaCache::None || registration.needsUpdate())
+            cachePolicy = FetchOptions::Cache::NoCache;
+    }
+#endif
+
     for (auto& url : completedURLs) {
         // FIXME: Convert this to check the isolated world's Content Security Policy once webkit.org/b/104520 is solved.
         bool shouldBypassMainWorldContentSecurityPolicy = this->shouldBypassMainWorldContentSecurityPolicy();
@@ -268,11 +284,16 @@ ExceptionOr<void> WorkerGlobalScope::importScripts(const Vector<String>& urls)
             return Exception { NetworkError };
 
         auto scriptLoader = WorkerScriptLoader::create();
-        scriptLoader->loadSynchronously(this, url, FetchOptions::Mode::NoCors, shouldBypassMainWorldContentSecurityPolicy ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceScriptSrcDirective, resourceRequestIdentifier());
+        scriptLoader->loadSynchronously(this, url, FetchOptions::Mode::NoCors, cachePolicy, shouldBypassMainWorldContentSecurityPolicy ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceScriptSrcDirective, resourceRequestIdentifier());
 
         // If the fetching attempt failed, throw a NetworkError exception and abort all these steps.
         if (scriptLoader->failed())
             return Exception { NetworkError };
+
+#if ENABLE(SERVICE_WORKER)
+        if (isServiceWorkerGlobalScope && !MIMETypeRegistry::isSupportedJavaScriptMIMEType(scriptLoader->responseMIMEType()))
+            return Exception { NetworkError };
+#endif
 
         InspectorInstrumentation::scriptImported(*this, scriptLoader->identifier(), scriptLoader->script());
 
@@ -329,7 +350,7 @@ void WorkerGlobalScope::addMessage(MessageSource source, MessageLevel level, con
 
 bool WorkerGlobalScope::isContextThread() const
 {
-    return currentThread() == thread().threadID();
+    return thread().thread() == &Thread::current();
 }
 
 bool WorkerGlobalScope::isJSExecutionForbidden() const
@@ -395,7 +416,7 @@ Performance& WorkerGlobalScope::performance() const
     return *m_performance;
 }
 
-CacheStorageConnection& WorkerGlobalScope::cacheStorageConnection()
+WorkerCacheStorageConnection& WorkerGlobalScope::cacheStorageConnection()
 {
     if (!m_cacheStorageConnection)
         m_cacheStorageConnection = WorkerCacheStorageConnection::create(*this);
