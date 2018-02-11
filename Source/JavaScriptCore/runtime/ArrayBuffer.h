@@ -51,6 +51,8 @@ public:
     void* data() const { return m_data.getMayBeNull(); }
     
 private:
+	friend class ArrayBuffer;
+
     CagedPtr<Gigacage::Primitive, void> m_data;
     ArrayBufferDestructorFunction m_destructor;
 };
@@ -138,6 +140,9 @@ public:
     void makeWasmMemory();
     inline bool isWasmMemory();
 
+	void makeApiUserControlledBuffer();
+	inline bool isApiUserControlledBuffer() const;
+
     JS_EXPORT_PRIVATE bool transferTo(VM&, ArrayBufferContents&);
     JS_EXPORT_PRIVATE bool shareWith(ArrayBufferContents&);
 
@@ -160,12 +165,13 @@ private:
     void notifyIncommingReferencesOfTransfer(VM&);
 
     ArrayBufferContents m_contents;
-    unsigned m_pinCount : 30;
+    unsigned m_pinCount : 29;
     bool m_isWasmMemory : 1;
     // m_locked == true means that some API user fetched m_contents directly from a TypedArray object,
     // the buffer is backed by a WebAssembly.Memory, or is a SharedArrayBuffer.
     bool m_locked : 1;
-
+	bool m_isApiUserControlledBuffer : 1;
+	
 public:
     Weak<JSArrayBuffer> m_wrapper;
 };
@@ -238,6 +244,13 @@ bool ArrayBuffer::isWasmMemory()
 {
     return m_isWasmMemory;
 }
+
+bool ArrayBuffer::isApiUserControlledBuffer() const
+{
+	return m_isApiUserControlledBuffer;
+}
+
+
 
 JS_EXPORT_PRIVATE ASCIILiteral errorMesasgeForTransfer(ArrayBuffer*);
 

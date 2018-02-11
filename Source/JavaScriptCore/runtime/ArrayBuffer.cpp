@@ -264,6 +264,7 @@ ArrayBuffer::ArrayBuffer(ArrayBufferContents&& contents)
     , m_pinCount(0)
     , m_isWasmMemory(false)
     , m_locked(false)
+	, m_isApiUserControlledBuffer(false)
 {
 }
 
@@ -295,6 +296,18 @@ void ArrayBuffer::makeWasmMemory()
 {
     m_locked = true;
     m_isWasmMemory = true;
+}
+
+void ArrayBuffer::makeApiUserControlledBuffer()
+{
+	m_isApiUserControlledBuffer = true;
+	
+	if (m_contents.m_shared) {
+		m_contents.m_shared->m_destructor = [](void*) {};
+	}
+	else {
+		m_contents.m_destructor = [](void*) {};
+	}
 }
 
 void ArrayBuffer::setSharingMode(ArrayBufferSharingMode newSharingMode)
