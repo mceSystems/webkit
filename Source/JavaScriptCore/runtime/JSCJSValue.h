@@ -232,6 +232,7 @@ public:
     bool isPrimitive() const;
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
+	bool isCustomAPIValue() const;
     bool isObject() const;
     bool inherits(VM&, const ClassInfo*) const;
     const ClassInfo* classInfoOrNull(VM&) const;

@@ -670,6 +670,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/ConstructAbility.h
     runtime/ConstructData.h
     runtime/ControlFlowProfiler.h
+    runtime/CustomAPIValue.h
     runtime/CustomGetterSetter.h
     runtime/DOMAnnotation.h
     runtime/DOMAttributeGetterSetter.h

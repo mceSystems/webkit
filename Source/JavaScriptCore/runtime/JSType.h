@@ -31,6 +31,7 @@ enum JSType : uint8_t {
 
     CustomGetterSetterType,
     APIValueWrapperType,
+	CustomAPIValueType,
 
     ProgramExecutableType,
     ModuleProgramExecutableType,

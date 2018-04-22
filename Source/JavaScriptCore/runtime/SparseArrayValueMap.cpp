@@ -158,10 +158,15 @@ void SparseArrayEntry::get(JSObject* thisObject, PropertySlot& slot) const
     JSValue value = Base::get();
     ASSERT(value);
 
-    if (LIKELY(!value.isGetterSetter())) {
+    if (LIKELY(!value.isGetterSetter() && !value.isCustomAPIValue())) {
         slot.setValue(thisObject, attributes, value);
         return;
     }
+
+	if (value.isCustomAPIValue()) {
+		slot.setCustomAPIValue(thisObject, attributes, jsCast<CustomAPIValue*>(value));
+		return;
+	}
 
     slot.setGetterSlot(thisObject, attributes, jsCast<GetterSetter*>(value));
 }

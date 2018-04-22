@@ -27,6 +27,7 @@
 
 #include "JSCJSValue.h"
 #include "PropertySlot.h"
+#include "CustomAPIValue.h"
 #include <wtf/Assertions.h>
 
 namespace JSC {
@@ -36,7 +37,7 @@ class JSFunction;
     
 class PutPropertySlot {
 public:
-    enum Type { Uncachable, ExistingProperty, NewProperty, SetterProperty, CustomValue, CustomAccessor };
+    enum Type { Uncachable, ExistingProperty, NewProperty, SetterProperty, CustomValue, CustomAccessor, CustomAPIValue };
     enum Context { UnknownContext, PutById, PutByIdEval };
     typedef bool (*PutValueFunc)(ExecState*, EncodedJSValue thisObject, EncodedJSValue value);
 
@@ -49,8 +50,8 @@ public:
         , m_isInitialization(isInitialization)
         , m_context(context)
         , m_cacheability(CachingAllowed)
-        , m_putFunction(nullptr)
     {
+		m_setter.putFunction = nullptr;
     }
 
     void setExistingProperty(JSObject* base, PropertyOffset offset)
@@ -71,15 +72,23 @@ public:
     {
         m_type = CustomValue;
         m_base = base;
-        m_putFunction = function;
+		m_setter.putFunction = function;
     }
 
     void setCustomAccessor(JSObject* base, PutValueFunc function)
     {
         m_type = CustomAccessor;
         m_base = base;
-        m_putFunction = function;
+		m_setter.putFunction = function;
     }
+
+	void setCustomAPIValue(JSObject* base, JSC::CustomAPIValue * value)
+	{
+		m_type = CustomAPIValue;
+		m_base = base;
+		m_setter.customAPIValue = value;
+		disableCaching();
+	}
 
     void setCacheableSetter(JSObject* base, PropertyOffset offset)
     {
@@ -101,7 +110,7 @@ public:
     PutValueFunc customSetter() const
     {
         ASSERT(isCacheableCustom());
-        return m_putFunction;
+        return m_setter.putFunction;
     }
 
     Context context() const { return static_cast<Context>(m_context); }
@@ -138,7 +147,11 @@ private:
     bool m_isInitialization;
     uint8_t m_context;
     CacheabilityType m_cacheability;
-    PutValueFunc m_putFunction;
+	union {
+		PutValueFunc putFunction;
+		JSC::CustomAPIValue * customAPIValue;
+	} m_setter;
+    
 };
 
 } // namespace JSC

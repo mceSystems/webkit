@@ -795,6 +795,16 @@ bool JSObject::putInlineSlow(ExecState* exec, PropertyName propertyName, JSValue
                 RETURN_IF_EXCEPTION(scope, false);
                 return result;
             }
+			if (gs.isCustomAPIValue()) {
+				CustomAPIValue* customAPIValue = jsCast<CustomAPIValue*>(gs.asCell());
+
+				// We need to make sure that we decide to cache this property before we potentially execute aribitrary JS.
+                slot.setCustomAPIValue(obj, customAPIValue);
+
+				bool result = customAPIValue->set(exec, obj, slot.thisValue(), propertyName, value, slot.isStrictMode());
+                RETURN_IF_EXCEPTION(scope, false);
+                return result;
+            }
             ASSERT(!(attributes & PropertyAttribute::Accessor));
 
             // If there's an existing property on the object or one of its 
@@ -1781,6 +1791,42 @@ bool JSObject::putDirectCustomAccessor(VM& vm, PropertyName propertyName, JSValu
         structure->setContainsReadOnlyProperties();
     structure->setHasCustomGetterSetterPropertiesWithProtoCheck(propertyName == vm.propertyNames->underscoreProto);
     return result;
+}
+
+bool JSObject::putDirectCustomAPIValue(VM& vm, PropertyName propertyName, CustomAPIValue * value, unsigned attributes)
+{
+	if (std::optional<uint32_t> maybeIndex = parseIndex(propertyName))
+	{
+		unsigned int index = maybeIndex.value();
+
+		ensureArrayStorageExistsAndEnterDictionaryIndexingMode(vm);
+		SparseArrayValueMap* map = m_butterfly->arrayStorage()->m_sparseMap.get();
+
+		SparseArrayValueMap::AddResult result = map->add(this, index);
+		SparseArrayEntry* entryInMap = &result.iterator->value;
+
+		entryInMap->set(vm, map, value);
+		entryInMap->attributes = attributes;
+
+		if (result.isNewEntry) {
+			Butterfly* butterfly = m_butterfly.get();
+			if (index >= butterfly->arrayStorage()->length()) {
+				butterfly->arrayStorage()->setLength(index + 1);
+			}
+		}
+
+		return true;
+	}
+
+	PutPropertySlot slot(this);
+	bool result = putDirectInternal<PutModeDefineOwnProperty>(vm, propertyName, value, attributes, slot);
+
+	// TODO: Introduce a separate setHasCustomAPIValuePropertiesWithProtoCheck?
+	Structure* structure = this->structure(vm);
+	if (attributes & PropertyAttribute::ReadOnly)
+		structure->setContainsReadOnlyProperties();
+	structure->setHasCustomGetterSetterPropertiesWithProtoCheck(propertyName == vm.propertyNames->underscoreProto);
+	return result;
 }
 
 bool JSObject::putDirectNonIndexAccessor(VM& vm, PropertyName propertyName, JSValue value, unsigned attributes)

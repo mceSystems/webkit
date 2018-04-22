@@ -37,6 +37,7 @@
 #include "CodeCache.h"
 #include "CommonIdentifiers.h"
 #include "CommonSlowPaths.h"
+#include "CustomAPIValue.h"
 #include "CustomGetterSetter.h"
 #include "DFGWorklist.h"
 #include "DirectEvalExecutable.h"
@@ -369,6 +370,7 @@ VM::VM(VMType vmType, HeapType heapType)
     mapIteratorStructure.set(*this, JSMapIterator::createStructure(*this, 0, jsNull()));
     bigIntStructure.set(*this, JSBigInt::createStructure(*this, 0, jsNull()));
     executableToCodeBlockEdgeStructure.set(*this, ExecutableToCodeBlockEdge::createStructure(*this, nullptr, jsNull()));
+	customAPIValueStructure.set(*this, CustomAPIValue::createStructure(*this, nullptr, jsNull()));
 
     sentinelSetBucket.set(*this, JSSet::BucketType::createSentinel(*this));
     sentinelMapBucket.set(*this, JSMap::BucketType::createSentinel(*this));

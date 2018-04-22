@@ -114,6 +114,7 @@ public:
     bool isObject() const;
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
+	bool isCustomAPIValue() const;
     bool isProxy() const;
     bool inherits(VM&, const ClassInfo*) const;
     bool isAPIValueWrapper() const;
