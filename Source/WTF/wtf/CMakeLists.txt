@@ -274,6 +274,7 @@ set(WTF_HEADERS
     text/Base64.h
     text/CString.h
     text/ConversionMode.h
+    text/ExternalStringImpl.h
     text/IntegerToStringConversion.h
     text/LChar.h
     text/LineBreakIteratorPoolICU.h
@@ -403,6 +404,7 @@ set(WTF_SOURCES
     text/AtomicStringTable.cpp
     text/Base64.cpp
     text/CString.cpp
+    text/ExternalStringImpl.cpp
     text/LineEnding.cpp
     text/StringBuilder.cpp
     text/StringBuilderJSON.cpp
@@ -505,6 +507,10 @@ if (MSVC)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
 
+    if (${WTF_LIBRARY_TYPE} STREQUAL "STATIC")
+        target_compile_definitions(WTF PRIVATE -D_LIB)
+    endif ()
+
     add_custom_command(
         TARGET WTF
         PRE_BUILD
@@ -525,3 +531,4 @@ file(COPY
     DESTINATION
     ${FORWARDING_HEADERS_DIR}/wtf/Scripts
 )
+
