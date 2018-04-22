@@ -1184,3 +1184,7 @@ if (MSVC)
         COMMAND ${PERL_EXECUTABLE} ${WEBKIT_LIBRARIES_DIR}/tools/scripts/version-stamp.pl ${DERIVED_SOURCES_DIR} $<TARGET_FILE:JavaScriptCore>
         VERBATIM)
 endif ()
+
+if (MSVC AND ${JavaScriptCore_LIBRARY_TYPE} STREQUAL "STATIC")
+    target_compile_definitions(JavaScriptCore PRIVATE -D_LIB)
+endif ()
