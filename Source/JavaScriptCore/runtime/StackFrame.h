@@ -41,7 +41,10 @@ public:
     StackFrame(VM&, JSCell* owner, JSCell* callee, CodeBlock*, unsigned bytecodeOffset);
     StackFrame(Wasm::IndexOrName);
 
+	JSCell * callee() const { return m_callee.get(); }
     CodeBlock * codeBlock() const { return m_codeBlock.get(); }
+	bool isWasmFrame() const { return m_isWasmFrame; }
+	const Wasm::IndexOrName& wasmFunctionIndexOrName() const { return m_wasmFunctionIndexOrName; }
 
     bool hasLineAndColumnInfo() const { return !!m_codeBlock; }
     
@@ -52,7 +55,7 @@ public:
     String toString(VM&) const;
 
     bool hasBytecodeOffset() const { return m_bytecodeOffset != UINT_MAX && !m_isWasmFrame; }
-    unsigned bytecodeOffset()
+    unsigned bytecodeOffset() const
     {
         ASSERT(hasBytecodeOffset());
         return m_bytecodeOffset;
