@@ -363,9 +363,12 @@ void ArrayBuffer::neuter(VM& vm)
 {
 	/* TODO: Originally, there was an "ASSERT(isWasmMemory())" here, but 
      * we need neutering for the ArrayBuffer api. Make sure this is OK. */
-    ArrayBufferContents unused;
-    m_contents.transferTo(unused);
-    notifyIncommingReferencesOfTransfer(vm);
+	bool isNeuterable = isWasmMemory() || (!isShared() && !m_pinCount && !m_locked);
+	if (isNeuterable) {
+		ArrayBufferContents unused;
+		m_contents.transferTo(unused);
+		notifyIncommingReferencesOfTransfer(vm);
+	}
 }
 
 void ArrayBuffer::notifyIncommingReferencesOfTransfer(VM& vm)
