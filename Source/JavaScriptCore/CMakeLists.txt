@@ -575,6 +575,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     interpreter/CallFrame.h
     interpreter/CalleeBits.h
     interpreter/FrameTracers.h
+    interpreter/Interpreter.h
     interpreter/Register.h
     interpreter/ShadowChicken.h
     interpreter/StackVisitor.h
@@ -701,10 +702,12 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/FunctionHasExecutedCache.h
     runtime/FunctionPrototype.h
     runtime/FunctionRareData.h
+    runtime/GeneratorPrototype.h
     runtime/GenericOffset.h
     runtime/GenericTypedArrayView.h
     runtime/GenericTypedArrayViewInlines.h
     runtime/GetPutInfo.h
+    runtime/GetterSetter.h
     runtime/HashMapImpl.h
     runtime/Identifier.h
     runtime/IdentifierInlines.h
@@ -732,7 +735,9 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/JSArrayBufferPrototype.h
     runtime/JSArrayBufferView.h
     runtime/JSArrayBufferViewInlines.h
+    runtime/JSAsyncFunction.h
     runtime/JSBigInt.h
+    runtime/JSBoundFunction.h
     runtime/JSCInlines.h
     runtime/JSCJSValue.h
     runtime/JSCJSValueInlines.h
@@ -746,6 +751,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/JSExportMacros.h
     runtime/JSFunction.h
     runtime/JSFunctionInlines.h
+    runtime/JSGeneratorFunction.h
     runtime/JSGenericTypedArrayView.h
     runtime/JSGenericTypedArrayViewInlines.h
     runtime/JSGenericTypedArrayViewPrototype.h
@@ -783,17 +789,23 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/JSType.h
     runtime/JSTypeInfo.h
     runtime/JSTypedArrays.h
+    runtime/JSWeakMap.h
+    runtime/JSWeakSet.h
     runtime/JSWithScope.h
     runtime/JSWrapperObject.h
     runtime/LazyClassStructure.h
     runtime/LazyProperty.h
+    runtime/LazyPropertyInlines.h
     runtime/Lookup.h
     runtime/MatchResult.h
     runtime/MathCommon.h
     runtime/MemoryStatistics.h
     runtime/Microtask.h
     runtime/ModuleProgramExecutable.h
+    runtime/NativeErrorPrototype.h
     runtime/NativeExecutable.h
+    runtime/NullGetterFunction.h
+    runtime/NullSetterFunction.h
     runtime/NumberObject.h
     runtime/NumberPrototype.h
     runtime/NumericStrings.h
@@ -815,6 +827,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/PropertyStorage.h
     runtime/Protect.h
     runtime/PrototypeKey.h
+    runtime/ProxyObject.h
     runtime/PureNaN.h
     runtime/PutDirectIndexMode.h
     runtime/PutPropertySlot.h
@@ -847,6 +860,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/StructureRareDataInlines.h
     runtime/StructureTransitionTable.h
     runtime/Symbol.h
+    runtime/SymbolObject.h
     runtime/SymbolPrototype.h
     runtime/SymbolTable.h
     runtime/TemplateRegistry.h
@@ -875,6 +889,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/Watchdog.h
     runtime/WeakGCMap.h
     runtime/WeakGCMapInlines.h
+    runtime/WeakMapImpl.h
     runtime/WriteBarrier.h
     runtime/WriteBarrierInlines.h
 
