@@ -40,12 +40,12 @@
 #include "DeprecatedGlobalSettings.h"
 #include "Document.h"
 #include "DocumentLoader.h"
+#include "Frame.h"
 #include "HTMLIFrameElement.h"
 #include "HTMLParserIdioms.h"
 #include "JSMediaStream.h"
 #include "JSOverconstrainedError.h"
 #include "Logging.h"
-#include "MainFrame.h"
 #include "MediaConstraints.h"
 #include "RealtimeMediaSourceCenter.h"
 #include "SchemeRegistry.h"
@@ -87,7 +87,7 @@ SecurityOrigin* UserMediaRequest::topLevelDocumentOrigin() const
 static bool isSecure(DocumentLoader& documentLoader)
 {
     auto& response = documentLoader.response();
-    if (SecurityOrigin::isLocalHostOrLoopbackIPAddress(documentLoader.response().url()))
+    if (SecurityOrigin::isLocalHostOrLoopbackIPAddress(documentLoader.response().url().host()))
         return true;
     return SchemeRegistry::shouldTreatURLSchemeAsSecure(response.url().protocol().toStringWithoutCopying())
         && response.certificateInfo()

@@ -103,13 +103,16 @@ public:
     WEBCORE_EXPORT const HTTPHeaderMap& httpHeaderFields() const;
     void setHTTPHeaderFields(HTTPHeaderMap&&);
 
+    enum class SanitizationType { Redirection, RemoveCookies, CrossOriginSafe };
+    WEBCORE_EXPORT void sanitizeHTTPHeaderFields(SanitizationType);
+
     String httpHeaderField(const String& name) const;
     WEBCORE_EXPORT String httpHeaderField(HTTPHeaderName) const;
     WEBCORE_EXPORT void setHTTPHeaderField(const String& name, const String& value);
     WEBCORE_EXPORT void setHTTPHeaderField(HTTPHeaderName, const String& value);
 
-    void addHTTPHeaderField(HTTPHeaderName, const String& value);
-    void addHTTPHeaderField(const String& name, const String& value);
+    WEBCORE_EXPORT void addHTTPHeaderField(HTTPHeaderName, const String& value);
+    WEBCORE_EXPORT void addHTTPHeaderField(const String& name, const String& value);
 
     // Instead of passing a string literal to any of these functions, just use a HTTPHeaderName instead.
     template<size_t length> String httpHeaderField(const char (&)[length]) const = delete;
@@ -139,7 +142,7 @@ public:
     WEBCORE_EXPORT std::optional<WallTime> lastModified() const;
     ParsedContentRange& contentRange() const;
 
-    enum class Source { Unknown, Network, DiskCache, DiskCacheAfterValidation, MemoryCache, MemoryCacheAfterValidation, ServiceWorker };
+    enum class Source { Unknown, Network, DiskCache, DiskCacheAfterValidation, MemoryCache, MemoryCacheAfterValidation, ServiceWorker, ApplicationCache };
     WEBCORE_EXPORT Source source() const;
     void setSource(Source source) { m_source = source; }
 
@@ -196,6 +199,7 @@ protected:
 private:
     void parseCacheControlDirectives() const;
     void updateHeaderParsedState(HTTPHeaderName);
+    void sanitizeHTTPHeaderFieldsAccordingToTainting();
 
 protected:
     bool m_isNull;

@@ -51,6 +51,7 @@
 #include <wtf/RefPtr.h>
 
 namespace API {
+class Navigation;
 class PageConfiguration;
 }
 
@@ -66,6 +67,7 @@ namespace WebKit {
 class NetworkProcessProxy;
 class ObjCObjectGraph;
 class PageClient;
+class SuspendedPageProxy;
 class UserMediaCaptureManagerProxy;
 class VisitedLinkStore;
 class WebBackForwardListItem;
@@ -91,12 +93,16 @@ typedef BackgroundWebProcessCounter::Token BackgroundWebProcessToken;
 
 class WebProcessProxy : public ChildProcessProxy, public ResponsivenessTimer::Client, private ProcessThrottlerClient {
 public:
-    typedef HashMap<uint64_t, RefPtr<WebBackForwardListItem>> WebBackForwardListItemMap;
     typedef HashMap<uint64_t, RefPtr<WebFrameProxy>> WebFrameProxyMap;
     typedef HashMap<uint64_t, WebPageProxy*> WebPageProxyMap;
     typedef HashMap<uint64_t, RefPtr<API::UserInitiatedAction>> UserInitiatedActionMap;
 
-    static Ref<WebProcessProxy> create(WebProcessPool&, WebsiteDataStore&);
+    enum class IsInPrewarmedPool {
+        No,
+        Yes
+    };
+
+    static Ref<WebProcessProxy> create(WebProcessPool&, WebsiteDataStore&, IsInPrewarmedPool);
     ~WebProcessProxy();
 
     WebConnection* webConnection() const { return m_webConnection.get(); }
@@ -123,7 +129,6 @@ public:
     void didDestroyVisitedLinkStore(VisitedLinkStore&);
     void didDestroyWebUserContentControllerProxy(WebUserContentControllerProxy&);
 
-    WebBackForwardListItem* webBackForwardItem(uint64_t itemID) const;
     RefPtr<API::UserInitiatedAction> userInitiatedActivity(uint64_t);
 
     ResponsivenessTimer& responsivenessTimer() { return m_responsivenessTimer; }
@@ -131,7 +136,7 @@ public:
 
     WebFrameProxy* webFrame(uint64_t) const;
     bool canCreateFrame(uint64_t frameID) const;
-    void frameCreated(uint64_t, WebFrameProxy*);
+    void frameCreated(uint64_t, WebFrameProxy&);
     void disconnectFramesFromPage(WebPageProxy*); // Including main frame.
     size_t frameCountInPage(WebPageProxy*) const; // Including main frame.
 
@@ -140,9 +145,6 @@ public:
     void testIncomingSyncIPCMessageWhileWaitingForSyncReply(bool& handled);
 
     void updateTextCheckerState();
-
-    void registerNewWebBackForwardListItem(WebBackForwardListItem&);
-    void removeBackForwardItem(uint64_t);
 
     void willAcquireUniversalFileReadSandboxExtension() { m_mayHaveUniversalFileReadSandboxExtension = true; }
     void assumeReadAccessToBaseURL(const String&);
@@ -205,9 +207,23 @@ public:
 
     void checkProcessLocalPortForActivity(const WebCore::MessagePortIdentifier&, CompletionHandler<void(WebCore::MessagePortChannelProvider::HasActivity)>&&);
 
+    void didCommitProvisionalLoad() { m_hasCommittedAnyProvisionalLoads = true; }
+    bool hasCommittedAnyProvisionalLoads() const { return m_hasCommittedAnyProvisionalLoads; }
+
+    void suspendWebPageProxy(WebPageProxy&, API::Navigation&);
+    void suspendedPageWasDestroyed(SuspendedPageProxy&);
+
+#if ENABLE(EXTRA_ZOOM_MODE)
+    void takeBackgroundActivityTokenForFullscreenInput();
+    void releaseBackgroundActivityTokenForFullscreenInput();
+#endif
+
+    bool isInPrewarmedPool() const { return m_isInPrewarmedPool; }
+    void setIsInPrewarmedPool(bool isInPrewarmedPool) { m_isInPrewarmedPool = isInPrewarmedPool; }
+
 protected:
     static uint64_t generatePageID();
-    WebProcessProxy(WebProcessPool&, WebsiteDataStore&);
+    WebProcessProxy(WebProcessPool&, WebsiteDataStore&, IsInPrewarmedPool);
 
     // ChildProcessProxy
     void getLaunchOptions(ProcessLauncher::LaunchOptions&) override;
@@ -218,9 +234,10 @@ private:
     // Called when the web process has crashed or we know that it will terminate soon.
     // Will potentially cause the WebProcessProxy object to be freed.
     void shutDown();
+    void maybeShutDown();
 
     // IPC message handlers.
-    void addBackForwardItem(uint64_t itemID, uint64_t pageID, const PageState&);
+    void updateBackForwardItem(const BackForwardListItemState&);
     void didDestroyFrame(uint64_t);
     void didDestroyUserGestureToken(uint64_t);
 
@@ -238,7 +255,7 @@ private:
 
     // Plugins
 #if ENABLE(NETSCAPE_PLUGIN_API)
-    void getPlugins(bool refresh, Vector<WebCore::PluginInfo>& plugins, Vector<WebCore::PluginInfo>& applicationPlugins);
+    void getPlugins(bool refresh, Vector<WebCore::PluginInfo>& plugins, Vector<WebCore::PluginInfo>& applicationPlugins, std::optional<Vector<WebCore::SupportedPluginName>>&);
 #endif // ENABLE(NETSCAPE_PLUGIN_API)
 #if ENABLE(NETSCAPE_PLUGIN_API)
     void getPluginProcessConnection(uint64_t pluginProcessToken, Ref<Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply>&&);
@@ -252,6 +269,8 @@ private:
     static const HashSet<String>& platformPathsWithAssumedReadAccess();
 
     void updateBackgroundResponsivenessTimer();
+
+    void processDidTerminateOrFailedToLaunch();
 
     // IPC::Connection::Client
     friend class WebConnectionToWebProcess;
@@ -295,8 +314,8 @@ private:
     HashSet<String> m_localPathsWithAssumedReadAccess;
 
     WebPageProxyMap m_pageMap;
+    HashMap<uint64_t, SuspendedPageProxy*> m_suspendedPageMap;
     WebFrameProxyMap m_frameMap;
-    WebBackForwardListItemMap m_backForwardListItemMap;
     UserInitiatedActionMap m_userInitiatedActionMap;
 
     HashSet<VisitedLinkStore*> m_visitedLinkStores;
@@ -327,8 +346,15 @@ private:
 #endif
 
     HashSet<WebCore::MessagePortIdentifier> m_processEntangledPorts;
-    HashMap<uint64_t, CompletionHandler<void()>> m_messageBatchDeliveryCompletionHandlers;
+    HashMap<uint64_t, Function<void()>> m_messageBatchDeliveryCompletionHandlers;
     HashMap<uint64_t, CompletionHandler<void(WebCore::MessagePortChannelProvider::HasActivity)>> m_localPortActivityCompletionHandlers;
+
+    bool m_hasCommittedAnyProvisionalLoads { false };
+    bool m_isInPrewarmedPool;
+
+#if ENABLE(EXTRA_ZOOM_MODE)
+    ProcessThrottler::BackgroundActivityToken m_backgroundActivityTokenForFullscreenFormControls;
+#endif
 };
 
 } // namespace WebKit

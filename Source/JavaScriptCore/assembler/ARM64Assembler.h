@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 
 #include "AssemblerBuffer.h"
 #include "AssemblerCommon.h"
+#include "JSCPtrTag.h"
 #include <limits.h>
 #include <wtf/Assertions.h>
 #include <wtf/Vector.h>
@@ -308,7 +309,7 @@ public:
         return nameForRegister[id];
     }
 
-private:
+protected:
     static constexpr bool isSp(RegisterID reg) { return ARM64Registers::isSp(reg); }
     static constexpr bool isZr(RegisterID reg) { return ARM64Registers::isZr(reg); }
 
@@ -515,7 +516,7 @@ public:
         return isValidSignedImm9(offset);
     }
 
-private:
+protected:
     int encodeFPImm(double d)
     {
         ASSERT(canEncodeFPImm(d));
@@ -2989,7 +2990,7 @@ public:
         }
     }
 
-private:
+protected:
     template<Datasize size>
     static bool checkMovk(int insn, int _hw, RegisterID _rd)
     {
@@ -3033,6 +3034,8 @@ private:
         ASSERT_UNUSED(isCall, (link == isCall) || disassembleNop(from));
         ASSERT(!(reinterpret_cast<intptr_t>(from) & 3));
         ASSERT(!(reinterpret_cast<intptr_t>(to) & 3));
+        assertIsNotTagged(to);
+        assertIsNotTagged(fromInstruction);
         intptr_t offset = (reinterpret_cast<intptr_t>(to) - reinterpret_cast<intptr_t>(fromInstruction)) >> 2;
         ASSERT(static_cast<int>(offset) == offset);
 
@@ -3754,6 +3757,9 @@ private:
     Vector<LinkRecord, 0, UnsafeVectorOverflow> m_jumpsToLink;
     int m_indexOfLastWatchpoint;
     int m_indexOfTailOfLastWatchpoint;
+
+public:
+    static constexpr ptrdiff_t MAX_POINTER_BITS = 48;
 };
 
 } // namespace JSC

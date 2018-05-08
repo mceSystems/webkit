@@ -27,7 +27,7 @@
 #include "AdjustViewSizeOrNot.h"
 #include "Color.h"
 #include "ContainerNode.h"
-#include "LayoutContext.h"
+#include "FrameViewLayoutContext.h"
 #include "LayoutMilestones.h"
 #include "LayoutRect.h"
 #include "Pagination.h"
@@ -73,7 +73,7 @@ class FrameView final : public ScrollView {
 public:
     friend class RenderView;
     friend class Internals;
-    friend class LayoutContext;
+    friend class FrameViewLayoutContext;
 
     WEBCORE_EXPORT static Ref<FrameView> create(Frame&);
     static Ref<FrameView> create(Frame&, const IntSize& initialSize);
@@ -109,8 +109,8 @@ public:
     void setContentsSize(const IntSize&) final;
     void updateContentsSize() final;
 
-    const LayoutContext& layoutContext() const { return m_layoutContext; }
-    LayoutContext& layoutContext() { return m_layoutContext; }
+    const FrameViewLayoutContext& layoutContext() const { return m_layoutContext; }
+    FrameViewLayoutContext& layoutContext() { return m_layoutContext; }
 
     WEBCORE_EXPORT bool didFirstLayout() const;
     void queuePostLayoutCallback(WTF::Function<void ()>&&);
@@ -209,7 +209,6 @@ public:
     bool shouldUpdate() const;
 
     WEBCORE_EXPORT void adjustViewSize();
-    IntSize layoutSizeForMediaQuery() const;
 
     WEBCORE_EXPORT void setViewportSizeForCSSViewportUnits(IntSize);
     IntSize viewportSizeForCSSViewportUnits() const;
@@ -302,6 +301,8 @@ public:
     // Static function can be called from another thread.
     static LayoutPoint scrollPositionForFixedPosition(const LayoutRect& visibleContentRect, const LayoutSize& totalContentsSize, const LayoutPoint& scrollPosition, const LayoutPoint& scrollOrigin, float frameScaleFactor, bool fixedElementsLayoutRelativeToFrame, ScrollBehaviorForFixedElements, int headerHeight, int footerHeight);
 
+    WEBCORE_EXPORT static LayoutSize expandedLayoutViewportSize(const LayoutSize& baseLayoutViewportSize, const LayoutSize& documentSize, double heightExpansionFactor);
+
     enum class LayoutViewportConstraint { ConstrainedToDocumentRect, Unconstrained };
     WEBCORE_EXPORT static LayoutRect computeUpdatedLayoutViewportRect(const LayoutRect& layoutViewport, const LayoutRect& documentRect, const LayoutSize& unobscuredContentSize, const LayoutRect& unobscuredContentRect, const LayoutSize& baseLayoutViewportSize, const LayoutPoint& stableLayoutViewportOriginMin, const LayoutPoint& stableLayoutViewportOriginMax, LayoutViewportConstraint);
     
@@ -366,8 +367,8 @@ public:
     WEBCORE_EXPORT void setPaintBehavior(PaintBehavior);
     WEBCORE_EXPORT PaintBehavior paintBehavior() const;
     bool isPainting() const;
-    bool hasEverPainted() const { return m_lastPaintTime; }
-    void setLastPaintTime(double lastPaintTime) { m_lastPaintTime = lastPaintTime; }
+    bool hasEverPainted() const { return !!m_lastPaintTime; }
+    void setLastPaintTime(MonotonicTime lastPaintTime) { m_lastPaintTime = lastPaintTime; }
     WEBCORE_EXPORT void setNodeToDraw(Node*);
 
     enum SelectionInSnapshot { IncludeSelection, ExcludeSelection };
@@ -385,7 +386,7 @@ public:
     void startDisallowingLayout() { layoutContext().startDisallowingLayout(); }
     void endDisallowingLayout() { layoutContext().endDisallowingLayout(); }
 
-    static double currentPaintTimeStamp() { return sCurrentPaintTimeStamp; } // returns 0 if not painting
+    static MonotonicTime currentPaintTimeStamp() { return sCurrentPaintTimeStamp; } // returns 0 if not painting
     
     WEBCORE_EXPORT void updateLayoutAndStyleIfNeededRecursive();
 
@@ -777,8 +778,6 @@ private:
     void removeFromAXObjectCache();
     void notifyWidgets(WidgetNotification);
 
-    void setFrameFlatteningViewSizeForMediaQuery() { m_frameFlatteningViewSizeForMediaQuery = layoutSize(); }
-    bool frameFlatteningViewSizeForMediaQueryIsSet() const { return m_frameFlatteningViewSizeForMediaQuery.has_value(); }
     RenderElement* viewportRenderer() const;
     
     void willDoLayout(WeakPtr<RenderElement> layoutRoot);
@@ -786,7 +785,7 @@ private:
 
     HashSet<Widget*> m_widgetsInRenderTree;
 
-    static double sCurrentPaintTimeStamp; // used for detecting decoded resource thrash in the cache
+    static MonotonicTime sCurrentPaintTimeStamp; // used for detecting decoded resource thrash in the cache
 
     LayoutSize m_size;
     LayoutSize m_margins;
@@ -830,7 +829,7 @@ private:
     SelectionRevealMode m_selectionRevealModeForFocusedElement;
     Timer m_delayedScrollToFocusedElementTimer;
 
-    double m_lastPaintTime;
+    MonotonicTime m_lastPaintTime;
 
     bool m_isTrackingRepaints; // Used for testing.
     Vector<FloatRect> m_trackedRepaintRects;
@@ -886,8 +885,6 @@ private:
     int m_autoSizeFixedMinimumHeight;
     // The intrinsic content size decided by autosizing.
     IntSize m_autoSizeContentSize;
-    // Report the first computed frame view size to media queries.
-    std::optional<IntSize> m_frameFlatteningViewSizeForMediaQuery;
 
     std::unique_ptr<ScrollableAreaSet> m_scrollableAreas;
     std::unique_ptr<ViewportConstrainedObjectSet> m_viewportConstrainedObjects;
@@ -915,7 +912,7 @@ private:
     IntRect* m_cachedWindowClipRect { nullptr };
     Vector<WTF::Function<void ()>> m_postLayoutCallbackQueue;
 
-    LayoutContext m_layoutContext;
+    FrameViewLayoutContext m_layoutContext;
 };
 
 inline void FrameView::incrementVisuallyNonEmptyCharacterCount(unsigned count)

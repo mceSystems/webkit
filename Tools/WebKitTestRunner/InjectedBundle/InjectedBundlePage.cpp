@@ -499,7 +499,7 @@ static inline void dumpRequestDescriptionSuitableForTestResult(WKURLRequestRef r
     stringBuilder.append('>');
 }
 
-static inline void dumpResponseDescriptionSuitableForTestResult(WKURLResponseRef response, StringBuilder& stringBuilder)
+static inline void dumpResponseDescriptionSuitableForTestResult(WKURLResponseRef response, StringBuilder& stringBuilder, bool shouldDumpResponseHeaders = false)
 {
     WKRetainPtr<WKURLRef> url = adoptWK(WKURLResponseCopyURL(response));
     if (!url) {
@@ -510,8 +510,23 @@ static inline void dumpResponseDescriptionSuitableForTestResult(WKURLResponseRef
     stringBuilder.append(pathSuitableForTestResult(url.get()));
     stringBuilder.appendLiteral(", http status code ");
     stringBuilder.appendNumber(WKURLResponseHTTPStatusCode(response));
+
+    if (shouldDumpResponseHeaders) {
+        stringBuilder.appendLiteral(", ");
+        stringBuilder.appendNumber(InjectedBundlePage::responseHeaderCount(response));
+        stringBuilder.appendLiteral(" headers");
+    }
     stringBuilder.append('>');
 }
+
+#if !PLATFORM(COCOA)
+// FIXME: Implement this for non cocoa ports.
+//        [GTK][WPE] https://bugs.webkit.org/show_bug.cgi?id=184295
+uint64_t InjectedBundlePage::responseHeaderCount(WKURLResponseRef response)
+{
+    return 0;
+}
+#endif
 
 static inline void dumpErrorDescriptionSuitableForTestResult(WKErrorRef error, StringBuilder& stringBuilder)
 {
@@ -875,22 +890,22 @@ void InjectedBundlePage::dump()
     StringBuilder stringBuilder;
 
     switch (injectedBundle.testRunner()->whatToDump()) {
-    case TestRunner::RenderTree: {
+    case WhatToDump::RenderTree: {
         if (injectedBundle.testRunner()->isPrinting())
             stringBuilder.append(toWTFString(adoptWK(WKBundlePageCopyRenderTreeExternalRepresentationForPrinting(m_page)).get()));
         else
             stringBuilder.append(toWTFString(adoptWK(WKBundlePageCopyRenderTreeExternalRepresentation(m_page)).get()));
         break;
     }
-    case TestRunner::MainFrameText:
+    case WhatToDump::MainFrameText:
         dumpFrameText(WKBundlePageGetMainFrame(m_page), stringBuilder);
         break;
-    case TestRunner::AllFramesText:
+    case WhatToDump::AllFramesText:
         dumpAllFramesText(stringBuilder);
         break;
-    case TestRunner::Audio:
+    case WhatToDump::Audio:
         break;
-    case TestRunner::DOMAsWebArchive:
+    case WhatToDump::DOMAsWebArchive:
         dumpDOMAsWebArchive(frame, stringBuilder);
         break;
     }
@@ -995,7 +1010,9 @@ void InjectedBundlePage::didClearWindowForFrame(WKBundleFrameRef frame, WKBundle
     injectedBundle.gcController()->makeWindowObject(context, window, &exception);
     injectedBundle.eventSendingController()->makeWindowObject(context, window, &exception);
     injectedBundle.textInputController()->makeWindowObject(context, window, &exception);
+#if HAVE(ACCESSIBILITY)
     injectedBundle.accessibilityController()->makeWindowObject(context, window, &exception);
+#endif
 
     WebCoreTestSupport::injectInternalsObject(context);
 }
@@ -1006,10 +1023,10 @@ void InjectedBundlePage::didCancelClientRedirectForFrame(WKBundleFrameRef frame)
     if (!injectedBundle.isTestRunning())
         return;
 
-    if (!injectedBundle.testRunner()->shouldDumpFrameLoadCallbacks())
-        return;
+    if (injectedBundle.testRunner()->shouldDumpFrameLoadCallbacks())
+        dumpLoadEvent(frame, "didCancelClientRedirectForFrame");
 
-    dumpLoadEvent(frame, "didCancelClientRedirectForFrame");
+    injectedBundle.testRunner()->setDidCancelClientRedirect(true);
 }
 
 void InjectedBundlePage::willPerformClientRedirectForFrame(WKBundlePageRef, WKBundleFrameRef frame, WKURLRef url, double delay, double date)
@@ -1131,7 +1148,7 @@ WKURLRequestRef InjectedBundlePage::willSendRequestForFrame(WKBundlePageRef page
         stringBuilder.appendLiteral(" - willSendRequest ");
         dumpRequestDescriptionSuitableForTestResult(request, stringBuilder);
         stringBuilder.appendLiteral(" redirectResponse ");
-        dumpResponseDescriptionSuitableForTestResult(response, stringBuilder);
+        dumpResponseDescriptionSuitableForTestResult(response, stringBuilder, injectedBundle.testRunner()->shouldDumpAllHTTPRedirectedResponseHeaders());
         stringBuilder.append('\n');
         injectedBundle.outputText(stringBuilder.toString());
     }
@@ -1321,14 +1338,8 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForNavigationAction(WKB
         injectedBundle.outputText(stringBuilder.toString());
     }
 
-    if (injectedBundle.testRunner()->shouldDecideNavigationPolicyAfterDelay())
+    if (!injectedBundle.testRunner()->isPolicyDelegateEnabled())
         return WKBundlePagePolicyActionPassThrough;
-
-    if (!injectedBundle.testRunner()->isPolicyDelegateEnabled()) {
-        WKRetainPtr<WKStringRef> downloadAttributeRef(AdoptWK, WKBundleNavigationActionCopyDownloadAttribute(navigationAction));
-        String downloadAttribute = toWTFString(downloadAttributeRef);
-        return downloadAttribute.isNull() ? WKBundlePagePolicyActionUse : WKBundlePagePolicyActionPassThrough;
-    }
 
     WKRetainPtr<WKURLRef> url = adoptWK(WKURLRequestCopyURL(request));
     WKRetainPtr<WKStringRef> urlScheme = adoptWK(WKURLCopyScheme(url.get()));
@@ -1353,10 +1364,9 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForNavigationAction(WKB
 
     stringBuilder.append('\n');
     injectedBundle.outputText(stringBuilder.toString());
+
     injectedBundle.testRunner()->notifyDone();
 
-    if (injectedBundle.testRunner()->isPolicyDelegatePermissive())
-        return WKBundlePagePolicyActionUse;
     return WKBundlePagePolicyActionPassThrough;
 }
 
@@ -1367,7 +1377,8 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForNewWindowAction(WKBu
 
 WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForResponse(WKBundlePageRef page, WKBundleFrameRef, WKURLResponseRef response, WKURLRequestRef, WKTypeRef*)
 {
-    if (InjectedBundle::singleton().testRunner()->isPolicyDelegateEnabled() && WKURLResponseIsAttachment(response)) {
+    auto& injectedBundle = InjectedBundle::singleton();
+    if (injectedBundle.testRunner() && injectedBundle.testRunner()->isPolicyDelegateEnabled() && WKURLResponseIsAttachment(response)) {
         StringBuilder stringBuilder;
         WKRetainPtr<WKStringRef> filename = adoptWK(WKURLResponseCopySuggestedFilename(response));
         stringBuilder.appendLiteral("Policy delegate: resource is an attachment, suggested file name \'");
@@ -1376,8 +1387,7 @@ WKBundlePagePolicyAction InjectedBundlePage::decidePolicyForResponse(WKBundlePag
         InjectedBundle::singleton().outputText(stringBuilder.toString());
     }
 
-    WKRetainPtr<WKStringRef> mimeType = adoptWK(WKURLResponseCopyMIMEType(response));
-    return WKBundlePageCanShowMIMEType(page, mimeType.get()) ? WKBundlePagePolicyActionUse : WKBundlePagePolicyActionPassThrough;
+    return WKBundlePagePolicyActionPassThrough;
 }
 
 void InjectedBundlePage::unableToImplementPolicy(WKBundlePageRef, WKBundleFrameRef, WKErrorRef, WKTypeRef*)
@@ -1978,11 +1988,11 @@ void InjectedBundlePage::dumpBackForwardList(StringBuilder& stringBuilder)
     for (unsigned i = WKBundleBackForwardListGetForwardListCount(list); i; --i) {
         WKRetainPtr<WKBundleBackForwardListItemRef> item = adoptWK(WKBundleBackForwardListCopyItemAtIndex(list, i));
         // Something is wrong if the item from the last test is in the forward part of the list.
-        ASSERT(!WKBundleBackForwardListItemIsSame(item.get(), m_previousTestBackForwardListItem.get()));
+        ASSERT(!m_previousTestBackForwardListItem || !WKBundleBackForwardListItemIsSame(item.get(), m_previousTestBackForwardListItem.get()));
         itemsToPrint.append(item);
     }
 
-    ASSERT(!WKBundleBackForwardListItemIsSame(adoptWK(WKBundleBackForwardListCopyItemAtIndex(list, 0)).get(), m_previousTestBackForwardListItem.get()));
+    ASSERT(!m_previousTestBackForwardListItem || !WKBundleBackForwardListItemIsSame(adoptWK(WKBundleBackForwardListCopyItemAtIndex(list, 0)).get(), m_previousTestBackForwardListItem.get()));
 
     itemsToPrint.append(adoptWK(WKBundleBackForwardListCopyItemAtIndex(list, 0)));
 
@@ -1991,7 +2001,7 @@ void InjectedBundlePage::dumpBackForwardList(StringBuilder& stringBuilder)
     int backListCount = WKBundleBackForwardListGetBackListCount(list);
     for (int i = -1; i >= -backListCount; --i) {
         WKRetainPtr<WKBundleBackForwardListItemRef> item = adoptWK(WKBundleBackForwardListCopyItemAtIndex(list, i));
-        if (WKBundleBackForwardListItemIsSame(item.get(), m_previousTestBackForwardListItem.get()))
+        if (m_previousTestBackForwardListItem && WKBundleBackForwardListItemIsSame(item.get(), m_previousTestBackForwardListItem.get()))
             break;
         itemsToPrint.append(item);
     }
@@ -2021,7 +2031,7 @@ void InjectedBundlePage::frameDidChangeLocation(WKBundleFrameRef frame)
 
     injectedBundle.setTopLoadingFrame(nullptr);
 
-    if (injectedBundle.testRunner()->waitToDump())
+    if (injectedBundle.testRunner()->shouldWaitUntilDone())
         return;
 
     if (injectedBundle.shouldProcessWorkQueue()) {

@@ -46,6 +46,7 @@ class CSSAnimationController;
 class Color;
 class Cursor;
 class Document;
+class DocumentTimeline;
 class HitTestLocation;
 class HitTestRequest;
 class HitTestResult;
@@ -753,9 +754,8 @@ public:
     void imageChanged(CachedImage*, const IntRect* = nullptr) override;
     virtual void imageChanged(WrappedImagePtr, const IntRect* = nullptr) { }
 
-    void removeFromParentAndDestroy(RenderTreeBuilder&);
-
     CSSAnimationController& animation() const;
+    DocumentTimeline* documentTimeline() const;
 
     // Map points and quads through elements, potentially via 3d transforms. You should never need to call these directly; use
     // localToAbsolute/absoluteToLocal methods instead.
@@ -776,6 +776,11 @@ public:
         return outlineBoundsForRepaint(nullptr);
     }
 
+    virtual void willBeRemovedFromTree();
+    void resetFragmentedFlowStateOnRemoval();
+    void initializeFragmentedFlowStateOnInsertion();
+    virtual void insertedIntoTree();
+
 protected:
     //////////////////////////////////////////
     // Helper functions. Dangerous to use!
@@ -788,10 +793,7 @@ protected:
 
     void adjustRectForOutlineAndShadow(LayoutRect&) const;
 
-    virtual void willBeDestroyed(RenderTreeBuilder&);
-
-    virtual void insertedIntoTree();
-    virtual void willBeRemovedFromTree();
+    virtual void willBeDestroyed();
 
     void setNeedsPositionedMovementLayoutBit(bool b) { m_bitfields.setNeedsPositionedMovementLayout(b); }
     void setNormalChildNeedsLayoutBit(bool b) { m_bitfields.setNormalChildNeedsLayout(b); }
@@ -801,8 +803,6 @@ protected:
     virtual RenderFragmentedFlow* locateEnclosingFragmentedFlow() const;
     static void calculateBorderStyleColor(const EBorderStyle&, const BoxSide&, Color&);
 
-    void initializeFragmentedFlowStateOnInsertion();
-    void resetFragmentedFlowStateOnRemoval();
     static FragmentedFlowState computedFragmentedFlowState(const RenderObject&);
 
 private:
@@ -1004,6 +1004,11 @@ inline Page& RenderObject::page() const
 inline CSSAnimationController& RenderObject::animation() const
 {
     return frame().animation();
+}
+
+inline DocumentTimeline* RenderObject::documentTimeline() const
+{
+    return document().existingTimeline();
 }
 
 inline bool RenderObject::renderTreeBeingDestroyed() const

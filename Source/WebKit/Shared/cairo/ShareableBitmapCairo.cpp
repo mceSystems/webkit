@@ -35,9 +35,8 @@
 #include <WebCore/PlatformContextCairo.h>
 #include <WebCore/NotImplemented.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static const cairo_format_t cairoFormat = CAIRO_FORMAT_ARGB32;
 
@@ -78,7 +77,7 @@ void ShareableBitmap::paint(GraphicsContext& context, float scaleFactor, const I
 
     ASSERT(context.hasPlatformContext());
     auto& state = context.state();
-    Cairo::drawSurface(*context.platformContext(), surface.get(), destRect, srcRectScaled, state.imageInterpolationQuality, state.alpha, Cairo::ShadowState(state), context);
+    Cairo::drawSurface(*context.platformContext(), surface.get(), destRect, srcRectScaled, state.imageInterpolationQuality, state.alpha, Cairo::ShadowState(state));
 }
 
 RefPtr<cairo_surface_t> ShareableBitmap::createCairoSurface()

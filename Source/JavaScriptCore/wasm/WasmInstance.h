@@ -65,8 +65,24 @@ public:
     CodeBlock* codeBlock() { return m_codeBlock.get(); }
     Memory* memory() { return m_memory.get(); }
     Table* table() { return m_table.get(); }
-    
-    void setMemory(Ref<Memory>&& memory) { m_memory = WTFMove(memory); }
+
+    void* cachedMemory() const { return m_cachedMemory; }
+    size_t cachedMemorySize() const { return m_cachedMemorySize; }
+
+    WeakPtr<Instance> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
+    void setMemory(Ref<Memory>&& memory)
+    {
+        m_memory = WTFMove(memory);
+        m_memory.get()->registerInstance(this);
+        updateCachedMemory();
+    }
+    void updateCachedMemory()
+    {
+        if (m_memory != nullptr) {
+            m_cachedMemory = memory()->memory();
+            m_cachedMemorySize = memory()->size();
+        }
+    }
     void setTable(Ref<Table>&& table) { m_table = WTFMove(table); }
 
     int32_t loadI32Global(unsigned i) const { return m_globals.get()[i]; }
@@ -78,6 +94,8 @@ public:
     static ptrdiff_t offsetOfMemory() { return OBJECT_OFFSETOF(Instance, m_memory); }
     static ptrdiff_t offsetOfGlobals() { return OBJECT_OFFSETOF(Instance, m_globals); }
     static ptrdiff_t offsetOfTable() { return OBJECT_OFFSETOF(Instance, m_table); }
+    static ptrdiff_t offsetOfCachedMemory() { return OBJECT_OFFSETOF(Instance, m_cachedMemory); }
+    static ptrdiff_t offsetOfCachedMemorySize() { return OBJECT_OFFSETOF(Instance, m_cachedMemorySize); }
     static ptrdiff_t offsetOfPointerToTopEntryFrame() { return OBJECT_OFFSETOF(Instance, m_pointerToTopEntryFrame); }
 
     static ptrdiff_t offsetOfPointerToActualStackLimit() { return OBJECT_OFFSETOF(Instance, m_pointerToActualStackLimit); }
@@ -98,8 +116,8 @@ public:
     struct ImportFunctionInfo {
         // Target instance and entrypoint are only set for wasm->wasm calls, and are otherwise nullptr. The embedder-specific logic occurs through import function.
         Instance* targetInstance { nullptr };
-        Wasm::WasmEntrypointLoadLocation wasmEntrypoint { nullptr };
-        void* wasmToEmbedderStubExecutableAddress { nullptr };
+        WasmToWasmImportableFunction::LoadLocation wasmEntrypointLoadLocation { nullptr };
+        MacroAssemblerCodePtr<WasmEntryPtrTag> wasmToEmbedderStub;
         void* importFunction { nullptr }; // In a JS embedding, this is a PoisonedBarrier<JSObject>.
     };
     unsigned numImportFunctions() const { return m_numImportFunctions; }
@@ -109,8 +127,8 @@ public:
         return &bitwise_cast<ImportFunctionInfo*>(bitwise_cast<char*>(this) + offsetOfTail())[importFunctionNum];
     }
     static size_t offsetOfTargetInstance(size_t importFunctionNum) { return offsetOfTail() + importFunctionNum * sizeof(ImportFunctionInfo) + OBJECT_OFFSETOF(ImportFunctionInfo, targetInstance); }
-    static size_t offsetOfWasmEntrypoint(size_t importFunctionNum) { return offsetOfTail() + importFunctionNum * sizeof(ImportFunctionInfo) + OBJECT_OFFSETOF(ImportFunctionInfo, wasmEntrypoint); }
-    static size_t offsetOfWasmToEmbedderStubExecutableAddress(size_t importFunctionNum) { return offsetOfTail() + importFunctionNum * sizeof(ImportFunctionInfo) + OBJECT_OFFSETOF(ImportFunctionInfo, wasmToEmbedderStubExecutableAddress); }
+    static size_t offsetOfWasmEntrypointLoadLocation(size_t importFunctionNum) { return offsetOfTail() + importFunctionNum * sizeof(ImportFunctionInfo) + OBJECT_OFFSETOF(ImportFunctionInfo, wasmEntrypointLoadLocation); }
+    static size_t offsetOfWasmToEmbedderStub(size_t importFunctionNum) { return offsetOfTail() + importFunctionNum * sizeof(ImportFunctionInfo) + OBJECT_OFFSETOF(ImportFunctionInfo, wasmToEmbedderStub); }
     static size_t offsetOfImportFunction(size_t importFunctionNum) { return offsetOfTail() + importFunctionNum * sizeof(ImportFunctionInfo) + OBJECT_OFFSETOF(ImportFunctionInfo, importFunction); }
     template<typename T> T* importFunction(unsigned importFunctionNum) { return reinterpret_cast<T*>(&importFunctionInfo(importFunctionNum)->importFunction); }
 
@@ -126,9 +144,10 @@ private:
     {
         return (offsetOfTail() + sizeof(ImportFunctionInfo) * numImportFunctions).unsafeGet();
     }
-
     void* m_owner { nullptr }; // In a JS embedding, this is a JSWebAssemblyInstance*.
     Context* m_context { nullptr };
+    void* m_cachedMemory { nullptr };
+    size_t m_cachedMemorySize { 0 };
     Ref<Module> m_module;
     RefPtr<CodeBlock> m_codeBlock;
     RefPtr<Memory> m_memory;
@@ -138,6 +157,7 @@ private:
     void** m_pointerToActualStackLimit { nullptr };
     void* m_cachedStackLimit { bitwise_cast<void*>(std::numeric_limits<uintptr_t>::max()) };
     StoreTopCallFrameCallback m_storeTopCallFrame;
+    WeakPtrFactory<Instance> m_weakPtrFactory;
     unsigned m_numImportFunctions { 0 };
 };
 

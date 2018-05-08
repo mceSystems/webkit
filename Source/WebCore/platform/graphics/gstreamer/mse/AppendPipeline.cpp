@@ -24,10 +24,9 @@
 #if ENABLE(VIDEO) && USE(GSTREAMER) && ENABLE(MEDIA_SOURCE)
 
 #include "AudioTrackPrivateGStreamer.h"
-#include "GRefPtrGStreamer.h"
+#include "GStreamerCommon.h"
 #include "GStreamerEMEUtilities.h"
 #include "GStreamerMediaDescription.h"
-#include "GStreamerUtilities.h"
 #include "MediaSampleGStreamer.h"
 #include "InbandTextTrackPrivateGStreamer.h"
 #include "MediaDescription.h"
@@ -1073,11 +1072,11 @@ void AppendPipeline::connectDemuxerSrcPadToAppsink(GstPad* demuxerSrcPad)
     switch (m_streamType) {
     case WebCore::MediaSourceStreamTypeGStreamer::Audio:
         if (m_playerPrivate)
-            m_track = WebCore::AudioTrackPrivateGStreamer::create(m_playerPrivate->pipeline(), id(), sinkSinkPad.get());
+            m_track = WebCore::AudioTrackPrivateGStreamer::create(m_playerPrivate->createWeakPtr(), id(), sinkSinkPad.get());
         break;
     case WebCore::MediaSourceStreamTypeGStreamer::Video:
         if (m_playerPrivate)
-            m_track = WebCore::VideoTrackPrivateGStreamer::create(m_playerPrivate->pipeline(), id(), sinkSinkPad.get());
+            m_track = WebCore::VideoTrackPrivateGStreamer::create(m_playerPrivate->createWeakPtr(), id(), sinkSinkPad.get());
         break;
     case WebCore::MediaSourceStreamTypeGStreamer::Text:
         m_track = WebCore::InbandTextTrackPrivateGStreamer::create(id(), sinkSinkPad.get());

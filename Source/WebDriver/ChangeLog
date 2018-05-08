@@ -1,3 +1,34 @@
+2018-03-05  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        WebDriver: Also ignore NoSuchwindow errors when waiting for navigation to complete
+        https://bugs.webkit.org/show_bug.cgi?id=183280
+
+        Reviewed by Brian Burg.
+
+        We currently ignore NoSuchFrame, but navigation or previous command might have closed the window too.
+
+        Fixes: imported/selenium/py/test/selenium/webdriver/common/window_switching_tests.py::testClickingOnAButtonThatClosesAnOpenWindowDoesNotCauseTheBrowserToHang
+               imported/selenium/py/test/selenium/webdriver/common/window_switching_tests.py::testCanCallGetWindowHandlesAfterClosingAWindow
+
+        * Session.cpp:
+        (WebDriver::Session::waitForNavigationToComplete): Ignore NoSuchWindow errors.
+
+2018-02-14  Brian Burg  <bburg@apple.com>
+
+        Web Automation: combine session commands to resize and move top-level browsing contexts
+        https://bugs.webkit.org/show_bug.cgi?id=182749
+        <rdar://problem/37515170>
+
+        Reviewed by Andy Estes.
+
+        The new command can take either size or origin. Just have one session command for use by endpoints.
+
+        * Session.cpp:
+        (WebDriver::Session::setWindowRect):
+        (WebDriver::Session::moveToplevelBrowsingContextWindow): Deleted.
+        (WebDriver::Session::resizeToplevelBrowsingContextWindow): Deleted.
+        * Session.h:
+
 2018-01-30  Don Olmstead  <don.olmstead@sony.com>
 
         [CMake] Make WTF headers copies

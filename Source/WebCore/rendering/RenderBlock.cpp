@@ -58,12 +58,14 @@
 #include "RenderListMarker.h"
 #include "RenderMenuList.h"
 #include "RenderSVGResourceClipper.h"
+#include "RenderSVGRoot.h"
 #include "RenderTableCell.h"
 #include "RenderTextFragment.h"
 #include "RenderTheme.h"
 #include "RenderTreeBuilder.h"
 #include "RenderTreePosition.h"
 #include "RenderView.h"
+#include "SVGSVGElement.h"
 #include "Settings.h"
 #include "ShadowRoot.h"
 #include "ShapeOutsideInfo.h"
@@ -343,7 +345,7 @@ RenderBlock::~RenderBlock()
 }
 
 // Note that this is not called for RenderBlockFlows.
-void RenderBlock::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderBlock::willBeDestroyed()
 {
     if (!renderTreeBeingDestroyed()) {
         if (parent())
@@ -352,7 +354,7 @@ void RenderBlock::willBeDestroyed(RenderTreeBuilder& builder)
 
     blockWillBeDestroyed();
 
-    RenderBox::willBeDestroyed(builder);
+    RenderBox::willBeDestroyed();
 }
 
 void RenderBlock::blockWillBeDestroyed()
@@ -466,37 +468,10 @@ RenderPtr<RenderBlock> RenderBlock::clone() const
     return cloneBlock;
 }
 
-void RenderBlock::addChild(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
-{
-    builder.insertChildToRenderBlock(*this, WTFMove(newChild), beforeChild);
-}
-
-void RenderBlock::addChildIgnoringContinuation(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
-{
-    builder.insertChildToRenderBlockIgnoringContinuation(*this, WTFMove(newChild), beforeChild);
-}
-
 void RenderBlock::deleteLines()
 {
     if (AXObjectCache* cache = document().existingAXObjectCache())
         cache->deferRecomputeIsIgnored(element());
-}
-
-void RenderBlock::dropAnonymousBoxChild(RenderTreeBuilder& builder, RenderBlock& child)
-{
-    setNeedsLayoutAndPrefWidthsRecalc();
-    setChildrenInline(child.childrenInline());
-    RenderObject* nextSibling = child.nextSibling();
-
-    auto toBeDeleted = takeChildInternal(child);
-    child.moveAllChildrenTo(builder, this, nextSibling, RenderBoxModelObject::NormalizeAfterInsertion::No);
-    // Delete the now-empty block's lines and nuke it.
-    child.deleteLines();
-}
-
-RenderPtr<RenderObject> RenderBlock::takeChild(RenderTreeBuilder& builder, RenderObject& oldChild)
-{
-    return builder.takeChildFromRenderBlock(*this, oldChild);
 }
 
 bool RenderBlock::childrenPreventSelfCollapsing() const
@@ -846,7 +821,7 @@ void RenderBlock::dirtyForLayoutFromPercentageHeightDescendants()
         return;
 
     for (auto it = descendants->begin(), end = descendants->end(); it != end; ++it) {
-        RenderBox* box = *it;
+        auto* box = *it;
         while (box != this) {
             if (box->normalChildNeedsLayout())
                 break;
@@ -857,8 +832,20 @@ void RenderBlock::dirtyForLayoutFromPercentageHeightDescendants()
             // (A horizontal flexbox that contains an inline image wrapped in an anonymous block for example.)
             if (box->hasAspectRatio()) 
                 box->setPreferredLogicalWidthsDirty(true);
-            
-            box = box->containingBlock();
+            auto* containingBlock = box->containingBlock();
+            // Mark the svg ancestor chain dirty as we walk to the containing block. containingBlock() just skips them. See webkit.org/b/183874.
+            if (is<SVGElement>(box->element()) && containingBlock != box->parent()) {
+                auto* ancestor = box->parent();
+                ASSERT(ancestor->isDescendantOf(containingBlock));
+                while (ancestor != containingBlock) {
+                    ancestor->setChildNeedsLayout(MarkOnlyThis);
+                    // This is the topmost SVG root, no need to go any further.
+                    if (is<SVGSVGElement>(ancestor->element()) && !downcast<SVGSVGElement>(*ancestor->element()).ownerSVGElement())
+                        break;
+                    ancestor = ancestor->parent();
+                }
+            }
+            box = containingBlock;
             ASSERT(box);
             if (!box)
                 break;

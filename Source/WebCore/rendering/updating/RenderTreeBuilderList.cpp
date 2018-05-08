@@ -80,7 +80,7 @@ void RenderTreeBuilder::List::updateItemMarker(RenderListItem& listItemRenderer)
 
     if (style.listStyleType() == NoneListStyle && (!style.listStyleImage() || style.listStyleImage()->errorOccurred())) {
         if (auto* marker = listItemRenderer.markerRenderer())
-            marker->removeFromParentAndDestroy(m_builder);
+            m_builder.destroy(*marker);
         return;
     }
 
@@ -115,13 +115,13 @@ void RenderTreeBuilder::List::updateItemMarker(RenderListItem& listItemRenderer)
         return;
 
     if (currentParent)
-        m_builder.insertChild(*newParent, currentParent->takeChild(m_builder, *markerRenderer), firstNonMarkerChild(*newParent));
+        m_builder.attach(*newParent, m_builder.detach(*currentParent, *markerRenderer), firstNonMarkerChild(*newParent));
     else
-        m_builder.insertChild(*newParent, WTFMove(newMarkerRenderer), firstNonMarkerChild(*newParent));
+        m_builder.attach(*newParent, WTFMove(newMarkerRenderer), firstNonMarkerChild(*newParent));
 
     // If current parent is an anonymous block that has lost all its children, destroy it.
     if (currentParent && currentParent->isAnonymousBlock() && !currentParent->firstChild() && !downcast<RenderBlock>(*currentParent).continuation())
-        currentParent->removeFromParentAndDestroy(m_builder);
+        m_builder.destroy(*currentParent);
 }
 
 }

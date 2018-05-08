@@ -29,7 +29,7 @@
 #if ENABLE(VIDEO) && ENABLE(MEDIA_SOURCE) && USE(GSTREAMER)
 
 #include "AudioTrackPrivateGStreamer.h"
-#include "GStreamerUtilities.h"
+#include "GStreamerCommon.h"
 #include "MediaDescription.h"
 #include "MediaPlayerPrivateGStreamerMSE.h"
 #include "MediaSample.h"
@@ -48,7 +48,6 @@
 #include <gst/video/video.h>
 #include <wtf/Condition.h>
 #include <wtf/MainThread.h>
-#include <wtf/glib/GMutexLocker.h>
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
@@ -514,7 +513,32 @@ void webKitMediaSrcFreeStream(WebKitMediaSrc* source, Stream* stream)
         // Don't trigger callbacks from this appsrc to avoid using the stream anymore.
         gst_app_src_set_callbacks(GST_APP_SRC(stream->appsrc), &disabledAppsrcCallbacks, nullptr, nullptr);
         gst_app_src_end_of_stream(GST_APP_SRC(stream->appsrc));
+        gst_element_set_state(stream->appsrc, GST_STATE_NULL);
+        gst_bin_remove(GST_BIN(source), stream->appsrc);
+        stream->appsrc = nullptr;
     }
+
+    if (stream->parser) {
+        gst_element_set_state(stream->parser, GST_STATE_NULL);
+        gst_bin_remove(GST_BIN(source), stream->parser);
+        stream->parser = nullptr;
+    }
+
+    GST_OBJECT_LOCK(source);
+    switch (stream->type) {
+    case WebCore::Audio:
+        source->priv->numberOfAudioStreams--;
+        break;
+    case WebCore::Video:
+        source->priv->numberOfVideoStreams--;
+        break;
+    case WebCore::Text:
+        source->priv->numberOfTextStreams--;
+        break;
+    default:
+        break;
+    }
+    GST_OBJECT_UNLOCK(source);
 
     if (stream->type != WebCore::Invalid) {
         GST_DEBUG("Freeing track-related info on stream %p", stream);

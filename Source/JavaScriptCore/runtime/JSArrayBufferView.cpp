@@ -94,7 +94,7 @@ JSArrayBufferView::ConstructionContext::ConstructionContext(
     if (!m_vector)
         return;
     if (mode == ZeroFill)
-        fastZeroFillBytes(m_vector.get(), size);
+        memset(m_vector.get(), 0, size);
     
     vm.heap.reportExtraMemoryAllocated(static_cast<size_t>(length) * elementSize);
     
@@ -131,13 +131,14 @@ JSArrayBufferView::JSArrayBufferView(VM& vm, ConstructionContext& context)
     , m_length(context.length())
     , m_mode(context.mode())
 {
-    setButterflyWithIndexingMask(vm, context.butterfly(), WTF::computeIndexingMask(length()));
-    m_poisonedVector.setWithoutBarrier(context.vector());
+    setButterfly(vm, context.butterfly());
+    m_vector.setWithoutBarrier(context.vector());
 }
 
 void JSArrayBufferView::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
+    ASSERT(jsDynamicCast<JSArrayBufferView*>(vm, this));
     switch (m_mode) {
     case FastTypedArray:
         return;
@@ -193,7 +194,7 @@ void JSArrayBufferView::finalize(JSCell* cell)
     JSArrayBufferView* thisObject = static_cast<JSArrayBufferView*>(cell);
     ASSERT(thisObject->m_mode == OversizeTypedArray || thisObject->m_mode == WastefulTypedArray);
     if (thisObject->m_mode == OversizeTypedArray)
-        Gigacage::free(Gigacage::Primitive, thisObject->m_poisonedVector.get());
+        Gigacage::free(Gigacage::Primitive, thisObject->m_vector.get());
 }
 
 JSArrayBuffer* JSArrayBufferView::unsharedJSBuffer(ExecState* exec)
@@ -208,10 +209,11 @@ JSArrayBuffer* JSArrayBufferView::possiblySharedJSBuffer(ExecState* exec)
 
 void JSArrayBufferView::neuter()
 {
+    auto locker = holdLock(cellLock());
     RELEASE_ASSERT(hasArrayBuffer());
     RELEASE_ASSERT(!isShared());
     m_length = 0;
-    m_poisonedVector.clear();
+    m_vector.clear();
 }
 
 } // namespace JSC

@@ -34,13 +34,20 @@ class RenderButton;
 class RenderMenuList;
 
 class RenderTreeBuilder::FormControls {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     FormControls(RenderTreeBuilder&);
 
-    RenderBlock& createInnerRendererIfNeeded(RenderButton&);
-    RenderBlock& createInnerRendererIfNeeded(RenderMenuList&);
+    void attach(RenderButton& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void attach(RenderMenuList& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+
+    RenderPtr<RenderObject> detach(RenderButton& parent, RenderObject& child) WARN_UNUSED_RETURN;
+    RenderPtr<RenderObject> detach(RenderMenuList& parent, RenderObject& child) WARN_UNUSED_RETURN;
 
 private:
+    RenderBlock& findOrCreateParentForChild(RenderButton&);
+    RenderBlock& findOrCreateParentForChild(RenderMenuList&);
+
     RenderTreeBuilder& m_builder;
 };
 

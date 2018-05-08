@@ -949,7 +949,7 @@ static EncodedJSValue customGetAccessor(ExecState*, EncodedJSValue thisValue, Pr
 
 static EncodedJSValue customGetValue(ExecState* exec, EncodedJSValue slotValue, PropertyName)
 {
-    RELEASE_ASSERT(JSValue::decode(slotValue).inherits(exec->vm(), JSTestCustomGetterSetter::info()));
+    RELEASE_ASSERT(JSValue::decode(slotValue).inherits<JSTestCustomGetterSetter>(exec->vm()));
     // Passed property holder.
     return slotValue;
 }
@@ -971,7 +971,7 @@ static bool customSetValue(ExecState* exec, EncodedJSValue slotValue, EncodedJSV
 {
     VM& vm = exec->vm();
 
-    RELEASE_ASSERT(JSValue::decode(slotValue).inherits(exec->vm(), JSTestCustomGetterSetter::info()));
+    RELEASE_ASSERT(JSValue::decode(slotValue).inherits<JSTestCustomGetterSetter>(exec->vm()));
 
     JSValue value = JSValue::decode(encodedValue);
     RELEASE_ASSERT(value.isObject());
@@ -1042,9 +1042,30 @@ static NO_RETURN_DUE_TO_CRASH EncodedJSValue JSC_HOST_CALL functionCrash(ExecSta
     CRASH();
 }
 
+// Executes a breakpoint instruction if the first argument is truthy or is unset.
+// Usage: $vm.breakpoint(<condition>)
+static EncodedJSValue JSC_HOST_CALL functionBreakpoint(ExecState* exec)
+{
+    // Nothing should throw here but we might as well double check...
+    VM& vm = exec->vm();
+    auto scope = DECLARE_CATCH_SCOPE(vm);
+    UNUSED_PARAM(scope);
+    if (!exec->argumentCount() || exec->argument(0).toBoolean(exec))
+        WTFBreakpointTrap();
+
+    return encodedJSUndefined();
+}
+
 // Returns true if the current frame is a DFG frame.
 // Usage: isDFG = $vm.dfgTrue()
 static EncodedJSValue JSC_HOST_CALL functionDFGTrue(ExecState*)
+{
+    return JSValue::encode(jsBoolean(false));
+}
+
+// Returns true if the current frame is a FTL frame.
+// Usage: isFTL = $vm.ftlTrue()
+static EncodedJSValue JSC_HOST_CALL functionFTLTrue(ExecState*)
 {
     return JSValue::encode(jsBoolean(false));
 }
@@ -1742,6 +1763,12 @@ static EncodedJSValue JSC_HOST_CALL functionDeltaBetweenButterflies(ExecState* e
     return JSValue::encode(jsNumber(static_cast<int32_t>(delta)));
 }
 
+static EncodedJSValue JSC_HOST_CALL functionTotalGCTime(ExecState* exec)
+{
+    VM& vm = exec->vm();
+    return JSValue::encode(jsNumber(vm.heap.totalGCTime().seconds()));
+}
+
 void JSDollarVM::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
@@ -1757,8 +1784,10 @@ void JSDollarVM::finishCreation(VM& vm)
 
     addFunction(vm, "abort", functionCrash, 0);
     addFunction(vm, "crash", functionCrash, 0);
+    addFunction(vm, "breakpoint", functionBreakpoint, 0);
 
     putDirectNativeFunction(vm, globalObject, Identifier::fromString(&vm, "dfgTrue"), 0, functionDFGTrue, DFGTrueIntrinsic, static_cast<unsigned>(PropertyAttribute::DontEnum));
+    putDirectNativeFunction(vm, globalObject, Identifier::fromString(&vm, "ftlTrue"), 0, functionFTLTrue, FTLTrueIntrinsic, static_cast<unsigned>(PropertyAttribute::DontEnum));
 
     putDirectNativeFunction(vm, globalObject, Identifier::fromString(&vm, "cpuMfence"), 0, functionCpuMfence, CPUMfenceIntrinsic, 0);
     putDirectNativeFunction(vm, globalObject, Identifier::fromString(&vm, "cpuRdtsc"), 0, functionCpuRdtsc, CPURdtscIntrinsic, 0);
@@ -1827,6 +1856,8 @@ void JSDollarVM::finishCreation(VM& vm)
     addFunction(vm, "createCustomTestGetterSetter", functionCreateCustomTestGetterSetter, 1);
 
     addFunction(vm, "deltaBetweenButterflies", functionDeltaBetweenButterflies, 2);
+    
+    addFunction(vm, "totalGCTime", functionTotalGCTime, 0);
 }
 
 void JSDollarVM::addFunction(VM& vm, JSGlobalObject* globalObject, const char* name, NativeFunction function, unsigned arguments)

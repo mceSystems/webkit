@@ -67,6 +67,7 @@
 #include <WebCore/ScrollingConstraints.h>
 #include <WebCore/ScrollingCoordinator.h>
 #include <WebCore/SearchPopupMenu.h>
+#include <WebCore/SecurityOrigin.h>
 #include <WebCore/ServiceWorkerClientData.h>
 #include <WebCore/ServiceWorkerClientIdentifier.h>
 #include <WebCore/ServiceWorkerData.h>
@@ -79,8 +80,6 @@
 #include <WebCore/ViewportArguments.h>
 #include <WebCore/WindowFeatures.h>
 #include <pal/SessionID.h>
-#include <wtf/MonotonicTime.h>
-#include <wtf/Seconds.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringHash.h>
 
@@ -171,36 +170,6 @@ static bool decodeTypesAndData(Decoder& decoder, Vector<String>& types, Vector<R
     for (auto& buffer : data)
         decodeSharedBuffer(decoder, buffer);
 
-    return true;
-}
-
-void ArgumentCoder<MonotonicTime>::encode(Encoder& encoder, const MonotonicTime& time)
-{
-    encoder << time.secondsSinceEpoch().value();
-}
-
-bool ArgumentCoder<MonotonicTime>::decode(Decoder& decoder, MonotonicTime& time)
-{
-    double value;
-    if (!decoder.decode(value))
-        return false;
-
-    time = MonotonicTime::fromRawSeconds(value);
-    return true;
-}
-
-void ArgumentCoder<Seconds>::encode(Encoder& encoder, const Seconds& seconds)
-{
-    encoder << seconds.value();
-}
-
-bool ArgumentCoder<Seconds>::decode(Decoder& decoder, Seconds& seconds)
-{
-    double value;
-    if (!decoder.decode(value))
-        return false;
-
-    seconds = Seconds(value);
     return true;
 }
 
@@ -1301,12 +1270,28 @@ bool ArgumentCoder<ResourceRequest>::decode(Decoder& decoder, ResourceRequest& r
 
 void ArgumentCoder<ResourceError>::encode(Encoder& encoder, const ResourceError& resourceError)
 {
+    encoder.encodeEnum(resourceError.type());
+    if (resourceError.type() == ResourceError::Type::Null)
+        return;
     encodePlatformData(encoder, resourceError);
 }
 
 bool ArgumentCoder<ResourceError>::decode(Decoder& decoder, ResourceError& resourceError)
 {
-    return decodePlatformData(decoder, resourceError);
+    ResourceError::Type type;
+    if (!decoder.decodeEnum(type))
+        return false;
+
+    if (type == ResourceError::Type::Null) {
+        resourceError = { };
+        return true;
+    }
+
+    if (!decodePlatformData(decoder, resourceError))
+        return false;
+
+    resourceError.setType(type);
+    return true;
 }
 
 #if PLATFORM(IOS)
@@ -2538,15 +2523,21 @@ void ArgumentCoder<ResourceLoadStatistics>::encode(Encoder& encoder, const WebCo
     // Storage access
     encoder << statistics.storageAccessUnderTopFrameOrigins;
 
+    // Top frame stats
+    encoder << statistics.topFrameUniqueRedirectsTo;
+    encoder << statistics.topFrameUniqueRedirectsFrom;
+
     // Subframe stats
     encoder << statistics.subframeUnderTopFrameOrigins;
     
     // Subresource stats
     encoder << statistics.subresourceUnderTopFrameOrigins;
     encoder << statistics.subresourceUniqueRedirectsTo;
-    
+    encoder << statistics.subresourceUniqueRedirectsFrom;
+
     // Prevalent Resource
     encoder << statistics.isPrevalentResource;
+    encoder << statistics.isVeryPrevalentResource;
     encoder << statistics.dataRecordsRemoved;
 }
 
@@ -2577,6 +2568,13 @@ std::optional<ResourceLoadStatistics> ArgumentCoder<ResourceLoadStatistics>::dec
     if (!decoder.decode(statistics.storageAccessUnderTopFrameOrigins))
         return std::nullopt;
 
+    // Top frame stats
+    if (!decoder.decode(statistics.topFrameUniqueRedirectsTo))
+        return std::nullopt;    
+
+    if (!decoder.decode(statistics.topFrameUniqueRedirectsFrom))
+        return std::nullopt;
+
     // Subframe stats
     if (!decoder.decode(statistics.subframeUnderTopFrameOrigins))
         return std::nullopt;
@@ -2588,10 +2586,16 @@ std::optional<ResourceLoadStatistics> ArgumentCoder<ResourceLoadStatistics>::dec
     if (!decoder.decode(statistics.subresourceUniqueRedirectsTo))
         return std::nullopt;
     
+    if (!decoder.decode(statistics.subresourceUniqueRedirectsFrom))
+        return std::nullopt;
+    
     // Prevalent Resource
     if (!decoder.decode(statistics.isPrevalentResource))
         return std::nullopt;
 
+    if (!decoder.decode(statistics.isVeryPrevalentResource))
+        return std::nullopt;
+    
     if (!decoder.decode(statistics.dataRecordsRemoved))
         return std::nullopt;
 
@@ -2829,5 +2833,28 @@ bool ArgumentCoder<AttachmentInfo>::decode(Decoder& decoder, AttachmentInfo& inf
 }
 
 #endif // ENABLE(ATTACHMENT_ELEMENT)
+
+void ArgumentCoder<Vector<RefPtr<SecurityOrigin>>>::encode(Encoder& encoder, const Vector<RefPtr<SecurityOrigin>>& origins)
+{
+    encoder << static_cast<uint64_t>(origins.size());
+    for (auto& origin : origins)
+        encoder << *origin;
+}
+    
+bool ArgumentCoder<Vector<RefPtr<SecurityOrigin>>>::decode(Decoder& decoder, Vector<RefPtr<SecurityOrigin>>& origins)
+{
+    uint64_t dataSize;
+    if (!decoder.decode(dataSize))
+        return false;
+
+    origins.reserveInitialCapacity(dataSize);
+    for (uint64_t i = 0; i < dataSize; ++i) {
+        auto decodedOriginRefPtr = SecurityOrigin::decode(decoder);
+        if (!decodedOriginRefPtr)
+            return false;
+        origins.uncheckedAppend(decodedOriginRefPtr.releaseNonNull());
+    }
+    return true;
+}
 
 } // namespace IPC

@@ -29,7 +29,7 @@
 
 #include "CallLinkInfo.h"
 #include "JSCPoison.h"
-#include "JSCell.h"
+#include "JSCast.h"
 #include "PromiseDeferredTimer.h"
 #include "Structure.h"
 #include "UnconditionalFinalizer.h"
@@ -61,14 +61,14 @@ public:
     }
 
     template<typename CellType>
-    static CompleteSubspace* subspaceFor(VM& vm)
+    static IsoSubspace* subspaceFor(VM& vm)
     {
         return &vm.webAssemblyCodeBlockSpace;
     }
 
     Wasm::CodeBlock& codeBlock() { return m_codeBlock.get(); }
     
-    void* wasmToEmbedderStubExecutableAddress(size_t importFunctionNum) { return m_wasmToJSExitStubs[importFunctionNum].code().executableAddress(); }
+    MacroAssemblerCodePtr<WasmEntryPtrTag> wasmToEmbedderStub(size_t importFunctionNum) { return m_wasmToJSExitStubs[importFunctionNum].code(); }
 
     void finishCreation(VM&);
 
@@ -98,7 +98,7 @@ private:
     };
 
     PoisonedRef<JSWebAssemblyCodeBlockPoison, Wasm::CodeBlock> m_codeBlock;
-    Vector<MacroAssemblerCodeRef> m_wasmToJSExitStubs;
+    Vector<MacroAssemblerCodeRef<WasmEntryPtrTag>> m_wasmToJSExitStubs;
     PoisonedUniquePtr<JSWebAssemblyCodeBlockPoison, UnconditionalFinalizer> m_unconditionalFinalizer;
     Bag<CallLinkInfo> m_callLinkInfos;
     String m_errorMessage;

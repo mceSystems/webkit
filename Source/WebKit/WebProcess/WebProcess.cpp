@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,7 +48,6 @@
 #include "WebAutomationSessionProxy.h"
 #include "WebCacheStorageProvider.h"
 #include "WebConnectionToUIProcess.h"
-#include "WebCookieManager.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebFrame.h"
 #include "WebFrameNetworkingContext.h"
@@ -99,7 +98,6 @@
 #include <WebCore/GlyphPage.h>
 #include <WebCore/HTMLMediaElement.h>
 #include <WebCore/JSDOMWindow.h>
-#include <WebCore/MainFrame.h>
 #include <WebCore/MemoryCache.h>
 #include <WebCore/MemoryRelease.h>
 #include <WebCore/MessagePort.h>
@@ -117,11 +115,15 @@
 #include <WebCore/Settings.h>
 #include <WebCore/URLParser.h>
 #include <WebCore/UserGestureIndicator.h>
-#include <unistd.h>
-#include <wtf/CurrentTime.h>
 #include <wtf/Language.h>
+#include <wtf/ProcessPrivilege.h>
 #include <wtf/RunLoop.h>
+#include <wtf/SystemTracing.h>
 #include <wtf/text/StringHash.h>
+
+#if !OS(WINDOWS)
+#include <unistd.h>
+#endif
 
 #if PLATFORM(WAYLAND)
 #include "WaylandCompositorDisplay.h"
@@ -148,7 +150,7 @@ using namespace JSC;
 using namespace WebCore;
 
 // This should be less than plugInAutoStartExpirationTimeThreshold in PlugInAutoStartProvider.
-static const double plugInAutoStartExpirationTimeUpdateThreshold = 29 * 24 * 60 * 60;
+static const Seconds plugInAutoStartExpirationTimeUpdateThreshold { 29 * 24 * 60 * 60 };
 
 // This should be greater than tileRevalidationTimeout in TileController.
 static const Seconds nonVisibleProcessCleanupDelay { 10_s };
@@ -185,7 +187,6 @@ WebProcess::WebProcess()
     // so that ports have a chance to customize, and ifdefs in this file are
     // limited.
     addSupplement<WebGeolocationManager>();
-    addSupplement<WebCookieManager>();
 
 #if ENABLE(NOTIFICATIONS)
     addSupplement<WebNotificationManager>();
@@ -199,13 +200,17 @@ WebProcess::WebProcess()
     addSupplement<UserMediaCaptureManager>();
 #endif
 
-    m_plugInAutoStartOriginHashes.add(PAL::SessionID::defaultSessionID(), HashMap<unsigned, double>());
+    m_plugInAutoStartOriginHashes.add(PAL::SessionID::defaultSessionID(), HashMap<unsigned, WallTime>());
 
     ResourceLoadObserver::shared().setNotificationCallback([this] (Vector<ResourceLoadStatistics>&& statistics) {
         ASSERT(!statistics.isEmpty());
         parentProcessConnection()->send(Messages::WebResourceLoadStatisticsStore::ResourceLoadStatisticsUpdated(WTFMove(statistics)), 0);
     });
 
+    ResourceLoadObserver::shared().setRequestStorageAccessUnderOpenerCallback([this] (const String& domainInNeedOfStorageAccess, uint64_t openerPageID, const String& openerDomain, bool isTriggeredByUserGesture) {
+        parentProcessConnection()->send(Messages::WebResourceLoadStatisticsStore::RequestStorageAccessUnderOpener(domainInNeedOfStorageAccess, openerPageID, openerDomain, isTriggeredByUserGesture), 0);
+    });
+    
     Gigacage::disableDisablingPrimitiveGigacageIfShouldBeEnabled();
 }
 
@@ -215,13 +220,10 @@ WebProcess::~WebProcess()
 
 void WebProcess::initializeProcess(const ChildProcessInitializationParameters& parameters)
 {
+    WTF::setProcessPrivileges({ });
+
     MessagePortChannelProvider::setSharedProvider(WebMessagePortChannelProvider::singleton());
     
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
-    // This call is needed when the WebProcess is not running the NSApplication event loop.
-    // Otherwise, calling enableSandboxStyleFileQuarantine() will fail.
-    launchServicesCheckIn();
-#endif
     platformInitializeProcess(parameters);
 }
 
@@ -261,6 +263,8 @@ void WebProcess::initializeConnection(IPC::Connection* connection)
 
 void WebProcess::initializeWebProcess(WebProcessCreationParameters&& parameters)
 {    
+    TraceScope traceScope(InitializeWebProcessStart, InitializeWebProcessEnd);
+
     ASSERT(m_pageMap.isEmpty());
 
     WebCore::setPresentingApplicationPID(parameters.presentingApplicationPID);
@@ -367,15 +371,16 @@ void WebProcess::initializeWebProcess(WebProcessCreationParameters&& parameters)
     for (auto& scheme : parameters.urlSchemesServiceWorkersCanHandle)
         registerURLSchemeServiceWorkersCanHandle(scheme);
 
+    for (auto& scheme : parameters.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest)
+        registerURLSchemeAsCanDisplayOnlyIfCanRequest(scheme);
+
     setDefaultRequestTimeoutInterval(parameters.defaultRequestTimeoutInterval);
 
     setResourceLoadStatisticsEnabled(parameters.resourceLoadStatisticsEnabled);
 
-    if (parameters.shouldAlwaysUseComplexTextCodePath)
-        setAlwaysUsesComplexTextCodePath(true);
+    setAlwaysUsesComplexTextCodePath(parameters.shouldAlwaysUseComplexTextCodePath);
 
-    if (parameters.shouldUseFontSmoothing)
-        setShouldUseFontSmoothing(true);
+    setShouldUseFontSmoothing(parameters.shouldUseFontSmoothing);
 
     if (parameters.shouldUseTestingNetworkSession)
         NetworkStorageSession::switchToNewTestingSession();
@@ -473,6 +478,11 @@ void WebProcess::registerURLSchemeAsAlwaysRevalidated(const String& urlScheme) c
 void WebProcess::registerURLSchemeAsCachePartitioned(const String& urlScheme) const
 {
     SchemeRegistry::registerURLSchemeAsCachePartitioned(urlScheme);
+}
+
+void WebProcess::registerURLSchemeAsCanDisplayOnlyIfCanRequest(const String& urlScheme) const
+{
+    SchemeRegistry::registerAsCanDisplayOnlyIfCanRequest(urlScheme);
 }
 
 void WebProcess::setDefaultRequestTimeoutInterval(double timeoutInterval)
@@ -660,27 +670,6 @@ void WebProcess::didReceiveMessage(IPC::Connection& connection, IPC::Decoder& de
     LOG_ERROR("Unhandled web process message '%s:%s'", decoder.messageReceiverName().toString().data(), decoder.messageName().toString().data());
 }
 
-void WebProcess::didClose(IPC::Connection&)
-{
-#ifndef NDEBUG
-    for (auto& page : copyToVector(m_pageMap.values()))
-        page->close();
-
-    GCController::singleton().garbageCollectSoon();
-    FontCache::singleton().invalidate();
-    MemoryCache::singleton().setDisabled(true);
-#endif
-
-#if ENABLE(VIDEO)
-    // FIXME(146657): This explicit media stop command should not be necessary
-    if (auto* platformMediaSessionManager = PlatformMediaSessionManager::sharedManagerIfExists())
-        platformMediaSessionManager->stopAllMediaPlaybackForProcess();
-#endif
-
-    // The UI process closed this connection, shut down.
-    stopRunLoop();
-}
-
 WebFrame* WebProcess::webFrame(uint64_t frameID) const
 {
     return m_frameMap.get(frameID);
@@ -768,7 +757,7 @@ void WebProcess::clearResourceCaches(ResourceCachesToClear resourceCachesToClear
     MemoryCache::singleton().evictResources();
 
     // Empty the cross-origin preflight cache.
-    CrossOriginPreflightResultCache::singleton().empty();
+    CrossOriginPreflightResultCache::singleton().clear();
 }
 
 static inline void addCaseFoldedCharacters(StringHasher& hasher, const String& string)
@@ -797,8 +786,8 @@ static unsigned hashForPlugInOrigin(const String& pageOrigin, const String& plug
 
 bool WebProcess::isPlugInAutoStartOriginHash(unsigned plugInOriginHash, PAL::SessionID sessionID)
 {
-    HashMap<PAL::SessionID, HashMap<unsigned, double>>::const_iterator sessionIterator = m_plugInAutoStartOriginHashes.find(sessionID);
-    HashMap<unsigned, double>::const_iterator it;
+    HashMap<PAL::SessionID, HashMap<unsigned, WallTime>>::const_iterator sessionIterator = m_plugInAutoStartOriginHashes.find(sessionID);
+    HashMap<unsigned, WallTime>::const_iterator it;
     bool contains = false;
 
     if (sessionIterator != m_plugInAutoStartOriginHashes.end()) {
@@ -811,7 +800,7 @@ bool WebProcess::isPlugInAutoStartOriginHash(unsigned plugInOriginHash, PAL::Ses
         if (it == sessionIterator->value.end())
             return false;
     }
-    return currentTime() < it->value;
+    return WallTime::now() < it->value;
 }
 
 bool WebProcess::shouldPlugInAutoStartFromOrigin(WebPage& webPage, const String& pageOrigin, const String& pluginOrigin, const String& mimeType)
@@ -848,28 +837,28 @@ void WebProcess::plugInDidStartFromOrigin(const String& pageOrigin, const String
     // comes back from the parent process. Temporarily add this hash to the list with a thirty
     // second timeout. That way, even if the parent decides not to add it, we'll only be
     // incorrect for a little while.
-    m_plugInAutoStartOriginHashes.add(sessionID, HashMap<unsigned, double>()).iterator->value.set(plugInOriginHash, currentTime() + 30 * 1000);
+    m_plugInAutoStartOriginHashes.add(sessionID, HashMap<unsigned, WallTime>()).iterator->value.set(plugInOriginHash, WallTime::now() + 30_s * 1000);
 
     parentProcessConnection()->send(Messages::WebProcessPool::AddPlugInAutoStartOriginHash(pageOrigin, plugInOriginHash, sessionID), 0);
 }
 
-void WebProcess::didAddPlugInAutoStartOriginHash(unsigned plugInOriginHash, double expirationTime, PAL::SessionID sessionID)
+void WebProcess::didAddPlugInAutoStartOriginHash(unsigned plugInOriginHash, WallTime expirationTime, PAL::SessionID sessionID)
 {
     // When called, some web process (which also might be this one) added the origin for auto-starting,
     // or received user interaction.
     // Set the bit to avoid having redundantly call into the UI process upon user interaction.
-    m_plugInAutoStartOriginHashes.add(sessionID, HashMap<unsigned, double>()).iterator->value.set(plugInOriginHash, expirationTime);
+    m_plugInAutoStartOriginHashes.add(sessionID, HashMap<unsigned, WallTime>()).iterator->value.set(plugInOriginHash, expirationTime);
 }
 
-void WebProcess::resetPlugInAutoStartOriginDefaultHashes(const HashMap<unsigned, double>& hashes)
+void WebProcess::resetPlugInAutoStartOriginDefaultHashes(const HashMap<unsigned, WallTime>& hashes)
 {
     m_plugInAutoStartOriginHashes.clear();
-    m_plugInAutoStartOriginHashes.add(PAL::SessionID::defaultSessionID(), HashMap<unsigned, double>()).iterator->value.swap(const_cast<HashMap<unsigned, double>&>(hashes));
+    m_plugInAutoStartOriginHashes.add(PAL::SessionID::defaultSessionID(), HashMap<unsigned, WallTime>()).iterator->value.swap(const_cast<HashMap<unsigned, WallTime>&>(hashes));
 }
 
-void WebProcess::resetPlugInAutoStartOriginHashes(const HashMap<PAL::SessionID, HashMap<unsigned, double>>& hashes)
+void WebProcess::resetPlugInAutoStartOriginHashes(const HashMap<PAL::SessionID, HashMap<unsigned, WallTime>>& hashes)
 {
-    m_plugInAutoStartOriginHashes.swap(const_cast<HashMap<PAL::SessionID, HashMap<unsigned, double>>&>(hashes));
+    m_plugInAutoStartOriginHashes.swap(const_cast<HashMap<PAL::SessionID, HashMap<unsigned, WallTime>>&>(hashes));
 }
 
 void WebProcess::plugInDidReceiveUserInteraction(const String& pageOrigin, const String& pluginOrigin, const String& mimeType, PAL::SessionID sessionID)
@@ -881,8 +870,8 @@ void WebProcess::plugInDidReceiveUserInteraction(const String& pageOrigin, const
     if (!plugInOriginHash)
         return;
 
-    HashMap<PAL::SessionID, HashMap<unsigned, double>>::const_iterator sessionIterator = m_plugInAutoStartOriginHashes.find(sessionID);
-    HashMap<unsigned, double>::const_iterator it;
+    HashMap<PAL::SessionID, HashMap<unsigned, WallTime>>::const_iterator sessionIterator = m_plugInAutoStartOriginHashes.find(sessionID);
+    HashMap<unsigned, WallTime>::const_iterator it;
     bool contains = false;
     if (sessionIterator != m_plugInAutoStartOriginHashes.end()) {
         it = sessionIterator->value.find(plugInOriginHash);
@@ -895,7 +884,7 @@ void WebProcess::plugInDidReceiveUserInteraction(const String& pageOrigin, const
             return;
     }
 
-    if (it->value - currentTime() > plugInAutoStartExpirationTimeUpdateThreshold)
+    if (it->value - WallTime::now() > plugInAutoStartExpirationTimeUpdateThreshold)
         return;
 
     parentProcessConnection()->send(Messages::WebProcessPool::PlugInDidReceiveUserInteraction(plugInOriginHash, sessionID), 0);
@@ -1059,9 +1048,7 @@ void WebProcess::didCheckRemotePortForActivity(uint64_t callbackIdentifier, bool
 
 void WebProcess::messagesAvailableForPort(const MessagePortIdentifier& identifier)
 {
-    auto port = MessagePort::existingMessagePortForIdentifier(identifier);
-    if (port)
-        port->messageAvailable();
+    MessagePort::notifyMessageAvailable(identifier);
 }
 
 #if ENABLE(GAMEPAD)
@@ -1121,17 +1108,29 @@ NetworkProcessConnection& WebProcess::ensureNetworkProcessConnection()
     if (!m_networkProcessConnection) {
         IPC::Attachment encodedConnectionIdentifier;
 
-        if (!parentProcessConnection()->sendSync(Messages::WebProcessProxy::GetNetworkProcessConnection(), Messages::WebProcessProxy::GetNetworkProcessConnection::Reply(encodedConnectionIdentifier), 0, Seconds::infinity(), IPC::SendSyncOption::DoNotProcessIncomingMessagesWhenWaitingForSyncReply))
+        if (!parentProcessConnection()->sendSync(Messages::WebProcessProxy::GetNetworkProcessConnection(), Messages::WebProcessProxy::GetNetworkProcessConnection::Reply(encodedConnectionIdentifier), 0, Seconds::infinity(), IPC::SendSyncOption::DoNotProcessIncomingMessagesWhenWaitingForSyncReply)) {
+#if PLATFORM(GTK) || PLATFORM(WPE)
+            // GTK+ and WPE ports don't exit on send sync message failure.
+            // In this particular case, the network process can be terminated by the UI process while the
+            // Web process is still initializing, so we always want to exit instead of crashing. This can
+            // happen when the WebView is created and then destroyed quickly.
+            // See https://bugs.webkit.org/show_bug.cgi?id=183348.
+            exit(0);
+#else
             CRASH();
+#endif
+        }
 
 #if USE(UNIX_DOMAIN_SOCKETS)
         IPC::Connection::Identifier connectionIdentifier = encodedConnectionIdentifier.releaseFileDescriptor();
 #elif OS(DARWIN)
         IPC::Connection::Identifier connectionIdentifier(encodedConnectionIdentifier.port());
+#elif OS(WINDOWS)
+        IPC::Connection::Identifier connectionIdentifier(encodedConnectionIdentifier.handle());
 #else
         ASSERT_NOT_REACHED();
 #endif
-        if (IPC::Connection::identifierIsNull(connectionIdentifier))
+        if (!IPC::Connection::identifierIsValid(connectionIdentifier))
             CRASH();
         m_networkProcessConnection = NetworkProcessConnection::create(connectionIdentifier);
     }
@@ -1193,8 +1192,17 @@ WebToStorageProcessConnection& WebProcess::ensureWebToStorageProcessConnection(P
     if (!m_webToStorageProcessConnection) {
         IPC::Attachment encodedConnectionIdentifier;
 
-        if (!parentProcessConnection()->sendSync(Messages::WebProcessProxy::GetStorageProcessConnection(initialSessionID), Messages::WebProcessProxy::GetStorageProcessConnection::Reply(encodedConnectionIdentifier), 0))
+        if (!parentProcessConnection()->sendSync(Messages::WebProcessProxy::GetStorageProcessConnection(initialSessionID), Messages::WebProcessProxy::GetStorageProcessConnection::Reply(encodedConnectionIdentifier), 0)) {
+#if PLATFORM(GTK) || PLATFORM(WPE)
+            // GTK+ and WPE ports don't exit on send sync message failure.
+            // In this particular case, the storage process can be terminated by the UI process while the
+            // connection is being done, so we always want to exit instead of crashing.
+            // See https://bugs.webkit.org/show_bug.cgi?id=183348.
+            exit(0);
+#else
             CRASH();
+#endif
+        }
 
 #if USE(UNIX_DOMAIN_SOCKETS)
         IPC::Connection::Identifier connectionIdentifier = encodedConnectionIdentifier.releaseFileDescriptor();
@@ -1205,8 +1213,9 @@ WebToStorageProcessConnection& WebProcess::ensureWebToStorageProcessConnection(P
 #else
         ASSERT_NOT_REACHED();
 #endif
-        if (IPC::Connection::identifierIsNull(connectionIdentifier))
+        if (!IPC::Connection::identifierIsValid(connectionIdentifier))
             CRASH();
+
         m_webToStorageProcessConnection = WebToStorageProcessConnection::create(connectionIdentifier);
 
     }
@@ -1263,7 +1272,7 @@ void WebProcess::fetchWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDat
 {
     if (websiteDataTypes.contains(WebsiteDataType::MemoryCache)) {
         for (auto& origin : MemoryCache::singleton().originsWithCache(sessionID))
-            websiteData.entries.append(WebsiteData::Entry { SecurityOriginData::fromSecurityOrigin(*origin), WebsiteDataType::MemoryCache, 0 });
+            websiteData.entries.append(WebsiteData::Entry { origin->data(), WebsiteDataType::MemoryCache, 0 });
     }
 
     if (websiteDataTypes.contains(WebsiteDataType::Credentials)) {
@@ -1280,7 +1289,7 @@ void WebProcess::deleteWebsiteData(PAL::SessionID sessionID, OptionSet<WebsiteDa
         PageCache::singleton().pruneToSizeNow(0, PruningReason::None);
         MemoryCache::singleton().evictResources(sessionID);
 
-        CrossOriginPreflightResultCache::singleton().empty();
+        CrossOriginPreflightResultCache::singleton().clear();
     }
 
     if (websiteDataTypes.contains(WebsiteDataType::Credentials)) {
@@ -1647,14 +1656,12 @@ bool WebProcess::hasVisibleWebPage() const
     return false;
 }
 
-#if USE(LIBWEBRTC)
 LibWebRTCNetwork& WebProcess::libWebRTCNetwork()
 {
     if (!m_libWebRTCNetwork)
         m_libWebRTCNetwork = std::make_unique<LibWebRTCNetwork>();
     return *m_libWebRTCNetwork;
 }
-#endif
 
 #if ENABLE(SERVICE_WORKER)
 void WebProcess::establishWorkerContextConnectionToStorageProcess(uint64_t pageGroupID, uint64_t pageID, const WebPreferencesStore& store, PAL::SessionID initialSessionID)
@@ -1666,11 +1673,20 @@ void WebProcess::establishWorkerContextConnectionToStorageProcess(uint64_t pageG
     SWContextManager::singleton().setConnection(std::make_unique<WebSWContextManagerConnection>(ipcConnection, pageGroupID, pageID, store));
 }
 
-void WebProcess::registerServiceWorkerClients(PAL::SessionID sessionID)
+void WebProcess::registerServiceWorkerClients()
 {
-    ServiceWorkerProvider::singleton().registerServiceWorkerClients(sessionID);
+    // We do not want to register service worker dummy documents.
+    ASSERT(!SWContextManager::singleton().connection());
+    ServiceWorkerProvider::singleton().registerServiceWorkerClients();
 }
 
+#endif
+
+#if PLATFORM(MAC)
+void WebProcess::setScreenProperties(uint32_t primaryScreenID, const HashMap<uint32_t, WebCore::ScreenProperties>& properties)
+{
+    WebCore::setScreenProperties(primaryScreenID, properties);
+}
 #endif
 
 } // namespace WebKit

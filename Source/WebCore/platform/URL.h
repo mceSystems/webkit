@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "PlatformExportMacros.h"
 #include <wtf/Forward.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/text/WTFString.h>
@@ -141,6 +140,8 @@ public:
     WEBCORE_EXPORT bool isLocalFile() const;
     WEBCORE_EXPORT bool isBlankURL() const;
     bool cannotBeABaseURL() const { return m_cannotBeABaseURL; }
+
+    WEBCORE_EXPORT bool isMatchingDomain(const String&) const;
 
     WEBCORE_EXPORT bool setProtocol(const String&);
     void setHost(const String&);
@@ -308,6 +309,7 @@ bool operator!=(const URL&, const String&);
 bool operator!=(const String&, const URL&);
 
 WEBCORE_EXPORT bool equalIgnoringFragmentIdentifier(const URL&, const URL&);
+WEBCORE_EXPORT bool equalIgnoringQueryAndFragment(const URL&, const URL&);
 WEBCORE_EXPORT bool protocolHostAndPortAreEqual(const URL&, const URL&);
 WEBCORE_EXPORT bool hostsAreEqual(const URL&, const URL&);
 

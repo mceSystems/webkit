@@ -62,7 +62,6 @@
 #include "AccessibilityTableRow.h"
 #include "AccessibilityTree.h"
 #include "AccessibilityTreeItem.h"
-#include "AccessibleNode.h"
 #include "Document.h"
 #include "Editing.h"
 #include "Editor.h"
@@ -236,7 +235,7 @@ void AXObjectCache::findModalNodes()
         // Must have dialog or alertdialog role
         if (!nodeHasRole(element, "dialog") && !nodeHasRole(element, "alertdialog"))
             continue;
-        if (!AccessibleNode::effectiveBoolValueForElement(*element, AXPropertyName::Modal).value())
+        if (!equalLettersIgnoringASCIICase(element->attributeWithoutSynchronization(aria_modalAttr), "true"))
             continue;
         
         m_modalNodesSet.add(element);
@@ -427,7 +426,7 @@ bool nodeHasRole(Node* node, const String& role)
     if (!node || !is<Element>(node))
         return false;
 
-    const auto& roleValue = AccessibleNode::effectiveStringValueForElement(downcast<Element>(*node), AXPropertyName::Role);
+    auto& roleValue = downcast<Element>(*node).attributeWithoutSynchronization(roleAttr);
     if (role.isNull())
         return roleValue.isEmpty();
     if (roleValue.isEmpty())
@@ -833,9 +832,9 @@ void AXObjectCache::handleLiveRegionCreated(Node* node)
         return;
     
     Element* element = downcast<Element>(node);
-    String liveRegionStatus = AccessibleNode::effectiveStringValueForElement(*element, AXPropertyName::Live);
+    String liveRegionStatus = element->attributeWithoutSynchronization(aria_liveAttr);
     if (liveRegionStatus.isEmpty()) {
-        const AtomicString& ariaRole = AccessibleNode::effectiveStringValueForElement(*element, AXPropertyName::Role);
+        const AtomicString& ariaRole = element->attributeWithoutSynchronization(roleAttr);
         if (!ariaRole.isEmpty())
             liveRegionStatus = AccessibilityObject::defaultLiveRegionStatusForRole(AccessibilityObject::ariaRoleToWebCoreRole(ariaRole));
     }
@@ -1011,10 +1010,18 @@ void AXObjectCache::handleMenuItemSelected(Node* node)
     if (!nodeHasRole(node, "menuitem") && !nodeHasRole(node, "menuitemradio") && !nodeHasRole(node, "menuitemcheckbox"))
         return;
     
-    if (!downcast<Element>(*node).focused() && !AccessibleNode::effectiveBoolValueForElement(downcast<Element>(*node), AXPropertyName::Selected).value())
+    if (!downcast<Element>(*node).focused() && !equalLettersIgnoringASCIICase(downcast<Element>(*node).attributeWithoutSynchronization(aria_selectedAttr), "true"))
         return;
     
     postNotification(getOrCreate(node), &document(), AXMenuListItemSelected);
+}
+    
+void AXObjectCache::deferFocusedUIElementChangeIfNeeded(Node* oldNode, Node* newNode)
+{
+    if (nodeAndRendererAreValid(newNode) && rendererNeedsDeferredUpdate(*newNode->renderer()))
+        m_deferredFocusedNodeChange.append({ oldNode, newNode });
+    else
+        handleFocusedUIElementChanged(oldNode, newNode);
 }
     
 void AXObjectCache::handleFocusedUIElementChanged(Node* oldNode, Node* newNode)
@@ -1524,7 +1531,7 @@ void AXObjectCache::handleModalChange(Node* node)
         return;
     
     stopCachingComputedObjectAttributes();
-    if (AccessibleNode::effectiveBoolValueForElement(downcast<Element>(*node), AXPropertyName::Modal).value()) {
+    if (equalLettersIgnoringASCIICase(downcast<Element>(*node).attributeWithoutSynchronization(aria_modalAttr), "true")) {
         // Add the newly modified node to the modal nodes set, and set it to be the current valid aria modal node.
         // We will recompute the current valid aria modal node in modalNode() when this node is not visible.
         m_modalNodesSet.add(node);
@@ -2777,25 +2784,33 @@ const Element* AXObjectCache::rootAXEditableElement(const Node* node)
     return result;
 }
 
+static void conditionallyAddNodeToFilterList(Node* node, const Document& document, HashSet<Node*>& nodesToRemove)
+{
+    if (node && (!node->isConnected() || &node->document() == &document))
+        nodesToRemove.add(node);
+}
+    
+template<typename T>
+static void filterVectorPairForRemoval(const Vector<std::pair<T, T>>& list, const Document& document, HashSet<Node*>& nodesToRemove)
+{
+    for (auto& entry : list) {
+        conditionallyAddNodeToFilterList(entry.first, document, nodesToRemove);
+        conditionallyAddNodeToFilterList(entry.second, document, nodesToRemove);
+    }
+}
+    
 template<typename T, typename U>
 static void filterMapForRemoval(const HashMap<T, U>& list, const Document& document, HashSet<Node*>& nodesToRemove)
 {
-    for (auto& entry : list) {
-        auto* node = entry.key;
-        if (node->isConnected() && &node->document() != &document)
-            continue;
-        nodesToRemove.add(node);
-    }
+    for (auto& entry : list)
+        conditionallyAddNodeToFilterList(entry.key, document, nodesToRemove);
 }
 
 template<typename T>
 static void filterListForRemoval(const ListHashSet<T>& list, const Document& document, HashSet<Node*>& nodesToRemove)
 {
-    for (auto* node : list) {
-        if (node->isConnected() && &node->document() != &document)
-            continue;
-        nodesToRemove.add(node);
-    }
+    for (auto* node : list)
+        conditionallyAddNodeToFilterList(node, document, nodesToRemove);
 }
 
 void AXObjectCache::prepareForDocumentDestruction(const Document& document)
@@ -2808,6 +2823,7 @@ void AXObjectCache::prepareForDocumentDestruction(const Document& document)
     filterListForRemoval(m_deferredSelectedChildredChangedList, document, nodesToRemove);
     filterMapForRemoval(m_deferredTextFormControlValue, document, nodesToRemove);
     filterMapForRemoval(m_deferredAttributeChange, document, nodesToRemove);
+    filterVectorPairForRemoval(m_deferredFocusedNodeChange, document, nodesToRemove);
 
     for (auto* node : nodesToRemove)
         remove(*node);
@@ -2851,6 +2867,10 @@ void AXObjectCache::performDeferredCacheUpdate()
     for (auto& deferredAttributeChangeContext : m_deferredAttributeChange)
         handleAttributeChange(deferredAttributeChangeContext.value, deferredAttributeChangeContext.key);
     m_deferredAttributeChange.clear();
+    
+    for (auto& deferredFocusedChangeContext : m_deferredFocusedNodeChange)
+        handleFocusedUIElementChanged(deferredFocusedChangeContext.first, deferredFocusedChangeContext.second);
+    m_deferredFocusedNodeChange.clear();
 }
     
 void AXObjectCache::deferRecomputeIsIgnoredIfNeeded(Element* element)
@@ -2916,28 +2936,26 @@ bool isNodeAriaVisible(Node* node)
     //  3) if aria-hidden=false, and the object is NOT rendered, then it must have
     //     aria-hidden=false on each parent until it gets to a rendered object
     //  3b) a text node inherits a parents aria-hidden value
-    bool requiresAXHiddenFalse = !node->renderer();
-    bool axHiddenFalsePresent = false;
+    bool requiresAriaHiddenFalse = !node->renderer();
+    bool ariaHiddenFalsePresent = false;
     for (Node* testNode = node; testNode; testNode = testNode->parentNode()) {
         if (is<Element>(*testNode)) {
-            auto hiddenValue = AccessibleNode::effectiveBoolValueForElement(downcast<Element>(*testNode), AXPropertyName::Hidden);
-            bool axHiddenFalse = false;
-            if (hiddenValue) {
-                if (hiddenValue.value())
-                    return false;
-                axHiddenFalse = true;
-            }
-            if (!testNode->renderer() && !axHiddenFalse)
+            const AtomicString& ariaHiddenValue = downcast<Element>(*testNode).attributeWithoutSynchronization(aria_hiddenAttr);
+            if (equalLettersIgnoringASCIICase(ariaHiddenValue, "true"))
                 return false;
-            if (!axHiddenFalsePresent && axHiddenFalse)
-                axHiddenFalsePresent = true;
+            
+            bool ariaHiddenFalse = equalLettersIgnoringASCIICase(ariaHiddenValue, "false");
+            if (!testNode->renderer() && !ariaHiddenFalse)
+                return false;
+            if (!ariaHiddenFalsePresent && ariaHiddenFalse)
+                ariaHiddenFalsePresent = true;
             // We should break early when it gets to a rendered object.
             if (testNode->renderer())
                 break;
         }
     }
     
-    return !requiresAXHiddenFalse || axHiddenFalsePresent;
+    return !requiresAriaHiddenFalse || ariaHiddenFalsePresent;
 }
 
 AccessibilityObject* AXObjectCache::rootWebArea()

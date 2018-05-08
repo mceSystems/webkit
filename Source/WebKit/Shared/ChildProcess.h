@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -91,10 +91,6 @@ protected:
     virtual void initializeSandbox(const ChildProcessInitializationParameters&, SandboxInitializationParameters&);
     virtual void initializeConnection(IPC::Connection*);
 
-#if PLATFORM(MAC)
-    static void setSharedHTTPCookieStorage(const Vector<uint8_t>& identifier);
-#endif
-
     virtual bool shouldTerminate() = 0;
     virtual void terminate();
 
@@ -102,6 +98,10 @@ protected:
 
 #if USE(APPKIT)
     static void stopNSAppRunLoop();
+#endif
+    
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+    static void stopNSRunLoop();
 #endif
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
@@ -115,6 +115,7 @@ private:
 
     // IPC::Connection::Client.
     void didReceiveInvalidMessage(IPC::Connection&, IPC::StringReference messageReceiverName, IPC::StringReference messageName) final;
+    void didClose(IPC::Connection&) final;
 
     void shutDown();
 

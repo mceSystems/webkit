@@ -41,9 +41,8 @@
 #include <WebCore/PlatformContextCairo.h>
 #include <cairo.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static RefPtr<ShareableBitmap> convertCairoSurfaceToShareableBitmap(cairo_surface_t* surface)
 {
@@ -56,7 +55,7 @@ static RefPtr<ShareableBitmap> convertCairoSurfaceToShareableBitmap(cairo_surfac
 
     ASSERT(graphicsContext->hasPlatformContext());
     auto& state = graphicsContext->state();
-    Cairo::drawSurface(*graphicsContext->platformContext(), surface, IntRect(IntPoint(), imageSize), IntRect(IntPoint(), imageSize), state.imageInterpolationQuality, state.alpha, Cairo::ShadowState(state), *graphicsContext);
+    Cairo::drawSurface(*graphicsContext->platformContext(), surface, IntRect(IntPoint(), imageSize), IntRect(IntPoint(), imageSize), state.imageInterpolationQuality, state.alpha, Cairo::ShadowState(state));
     return bitmap;
 }
 

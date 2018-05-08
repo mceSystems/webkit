@@ -89,7 +89,7 @@
 #define WTF_CPU_KNOWN 1
 #endif
 
-/* CPU(PPC64) - PowerPC 64-bit Little Endian */
+/* CPU(PPC64LE) - PowerPC 64-bit Little Endian */
 #if (   defined(__ppc64__)     \
     || defined(__PPC64__)      \
     || defined(__ppc64le__)    \
@@ -520,10 +520,8 @@
 /* Graphics engines */
 
 /* USE(CG) and PLATFORM(CI) */
-#if PLATFORM(COCOA) || (PLATFORM(WIN) && !USE(WINGDI) && !PLATFORM(WIN_CAIRO) && !USE(DIRECT2D))
+#if PLATFORM(COCOA)
 #define USE_CG 1
-#endif
-#if PLATFORM(COCOA) || (PLATFORM(WIN) && USE(CG) && !USE(DIRECT2D))
 #define USE_CA 1
 #endif
 
@@ -562,11 +560,11 @@
 #define HAVE_DTRACE 0
 #define USE_FILE_LOCK 1
 
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
-#define ENABLE_DATA_DETECTION 1
-#define HAVE_AVKIT 1
-#define HAVE_PARENTAL_CONTROLS 1
-#endif
+/* Cocoa defines a series of platform macros for debugging. */
+/* Some of them are really annoying because they use common names (e.g. check()). */
+/* Disable those macros so that we are not limited in how we name methods and functions. */
+#undef __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES
+#define __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES 0
 
 #endif
 
@@ -581,13 +579,6 @@
 #define HAVE_NETWORK_EXTENSION 1
 #define USE_PLUGIN_HOST_PROCESS 1
 #endif
-
-/* OS X defines a series of platform macros for debugging. */
-/* Some of them are really annoying because they use common names (e.g. check()). */
-/* Disable those macros so that we are not limited in how we name methods and functions. */
-#undef __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES
-#define __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES 0
-
 #endif /* PLATFORM(MAC) */
 
 #if PLATFORM(IOS)
@@ -596,14 +587,6 @@
 #define HAVE_READLINE 1
 #define USE_UIKIT_EDITING 1
 #define USE_WEB_THREAD 1
-
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
-#define USE_QUICK_LOOK 1
-#endif
-
-#if TARGET_OS_IOS
-#define HAVE_APP_LINKS 1
-#endif
 
 #if CPU(ARM64)
 #define ENABLE_JIT_CONSTANT_BLINDING 0
@@ -615,10 +598,6 @@
 #endif
 
 #endif /* PLATFORM(IOS) */
-
-#if PLATFORM(WIN) && !USE(WINGDI) && !PLATFORM(WIN_CAIRO)
-#define USE_CFURLCONNECTION 1
-#endif
 
 #if !defined(HAVE_ACCESSIBILITY)
 #if PLATFORM(COCOA) || PLATFORM(WIN) || PLATFORM(GTK) || PLATFORM(WPE)
@@ -701,12 +680,12 @@
 
 /* FIXME: move out all ENABLE() defines from here to FeatureDefines.h */
 
-/* Include feature macros */
-#include <wtf/FeatureDefines.h>
-
 #if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/AdditionalFeatureDefines.h>)
 #include <WebKitAdditions/AdditionalFeatureDefines.h>
 #endif
+
+/* Include feature macros */
+#include <wtf/FeatureDefines.h>
 
 #if OS(WINDOWS)
 #define USE_SYSTEM_MALLOC 1
@@ -743,9 +722,14 @@
 /* The JIT is enabled by default on all x86, x86-64, ARM & MIPS platforms except ARMv7k. */
 #if !defined(ENABLE_JIT) \
     && (CPU(X86) || CPU(X86_64) || CPU(ARM) || (CPU(ARM64) && !defined(__ILP32__)) || CPU(MIPS)) \
-    && !CPU(APPLE_ARMV7K) \
-    && !CPU(ARM64E)
+    && !CPU(APPLE_ARMV7K)
 #define ENABLE_JIT 1
+#endif
+
+/* Cocoa ports should not use the jit on 32-bit ARM CPUs. */
+#if PLATFORM(COCOA) && (CPU(ARM) || CPU(APPLE_ARMV7K))
+#undef ENABLE_JIT
+#define ENABLE_JIT 0
 #endif
 
 /* The FTL *does not* work on 32-bit platforms. Disable it even if someone asked us to enable it. */
@@ -793,8 +777,8 @@
 #if (CPU(X86) || CPU(X86_64)) && (OS(DARWIN) || OS(LINUX) || OS(FREEBSD) || OS(HURD) || OS(WINDOWS))
 #define ENABLE_DFG_JIT 1
 #endif
-/* Enable the DFG JIT on ARMv7.  Only tested on iOS and GTK+/WPE Linux. */
-#if (CPU(ARM_THUMB2) || CPU(ARM64)) && (PLATFORM(IOS) || PLATFORM(GTK) || PLATFORM(WPE))
+/* Enable the DFG JIT on ARMv7.  Only tested on iOS, Linux, and FreeBSD. */
+#if (CPU(ARM_THUMB2) || CPU(ARM64)) && (PLATFORM(IOS) || OS(LINUX) || OS(FREEBSD))
 #define ENABLE_DFG_JIT 1
 #endif
 /* Enable the DFG JIT on ARM. */
@@ -980,6 +964,13 @@
 #define ENABLE_YARR_JIT_DEBUG 0
 #endif
 
+#if ENABLE(YARR_JIT)
+#if CPU(ARM64) || (CPU(X86_64) && !OS(WINDOWS))
+/* Enable JIT'ing Regular Expressions that have nested parenthesis. */
+#define ENABLE_YARR_JIT_ALL_PARENS_EXPRESSIONS 1
+#endif
+#endif
+
 /* If either the JIT or the RegExp JIT is enabled, then the Assembler must be
    enabled as well: */
 #if ENABLE(JIT) || ENABLE(YARR_JIT)
@@ -1020,6 +1011,11 @@
 #define ENABLE_POISON 0
 #endif
 
+#if !defined(USE_POINTER_PROFILING) || USE(JSVALUE32_64) || !ENABLE(JIT)
+#undef USE_POINTER_PROFILING
+#define USE_POINTER_PROFILING 0
+#endif
+
 /* CSS Selector JIT Compiler */
 #if !defined(ENABLE_CSS_SELECTOR_JIT)
 #if (CPU(X86_64) || CPU(ARM64) || (CPU(ARM_THUMB2) && PLATFORM(IOS))) && ENABLE(JIT) && (OS(DARWIN) || PLATFORM(GTK) || PLATFORM(WPE))
@@ -1029,36 +1025,63 @@
 #endif
 #endif
 
+#if PLATFORM(IOS)
+#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV) && !ENABLE(MINIMAL_SIMULATOR)
+#define USE_QUICK_LOOK 1
+#define HAVE_APP_LINKS 1
+#endif
+#if !ENABLE(MINIMAL_SIMULATOR)
+#define HAVE_AUDIO_TOOLBOX_AUDIO_SESSION 1
+#define HAVE_CELESTIAL 1
+#define HAVE_CORE_ANIMATION_RENDER_SERVER 1
+#endif
+#endif
+
+#if PLATFORM(IOS) && USE(QUICK_LOOK)
+#define USE_SYSTEM_PREVIEW 1
+#endif
+
+#if PLATFORM(COCOA)
+
+#define USE_AVFOUNDATION 1
+#define USE_PROTECTION_SPACE_AUTH_CALLBACK 1
+
+#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV) && !ENABLE(MINIMAL_SIMULATOR)
+#define ENABLE_DATA_DETECTION 1
+#define HAVE_PARENTAL_CONTROLS 1
+#endif
+
+#if !PLATFORM(APPLETV)
+#define HAVE_AVKIT 1
+#endif
+
+#if ENABLE(WEBGL)
+#if PLATFORM(MAC)
+#define USE_OPENGL 1
+#define USE_OPENGL_ES 0
+#elif ENABLE(MINIMAL_SIMULATOR) && __has_include(<OpenGL/OpenGL.h>)
+#define USE_OPENGL 1
+#define USE_OPENGL_ES 0
+#else
+#define USE_OPENGL 0
+#define USE_OPENGL_ES 1
+#endif
+#endif
+
+#if HAVE(ACCESSIBILITY)
+#define USE_ACCESSIBILITY_CONTEXT_MENUS 1
+#endif
+
+#endif
+
 #if ENABLE(WEBGL) && PLATFORM(WIN)
 #define USE_OPENGL 1
-#define USE_OPENGL_ES_2 1
+#define USE_OPENGL_ES 1
 #define USE_EGL 1
-#endif
-
-#if ENABLE(VIDEO) && PLATFORM(WIN_CAIRO)
-#if ENABLE(GSTREAMER_WINCAIRO)
-#define USE_MEDIA_FOUNDATION 0
-#define USE_GLIB 1
-#define USE_GSTREAMER 1
-#else
-#define USE_MEDIA_FOUNDATION 1
-#endif
-#endif
-
-#if PLATFORM(WIN_CAIRO)
-#define USE_TEXTURE_MAPPER 1
 #endif
 
 #if USE(TEXTURE_MAPPER) && ENABLE(GRAPHICS_CONTEXT_3D) && !defined(USE_TEXTURE_MAPPER_GL)
 #define USE_TEXTURE_MAPPER_GL 1
-#endif
-
-#if PLATFORM(COCOA)
-#define USE_PROTECTION_SPACE_AUTH_CALLBACK 1
-#endif
-
-#if PLATFORM(COCOA) && HAVE(ACCESSIBILITY)
-#define USE_ACCESSIBILITY_CONTEXT_MENUS 1
 #endif
 
 #if CPU(ARM_THUMB2) || CPU(ARM64)
@@ -1097,10 +1120,6 @@
 #define ENABLE_BINDING_INTEGRITY 1
 #endif
 
-#if PLATFORM(COCOA)
-#define USE_AVFOUNDATION 1
-#endif
-
 #if !defined(ENABLE_TREE_DEBUGGING)
 #if !defined(NDEBUG)
 #define ENABLE_TREE_DEBUGGING 1
@@ -1111,8 +1130,13 @@
 
 #if PLATFORM(IOS) || PLATFORM(MAC)
 #define USE_COREMEDIA 1
-#define HAVE_AVFOUNDATION_VIDEO_OUTPUT 1
 #define USE_VIDEOTOOLBOX 1
+
+#if !ENABLE(MINIMAL_SIMULATOR)
+#define HAVE_AVFOUNDATION_VIDEO_OUTPUT 1
+#define HAVE_CORE_VIDEO 1
+#define HAVE_MEDIA_PLAYER 1
+#endif
 #endif
 
 #if PLATFORM(IOS) || PLATFORM(MAC) || (OS(WINDOWS) && USE(CG))
@@ -1133,6 +1157,7 @@
 #endif
 
 #if PLATFORM(MAC)
+#define HAVE_APPLE_GRAPHICS_CONTROL 1
 #define USE_COREAUDIO 1
 #endif
 
@@ -1188,7 +1213,11 @@
 #endif
 
 #if PLATFORM(COCOA) && !PLATFORM(IOS_SIMULATOR)
-#define USE_IOSURFACE 1
+#define HAVE_IOSURFACE 1
+#endif
+
+#if PLATFORM(IOS) && !PLATFORM(IOS_SIMULATOR) && !ENABLE(MINIMAL_SIMULATOR)
+#define HAVE_IOSURFACE_ACCELERATOR 1
 #endif
 
 #if PLATFORM(COCOA)
@@ -1234,8 +1263,7 @@
 #define USE_MEDIATOOLBOX 1
 #endif
 
-/* FIXME: Enable USE_OS_LOG when building with the public iOS 10 SDK once we fix <rdar://problem/27758343>. */
-#if PLATFORM(MAC) || (PLATFORM(IOS) && USE(APPLE_INTERNAL_SDK))
+#if PLATFORM(MAC) || PLATFORM(IOS)
 #define USE_OS_LOG 1
 #if USE(APPLE_INTERNAL_SDK)
 #define USE_OS_STATE 1
@@ -1296,12 +1324,20 @@
 #define HAVE_RSA_PSS 1
 #endif
 
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000)
+#define HAVE_URL_FORMATTING 1
+#endif
+
 #if !OS(WINDOWS)
 #define HAVE_STACK_BOUNDS_FOR_NEW_THREAD 1
 #endif
 
 #if (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300)
 #define HAVE_AVCONTENTKEYSESSION 1
+#endif
+
+#if (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400)
+#define ENABLE_ACCESSIBILITY_EVENTS 1
 #endif
 
 #endif /* WTF_Platform_h */

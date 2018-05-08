@@ -47,7 +47,6 @@
 #import <AVFoundation/AVAssetTrack.h>
 #import <AVFoundation/AVTime.h>
 #import <VideoToolbox/VTUtilities.h>
-#import <map>
 #import <pal/avfoundation/MediaTimeAVFoundation.h>
 #import <wtf/MainThread.h>
 #import <wtf/MediaTime.h>
@@ -204,7 +203,7 @@ SOFT_LINK_POINTER_OPTIONAL(AVFoundation, AVURLAssetUsesNoPersistentCacheKey, NSS
     if ([self canFulfillRequest:loadingRequest]) {
         [self fulfillRequest:loadingRequest];
         if (loadingRequest.finished)
-            return NO;
+            return YES;
     }
 
     [self enqueueRequest:loadingRequest];

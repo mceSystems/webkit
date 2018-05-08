@@ -20,19 +20,18 @@
 #include "config.h"
 #include "WebEditorClient.h"
 
-#include "PlatformKeyboardEvent.h"
 #include <WebCore/Document.h>
 #include <WebCore/Editor.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/Frame.h>
 #include <WebCore/KeyboardEvent.h>
 #include <WebCore/Pasteboard.h>
+#include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/markup.h>
 #include <wtf/glib/GRefPtr.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 bool WebEditorClient::executePendingEditorCommands(Frame* frame, const Vector<WTF::String>& pendingEditorCommands, bool allowTextInsertion)
 {

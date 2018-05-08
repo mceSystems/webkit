@@ -99,6 +99,11 @@ CSSAnimationTriggersEnabled:
   webcoreName: animationTriggersEnabled
   condition: ENABLE(CSS_ANIMATIONS_LEVEL_2)
 
+CSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled:
+  type: bool
+  defaultValue: false
+  webcoreBinding: RuntimeEnabledFeatures
+
 ForceFTPDirectoryListings:
   type: bool
   defaultValue: false
@@ -160,8 +165,12 @@ LinkPreconnect:
 
 FullScreenEnabled:
   type: bool
-  defaultValue: false
+  defaultValue: DEFAULT_ENABLE_FULLSCREEN_API
   condition: ENABLE(FULLSCREEN_API)
+  visibleCondition: PLATFORM(IOS)
+  humanReadableName: "Fullscreen API"
+  humanReadableDescription: "Fullscreen API"
+  category: experimental
 
 AsynchronousSpellCheckingEnabled:
   type: bool
@@ -183,9 +192,13 @@ AllowSettingAnyXHRHeaderFromFileURLs:
   type: bool
   defaultValue: false
 
+AllowCrossOriginSubresourcesToAskForCredentials:
+  type: bool
+  defaultValue: false
+
 AVFoundationEnabled:
   type: bool
-  defaultValue: true
+  defaultValue: DEFAULT_AVFOUNDATION_ENABLED
   getter: isAVFoundationEnabled
   webcoreBinding: DeprecatedGlobalSettings
   condition: USE(AVFOUNDATION)
@@ -625,6 +638,10 @@ VisualViewportEnabled:
   type: bool
   defaultValue: true
 
+LayoutViewportHeightExpansionFactor:
+  type: double
+  defaultValue: DEFAULT_VISUAL_VIEWPORT_HEIGHT_EXPANSION_FACTOR
+
 NeedsStorageAccessFromFileURLsQuirk:
   type: bool
   defaultValue: true
@@ -650,6 +667,9 @@ MenuItemElementEnabled:
 EncryptedMediaAPIEnabled:
   type: bool
   defaultValue: false
+  humanReadableName: "Modern Encrypted Media API"
+  humanReadableDescription: "Modern Encrypted Media API"
+  category: experimental
   webcoreBinding: RuntimeEnabledFeatures
   condition: ENABLE(ENCRYPTED_MEDIA)
 
@@ -676,14 +696,6 @@ InteractiveFormValidationEnabled:
 ShouldSuppressTextInputFromEditingDuringProvisionalNavigation:
   type: bool
   defaultValue: false
-
-CSSGridLayoutEnabled:
-  type: bool
-  defaultValue: true
-  humanReadableName: "CSS Grid"
-  humanReadableDescription: "CSS Grid Layout Module support"
-  binding: RuntimeEnabledFeatures
-  webcoreBinding: RuntimeEnabledFeatures
 
 GamepadsEnabled:
   type: bool
@@ -736,7 +748,7 @@ BeaconAPIEnabled:
 
 LegacyEncryptedMediaAPIEnabled:
   type: bool
-  defaultValue: DEFAULT_LEGACY_ENCRYPTED_MEDIA_API_ENABLED
+  defaultValue: true
   humanReadableName: "Enable Legacy EME API"
   humanReadableDescription: "Enable legacy EME API"
   webcoreBinding: RuntimeEnabledFeatures
@@ -772,7 +784,7 @@ DataTransferItemsEnabled:
 CustomPasteboardDataEnabled:
   type: bool
   defaultValue: defaultCustomPasteboardDataEnabled()
-  humanReadableName: "Custom pateboard data"
+  humanReadableName: "Custom pasteboard data"
   humanReadableDescription: "Enable custom clipboard types and better security model for clipboard API."
   webcoreBinding: RuntimeEnabledFeatures
 
@@ -945,7 +957,7 @@ InspectorWindowFrame:
 
 InactiveMediaCaptureSteamRepromptIntervalInMinutes:
   type: double
-  defaultValue: DEFAULT_INTERACTIVE_MNEDIA_CAPTURE_STREAM_REPROMPT_INTERVAL_IN_MINUTES
+  defaultValue: DEFAULT_INTERACTIVE_MEDIA_CAPTURE_STREAM_REPROMPT_INTERVAL_IN_MINUTES
   webcoreBinding: none
 
 LongRunningMediaCaptureStreamRepromptIntervalInHours:
@@ -1033,6 +1045,11 @@ VisibleDebugOverlayRegions:
   defaultValue: 0
   category: debug
 
+ShouldEnableTextAutosizingBoost:
+  type: bool
+  defaultValue: false
+  condition: ENABLE(TEXT_AUTOSIZING)
+
 ShouldAllowUserInstalledFonts:
   type: bool
   defaultValue: true
@@ -1066,11 +1083,18 @@ CacheAPIEnabled:
   category: experimental
   webcoreBinding: RuntimeEnabledFeatures
 
+ColorFilterEnabled:
+  type: bool
+  defaultValue: DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
+  humanReadableName: "Color Filter"
+  humanReadableDescription: "Enable CSS Color Filter property"
+  category: experimental
+
 ConstantPropertiesEnabled:
   type: bool
   defaultValue: DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
   humanReadableName: "Constant Properties"
-  humanReadableDescription: "Enable CSS constant() properties"
+  humanReadableDescription: "Enable CSS constant() values"
   category: experimental
 
 SpringTimingFunctionEnabled:
@@ -1102,6 +1126,15 @@ WebRTCLegacyAPIEnabled:
   humanReadableName: "Enable Legacy WebRTC API"
   humanReadableDescription: "Enable Legacy WebRTC API"
   webcoreBinding: RuntimeEnabledFeatures
+  condition: ENABLE(WEB_RTC)
+
+MDNSICECandidatesEnabled:
+  type: bool
+  defaultValue: false
+  humanReadableName: "Enable MDNS ICE candidates"
+  humanReadableDescription: "Enable MDNS ICE candidates"
+  webcoreBinding: RuntimeEnabledFeatures
+  category: experimental
   condition: ENABLE(WEB_RTC)
 
 IsSecureContextAttributeEnabled:
@@ -1154,7 +1187,7 @@ VisualViewportAPIEnabled:
 
 WebAnimationsEnabled:
   type: bool
-  defaultValue: false
+  defaultValue: true
   humanReadableName: "Web Animations"
   humanReadableDescription: "Web Animations prototype"
   category: experimental
@@ -1202,3 +1235,35 @@ ResourceLoadStatisticsDebugMode:
   humanReadableDescription: "Intelligent Tracking Prevention Debug Mode"
   category: experimental
   webcoreBinding: RuntimeEnabledFeatures
+
+RestrictedHTTPResponseAccess:
+    type: bool
+    defaultValue: true
+    humanReadableName: "Restricted HTTP Response Access to Web Process"
+    humanReadableDescription: "Restricted HTTP Response Access to Web Process"
+    category: experimental
+    webcoreBinding: RuntimeEnabledFeatures
+
+FromOriginResponseHeaderEnabled:
+    type: bool
+    defaultValue: false
+    humanReadableName: "From-Origin Response Header"
+    humanReadableDescription: "Support for the From-Origin Response Header"
+    category: experimental
+    webcoreBinding: RuntimeEnabledFeatures
+
+WebGLCompressedTextureASTCSupportEnabled:
+  type: bool
+  defaultValue: false
+  humanReadableName: "ASTC Texture Support"
+  humanReadableDescription: "Support for ASTC compressed texture formats in WebGL"
+  category: experimental
+  webcoreBinding: RuntimeEnabledFeatures
+
+StorageAccessPromptsEnabled:
+    type: bool
+    defaultValue: false
+    humanReadableName: "Prompt for Storage Access API Requests"
+    humanReadableDescription: "Prompt the user when Storage Access API calls are made"
+    category: experimental
+    webcoreBinding: RuntimeEnabledFeatures

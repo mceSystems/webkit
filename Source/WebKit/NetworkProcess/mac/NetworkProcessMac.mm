@@ -26,7 +26,7 @@
 #import "config.h"
 #import "NetworkProcess.h"
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || ENABLE(MINIMAL_SIMULATOR)
 
 #import "NetworkCache.h"
 #import "NetworkProcessCreationParameters.h"
@@ -36,6 +36,7 @@
 #import "SandboxInitializationParameters.h"
 #import "SecItemShim.h"
 #import "StringUtilities.h"
+#import "WKFoundation.h"
 #import <WebCore/CertificateInfo.h>
 #import <WebCore/FileSystem.h>
 #import <WebCore/LocalizedStrings.h>
@@ -58,8 +59,10 @@ void NetworkProcess::initializeProcess(const ChildProcessInitializationParameter
 
 void NetworkProcess::initializeProcessName(const ChildProcessInitializationParameters& parameters)
 {
+#if !ENABLE(MINIMAL_SIMULATOR)
     NSString *applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Networking", "visible name of the network process. The argument is the application name."), (NSString *)parameters.uiProcessName];
     _LSSetApplicationInformationItem(kLSDefaultSessionID, _LSGetCurrentApplicationASN(), _kLSDisplayNameKey, (CFStringRef)applicationName, nullptr);
+#endif
 }
 
 static void overrideSystemProxies(const String& httpProxy, const String& httpsProxy)
@@ -82,11 +85,13 @@ static void overrideSystemProxies(const String& httpProxy, const String& httpsPr
     if (!httpsProxy.isNull()) {
         URL httpsProxyURL(URL(), httpsProxy);
         if (httpsProxyURL.isValid()) {
+#if !ENABLE(MINIMAL_SIMULATOR)
             [proxySettings setObject:nsStringFromWebCoreString(httpsProxyURL.host()) forKey:(NSString *)kCFNetworkProxiesHTTPSProxy];
             if (httpsProxyURL.port()) {
                 NSNumber *port = [NSNumber numberWithInt:httpsProxyURL.port().value()];
                 [proxySettings setObject:port forKey:(NSString *)kCFNetworkProxiesHTTPSPort];
             }
+#endif
         } else
             NSLog(@"Malformed HTTPS Proxy URL '%s'.  Expected 'https://<hostname>[:<port>]'\n", httpsProxy.utf8().data());
     }
@@ -115,8 +120,13 @@ void NetworkProcess::allowSpecificHTTPSCertificateForHost(const CertificateInfo&
 void NetworkProcess::initializeSandbox(const ChildProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)
 {
     // Need to overide the default, because service has a different bundle ID.
-    NSBundle *webkit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
-    sandboxParameters.setOverrideSandboxProfilePath([webkit2Bundle pathForResource:@"com.apple.WebKit.NetworkProcess" ofType:@"sb"]);
+#if WK_API_ENABLED
+    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
+#else
+    NSBundle *webKit2Bundle = [NSBundle bundleForClass:NSClassFromString(@"WKView")];
+#endif
+
+    sandboxParameters.setOverrideSandboxProfilePath([webKit2Bundle pathForResource:@"com.apple.WebKit.NetworkProcess" ofType:@"sb"]);
 
     ChildProcess::initializeSandbox(parameters, sandboxParameters);
 }

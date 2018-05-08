@@ -34,14 +34,15 @@ class Element;
 class RenderQuote;
 
 class RenderTreeUpdater::GeneratedContent {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     GeneratedContent(RenderTreeUpdater&);
 
     void updatePseudoElement(Element&, const std::optional<Style::ElementUpdate>&, PseudoId);
     void updateRemainingQuotes();
 
-    static void removeBeforePseudoElement(Element&);
-    static void removeAfterPseudoElement(Element&);
+    static void removeBeforePseudoElement(Element&, RenderTreeBuilder&);
+    static void removeAfterPseudoElement(Element&, RenderTreeBuilder&);
 
 private:
     void updateQuotesUpTo(RenderQuote*);

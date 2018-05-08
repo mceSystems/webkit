@@ -1,4 +1,4 @@
-# Copyright (C) 2012 Apple Inc. All rights reserved.
+# Copyright (C) 2012-2018 Apple Inc. All rights reserved.
 # Copyright (C) 2012 MIPS Technologies, Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,10 +26,10 @@ require 'risc'
 
 # GPR conventions, to match the baseline JIT
 #
-# $a0 => a0
-# $a1 => a1
-# $a2 => a2
-# $a3 => a3
+# $a0 => a0, t7
+# $a1 => a1, t8
+# $a2 => a2, t9
+# $a3 => a3, t10
 # $v0 => t0, r0
 # $v1 => t1, r1
 # $t0 =>            (scratch)
@@ -113,13 +113,13 @@ end
 class RegisterID
     def mipsOperand
         case name
-        when "a0"
+        when "a0", "t7"
             "$a0"
-        when "a1"
+        when "a1", "t8"
             "$a1"
-        when "a2"
+        when "a2", "t9"
             "$a2"
-        when "a3"
+        when "a3", "t10"
             "$a3"
         when "t0", "r0"
             "$v0"
@@ -713,7 +713,7 @@ class Sequence
         result = riscLowerMalformedAddresses(result) {
             | node, address |
             if address.is_a? Address
-                (-0xffff..0xffff).include? address.offset.value
+                (-0x7fff..0x7fff).include? address.offset.value
             else
                 false
             end
@@ -721,7 +721,7 @@ class Sequence
         result = riscLowerMalformedAddressesDouble(result)
         result = riscLowerMisplacedImmediates(result, ["storeb", "storei", "storep"])
         result = mipsLowerMisplacedImmediates(result)
-        result = riscLowerMalformedImmediates(result, -0xffff..0xffff)
+        result = riscLowerMalformedImmediates(result, -0x7fff..0x7fff)
         result = mipsLowerMisplacedAddresses(result)
         result = riscLowerMisplacedAddresses(result)
         result = riscLowerRegisterReuse(result)
@@ -825,7 +825,6 @@ end
 
 class Instruction
     def lowerMIPS
-        $asm.comment codeOriginString
         case opcode
         when "addi", "addp", "addis"
             if operands.size == 3 and operands[0].is_a? Immediate

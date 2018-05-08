@@ -12,8 +12,8 @@ typedef Function<void(ExternalStringImpl*, void*, unsigned)> ExternalStringImplF
 
 class ExternalStringImpl : public StringImpl {
 public:
-	WTF_EXPORT_STRING_API static Ref<ExternalStringImpl> create(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free);
-	WTF_EXPORT_STRING_API static Ref<ExternalStringImpl> create(const UChar * characters, unsigned length, ExternalStringImplFreeFunction&& free);
+	WTF_EXPORT_PRIVATE static Ref<ExternalStringImpl> create(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free);
+	WTF_EXPORT_PRIVATE static Ref<ExternalStringImpl> create(const UChar * characters, unsigned length, ExternalStringImplFreeFunction&& free);
 
 private:
 	friend class StringImpl;

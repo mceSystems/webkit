@@ -50,13 +50,13 @@ void EllipsisBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, La
 {
     GraphicsContext& context = paintInfo.context();
     const RenderStyle& lineStyle = this->lineStyle();
-    Color textColor = lineStyle.visitedDependentColor(CSSPropertyWebkitTextFillColor);
+    Color textColor = lineStyle.visitedDependentColorWithColorFilter(CSSPropertyWebkitTextFillColor);
     if (textColor != context.fillColor())
         context.setFillColor(textColor);
     bool setShadow = false;
     if (lineStyle.textShadow()) {
-        context.setShadow(LayoutSize(lineStyle.textShadow()->x(), lineStyle.textShadow()->y()),
-            lineStyle.textShadow()->radius(), lineStyle.textShadow()->color());
+        Color shadowColor = lineStyle.colorByApplyingColorFilter(lineStyle.textShadow()->color());
+        context.setShadow(LayoutSize(lineStyle.textShadow()->x(), lineStyle.textShadow()->y()), lineStyle.textShadow()->radius(), shadowColor);
         setShadow = true;
     }
 
@@ -127,9 +127,9 @@ IntRect EllipsisBox::selectionRect()
 
 void EllipsisBox::paintSelection(GraphicsContext& context, const LayoutPoint& paintOffset, const RenderStyle& style, const FontCascade& font)
 {
-    Color textColor = style.visitedDependentColor(CSSPropertyColor);
+    Color textColor = style.visitedDependentColorWithColorFilter(CSSPropertyColor);
     Color c = blockFlow().selectionBackgroundColor();
-    if (!c.isValid() || !c.alpha())
+    if (!c.isVisible())
         return;
 
     // If the text color ends up being the same as the selection background, invert the selection

@@ -383,6 +383,11 @@ void PageClientImpl::notifyInputContextAboutDiscardedComposition()
     notImplemented();
 }
 
+void PageClientImpl::assistiveTechnologyMakeFirstResponder()
+{
+    notImplemented();
+}
+
 void PageClientImpl::makeFirstResponder()
 {
     notImplemented();
@@ -556,18 +561,10 @@ void PageClientImpl::stopAssistingNode()
 {
     [m_contentView _stopAssistingNode];
 }
-    
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 120000
-void PageClientImpl::didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold)
-{
-    [m_contentView _didUpdateBlockSelectionWithTouch:(SelectionTouch)touch withFlags:(SelectionFlags)flags growThreshold:growThreshold shrinkThreshold:shrinkThreshold];
-}
-#endif
-    
 
-void PageClientImpl::showPlaybackTargetPicker(bool hasVideo, const IntRect& elementRect)
+void PageClientImpl::showPlaybackTargetPicker(bool hasVideo, const IntRect& elementRect, WebCore::RouteSharingPolicy policy, const String& contextUID)
 {
-    [m_contentView _showPlaybackTargetPicker:hasVideo fromRect:elementRect];
+    [m_contentView _showPlaybackTargetPicker:hasVideo fromRect:elementRect routeSharingPolicy:policy routingContextUID:contextUID];
 }
 
 bool PageClientImpl::handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, API::OpenPanelParameters* parameters, WebOpenPanelResultListenerProxy* listener)
@@ -735,6 +732,11 @@ void PageClientImpl::didSameDocumentNavigationForMainFrame(SameDocumentNavigatio
 void PageClientImpl::didChangeBackgroundColor()
 {
     [m_webView _updateScrollViewBackground];
+}
+
+void PageClientImpl::videoControlsManagerDidChange()
+{
+    [m_webView _videoControlsManagerDidChange];
 }
 
 void PageClientImpl::refView()

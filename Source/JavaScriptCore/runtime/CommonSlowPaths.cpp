@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -150,21 +150,14 @@ namespace JSC {
         JSValue::encode(value);                  \
     } while (false)
 
-#define CALL_END_IMPL(exec, callTarget) RETURN_TWO((callTarget), (exec))
+#define CALL_END_IMPL(exec, callTarget, callTargetTag) \
+    RETURN_TWO(retagCodePtr((callTarget), callTargetTag, SlowPathPtrTag), (exec))
 
 #define CALL_CHECK_EXCEPTION(exec, pc) do {                          \
         ExecState* cceExec = (exec);                                 \
         Instruction* ccePC = (pc);                                   \
         if (UNLIKELY(throwScope.exception()))                        \
-            CALL_END_IMPL(cceExec, LLInt::callToThrow(cceExec));     \
-    } while (false)
-
-#define CALL_RETURN(exec, pc, callTarget) do {                    \
-        ExecState* crExec = (exec);                                  \
-        Instruction* crPC = (pc);                                    \
-        void* crCallTarget = (callTarget);                           \
-        CALL_CHECK_EXCEPTION(crExec->callerFrame(), crPC);  \
-        CALL_END_IMPL(crExec, crCallTarget);                \
+            CALL_END_IMPL(cceExec, LLInt::callToThrow(cceExec), ExceptionHandlerPtrTag); \
     } while (false)
 
 SLOW_PATH_DECL(slow_path_call_arityCheck)
@@ -222,7 +215,7 @@ SLOW_PATH_DECL(slow_path_create_this)
     auto& bytecode = *reinterpret_cast<OpCreateThis*>(pc);
     JSObject* result;
     JSObject* constructorAsObject = asObject(GET(bytecode.callee()).jsValue());
-    if (constructorAsObject->type() == JSFunctionType) {
+    if (constructorAsObject->type() == JSFunctionType && jsCast<JSFunction*>(constructorAsObject)->canUseAllocationProfile()) {
         JSFunction* constructor = jsCast<JSFunction*>(constructorAsObject);
         WriteBarrier<JSCell>& cachedCallee = bytecode.cachedCallee();
         if (!cachedCallee)
@@ -231,10 +224,12 @@ SLOW_PATH_DECL(slow_path_create_this)
             cachedCallee.setWithoutWriteBarrier(JSCell::seenMultipleCalleeObjects());
 
         size_t inlineCapacity = bytecode.inlineCapacity();
-        Structure* structure = constructor->rareData(exec, inlineCapacity)->objectAllocationProfile()->structure();
+        ObjectAllocationProfile* allocationProfile = constructor->ensureRareDataAndAllocationProfile(exec, inlineCapacity)->objectAllocationProfile();
+        Structure* structure = allocationProfile->structure();
         result = constructEmptyObject(exec, structure);
         if (structure->hasPolyProto()) {
-            JSObject* prototype = constructor->prototypeForConstruction(vm, exec);
+            JSObject* prototype = allocationProfile->prototype();
+            ASSERT(prototype == constructor->prototypeForConstruction(vm, exec));
             result->putDirect(vm, knownPolyProtoOffset, prototype);
             prototype->didBecomePrototype();
             ASSERT_WITH_MESSAGE(!hasIndexedProperties(result->indexingType()), "We rely on JSFinalObject not starting out with an indexing type otherwise we would potentially need to convert to slow put storage");

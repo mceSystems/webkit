@@ -194,6 +194,16 @@ bool WKPreferencesGetJavaScriptCanOpenWindowsAutomatically(WKPreferencesRef pref
     return toImpl(preferencesRef)->javaScriptCanOpenWindowsAutomatically();
 }
 
+void WKPreferencesSetStorageAccessPromptsEnabled(WKPreferencesRef preferencesRef, bool enabled)
+{
+    toImpl(preferencesRef)->setStorageAccessPromptsEnabled(enabled);
+}
+
+bool WKPreferencesGetStorageAccessPromptsEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->storageAccessPromptsEnabled();
+}
+
 void WKPreferencesSetHyperlinkAuditingEnabled(WKPreferencesRef preferencesRef, bool hyperlinkAuditingEnabled)
 {
     toImpl(preferencesRef)->setHyperlinkAuditingEnabled(hyperlinkAuditingEnabled);
@@ -513,6 +523,16 @@ void WKPreferencesSetWebAnimationsEnabled(WKPreferencesRef preferencesRef, bool 
 bool WKPreferencesGetWebAnimationsEnabled(WKPreferencesRef preferencesRef)
 {
     return toImpl(preferencesRef)->webAnimationsEnabled();
+}
+
+void WKPreferencesSetCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(flag);
+}
+
+bool WKPreferencesGetCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled();
 }
 
 void WKPreferencesSetNeedsSiteSpecificQuirks(WKPreferencesRef preferencesRef, bool flag)
@@ -1404,6 +1424,16 @@ bool WKPreferencesGetWebRTCLegacyAPIEnabled(WKPreferencesRef preferencesRef)
     return toImpl(preferencesRef)->webRTCLegacyAPIEnabled();
 }
 
+void WKPreferencesSetWebRTCMDNSICECandidatesEnabled(WKPreferencesRef preferencesRef, bool enabled)
+{
+    toImpl(preferencesRef)->setMDNSICECandidatesEnabled(enabled);
+}
+
+bool WKPreferencesGetWebRTCMDNSICECandidatesEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->mDNSICECandidatesEnabled();
+}
+
 void WKPreferencesSetSpatialNavigationEnabled(WKPreferencesRef preferencesRef, bool enabled)
 {
     toImpl(preferencesRef)->setSpatialNavigationEnabled(enabled);
@@ -1934,3 +1964,32 @@ bool WKPreferencesGetMediaCapabilitiesEnabled(WKPreferencesRef preferencesRef)
     return toImpl(preferencesRef)->mediaCapabilitiesEnabled();
 }
 
+void WKPreferencesSetAllowCrossOriginSubresourcesToAskForCredentials(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setAllowCrossOriginSubresourcesToAskForCredentials(flag);
+}
+
+bool WKPreferencesGetAllowCrossOriginSubresourcesToAskForCredentials(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->allowCrossOriginSubresourcesToAskForCredentials();
+}
+
+void WKPreferencesSetFromOriginResponseHeaderEnabled(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setFromOriginResponseHeaderEnabled(flag);
+}
+
+bool WKPreferencesGetFromOriginResponseHeaderEnabled(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->fromOriginResponseHeaderEnabled();
+}
+
+void WKPreferencesSetRestrictedHTTPResponseAccess(WKPreferencesRef preferencesRef, bool flag)
+{
+    toImpl(preferencesRef)->setRestrictedHTTPResponseAccess(flag);
+}
+
+bool WKPreferencesGetRestrictedHTTPResponseAccess(WKPreferencesRef preferencesRef)
+{
+    return toImpl(preferencesRef)->restrictedHTTPResponseAccess();
+}

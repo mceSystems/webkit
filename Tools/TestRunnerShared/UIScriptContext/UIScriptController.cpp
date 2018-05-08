@@ -270,6 +270,10 @@ void UIScriptController::sendEventStream(JSStringRef eventsJSON, JSValueRef call
 {
 }
 
+void UIScriptController::enterText(JSStringRef)
+{
+}
+
 void UIScriptController::typeCharacterUsingHardwareKeyboard(JSStringRef, JSValueRef)
 {
 }
@@ -294,8 +298,22 @@ void UIScriptController::dismissFormAccessoryView()
 {
 }
 
+void UIScriptController::setTimePickerValue(long, long)
+{
+}
+
 void UIScriptController::selectFormAccessoryPickerRow(long)
 {
+}
+
+JSRetainPtr<JSStringRef> UIScriptController::selectFormPopoverTitle() const
+{
+    return nullptr;
+}
+
+JSRetainPtr<JSStringRef> UIScriptController::formInputLabel() const
+{
+    return nullptr;
 }
 
 void UIScriptController::scrollToOffset(long x, long y)
@@ -479,6 +497,19 @@ void UIScriptController::replaceTextAtRange(JSStringRef, int, int)
 
 void UIScriptController::platformPlayBackEventStream(JSStringRef, JSValueRef)
 {
+}
+
+void UIScriptController::firstResponderSuppressionForWebView(bool)
+{
+}
+
+void UIScriptController::makeWindowContentViewFirstResponder()
+{
+}
+
+bool UIScriptController::isWindowContentViewFirstResponder() const
+{
+    return false;
 }
 
 #endif

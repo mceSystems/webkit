@@ -24,7 +24,6 @@
 
 #if ENABLE(ENCRYPTED_MEDIA) && USE(GSTREAMER)
 
-#include "GRefPtrGStreamer.h"
 #include "GStreamerEMEUtilities.h"
 #include <gcrypt.h>
 #include <gst/base/gstbytereader.h>
@@ -251,6 +250,7 @@ static gboolean webKitMediaClearKeyDecryptorDecrypt(WebKitMediaCommonEncryptionD
     bool returnValue = true;
     GstByteReader* reader;
     unsigned position = 0;
+    unsigned sampleIndex = 0;
     GstMapInfo subSamplesMap;
 
     if (!subSampleCount) {
@@ -288,7 +288,6 @@ static gboolean webKitMediaClearKeyDecryptorDecrypt(WebKitMediaCommonEncryptionD
     while (position < map.size) {
         guint16 nBytesClear = 0;
         guint32 nBytesEncrypted = 0;
-        unsigned sampleIndex = 0;
 
         if (sampleIndex < subSampleCount) {
             if (!gst_byte_reader_get_uint16_be(reader, &nBytesClear)

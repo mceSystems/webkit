@@ -35,6 +35,7 @@
 #include "FocusDirection.h"
 #include "FontSelectorClient.h"
 #include "FrameDestructionObserver.h"
+#include "GenericTaskQueue.h"
 #include "MediaProducer.h"
 #include "MutationObserver.h"
 #include "OrientationNotifier.h"
@@ -44,6 +45,7 @@
 #include "RenderPtr.h"
 #include "ScriptExecutionContext.h"
 #include "StringWithDirection.h"
+#include "StyleColor.h"
 #include "Supplementable.h"
 #include "TextResourceDecoder.h"
 #include "Timer.h"
@@ -51,7 +53,6 @@
 #include "UserActionElementSet.h"
 #include "ViewportArguments.h"
 #include "VisibilityState.h"
-#include <JavaScriptCore/ThreadLocalCache.h>
 #include <pal/SessionID.h>
 #include <wtf/Deque.h>
 #include <wtf/Forward.h>
@@ -184,6 +185,7 @@ class WebAnimation;
 class WebGL2RenderingContext;
 class WebGLRenderingContext;
 class WebGPURenderingContext;
+class WindowProxy;
 class XPathEvaluator;
 class XPathExpression;
 class XPathNSResolver;
@@ -193,6 +195,8 @@ template<typename> class ExceptionOr;
 
 enum CollectionType;
 enum class ShouldOpenExternalURLsPolicy;
+
+enum class RouteSharingPolicy;
 
 using PlatformDisplayID = uint32_t;
 
@@ -318,6 +322,7 @@ class Document
     , public FrameDestructionObserver
     , public Supplementable<Document>
     , public Logger::Observer {
+    WTF_MAKE_ISO_ALLOCATED(Document);
 public:
     static Ref<Document> create(Frame* frame, const URL& url)
     {
@@ -376,10 +381,6 @@ public:
     Element* getElementByAccessKey(const String& key);
     void invalidateAccessKeyMap();
 
-    void addImageElementByUsemap(const AtomicStringImpl&, HTMLImageElement&);
-    void removeImageElementByUsemap(const AtomicStringImpl&, HTMLImageElement&);
-    HTMLImageElement* imageElementByUsemap(const AtomicStringImpl&) const;
-
     ExceptionOr<SelectorQuery&> selectorQueryForString(const String&);
     void clearSelectorQueryCache();
 
@@ -422,8 +423,6 @@ public:
     WEBCORE_EXPORT Ref<Element> createElement(const QualifiedName&, bool createdByParser);
 
     static CustomElementNameValidationStatus validateCustomElementName(const AtomicString&);
-
-    bool isCSSGridLayoutEnabled() const;
 
     WEBCORE_EXPORT RefPtr<Range> caretRangeFromPoint(int x, int y);
     RefPtr<Range> caretRangeFromPoint(const LayoutPoint& clientPoint);
@@ -545,6 +544,9 @@ public:
 
     float deviceScaleFactor() const;
 
+    bool useSystemAppearance() const;
+    OptionSet<StyleColor::Options> styleColorOptions() const;
+
     WEBCORE_EXPORT Ref<Range> createRange();
 
     // The last bool parameter is for ObjC bindings.
@@ -616,7 +618,7 @@ public:
     
     WEBCORE_EXPORT DocumentLoader* loader() const;
 
-    WEBCORE_EXPORT ExceptionOr<RefPtr<DOMWindow>> openForBindings(DOMWindow& activeWindow, DOMWindow& firstWindow, const String& url, const AtomicString& name, const String& features);
+    WEBCORE_EXPORT ExceptionOr<RefPtr<WindowProxy>> openForBindings(DOMWindow& activeWindow, DOMWindow& firstWindow, const String& url, const AtomicString& name, const String& features);
     WEBCORE_EXPORT ExceptionOr<Document&> openForBindings(Document* responsibleDocument, const String& type, const String& replace);
 
     // FIXME: We should rename this at some point and give back the name 'open' to the HTML specified ones.
@@ -795,7 +797,7 @@ public:
 
     DOMWindow* domWindow() const { return m_domWindow.get(); }
     // In DOM Level 2, the Document's DOMWindow is called the defaultView.
-    DOMWindow* defaultView() const { return domWindow(); } 
+    WEBCORE_EXPORT WindowProxy* windowProxy() const;
 
     Document& contextDocument() const;
     void setContextDocument(Document& document) { m_contextDocument = document.createWeakPtr(); }
@@ -914,6 +916,14 @@ public:
     //
     const URL& firstPartyForCookies() const { return m_firstPartyForCookies; }
     void setFirstPartyForCookies(const URL& url) { m_firstPartyForCookies = url; }
+
+    // The full URL corresponding to the "site for cookies" in the Same-Site Cookies spec.,
+    // <https://tools.ietf.org/html/draft-ietf-httpbis-cookie-same-site-00>. It is either
+    // the URL of the top-level document or the null URL depending on whether the registrable
+    // domain of this document's URL matches the registrable domain of its parent's/opener's
+    // URL. For the top-level document, it is set to the document's URL.
+    const URL& firstPartyForSameSiteCookies() const { return m_firstPartyForSameSiteCookies; }
+    void setFirstPartyForSameSiteCookies(const URL& url) { m_firstPartyForSameSiteCookies = url; }
     
     // The following implements the rule from HTML 4 for what valid names are.
     // To get this right for all the XML cases, we probably have to improve this or move it
@@ -1131,10 +1141,10 @@ public:
     WEBCORE_EXPORT void webkitWillExitFullScreenForElement(Element*);
     WEBCORE_EXPORT void webkitDidExitFullScreenForElement(Element*);
     
-    void setFullScreenRenderer(RenderTreeBuilder&, RenderFullScreen*);
+    void setFullScreenRenderer(RenderTreeBuilder&, RenderFullScreen&);
     RenderFullScreen* fullScreenRenderer() const { return m_fullScreenRenderer.get(); }
 
-    void fullScreenChangeDelayTimerFired();
+    void dispatchFullScreenChangeEvents();
     bool fullScreenIsAllowedForElement(Element*) const;
     void fullScreenElementRemoved();
     void removeFullScreenElementOfSubtree(Node&, bool amongChildrenOnly = false);
@@ -1305,7 +1315,7 @@ public:
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     void addPlaybackTargetPickerClient(MediaPlaybackTargetClient&);
     void removePlaybackTargetPickerClient(MediaPlaybackTargetClient&);
-    void showPlaybackTargetPicker(MediaPlaybackTargetClient&, bool);
+    void showPlaybackTargetPicker(MediaPlaybackTargetClient&, bool, RouteSharingPolicy, const String&);
     void playbackTargetPickerClientStateDidChange(MediaPlaybackTargetClient&, MediaProducer::MediaStateFlags);
 
     void setPlaybackTarget(uint64_t, Ref<MediaPlaybackTarget>&&);
@@ -1389,7 +1399,7 @@ public:
 
     WEBCORE_EXPORT void setConsoleMessageListener(RefPtr<StringCallback>&&); // For testing.
 
-    DocumentTimeline& timeline();
+    WEBCORE_EXPORT DocumentTimeline& timeline();
     DocumentTimeline* existingTimeline() const { return m_timeline.get(); }
     Vector<RefPtr<WebAnimation>> getAnimations();
         
@@ -1412,7 +1422,12 @@ public:
     bool handlingTouchEvent() const { return m_handlingTouchEvent; }
 #endif
 
-    JSC::ThreadLocalCache& threadLocalCache();
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+    bool hasRequestedPageSpecificStorageAccessWithUserInteraction(const String& primaryDomain);
+    void setHasRequestedPageSpecificStorageAccessWithUserInteraction(const String& primaryDomain);
+#endif
+
+    String signedPublicKeyAndChallengeString(unsigned keySizeIndex, const String& challengeString, const URL&);
 
 protected:
     enum ConstructionFlags { Synthesized = 1, NonRenderedPlaceholder = 1 << 1 };
@@ -1544,6 +1559,7 @@ private:
     URL m_baseElementURL; // The URL set by the <base> element.
     URL m_cookieURL; // The URL to use for cookie access.
     URL m_firstPartyForCookies; // The policy URL for third-party cookie blocking.
+    URL m_firstPartyForSameSiteCookies; // The policy URL for Same-Site cookies.
 
     // Document.documentURI:
     // Although URL-like, Document.documentURI can actually be set to any
@@ -1662,8 +1678,6 @@ private:
 
     HashMap<StringImpl*, Element*, ASCIICaseInsensitiveHash> m_elementsByAccessKey;
 
-    DocumentOrderedMap m_imagesByUsemap;
-
     std::unique_ptr<ConstantPropertyMap> m_constantPropertyMap;
 
     std::unique_ptr<SelectorQueryCache> m_selectorQueryCache;
@@ -1681,7 +1695,7 @@ private:
     RefPtr<Element> m_fullScreenElement;
     Vector<RefPtr<Element>> m_fullScreenElementStack;
     WeakPtr<RenderFullScreen> m_fullScreenRenderer { nullptr };
-    Timer m_fullScreenChangeDelayTimer;
+    GenericTaskQueue<Timer> m_fullScreenTaskQueue;
     Deque<RefPtr<Node>> m_fullScreenChangeEventTargetQueue;
     Deque<RefPtr<Node>> m_fullScreenErrorEventTargetQueue;
     LayoutRect m_savedPlaceholderFrameRect;
@@ -1726,6 +1740,8 @@ private:
     std::unique_ptr<DeviceOrientationClient> m_deviceOrientationClient;
     std::unique_ptr<DeviceOrientationController> m_deviceOrientationController;
 #endif
+
+    GenericTaskQueue<Timer> m_logMessageTaskQueue;
 
     Timer m_pendingTasksTimer;
     Vector<Task> m_pendingTasks;
@@ -1899,7 +1915,9 @@ private:
 
     HashSet<ApplicationStateChangeListener*> m_applicationStateChangeListeners;
     
-    RefPtr<JSC::ThreadLocalCache> m_threadLocalCache;
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+    String m_primaryDomainRequestedPageSpecificStorageAccessWithUserInteraction { };
+#endif
 };
 
 Element* eventTargetElementForDocument(Document*);

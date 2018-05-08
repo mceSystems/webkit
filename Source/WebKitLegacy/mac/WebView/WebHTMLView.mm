@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2018 Apple Inc. All rights reserved.
  *           (C) 2006, 2007 Graham Dennis (graham.dennis@gmail.com)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -109,7 +109,6 @@
 #import <WebCore/LegacyWebArchive.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/MIMETypeRegistry.h>
-#import <WebCore/MainFrame.h>
 #import <WebCore/Page.h>
 #import <WebCore/PrintContext.h>
 #import <WebCore/Range.h>
@@ -149,7 +148,6 @@
 #import "WebNSEventExtras.h"
 #import "WebNSPasteboardExtras.h"
 #import <AppKit/NSAccessibility.h>
-#import <ApplicationServices/ApplicationServices.h>
 #import <WebCore/PlatformEventFactoryMac.h>
 #import <pal/spi/mac/NSMenuSPI.h>
 #endif
@@ -1427,7 +1425,8 @@ static NSControlStateValue kit(TriState state)
 {
     // Copy subviews because [self subviews] returns the view's mutable internal array,
     // and we must avoid mutating the array while enumerating it.
-    for (NSView *view in adoptNS([[self subviews] copy]).get()) {
+    auto subviewsCopy = adoptNS([self.subviews copy]);
+    for (NSView *view in subviewsCopy.get()) {
         if ([view isKindOfClass:[WebBaseNetscapePluginView class]])
             [view performSelector:selector withObject:object];
     }
@@ -4534,10 +4533,10 @@ static RefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     case NSEventTypeKeyDown: {
         PlatformKeyboardEvent platformEvent = PlatformEventFactory::createPlatformKeyboardEvent(event);
         platformEvent.disambiguateKeyDownEvent(PlatformEvent::RawKeyDown);
-        return KeyboardEvent::create(platformEvent, coreFrame->document()->defaultView());
+        return KeyboardEvent::create(platformEvent, &coreFrame->windowProxy());
     }
     case NSEventTypeKeyUp:
-        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), coreFrame->document()->defaultView());
+        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), &coreFrame->windowProxy());
     default:
         return nullptr;
     }
@@ -4548,7 +4547,7 @@ static RefPtr<KeyboardEvent> currentKeyboardEvent(Frame* coreFrame)
     WebEventType type = event.type;
     if (type == WebEventKeyDown || type == WebEventKeyUp) {
         Document* document = coreFrame->document();
-        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), document ? document->defaultView() : 0);
+        return KeyboardEvent::create(PlatformEventFactory::createPlatformKeyboardEvent(event), document ? document->windowProxy() : 0);
     }
     return nullptr;
 #endif

@@ -26,6 +26,8 @@
 #import "config.h"
 #import "PlatformPasteboard.h"
 
+#if PLATFORM(IOS)
+
 #import "Color.h"
 #import "Image.h"
 #import "Pasteboard.h"
@@ -43,7 +45,7 @@
 #import <wtf/SoftLinking.h>
 #import <wtf/text/StringHash.h>
 
-#define PASTEBOARD_SUPPORTS_ITEM_PROVIDERS (PLATFORM(IOS) && !(PLATFORM(WATCHOS) || PLATFORM(APPLETV)))
+#define PASTEBOARD_SUPPORTS_ITEM_PROVIDERS (PLATFORM(IOS) && !(PLATFORM(WATCHOS) || PLATFORM(APPLETV) || ENABLE(MINIMAL_SIMULATOR)))
 
 SOFT_LINK_FRAMEWORK(UIKit)
 SOFT_LINK_CLASS(UIKit, UIImage)
@@ -382,6 +384,7 @@ void PlatformPasteboard::write(const PasteboardURL& url)
         if (!url.title.isEmpty())
             nsURL._title = url.title;
         [representationsToRegister addRepresentingObject:nsURL];
+        [representationsToRegister addRepresentingObject:(NSString *)url.url.string()];
     }
 
     registerItemToPasteboard(representationsToRegister.get(), m_pasteboard.get());
@@ -642,3 +645,5 @@ void PlatformPasteboard::updateSupportedTypeIdentifiers(const Vector<String>& ty
 }
 
 }
+
+#endif // PLATFORM(IOS)

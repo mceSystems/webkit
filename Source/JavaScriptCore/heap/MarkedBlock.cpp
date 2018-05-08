@@ -29,7 +29,7 @@
 #include "AlignedMemoryAllocator.h"
 #include "BlockDirectoryInlines.h"
 #include "FreeListInlines.h"
-#include "JSCell.h"
+#include "JSCast.h"
 #include "JSDestructibleObject.h"
 #include "JSCInlines.h"
 #include "MarkedBlockInlines.h"
@@ -486,15 +486,6 @@ bool MarkedBlock::Handle::isFreeListedCell(const void* target) const
 {
     ASSERT(isFreeListed());
     return m_directory->isFreeListedCell(target);
-}
-
-void MarkedBlock::Handle::associateWithOrigin(SecurityOriginToken securityOriginToken)
-{
-    if (m_securityOriginToken == securityOriginToken)
-        return;
-    
-    fastZeroFillBytes(&block(), endAtom * atomSize);
-    m_securityOriginToken = securityOriginToken;
 }
 
 } // namespace JSC

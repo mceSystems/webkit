@@ -488,10 +488,10 @@ protected:
     Vector<VertexAttribValue> m_vertexAttribValue;
     unsigned m_maxVertexAttribs;
     RefPtr<WebGLBuffer> m_vertexAttrib0Buffer;
-    long m_vertexAttrib0BufferSize;
+    long m_vertexAttrib0BufferSize { 0 };
     GC3Dfloat m_vertexAttrib0BufferValue[4];
-    bool m_forceAttrib0BufferRefill;
-    bool m_vertexAttrib0UsedBefore;
+    bool m_forceAttrib0BufferRefill { true };
+    bool m_vertexAttrib0UsedBefore { false };
 
     RefPtr<WebGLProgram> m_currentProgram;
     RefPtr<WebGLFramebuffer> m_framebufferBinding;
@@ -517,9 +517,8 @@ protected:
         // The pointer returned is owned by the image buffer map.
         ImageBuffer* imageBuffer(const IntSize& size);
     private:
-        void bubbleToFront(int idx);
-        std::unique_ptr<std::unique_ptr<ImageBuffer>[]> m_buffers;
-        int m_capacity;
+        void bubbleToFront(size_t idx);
+        Vector<std::unique_ptr<ImageBuffer>> m_buffers;
     };
     LRUImageBufferCache m_generatedImageCache { 0 };
 

@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "AnimationEffectTiming.h"
 #include "ComputedTimingProperties.h"
 #include "WebAnimation.h"
 #include <wtf/Forward.h>
@@ -35,15 +34,20 @@
 
 namespace WebCore {
 
+class AnimationEffectTimingReadOnly;
+
 class AnimationEffectReadOnly : public RefCounted<AnimationEffectReadOnly> {
 public:
-    virtual ~AnimationEffectReadOnly() = default;
+    virtual ~AnimationEffectReadOnly();
 
     bool isKeyframeEffect() const { return m_classType == KeyframeEffectClass; }
-    bool isKeyframeEffectReadOnly() const { return m_classType == KeyframeEffectReadOnlyClass; }
+    bool isKeyframeEffectReadOnly() const { return isKeyframeEffect() || m_classType == KeyframeEffectReadOnlyClass; }
     AnimationEffectTimingReadOnly* timing() const { return m_timing.get(); }
     ComputedTimingProperties getComputedTiming();
     virtual void apply(RenderStyle&) = 0;
+    virtual void invalidate() = 0;
+    virtual void animationPlayStateDidChange(WebAnimation::PlayState) = 0;
+    virtual void animationDidSeek() = 0;
 
     WebAnimation* animation() const { return m_animation.get(); }
     void setAnimation(RefPtr<WebAnimation>&& animation) { m_animation = animation; }
@@ -51,9 +55,12 @@ public:
     std::optional<Seconds> localTime() const;
     std::optional<Seconds> activeTime() const;
     std::optional<double> iterationProgress() const;
+    std::optional<double> currentIteration() const;
 
     enum class Phase { Before, Active, After, Idle };
     Phase phase() const;
+
+    void timingDidChange();
 
 protected:
     enum ClassType {
@@ -72,7 +79,6 @@ private:
 
     std::optional<double> overallProgress() const;
     std::optional<double> simpleIterationProgress() const;
-    std::optional<double> currentIteration() const;
     AnimationEffectReadOnly::ComputedDirection currentDirection() const;
     std::optional<double> directedProgress() const;
     std::optional<double> transformedProgress() const;

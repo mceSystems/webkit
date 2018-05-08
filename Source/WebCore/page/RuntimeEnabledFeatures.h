@@ -31,7 +31,6 @@
 
 #pragma once
 
-#include "PlatformExportMacros.h"
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
 
@@ -49,6 +48,9 @@ public:
 
     void setLinkPreloadEnabled(bool isEnabled) { m_isLinkPreloadEnabled = isEnabled; }
     bool linkPreloadEnabled() const { return m_isLinkPreloadEnabled; }
+
+    void setLinkPrefetchEnabled(bool isEnabled) { m_isLinkPrefetchEnabled = isEnabled; }
+    bool linkPrefetchEnabled() const { return m_isLinkPrefetchEnabled; }
 
     void setMediaPreloadingEnabled(bool isEnabled) { m_isMediaPreloadingEnabled = isEnabled; }
     bool mediaPreloadingEnabled() const { return m_isMediaPreloadingEnabled; }
@@ -118,6 +120,8 @@ public:
     void setPeerConnectionEnabled(bool isEnabled) { m_isPeerConnectionEnabled = isEnabled; }
     bool webRTCLegacyAPIEnabled() const { return m_webRTCLegacyAPIEnabled; }
     void setWebRTCLegacyAPIEnabled(bool isEnabled) { m_webRTCLegacyAPIEnabled = isEnabled; }
+    bool mdnsICECandidatesEnabled() const { return m_mdnsICECandidatesEnabled; }
+    void setMDNSICECandidatesEnabled(bool isEnabled) { m_mdnsICECandidatesEnabled = isEnabled; }
 #endif
 
 #if ENABLE(LEGACY_CSS_VENDOR_PREFIXES)
@@ -169,6 +173,9 @@ public:
     void setWebAnimationsEnabled(bool areEnabled) { m_areWebAnimationsEnabled = areEnabled; }
     bool webAnimationsEnabled() const { return m_areWebAnimationsEnabled; }
 
+    void setCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(bool areEnabled) { m_areCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled = areEnabled; }
+    bool cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled() const { return m_areCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled; }
+
 #if ENABLE(WEBGL2)
     void setWebGL2Enabled(bool isEnabled) { m_isWebGL2Enabled = isEnabled; }
     bool webGL2Enabled() const { return m_isWebGL2Enabled; }
@@ -200,9 +207,6 @@ public:
     bool downloadAttributeEnabled() const { return m_isDownloadAttributeEnabled; }
 #endif
 
-    void setCSSGridLayoutEnabled(bool isEnabled) { m_cssGridLayoutEnabled = isEnabled; }
-    bool isCSSGridLayoutEnabled() const { return m_cssGridLayoutEnabled; }
-
 #if ENABLE(INTERSECTION_OBSERVER)
     void setIntersectionObserverEnabled(bool isEnabled) { m_intersectionObserverEnabled = isEnabled; }
     bool intersectionObserverEnabled() const { return m_intersectionObserverEnabled; }
@@ -228,10 +232,6 @@ public:
 
     bool spectreGadgetsEnabled() const;
 
-#if ENABLE(VIDEO)
-    bool audioEnabled() const;
-#endif
-
     void setInspectorAdditionsEnabled(bool isEnabled) { m_inspectorAdditionsEnabled = isEnabled; }
     bool inspectorAdditionsEnabled() const { return m_inspectorAdditionsEnabled; }
 
@@ -247,6 +247,18 @@ public:
     void setResourceLoadStatisticsDebugMode(bool isEnabled) { m_resourceLoadStatisticsDebugMode = isEnabled; }
     bool resourceLoadStatisticsDebugMode() const { return m_resourceLoadStatisticsDebugMode; }
 
+    void setRestrictedHTTPResponseAccess(bool isEnabled) { m_isRestrictedHTTPResponseAccess = isEnabled; }
+    bool restrictedHTTPResponseAccess() const { return m_isRestrictedHTTPResponseAccess; }
+
+    void setFromOriginResponseHeaderEnabled(bool isEnabled) { m_fromOriginResponseHeaderEnabled = isEnabled; }
+    bool fromOriginResponseHeaderEnabled() const { return m_fromOriginResponseHeaderEnabled; }
+    
+    void setWebGLCompressedTextureASTCSupportEnabled(bool isEnabled) { m_isWebGLCompressedTextureASTCSupportEnabled = isEnabled; }
+    bool webGLCompressedTextureASTCSupportEnabled() const { return m_isWebGLCompressedTextureASTCSupportEnabled; }
+
+    void setStorageAccessPromptsEnabled(bool isEnabled)  { m_promptForStorageAccessAPIEnabled = isEnabled; }
+    bool storageAccessPromptsEnabled() const { return m_promptForStorageAccessAPIEnabled; }
+
     WEBCORE_EXPORT static RuntimeEnabledFeatures& sharedFeatures();
 
 private:
@@ -255,6 +267,7 @@ private:
 
     bool m_areModernMediaControlsEnabled { false };
     bool m_isLinkPreloadEnabled { true };
+    bool m_isLinkPrefetchEnabled { false };
     bool m_isMediaPreloadingEnabled { false };
     bool m_isResourceTimingEnabled { false };
     bool m_isUserTimingEnabled { false };
@@ -288,6 +301,7 @@ private:
 #if ENABLE(WEB_RTC)
     bool m_isPeerConnectionEnabled { true };
     bool m_webRTCLegacyAPIEnabled { false };
+    bool m_mdnsICECandidatesEnabled { false };
 #endif
 
 #if ENABLE(LEGACY_CSS_VENDOR_PREFIXES)
@@ -331,7 +345,8 @@ private:
     bool m_isWritableStreamAPIEnabled { false };
 #endif
 
-    bool m_areWebAnimationsEnabled { false };
+    bool m_areWebAnimationsEnabled { true };
+    bool m_areCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled { false };
 
 #if ENABLE(WEBGL2)
     bool m_isWebGL2Enabled { false };
@@ -349,8 +364,6 @@ private:
 #if ENABLE(DOWNLOAD_ATTRIBUTE)
     bool m_isDownloadAttributeEnabled { false };
 #endif
-
-    bool m_cssGridLayoutEnabled { true };
 
 #if ENABLE(ENCRYPTED_MEDIA)
     bool m_encryptedMediaAPIEnabled { false };
@@ -377,7 +390,15 @@ private:
     bool m_mediaCapabilitiesEnabled { false };
 
     bool m_resourceLoadStatisticsDebugMode { false };
+
+    bool m_isRestrictedHTTPResponseAccess { true };
+
+    bool m_fromOriginResponseHeaderEnabled { false };
     
+    bool m_isWebGLCompressedTextureASTCSupportEnabled { false };
+
+    bool m_promptForStorageAccessAPIEnabled { false };
+
     friend class WTF::NeverDestroyed<RuntimeEnabledFeatures>;
 };
 

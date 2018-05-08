@@ -28,8 +28,8 @@
 #include "cmakeconfig.h"
 
 #include "BrowserWindow.h"
-#include <JavaScriptCore/JavaScript.h>
 #include <errno.h>
+#include <gst/gst.h>
 #include <gtk/gtk.h>
 #include <string.h>
 #include <webkit2/webkit2.h>
@@ -296,17 +296,7 @@ static void websiteDataClearedCallback(WebKitWebsiteDataManager *manager, GAsync
 
 static void aboutDataScriptMessageReceivedCallback(WebKitUserContentManager *userContentManager, WebKitJavascriptResult *message, WebKitWebContext *webContext)
 {
-    JSValueRef jsValue = webkit_javascript_result_get_value(message);
-    JSStringRef jsString = JSValueToStringCopy(webkit_javascript_result_get_global_context(message), jsValue, NULL);
-    size_t maxSize = JSStringGetMaximumUTF8CStringSize(jsString);
-    if (!maxSize) {
-        JSStringRelease(jsString);
-        return;
-    }
-    char *messageString = g_malloc(maxSize);
-    JSStringGetUTF8CString(jsString, messageString, maxSize);
-    JSStringRelease(jsString);
-
+    char *messageString = jsc_value_to_string(webkit_javascript_result_get_js_value(message));
     char **tokens = g_strsplit(messageString, ":", 3);
     g_free(messageString);
 
@@ -476,14 +466,16 @@ static void automationStartedCallback(WebKitWebContext *webContext, WebKitAutoma
 
 int main(int argc, char *argv[])
 {
-    gtk_init(&argc, &argv);
 #if ENABLE_DEVELOPER_MODE
     g_setenv("WEBKIT_INJECTED_BUNDLE_PATH", WEBKIT_INJECTED_BUNDLE_PATH, FALSE);
 #endif
 
+    gtk_init(&argc, &argv);
+
     GOptionContext *context = g_option_context_new(NULL);
     g_option_context_add_main_entries(context, commandLineOptions, 0);
     g_option_context_add_group(context, gtk_get_option_group(TRUE));
+    g_option_context_add_group(context, gst_init_get_option_group());
 
     WebKitSettings *webkitSettings = webkit_settings_new();
     webkit_settings_set_enable_developer_extras(webkitSettings, TRUE);

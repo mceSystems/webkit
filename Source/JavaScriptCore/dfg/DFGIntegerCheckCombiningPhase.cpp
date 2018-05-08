@@ -34,8 +34,8 @@
 #include "DFGPredictionPropagationPhase.h"
 #include "DFGVariableAccessDataDump.h"
 #include "JSCInlines.h"
-#include <unordered_map>
 #include <wtf/HashMethod.h>
+#include <wtf/StdUnorderedMap.h>
 
 namespace JSC { namespace DFG {
 
@@ -284,7 +284,7 @@ private:
                 break;
                 
             case ArrayBounds:
-                node->remove();
+                node->remove(m_graph);
                 m_changed = true;
                 break;
                 
@@ -377,7 +377,7 @@ private:
                 nodeIndex, origin, jsNumber(addend), source.useKind()));
     }
     
-    using RangeMap = std::unordered_map<RangeKey, Range, HashMethod<RangeKey>, std::equal_to<RangeKey>, FastAllocator<std::pair<const RangeKey, Range>>>;
+    using RangeMap = StdUnorderedMap<RangeKey, Range, HashMethod<RangeKey>>;
     RangeMap m_map;
     
     InsertionSet m_insertionSet;

@@ -45,6 +45,7 @@
 #include "FloatPoint.h"
 #include "FloatRect.h"
 #include "FocusController.h"
+#include "Frame.h"
 #include "FrameLoader.h"
 #include "FrameSelection.h"
 #include "FrameTree.h"
@@ -61,7 +62,6 @@
 #include "InspectorInstrumentation.h"
 #include "KeyboardEvent.h"
 #include "Logging.h"
-#include "MainFrame.h"
 #include "MouseEvent.h"
 #include "MouseEventWithHitTestResults.h"
 #include "Page.h"
@@ -99,7 +99,6 @@
 #include "WheelEventDeltaFilter.h"
 #include "WindowsKeyboardCodes.h"
 #include <wtf/Assertions.h>
-#include <wtf/CurrentTime.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
 
@@ -184,18 +183,18 @@ class MaximumDurationTracker {
 public:
     explicit MaximumDurationTracker(double *maxDuration)
         : m_maxDuration(maxDuration)
-        , m_start(monotonicallyIncreasingTime())
+        , m_start(MonotonicTime::now())
     {
     }
 
     ~MaximumDurationTracker()
     {
-        *m_maxDuration = std::max(*m_maxDuration, monotonicallyIncreasingTime() - m_start);
+        *m_maxDuration = std::max(*m_maxDuration, (MonotonicTime::now() - m_start).seconds());
     }
 
 private:
     double* m_maxDuration;
-    double m_start;
+    MonotonicTime m_start;
 };
 
 #if ENABLE(TOUCH_EVENTS) && !ENABLE(IOS_TOUCH_EVENTS)
@@ -1637,7 +1636,7 @@ bool EventHandler::handleMousePressEvent(const PlatformMouseEvent& platformMouse
     }
 #endif
 
-    if (m_frame.mainFrame().pageOverlayController().handleMouseEvent(platformMouseEvent))
+    if (m_frame.page()->pageOverlayController().handleMouseEvent(platformMouseEvent))
         return true;
 
 #if ENABLE(TOUCH_EVENTS)
@@ -1838,7 +1837,7 @@ bool EventHandler::mouseMoved(const PlatformMouseEvent& event)
     RefPtr<FrameView> protector(m_frame.view());
     MaximumDurationTracker maxDurationTracker(&m_maxMouseMovedDuration);
 
-    if (m_frame.mainFrame().pageOverlayController().handleMouseEvent(event))
+    if (m_frame.page() && m_frame.page()->pageOverlayController().handleMouseEvent(event))
         return true;
 
     HitTestResult hoveredNode = HitTestResult(LayoutPoint());
@@ -2036,7 +2035,7 @@ bool EventHandler::handleMouseReleaseEvent(const PlatformMouseEvent& platformMou
     }
 #endif
 
-    if (m_frame.mainFrame().pageOverlayController().handleMouseEvent(platformMouseEvent))
+    if (m_frame.page()->pageOverlayController().handleMouseEvent(platformMouseEvent))
         return true;
 
 #if ENABLE(TOUCH_EVENTS)
@@ -2127,7 +2126,10 @@ bool EventHandler::handleMouseForceEvent(const PlatformMouseEvent& event)
 
     setLastKnownMousePosition(event);
 
-    HitTestRequest::HitTestRequestType hitType = HitTestRequest::DisallowUserAgentShadowContent | HitTestRequest::Active;
+    HitTestRequest::HitTestRequestType hitType = HitTestRequest::DisallowUserAgentShadowContent;
+
+    if (event.force())
+        hitType |= HitTestRequest::Active;
 
     HitTestRequest request(hitType);
     MouseEventWithHitTestResults mouseEvent = prepareMouseEvent(request, event);
@@ -2196,7 +2198,7 @@ bool EventHandler::dispatchDragEvent(const AtomicString& eventType, Element& dra
 
     view->disableLayerFlushThrottlingTemporarilyForInteraction();
     Ref<MouseEvent> me = MouseEvent::create(eventType,
-        true, true, event.timestamp().approximateMonotonicTime(), m_frame.document()->defaultView(),
+        true, true, event.timestamp().approximateMonotonicTime(), &m_frame.windowProxy(),
         0, event.globalPosition().x(), event.globalPosition().y(), event.position().x(), event.position().y(),
 #if ENABLE(POINTER_LOCK)
         event.movementDelta().x(), event.movementDelta().y(),
@@ -2654,7 +2656,8 @@ void EventHandler::platformPrepareForWheelEvents(const PlatformWheelEvent&, cons
 
 void EventHandler::platformRecordWheelEvent(const PlatformWheelEvent& event)
 {
-    m_frame.mainFrame().wheelEventDeltaFilter()->updateFromDelta(FloatSize(event.deltaX(), event.deltaY()));
+    if (auto* page = m_frame.page())
+        page->wheelEventDeltaFilter()->updateFromDelta(FloatSize(event.deltaX(), event.deltaY()));
 }
 
 bool EventHandler::platformCompleteWheelEvent(const PlatformWheelEvent& event, ContainerNode*, const WeakPtr<ScrollableArea>&)
@@ -2777,8 +2780,8 @@ bool EventHandler::handleWheelEvent(const PlatformWheelEvent& event)
     platformPrepareForWheelEvents(event, result, element, scrollableContainer, scrollableArea, isOverWidget);
 
 #if PLATFORM(MAC)
-    if (event.phase() == PlatformWheelEventPhaseNone && event.momentumPhase() == PlatformWheelEventPhaseNone)
-        m_frame.mainFrame().resetLatchingState();
+    if (event.phase() == PlatformWheelEventPhaseNone && event.momentumPhase() == PlatformWheelEventPhaseNone && m_frame.page())
+        m_frame.page()->resetLatchingState();
 #endif
 
     // FIXME: It should not be necessary to do this mutation here.
@@ -2817,10 +2820,14 @@ bool EventHandler::handleWheelEvent(const PlatformWheelEvent& event)
 
 void EventHandler::clearLatchedState()
 {
+    auto* page = m_frame.page();
+    if (!page)
+        return;
+
 #if PLATFORM(MAC)
-    m_frame.mainFrame().resetLatchingState();
+    page->resetLatchingState();
 #endif
-    if (auto filter = m_frame.mainFrame().wheelEventDeltaFilter())
+    if (auto filter = page->wheelEventDeltaFilter())
         filter->endFilteringDeltas();
 }
 
@@ -2839,12 +2846,12 @@ void EventHandler::defaultWheelEventHandler(Node* startNode, WheelEvent& wheelEv
     }
 
 #if PLATFORM(MAC)
-    ScrollLatchingState* latchedState = m_frame.mainFrame().latchingState();
+    ScrollLatchingState* latchedState = m_frame.page() ? m_frame.page()->latchingState() : nullptr;
     Element* stopElement = latchedState ? latchedState->previousWheelScrolledElement() : nullptr;
 
-    if (m_frame.mainFrame().wheelEventDeltaFilter()->isFilteringDeltas()) {
-        filteredPlatformDelta = m_frame.mainFrame().wheelEventDeltaFilter()->filteredDelta();
-        filteredVelocity = m_frame.mainFrame().wheelEventDeltaFilter()->filteredVelocity();
+    if (m_frame.page() && m_frame.page()->wheelEventDeltaFilter()->isFilteringDeltas()) {
+        filteredPlatformDelta = m_frame.page()->wheelEventDeltaFilter()->filteredDelta();
+        filteredVelocity = m_frame.page()->wheelEventDeltaFilter()->filteredVelocity();
     }
 #else
     Element* stopElement = nullptr;
@@ -3241,7 +3248,7 @@ bool EventHandler::internalKeyEvent(const PlatformKeyboardEvent& initialKeyEvent
     PlatformKeyboardEvent keyDownEvent = initialKeyEvent;    
     if (keyDownEvent.type() != PlatformEvent::RawKeyDown)
         keyDownEvent.disambiguateKeyDownEvent(PlatformEvent::RawKeyDown, backwardCompatibilityMode);
-    auto keydown = KeyboardEvent::create(keyDownEvent, m_frame.document()->defaultView());
+    auto keydown = KeyboardEvent::create(keyDownEvent, &m_frame.windowProxy());
     if (matchedAnAccessKey)
         keydown->preventDefault();
     keydown->setTarget(element);
@@ -3264,7 +3271,7 @@ bool EventHandler::internalKeyEvent(const PlatformKeyboardEvent& initialKeyEvent
     
     if (handledByInputMethod) {
         keyDownEvent.setWindowsVirtualKeyCode(CompositionEventKeyCode);
-        keydown = KeyboardEvent::create(keyDownEvent, m_frame.document()->defaultView());
+        keydown = KeyboardEvent::create(keyDownEvent, &m_frame.windowProxy());
         keydown->setTarget(element);
         keydown->setDefaultHandled();
     }
@@ -3273,13 +3280,15 @@ bool EventHandler::internalKeyEvent(const PlatformKeyboardEvent& initialKeyEvent
         keydown->stopPropagation();
 
     element->dispatchEvent(keydown);
+    if (handledByInputMethod)
+        return true;
 
     // If frame changed as a result of keydown dispatch, then return early to avoid sending a subsequent keypress message to the new frame.
     bool changedFocusedFrame = m_frame.page() && &m_frame != &m_frame.page()->focusController().focusedOrMainFrame();
     bool keydownResult = keydown->defaultHandled() || keydown->defaultPrevented() || changedFocusedFrame;
-    if (handledByInputMethod || (keydownResult && !backwardCompatibilityMode))
+    if (keydownResult && !backwardCompatibilityMode)
         return keydownResult;
-    
+
     // Focus may have changed during keydown handling, so refetch element.
     // But if we are dispatching a fake backward compatibility keypress, then we pretend that the keypress happened on the original element.
     if (!keydownResult) {
@@ -3292,7 +3301,7 @@ bool EventHandler::internalKeyEvent(const PlatformKeyboardEvent& initialKeyEvent
     keyPressEvent.disambiguateKeyDownEvent(PlatformEvent::Char, backwardCompatibilityMode);
     if (keyPressEvent.text().isEmpty())
         return keydownResult;
-    auto keypress = KeyboardEvent::create(keyPressEvent, m_frame.document()->defaultView());
+    auto keypress = KeyboardEvent::create(keyPressEvent, &m_frame.windowProxy());
     keypress->setTarget(element);
     if (keydownResult)
         keypress->preventDefault();
@@ -3793,7 +3802,7 @@ bool EventHandler::handleTextInputEvent(const String& text, Event* underlyingEve
     if (FrameView* view = m_frame.view())
         view->disableLayerFlushThrottlingTemporarilyForInteraction();
 
-    Ref<TextEvent> event = TextEvent::create(m_frame.document()->domWindow(), text, inputType);
+    auto event = TextEvent::create(&m_frame.windowProxy(), text, inputType);
     event->setUnderlyingEvent(underlyingEvent);
 
     target->dispatchEvent(event);
@@ -4202,7 +4211,7 @@ bool EventHandler::handleTouchEvent(const PlatformTouchEvent& event)
 
             Ref<TouchEvent> touchEvent =
                 TouchEvent::create(effectiveTouches.get(), targetTouches.get(), changedTouches[state].m_touches.get(),
-                    stateName, downcast<Node>(*target).document().defaultView(),
+                    stateName, downcast<Node>(*target).document().windowProxy(),
                     0, 0, 0, 0, event.ctrlKey(), event.altKey(), event.shiftKey(), event.metaKey());
             target->dispatchEvent(touchEvent);
             swallowedEvent = swallowedEvent || touchEvent->defaultPrevented() || touchEvent->defaultHandled();

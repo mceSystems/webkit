@@ -56,6 +56,7 @@
 #define WebKitWebSecurityEnabledPreferenceKey @"WebKitWebSecurityEnabled"
 #define WebKitAllowUniversalAccessFromFileURLsPreferenceKey @"WebKitAllowUniversalAccessFromFileURLs"
 #define WebKitAllowFileAccessFromFileURLsPreferenceKey @"WebKitAllowFileAccessFromFileURLs"
+#define WebKitAllowCrossOriginSubresourcesToAskForCredentialsKey @"WebKitAllowCrossOriginSubresourcesToAskForCredentials"
 #define WebKitNeedsStorageAccessFromFileURLsQuirkKey @"WebKitNeedsStorageAccessFromFileURLsQuirk"
 #define WebKitJavaScriptCanOpenWindowsAutomaticallyPreferenceKey @"WebKitJavaScriptCanOpenWindowsAutomatically"
 #define WebKitPluginsEnabledPreferenceKey @"WebKitPluginsEnabled"
@@ -177,7 +178,6 @@
 #define WebKitReadableByteStreamAPIEnabledPreferenceKey @"WebKitReadableByteStreamAPIEnabled"
 #define WebKitDownloadAttributeEnabledPreferenceKey @"WebKitDownloadAttributeEnabled"
 #define WebKitDirectoryUploadEnabledPreferenceKey @"WebKitDirectoryUploadEnabled"
-#define WebKitCSSGridLayoutEnabledPreferenceKey @"WebKitCSSGridLayoutEnabled"
 #define WebKitVisualViewportEnabledPreferenceKey @"WebKitVisualViewportEnabled"
 #define WebKitVisualViewportAPIEnabledPreferenceKey @"WebKitVisualViewportAPIEnabled"
 #define WebKitModernMediaControlsEnabledPreferenceKey @"WebKitModernMediaControlsEnabled"
@@ -193,7 +193,9 @@
 #define WebKitIsSecureContextAttributeEnabledPreferenceKey @"WebKitIsSecureContextAttributeEnabled"
 #define WebKitViewportFitEnabledPreferenceKey @"WebKitViewportFitEnabled"
 #define WebKitConstantPropertiesEnabledPreferenceKey @"WebKitConstantPropertiesEnabled"
+#define WebKitColorFilterEnabledPreferenceKey @"WebKitColorFilterEnabled"
 #define WebKitFetchAPIKeepAliveEnabledPreferenceKey @"WebKitFetchAPIKeepAliveEnabled"
+#define WebKitCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabledPreferenceKey @"WebKitCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled"
 
 #if !TARGET_OS_IPHONE
 // These are private both because callers should be using the cover methods and because the

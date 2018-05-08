@@ -25,7 +25,6 @@
 #include "DestructionMode.h"
 #include "HeapCell.h"
 #include "IterationStatus.h"
-#include "SecurityOriginToken.h"
 #include "WeakSet.h"
 #include <wtf/Atomics.h>
 #include <wtf/Bitmap.h>
@@ -195,9 +194,6 @@ public:
         
         void dumpState(PrintStream&);
         
-        void associateWithOrigin(SecurityOriginToken);
-        SecurityOriginToken securityOriginToken() const { return m_securityOriginToken; }
-        
     private:
         Handle(Heap&, AlignedMemoryAllocator*, void*);
         
@@ -233,8 +229,6 @@ public:
         WeakSet m_weakSet;
         
         MarkedBlock* m_block { nullptr };
-        
-        SecurityOriginToken m_securityOriginToken { 0 };
     };
 
 private:    

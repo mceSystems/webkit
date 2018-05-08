@@ -31,6 +31,7 @@
 #include "CSSAnimationController.h"
 #include "Editing.h"
 #include "FloatQuad.h"
+#include "Frame.h"
 #include "FrameSelection.h"
 #include "FrameView.h"
 #include "GeometryUtilities.h"
@@ -41,7 +42,6 @@
 #include "HTMLTableElement.h"
 #include "HitTestResult.h"
 #include "LogicalSelectionOffsetCaches.h"
-#include "MainFrame.h"
 #include "Page.h"
 #include "PseudoElement.h"
 #include "RenderChildIterator.h"
@@ -253,12 +253,6 @@ void RenderObject::resetFragmentedFlowStateOnRemoval()
 void RenderObject::setParent(RenderElement* parent)
 {
     m_parent = parent;
-}
-
-void RenderObject::removeFromParentAndDestroy(RenderTreeBuilder& builder)
-{
-    ASSERT(m_parent);
-    m_parent->removeAndDestroyChild(builder, *this);
 }
 
 RenderObject* RenderObject::nextInPreOrder() const
@@ -1434,7 +1428,7 @@ bool RenderObject::isSelectionBorder() const
         || view().selection().end() == this;
 }
 
-void RenderObject::willBeDestroyed(RenderTreeBuilder&)
+void RenderObject::willBeDestroyed()
 {
     ASSERT(!m_parent);
     ASSERT(renderTreeBeingDestroyed() || !is<RenderElement>(*this) || !view().frameView().hasSlowRepaintObject(downcast<RenderElement>(*this)));
@@ -1455,13 +1449,8 @@ void RenderObject::willBeDestroyed(RenderTreeBuilder&)
 void RenderObject::insertedIntoTree()
 {
     // FIXME: We should ASSERT(isRooted()) here but generated content makes some out-of-order insertion.
-
     if (!isFloating() && parent()->childrenInline())
         parent()->dirtyLinesFromChangedChild(*this);
-
-    auto* fragmentedFlow = enclosingFragmentedFlow();
-    if (is<RenderMultiColumnFlow>(fragmentedFlow))
-        RenderTreeBuilder::current()->multiColumnDescendantInserted(downcast<RenderMultiColumnFlow>(*fragmentedFlow), *this);
 }
 
 void RenderObject::willBeRemovedFromTree()
@@ -1485,7 +1474,7 @@ void RenderObject::destroy()
         downcast<RenderBoxModelObject>(*this).layer()->willBeDestroyed();
 #endif
 
-    willBeDestroyed(*RenderTreeBuilder::current());
+    willBeDestroyed();
 
     if (is<RenderWidget>(*this)) {
         downcast<RenderWidget>(*this).deref();

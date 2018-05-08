@@ -424,6 +424,11 @@ private:
                     changed |= mergePrediction(SpecSymbol);
                     break;
                 }
+                
+                if (node->child1()->shouldSpeculateBigInt()) {
+                    changed |= mergePrediction(SpecBigInt);
+                    break;
+                }
 
                 if (node->child1()->shouldSpeculateStringIdent()) {
                     changed |= mergePrediction(SpecStringIdent);
@@ -699,11 +704,14 @@ private:
         case RegExpExecNonGlobalOrSticky:
         case RegExpTest:
         case RegExpMatchFast:
+        case RegExpMatchFastGlobal:
         case StringReplace:
         case StringReplaceRegExp:
         case GetById:
         case GetByIdFlush:
         case GetByIdWithThis:
+        case GetByIdDirect:
+        case GetByIdDirectFlush:
         case TryGetById:
         case GetByValWithThis:
         case GetByOffset:
@@ -768,6 +776,7 @@ private:
             break;
         }
 
+        case SetCallee:
         case SetArgumentCountIncludingThis:
             break;
 
@@ -842,6 +851,7 @@ private:
         case CompareEq:
         case CompareStrictEq:
         case CompareEqPtr:
+        case SameValue:
         case OverridesHasInstance:
         case InstanceOf:
         case InstanceOfCustom:
@@ -849,6 +859,7 @@ private:
         case IsUndefined:
         case IsBoolean:
         case IsNumber:
+        case NumberIsInteger:
         case IsObject:
         case IsObjectOrNull:
         case IsFunction:
@@ -1174,6 +1185,7 @@ private:
         case PutStructure:
         case Phantom:
         case Check:
+        case CheckVarargs:
         case PutGlobalVariable:
         case CheckTraps:
         case LogShadowChickenPrologue:

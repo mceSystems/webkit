@@ -73,7 +73,7 @@ class IOSSimulatorPort(IOSPort):
             return device.platform_device.device_type in DeviceType(software_variant='iOS',
                                                                     software_version=self.ios_version())
 
-        if self.get_option('dedicated_simulators', False):
+        if not self.get_option('dedicated_simulators', False):
             num_booted_sims = len(SimulatedDeviceManager.device_by_filter(booted_ios_devices_filter, host=self.host))
             if num_booted_sims:
                 return num_booted_sims
@@ -107,6 +107,17 @@ class IOSSimulatorPort(IOSPort):
         _log.debug("clean_up_test_run")
 
         SimulatedDeviceManager.tear_down(self.host)
+
+    def environment_for_api_tests(self):
+        no_prefix = super(IOSSimulatorPort, self).environment_for_api_tests()
+        result = {}
+        SIMCTL_ENV_PREFIX = 'SIMCTL_CHILD_'
+        for value in no_prefix:
+            if not value.startswith(SIMCTL_ENV_PREFIX):
+                result[SIMCTL_ENV_PREFIX + value] = no_prefix[value]
+            else:
+                result[value] = no_prefix[value]
+        return result
 
     def setup_environ_for_server(self, server_name=None):
         _log.debug("setup_environ_for_server")

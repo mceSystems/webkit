@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "JSCell.h"
+#include "JSCast.h"
 
 #include "CallFrame.h"
 #include "JSGlobalObject.h"
@@ -138,14 +138,6 @@ private:
     WriteBarrier<JSObject> m_getter;
     WriteBarrier<JSObject> m_setter;  
 };
-
-GetterSetter* asGetterSetter(JSValue);
-
-inline GetterSetter* asGetterSetter(JSValue value)
-{
-    ASSERT_WITH_SECURITY_IMPLICATION(value.asCell()->isGetterSetter());
-    return static_cast<GetterSetter*>(value.asCell());
-}
 
 JSValue callGetter(ExecState*, JSValue base, JSValue getterSetter);
 JS_EXPORT_PRIVATE bool callSetter(ExecState*, JSValue base, JSValue getterSetter, JSValue, ECMAMode);

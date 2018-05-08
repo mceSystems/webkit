@@ -31,14 +31,13 @@
 #include "WebPageProxy.h"
 #include <WebCore/DragData.h>
 #include <WebCore/GRefPtrGtk.h>
+#include <WebCore/GUniquePtrGtk.h>
 #include <WebCore/GtkUtilities.h>
 #include <WebCore/PasteboardHelper.h>
 #include <wtf/RunLoop.h>
-#include <wtf/glib/GUniquePtr.h>
-
-using namespace WebCore;
 
 namespace WebKit {
+using namespace WebCore;
 
 DragAndDropHandler::DragAndDropHandler(WebPageProxy& page)
     : m_page(page)

@@ -31,7 +31,6 @@
 
 #include "APIPageConfiguration.h"
 #include "AcceleratedBackingStore.h"
-#include "ActivityState.h"
 #include "DrawingAreaProxyImpl.h"
 #include "InputMethodFilter.h"
 #include "KeyBindingTranslator.h"
@@ -50,6 +49,7 @@
 #include "WebPreferences.h"
 #include "WebProcessPool.h"
 #include "WebUserContentControllerProxy.h"
+#include <WebCore/ActivityState.h>
 #include <WebCore/CairoUtilities.h>
 #include <WebCore/GUniquePtrGtk.h>
 #include <WebCore/GtkUtilities.h>
@@ -885,13 +885,21 @@ static gboolean webkitWebViewBaseMotionNotifyEvent(GtkWidget* widget, GdkEventMo
     return GDK_EVENT_PROPAGATE;
 }
 
-static gboolean webkitWebViewBaseCrossingNotifyEvent(GtkWidget* widget, GdkEventCrossing* crosssingEvent)
+static gboolean webkitWebViewBaseCrossingNotifyEvent(GtkWidget* widget, GdkEventCrossing* crossingEvent)
 {
     WebKitWebViewBase* webViewBase = WEBKIT_WEB_VIEW_BASE(widget);
     WebKitWebViewBasePrivate* priv = webViewBase->priv;
 
     if (priv->authenticationDialog)
         return GDK_EVENT_PROPAGATE;
+
+#if ENABLE(DEVELOPER_MODE)
+    // Do not send mouse move events to the WebProcess for crossing events during testing.
+    // WTR never generates crossing events and they can confuse tests.
+    // https://bugs.webkit.org/show_bug.cgi?id=185072.
+    if (UNLIKELY(priv->pageProxy->process().processPool().configuration().fullySynchronousModeIsAllowedForTesting()))
+        return GDK_EVENT_PROPAGATE;
+#endif
 
     // In the case of crossing events, it's very important the actual coordinates the WebProcess receives, because once the mouse leaves
     // the web view, the WebProcess won't receive more events until the mouse enters again in the web view. So, if the coordinates of the leave
@@ -902,8 +910,8 @@ static gboolean webkitWebViewBaseCrossingNotifyEvent(GtkWidget* widget, GdkEvent
     gtk_widget_get_allocation(widget, &allocation);
     double width = allocation.width;
     double height = allocation.height;
-    double x = crosssingEvent->x;
-    double y = crosssingEvent->y;
+    double x = crossingEvent->x;
+    double y = crossingEvent->y;
     if (x < 0 && x > -1)
         x = -1;
     else if (x >= width && x < width + 1)
@@ -913,9 +921,9 @@ static gboolean webkitWebViewBaseCrossingNotifyEvent(GtkWidget* widget, GdkEvent
     else if (y >= height && y < height + 1)
         y = height + 1;
 
-    GdkEvent* event = reinterpret_cast<GdkEvent*>(crosssingEvent);
+    GdkEvent* event = reinterpret_cast<GdkEvent*>(crossingEvent);
     GUniquePtr<GdkEvent> copiedEvent;
-    if (x != crosssingEvent->x || y != crosssingEvent->y) {
+    if (x != crossingEvent->x || y != crossingEvent->y) {
         copiedEvent.reset(gdk_event_copy(event));
         copiedEvent->crossing.x = x;
         copiedEvent->crossing.y = y;

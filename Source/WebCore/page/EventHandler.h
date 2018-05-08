@@ -158,14 +158,6 @@ public:
 
 #if ENABLE(DRAG_SUPPORT)
     struct DragTargetResponse {
-#if !COMPILER_SUPPORTS(NSDMI_FOR_AGGREGATES)
-        DragTargetResponse() = default;
-        DragTargetResponse(bool accept, std::optional<DragOperation> operation)
-            : accept(accept)
-            , operation(operation)
-        {
-        }
-#endif
         bool accept { false };
         std::optional<DragOperation> operation;
     };
@@ -338,8 +330,8 @@ public:
 #endif
     
 #if PLATFORM(IOS)
-    WEBCORE_EXPORT void startTextAutoscroll(RenderObject* renderer, const FloatPoint& positionInWindow);
-    WEBCORE_EXPORT void cancelTextAutoscroll();
+    WEBCORE_EXPORT void startSelectionAutoscroll(RenderObject* renderer, const FloatPoint& positionInWindow);
+    WEBCORE_EXPORT void cancelSelectionAutoscroll();
     IntPoint m_targetAutoscrollPositionInWindow;
     bool m_isAutoscrolling { false };
 #endif

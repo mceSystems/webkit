@@ -15,6 +15,8 @@ set(ForwardingHeadersForTestWebKitAPI_NAME TestWebKitAPI-forwarding-headers)
 include_directories(
     ${FORWARDING_HEADERS_DIR}
     ${FORWARDING_HEADERS_DIR}/JavaScriptCore
+    ${FORWARDING_HEADERS_DIR}/JavaScriptCore/glib
+    ${DERIVED_SOURCES_JAVASCRIPCOREWPE_DIR}
     ${TOOLS_DIR}/wpe/HeadlessViewBackend
 )
 
@@ -22,6 +24,8 @@ include_directories(SYSTEM
     ${CAIRO_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
     ${LIBSOUP_INCLUDE_DIRS}
+    ${WPE_INCLUDE_DIRS}
+    ${WPEBACKEND_FDO_INCLUDE_DIRS}
 )
 
 set(test_main_SOURCES
@@ -43,6 +47,7 @@ set(webkit_api_harness_SOURCES
 # TestWTF
 
 list(APPEND TestWTF_SOURCES
+    ${TESTWEBKITAPI_DIR}/glib/UtilitiesGLib.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/glib/GUniquePtr.cpp
     ${TESTWEBKITAPI_DIR}/Tests/WTF/glib/WorkQueueGLib.cpp
 )
@@ -84,6 +89,18 @@ add_test(TestWebKit ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/WebKit/TestWebKit)
 set_tests_properties(TestWebKit PROPERTIES TIMEOUT 60)
 set_target_properties(TestWebKit PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/WebKit)
 
+# TestJSC
+
+add_definitions(-DWEBKIT_SRC_DIR="${CMAKE_SOURCE_DIR}")
+add_executable(TestJSC ${TESTWEBKITAPI_DIR}/Tests/JavaScriptCore/glib/TestJSC.cpp)
+target_link_libraries(TestJSC
+    ${GLIB_LIBRARIES}
+    JavaScriptCore
+)
+add_test(TestJSC ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/JavaScriptCore/TestJSC)
+set_tests_properties(TestJSC PROPERTIES TIMEOUT 60)
+set_target_properties(TestJSC PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${TESTWEBKITAPI_RUNTIME_OUTPUT_DIRECTORY}/JavaScriptCore)
+
 if (COMPILER_IS_GCC_OR_CLANG)
     WEBKIT_ADD_TARGET_CXX_FLAGS(TestWebCore -Wno-sign-compare
                                             -Wno-undef
@@ -91,4 +108,7 @@ if (COMPILER_IS_GCC_OR_CLANG)
     WEBKIT_ADD_TARGET_CXX_FLAGS(TestWebKit -Wno-sign-compare
                                            -Wno-undef
                                            -Wno-unused-parameter)
+    WEBKIT_ADD_TARGET_CXX_FLAGS(TestJSC -Wno-sign-compare
+                                        -Wno-undef
+                                        -Wno-unused-parameter)
 endif ()

@@ -70,7 +70,7 @@ RenderInline::RenderInline(Document& document, RenderStyle&& style)
     setChildrenInline(true);
 }
 
-void RenderInline::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderInline::willBeDestroyed()
 {
 #if !ASSERT_DISABLED
     // Make sure we do not retain "this" in the continuation outline table map of our containing blocks.
@@ -107,7 +107,7 @@ void RenderInline::willBeDestroyed(RenderTreeBuilder& builder)
 
     m_lineBoxes.deleteLineBoxes();
 
-    RenderBoxModelObject::willBeDestroyed(builder);
+    RenderBoxModelObject::willBeDestroyed();
 }
 
 void RenderInline::updateFromStyle()
@@ -253,16 +253,6 @@ LayoutRect RenderInline::localCaretRect(InlineBox* inlineBox, unsigned, LayoutUn
         caretRect.moveBy(LayoutPoint(firstBox->topLeft()));
 
     return caretRect;
-}
-
-void RenderInline::addChild(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
-{
-    builder.insertChildToRenderInline(*this, WTFMove(newChild), beforeChild);
-}
-
-void RenderInline::addChildIgnoringContinuation(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
-{
-    builder.insertChildToRenderInlineIgnoringContinuation(*this, WTFMove(newChild), beforeChild);
 }
 
 void RenderInline::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
@@ -1240,7 +1230,7 @@ void RenderInline::paintOutline(PaintInfo& paintInfo, const LayoutPoint& paintOf
     }
     rects.append(LayoutRect());
 
-    Color outlineColor = styleToUse.visitedDependentColor(CSSPropertyOutlineColor);
+    Color outlineColor = styleToUse.visitedDependentColorWithColorFilter(CSSPropertyOutlineColor);
     bool useTransparencyLayer = !outlineColor.isOpaque();
     if (useTransparencyLayer) {
         graphicsContext.beginTransparencyLayer(outlineColor.alphaAsFloat());

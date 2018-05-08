@@ -28,6 +28,7 @@
 
 #if ENABLE(DFG_JIT)
 
+#include "BuiltinNames.h"
 #include "DFGAbstractInterpreterInlines.h"
 #include "DFGArgumentsUtilities.h"
 #include "DFGBasicBlockInlines.h"
@@ -140,7 +141,8 @@ private:
                 break;
             }
 
-            case CompareStrictEq: {
+            case CompareStrictEq:
+            case SameValue: {
                 if (node->isBinaryUseKind(UntypedUse)) {
                     JSValue child1Constant = m_state.forNode(node->child1().node()).value();
                     JSValue child2Constant = m_state.forNode(node->child2().node()).value();
@@ -184,7 +186,7 @@ private:
                 }
                 if (value.m_structure.isSubsetOf(set)) {
                     m_interpreter.execute(indexInBlock); // Catch the fact that we may filter on cell.
-                    node->remove();
+                    node->remove(m_graph);
                     eliminated = true;
                     break;
                 }
@@ -196,7 +198,7 @@ private:
                 if (constant) {
                     if (constant.isCell() && constant.asCell()->inherits(m_graph.m_vm, node->classInfo())) {
                         m_interpreter.execute(indexInBlock);
-                        node->remove();
+                        node->remove(m_graph);
                         eliminated = true;
                         break;
                     }
@@ -206,7 +208,7 @@ private:
 
                 if (value.m_structure.isSubClassOf(node->classInfo())) {
                     m_interpreter.execute(indexInBlock);
-                    node->remove();
+                    node->remove(m_graph);
                     eliminated = true;
                     break;
                 }
@@ -244,7 +246,7 @@ private:
                     if (Structure* structure = jsDynamicCast<Structure*>(m_graph.m_vm, value.value())) {
                         if (set.contains(m_graph.registerStructure(structure))) {
                             m_interpreter.execute(indexInBlock);
-                            node->remove();
+                            node->remove(m_graph);
                             eliminated = true;
                             break;
                         }
@@ -264,7 +266,7 @@ private:
                         });
                     if (allGood) {
                         m_interpreter.execute(indexInBlock);
-                        node->remove();
+                        node->remove(m_graph);
                         eliminated = true;
                         break;
                     }
@@ -276,7 +278,7 @@ private:
             case Arrayify: {
                 if (!node->arrayMode().alreadyChecked(m_graph, node, m_state.forNode(node->child1())))
                     break;
-                node->remove();
+                node->remove(m_graph);
                 eliminated = true;
                 break;
             }
@@ -285,7 +287,7 @@ private:
                 if (m_state.forNode(node->child1()).m_structure.onlyStructure() != node->transition()->next)
                     break;
                 
-                node->remove();
+                node->remove(m_graph);
                 eliminated = true;
                 break;
             }
@@ -293,7 +295,7 @@ private:
             case CheckCell: {
                 if (m_state.forNode(node->child1()).value() != node->cellOperand()->value())
                     break;
-                node->remove();
+                node->remove(m_graph);
                 eliminated = true;
                 break;
             }
@@ -302,7 +304,7 @@ private:
             case CheckNotEmpty: {
                 if (m_state.forNode(node->child1()).m_type & SpecEmpty)
                     break;
-                node->remove();
+                node->remove(m_graph);
                 eliminated = true;
                 break;
             }
@@ -326,7 +328,7 @@ private:
                 }
 
                 if (constantUid == uid) {
-                    node->remove();
+                    node->remove(m_graph);
                     eliminated = true;
                 }
                 break;
@@ -337,7 +339,7 @@ private:
                 JSValue right = m_state.forNode(node->child2()).value();
                 if (left && right && left.isInt32() && right.isInt32()
                     && static_cast<uint32_t>(left.asInt32()) < static_cast<uint32_t>(right.asInt32())) {
-                    node->remove();
+                    node->remove(m_graph);
                     eliminated = true;
                     break;
                 }
@@ -377,7 +379,7 @@ private:
                     if (index >= inlineCallFrame->argumentCountIncludingThis - 1)
                         break;
                 } else {
-                    if (index >= m_state.variables().numberOfArguments() - 1)
+                    if (index >= m_state.numberOfArguments() - 1)
                         break;
                 }
                 
@@ -488,6 +490,8 @@ private:
                 break;
             }
         
+            case GetByIdDirect:
+            case GetByIdDirectFlush:
             case GetById:
             case GetByIdFlush: {
                 Edge childEdge = node->child1();
@@ -613,7 +617,7 @@ private:
             }
 
             case ToPrimitive: {
-                if (m_state.forNode(node->child1()).m_type & ~(SpecFullNumber | SpecBoolean | SpecString | SpecSymbol))
+                if (m_state.forNode(node->child1()).m_type & ~(SpecFullNumber | SpecBoolean | SpecString | SpecSymbol | SpecBigInt))
                     break;
                 
                 node->convertToIdentity();
@@ -632,6 +636,49 @@ private:
                     node->convertToGetGlobalThis();
                     changed = true;
                     break;
+                }
+                break;
+            }
+
+            case CreateThis: {
+                if (JSValue base = m_state.forNode(node->child1()).m_value) {
+                    if (auto* function = jsDynamicCast<JSFunction*>(m_graph.m_vm, base)) {
+                        if (FunctionRareData* rareData = function->rareData()) {
+                            if (rareData->allocationProfileWatchpointSet().isStillValid()) {
+                                Structure* structure = rareData->objectAllocationStructure();
+                                JSObject* prototype = rareData->objectAllocationPrototype();
+                                if (structure
+                                    && (structure->hasMonoProto() || prototype)
+                                    && rareData->allocationProfileWatchpointSet().isStillValid()) {
+
+                                    m_graph.freeze(rareData);
+                                    m_graph.watchpoints().addLazily(rareData->allocationProfileWatchpointSet());
+                                    node->convertToNewObject(m_graph.registerStructure(structure));
+
+                                    if (structure->hasPolyProto()) {
+                                        StorageAccessData* data = m_graph.m_storageAccessData.add();
+                                        data->offset = knownPolyProtoOffset;
+                                        data->identifierNumber = m_graph.identifiers().ensure(m_graph.m_vm.propertyNames->builtinNames().polyProtoName().impl());
+                                        InferredType::Descriptor inferredType = InferredType::Top;
+                                        data->inferredType = inferredType;
+                                        m_graph.registerInferredType(inferredType);
+
+                                        NodeOrigin origin = node->origin.withInvalidExit();
+                                        Node* prototypeNode = m_insertionSet.insertConstant(
+                                            indexInBlock + 1, origin, m_graph.freeze(prototype));
+
+                                        ASSERT(isInlineOffset(knownPolyProtoOffset));
+                                        m_insertionSet.insertNode(
+                                            indexInBlock + 1, SpecNone, PutByOffset, origin, OpInfo(data),
+                                            Edge(node, KnownCellUse), Edge(node, KnownCellUse), Edge(prototypeNode, UntypedUse));
+                                    }
+                                    changed = true;
+                                    break;
+
+                                }
+                            }
+                        }
+                    }
                 }
                 break;
             }
@@ -685,6 +732,7 @@ private:
                     if (2 <= radix && radix <= 36) {
                         if (radix == 10) {
                             node->setOpAndDefaultFlags(ToString);
+                            node->clearFlags(NodeMustGenerate);
                             node->child2() = Edge();
                         } else
                             node->convertToNumberToStringWithValidRadixConstant(radix);
@@ -707,6 +755,26 @@ private:
                         changed = true;
                     }
                 }
+                break;
+            }
+
+            case CheckVarargs: {
+                alreadyHandled = true;
+                m_interpreter.execute(indexInBlock);
+                unsigned targetIndex = 0;
+                for (unsigned i = 0; i < node->numChildren(); ++i) {
+                    Edge& edge = m_graph.varArgChild(node, i);
+                    if (!edge)
+                        continue;
+                    if (edge.isProved() || edge.willNotHaveCheck()) {
+                        edge = Edge();
+                        changed = true;
+                        continue;
+                    }
+                    Edge& dst = m_graph.varArgChild(node, targetIndex++);
+                    std::swap(dst, edge);
+                }
+                node->children.setNumChildren(targetIndex);
                 break;
             }
 
@@ -739,6 +807,23 @@ private:
                 break;
             }
                 
+            case PhantomNewObject:
+            case PhantomNewFunction:
+            case PhantomNewGeneratorFunction:
+            case PhantomNewAsyncGeneratorFunction:
+            case PhantomNewAsyncFunction:
+            case PhantomCreateActivation:
+            case PhantomDirectArguments:
+            case PhantomClonedArguments:
+            case PhantomCreateRest:
+            case PhantomSpread:
+            case PhantomNewArrayWithSpread:
+            case PhantomNewArrayBuffer:
+            case PhantomNewRegexp:
+            case BottomValue:
+                alreadyHandled = true;
+                break;
+
             default:
                 break;
             }
@@ -767,7 +852,7 @@ private:
                 // about such things.
                 break;
             }
-            if (!node->shouldGenerate() || m_state.didClobber() || node->hasConstant())
+            if (!node->shouldGenerate() || m_state.didClobber() || node->hasConstant() || !node->result())
                 continue;
             
             // Interesting fact: this freezing that we do right here may turn an fragile value into
@@ -784,7 +869,7 @@ private:
                     OpInfo(node->variableAccessData()));
                 m_graph.dethread();
             } else
-                m_insertionSet.insertCheck(indexInBlock, node->origin, node->children);
+                m_insertionSet.insertCheck(m_graph, indexInBlock, node);
             m_graph.convertToConstant(node, value);
             
             changed = true;
@@ -998,7 +1083,7 @@ private:
             case JSConstant:
             case DoubleConstant:
             case Int52Constant:
-                node->remove();
+                node->remove(m_graph);
                 break;
             default:
                 DFG_CRASH(m_graph, node, "Bad Upsilon phi() pointer");

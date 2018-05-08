@@ -48,6 +48,7 @@
 #include <WebCore/SecurityOriginData.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/CrossThreadCopier.h>
+#include <wtf/ProcessPrivilege.h>
 #include <wtf/RunLoop.h>
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
@@ -90,6 +91,7 @@ WebsiteDataStore::WebsiteDataStore(Configuration configuration, PAL::SessionID s
     , m_storageManager(StorageManager::create(m_configuration.localStorageDirectory))
     , m_queue(WorkQueue::create("com.apple.WebKit.WebsiteDataStore"))
 {
+    WTF::setProcessPrivileges(allPrivileges());
     maybeRegisterWithSessionIDMap();
     platformInitialize();
 }
@@ -347,7 +349,7 @@ void WebsiteDataStore::fetchDataAndApply(OptionSet<WebsiteDataType> dataTypes, O
             WebsiteData websiteData;
             
             for (auto& origin : origins) {
-                WebsiteData::Entry entry { WebCore::SecurityOriginData::fromSecurityOrigin(*origin), WebsiteDataType::DiskCache, 0 };
+                WebsiteData::Entry entry { origin->data(), WebsiteDataType::DiskCache, 0 };
                 websiteData.entries.append(WTFMove(entry));
             }
             
@@ -447,7 +449,7 @@ void WebsiteDataStore::fetchDataAndApply(OptionSet<WebsiteDataType> dataTypes, O
 
             for (auto& origin : origins) {
                 uint64_t size = fetchOptions.contains(WebsiteDataFetchOption::ComputeSizes) ? storage->diskUsageForOrigin(*origin) : 0;
-                WebsiteData::Entry entry { WebCore::SecurityOriginData::fromSecurityOrigin(*origin), WebsiteDataType::OfflineWebApplicationCache, size };
+                WebsiteData::Entry entry { origin->data(), WebsiteDataType::OfflineWebApplicationCache, size };
 
                 websiteData.entries.append(WTFMove(entry));
             }
@@ -1208,10 +1210,18 @@ void WebsiteDataStore::getAllStorageAccessEntries(CompletionHandler<void(Vector<
         processPool->networkProcess()->getAllStorageAccessEntries(m_sessionID, WTFMove(callback));
 }
 
-void WebsiteDataStore::grantStorageAccessForFrameHandler(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool wasGranted)>&& callback)
+void WebsiteDataStore::grantStorageAccessHandler(const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, WTF::CompletionHandler<void(bool wasGranted)>&& callback)
 {
     for (auto& processPool : processPools())
-        processPool->networkProcess()->grantStorageAccessForFrame(m_sessionID, resourceDomain, firstPartyDomain, frameID, pageID, WTFMove(callback));
+        processPool->networkProcess()->grantStorageAccess(m_sessionID, resourceDomain, firstPartyDomain, frameID, pageID, WTFMove(callback));
+}
+
+void WebsiteDataStore::removeAllStorageAccessHandler()
+{
+    for (auto& processPool : processPools()) {
+        if (auto networkProcess = processPool->networkProcess())
+            networkProcess->removeAllStorageAccess(m_sessionID);
+    }
 }
 
 void WebsiteDataStore::removePrevalentDomains(const Vector<String>& domains)
@@ -1255,7 +1265,7 @@ void WebsiteDataStore::webPageWasAdded(WebPageProxy& webPageProxy)
         m_storageManager->createSessionStorageNamespace(webPageProxy.pageID(), std::numeric_limits<unsigned>::max());
 }
 
-void WebsiteDataStore::webPageWasRemoved(WebPageProxy& webPageProxy)
+void WebsiteDataStore::webPageWasInvalidated(WebPageProxy& webPageProxy)
 {
     if (m_storageManager)
         m_storageManager->destroySessionStorageNamespace(webPageProxy.pageID());
@@ -1427,7 +1437,8 @@ bool WebsiteDataStore::resourceLoadStatisticsDebugMode() const
 void WebsiteDataStore::setResourceLoadStatisticsDebugMode(bool enabled)
 {
     m_resourceLoadStatisticsDebugMode = enabled;
-    m_resourceLoadStatistics->setResourceLoadStatisticsDebugMode(enabled);
+    if (m_resourceLoadStatistics)
+        m_resourceLoadStatistics->setResourceLoadStatisticsDebugMode(enabled);
 }
 
 void WebsiteDataStore::enableResourceLoadStatisticsAndSetTestingCallback(Function<void (const String&)>&& callback)
@@ -1442,8 +1453,10 @@ void WebsiteDataStore::enableResourceLoadStatisticsAndSetTestingCallback(Functio
         updatePrevalentDomainsToPartitionOrBlockCookies(domainsToPartition, domainsToBlock, domainsToNeitherPartitionNorBlock, shouldClearFirst);
     }, [this, protectedThis = makeRef(*this)] (const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool hasAccess)>&& callback) {
         hasStorageAccessForFrameHandler(resourceDomain, firstPartyDomain, frameID, pageID, WTFMove(callback));
-    }, [this, protectedThis = makeRef(*this)] (const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool wasGranted)>&& callback) {
-        grantStorageAccessForFrameHandler(resourceDomain, firstPartyDomain, frameID, pageID, WTFMove(callback));
+    }, [this, protectedThis = makeRef(*this)] (const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, WTF::CompletionHandler<void(bool wasGranted)>&& callback) {
+        grantStorageAccessHandler(resourceDomain, firstPartyDomain, frameID, pageID, WTFMove(callback));
+    }, [this, protectedThis = makeRef(*this)] () {
+        removeAllStorageAccessHandler();
     }, [this, protectedThis = makeRef(*this)] (const Vector<String>& domainsToRemove) {
         removePrevalentDomains(domainsToRemove);
     });

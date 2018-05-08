@@ -35,6 +35,10 @@
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
+#if PLATFORM(WIN)
+#include <wtf/win/Win32Handle.h>
+#endif
+
 namespace WebKit {
 
 class ProcessLauncher : public ThreadSafeRefCounted<ProcessLauncher> {
@@ -61,6 +65,7 @@ public:
         WebCore::ProcessIdentifier processIdentifier;
         HashMap<String, String> extraInitializationData;
         bool nonValidInjectedCodeAllowed { false };
+        bool shouldMakeProcessLaunchFailForTesting { false };
 
 #if ENABLE(DEVELOPER_MODE) && (PLATFORM(GTK) || PLATFORM(WPE))
         String processCmdPrefix;
@@ -90,6 +95,10 @@ private:
 
 #if PLATFORM(COCOA)
     OSObjectPtr<xpc_connection_t> m_xpcConnection;
+#endif
+
+#if PLATFORM(WIN)
+    WTF::Win32Handle m_hProcess;
 #endif
 
     WeakPtrFactory<ProcessLauncher> m_weakPtrFactory;

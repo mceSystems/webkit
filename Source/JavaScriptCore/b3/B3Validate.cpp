@@ -465,8 +465,6 @@ public:
                 case WasmBoundsCheckValue::Type::Maximum:
                     break;
                 }
-                if (value->as<WasmBoundsCheckValue>()->pinnedIndexingMask() != InvalidGPRReg)
-                    VALIDATE(m_procedure.code().isPinned(value->as<WasmBoundsCheckValue>()->pinnedIndexingMask()), ("At ", *value));
                 VALIDATE(m_procedure.code().wasmBoundsCheckGenerator(), ("At ", *value));
                 break;
             case Upsilon:
@@ -608,10 +606,7 @@ private:
         if (!slotBase)
             return;
 
-        StackSlot* stack = slotBase->slot();
-
         VALIDATE(memory->offset() >= 0, ("At ", *value));
-        VALIDATE(memory->offset() + memory->accessByteSize() <= stack->byteSize(), ("At ", *value));
     }
     
     NO_RETURN_DUE_TO_CRASH void fail(

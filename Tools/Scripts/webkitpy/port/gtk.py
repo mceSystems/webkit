@@ -122,6 +122,9 @@ class GtkPort(Port):
         environment['TEST_RUNNER_INJECTED_BUNDLE_FILENAME'] = self._build_path('lib', 'libTestRunnerInjectedBundle.so')
         environment['TEST_RUNNER_TEST_PLUGIN_PATH'] = self._build_path('lib', 'plugins')
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_OUTPUTDIR')
+        self._copy_value_from_environ_if_set(environment, 'GST_DEBUG')
+        self._copy_value_from_environ_if_set(environment, 'GST_DEBUG_DUMP_DOT_DIR')
+        self._copy_value_from_environ_if_set(environment, 'GST_DEBUG_FILE')
 
         # Configure the software libgl renderer if jhbuild ready and we test inside a virtualized window system
         if self._driver_class() in [XvfbDriver, WestonDriver] and self._should_use_jhbuild():
@@ -223,7 +226,6 @@ class GtkPort(Port):
         return super(GtkPort, self).check_sys_deps(needs_http) and self._driver_class().check_driver(self)
 
     def _get_crash_log(self, name, pid, stdout, stderr, newer_than, target_host=None):
-        name = "WebKitWebProcess" if name == "WebProcess" else name
         return GDBCrashLogGenerator(name, pid, newer_than, self._filesystem, self._path_to_driver).generate_crash_log(stdout, stderr)
 
     def test_expectations_file_position(self):

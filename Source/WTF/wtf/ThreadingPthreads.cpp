@@ -35,7 +35,6 @@
 #if USE(PTHREADS)
 
 #include <errno.h>
-#include <wtf/CurrentTime.h>
 #include <wtf/DataLog.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RawPointer.h>
@@ -69,7 +68,7 @@
 
 namespace WTF {
 
-static StaticLock globalSuspendLock;
+static Lock globalSuspendLock;
 
 Thread::~Thread()
 {
@@ -157,12 +156,13 @@ void Thread::signalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
         return;
     }
 
-    ucontext_t* userContext = static_cast<ucontext_t*>(ucontext);
     ASSERT_WITH_MESSAGE(!isOnAlternativeSignalStack(), "Using an alternative signal stack is not supported. Consider disabling the concurrent GC.");
 
 #if HAVE(MACHINE_CONTEXT)
+    ucontext_t* userContext = static_cast<ucontext_t*>(ucontext);
     thread->m_platformRegisters = &registersFromUContext(userContext);
 #else
+    UNUSED_PARAM(ucontext);
     PlatformRegisters platformRegisters { getApproximateStackPointer() };
     thread->m_platformRegisters = &platformRegisters;
 #endif
@@ -256,7 +256,7 @@ void Thread::initializeCurrentThreadInternal(const char* threadName)
 
 void Thread::changePriority(int delta)
 {
-    std::lock_guard<std::mutex> locker(m_mutex);
+    auto locker = holdLock(m_mutex);
 
     int policy;
     struct sched_param param;
@@ -273,7 +273,7 @@ int Thread::waitForCompletion()
 {
     pthread_t handle;
     {
-        std::lock_guard<std::mutex> locker(m_mutex);
+        auto locker = holdLock(m_mutex);
         handle = m_handle;
     }
 
@@ -284,7 +284,7 @@ int Thread::waitForCompletion()
     else if (joinResult)
         LOG_ERROR("Thread %p was unable to be joined.\n", this);
 
-    std::lock_guard<std::mutex> locker(m_mutex);
+    auto locker = holdLock(m_mutex);
     ASSERT(joinableState() == Joinable);
 
     // If the thread has already exited, then do nothing. If the thread hasn't exited yet, then just signal that we've already joined on it.
@@ -297,7 +297,7 @@ int Thread::waitForCompletion()
 
 void Thread::detach()
 {
-    std::lock_guard<std::mutex> locker(m_mutex);
+    auto locker = holdLock(m_mutex);
     int detachResult = pthread_detach(m_handle);
     if (detachResult)
         LOG_ERROR("Thread %p was unable to be detached\n", this);
@@ -319,7 +319,7 @@ Thread& Thread::initializeCurrentTLS()
 
 bool Thread::signal(int signalNumber)
 {
-    std::lock_guard<std::mutex> locker(m_mutex);
+    auto locker = holdLock(m_mutex);
     if (hasExited())
         return false;
     int errNo = pthread_kill(m_handle, signalNumber);
@@ -440,7 +440,7 @@ size_t Thread::getRegisters(PlatformRegisters& registers)
 
 void Thread::establishPlatformSpecificHandle(pthread_t handle)
 {
-    std::lock_guard<std::mutex> locker(m_mutex);
+    auto locker = holdLock(m_mutex);
     m_handle = handle;
 #if OS(DARWIN)
     m_platformThread = pthread_mach_thread_np(handle);
@@ -490,18 +490,6 @@ void Thread::destructTLS(void* data)
 #endif
 }
 
-Mutex::Mutex()
-{
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
-
-    int result = pthread_mutex_init(&m_mutex, &attr);
-    ASSERT_UNUSED(result, !result);
-
-    pthread_mutexattr_destroy(&attr);
-}
-
 Mutex::~Mutex()
 {
     int result = pthread_mutex_destroy(&m_mutex);
@@ -533,11 +521,6 @@ void Mutex::unlock()
     ASSERT_UNUSED(result, !result);
 }
 
-ThreadCondition::ThreadCondition()
-{ 
-    pthread_cond_init(&m_condition, NULL);
-}
-
 ThreadCondition::~ThreadCondition()
 {
     pthread_cond_destroy(&m_condition);
@@ -549,18 +532,20 @@ void ThreadCondition::wait(Mutex& mutex)
     ASSERT_UNUSED(result, !result);
 }
 
-bool ThreadCondition::timedWait(Mutex& mutex, double absoluteTime)
+bool ThreadCondition::timedWait(Mutex& mutex, WallTime absoluteTime)
 {
-    if (absoluteTime < currentTime())
+    if (absoluteTime < WallTime::now())
         return false;
 
-    if (absoluteTime > INT_MAX) {
+    if (absoluteTime > WallTime::fromRawSeconds(INT_MAX)) {
         wait(mutex);
         return true;
     }
 
-    int timeSeconds = static_cast<int>(absoluteTime);
-    int timeNanoseconds = static_cast<int>((absoluteTime - timeSeconds) * 1E9);
+    double rawSeconds = absoluteTime.secondsSinceEpoch().value();
+
+    int timeSeconds = static_cast<int>(rawSeconds);
+    int timeNanoseconds = static_cast<int>((rawSeconds - timeSeconds) * 1E9);
 
     timespec targetTime;
     targetTime.tv_sec = timeSeconds;

@@ -43,10 +43,6 @@
 #import <QuartzCore/CALayerPrivate.h>
 #import <QuartzCore/QuartzCorePrivate.h>
 
-#if PLATFORM(IOS)
-#import <QuartzCore/CADisplay.h>
-#endif
-
 #if PLATFORM(MAC)
 #import <QuartzCore/CARenderCG.h>
 #endif
@@ -99,15 +95,6 @@ typedef struct _CARenderContext CARenderContext;
 @property BOOL needsLayoutOnGeometryChange;
 @property BOOL shadowPathIsBounds;
 @end
-
-#if PLATFORM(IOS)
-@interface CADisplay : NSObject
-@end
-
-@interface CADisplay ()
-@property (nonatomic, readonly) NSString *name;
-@end
-#endif
 
 #if ENABLE(FILTERS_LEVEL_2)
 @interface CABackdropLayer : CALayer
@@ -170,7 +157,7 @@ WTF_EXTERN_C_BEGIN
 #if !USE(APPLE_INTERNAL_SDK)
 void CARenderServerCaptureLayerWithTransform(mach_port_t, uint32_t clientId, uint64_t layerId, uint32_t slotId, int32_t ox, int32_t oy, const CATransform3D*);
 
-#if USE(IOSURFACE)
+#if HAVE(IOSURFACE)
 void CARenderServerRenderLayerWithTransform(mach_port_t server_port, uint32_t client_id, uint64_t layer_id, IOSurfaceRef, int32_t ox, int32_t oy, const CATransform3D*);
 void CARenderServerRenderDisplayLayerWithTransformAndTimeOffset(mach_port_t, CFStringRef display_name, uint32_t client_id, uint64_t layer_id, IOSurfaceRef, int32_t ox, int32_t oy, const CATransform3D*, CFTimeInterval);
 #else

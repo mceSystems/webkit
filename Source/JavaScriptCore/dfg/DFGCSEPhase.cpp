@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -449,7 +449,7 @@ private:
                 m_graph.performSubstitution(m_node);
             
                 if (m_node->op() == Identity || m_node->op() == IdentityWithProfile) {
-                    m_node->replaceWith(m_node->child1().node());
+                    m_node->replaceWith(m_graph, m_node->child1().node());
                     m_changed = true;
                 } else {
                     // This rule only makes sense for local CSE, since in SSA form we have already
@@ -469,22 +469,21 @@ private:
                         case Array::Int32:
                             if (!mode.isInBounds())
                                 break;
-                            heap = HeapLocation(
-                                indexedPropertyLoc, IndexedInt32Properties, base, index);
+                            heap = HeapLocation(indexedPropertyLoc, IndexedInt32Properties, base, index);
                             break;
                             
-                        case Array::Double:
+                        case Array::Double: {
                             if (!mode.isInBounds())
                                 break;
-                            heap = HeapLocation(
-                                indexedPropertyLoc, IndexedDoubleProperties, base, index);
+                            LocationKind kind = mode.isSaneChain() ? IndexedPropertyDoubleSaneChainLoc : IndexedPropertyDoubleLoc;
+                            heap = HeapLocation(kind, IndexedDoubleProperties, base, index);
                             break;
+                        }
                             
                         case Array::Contiguous:
                             if (!mode.isInBounds())
                                 break;
-                            heap = HeapLocation(
-                                indexedPropertyLoc, IndexedContiguousProperties, base, index);
+                            heap = HeapLocation(indexedPropertyLoc, IndexedContiguousProperties, base, index);
                             break;
                             
                         case Array::Int8Array:
@@ -532,7 +531,7 @@ private:
             if (!match)
                 return;
 
-            m_node->replaceWith(match);
+            m_node->replaceWith(m_graph, match);
             m_changed = true;
         }
     
@@ -564,7 +563,7 @@ private:
             if (value.isNode() && value.asNode() == m_node) {
                 match.ensureIsNode(m_insertionSet, m_block, 0)->owner = m_block;
                 ASSERT(match.isNode());
-                m_node->replaceWith(match.asNode());
+                m_node->replaceWith(m_graph, match.asNode());
                 m_changed = true;
             }
         }
@@ -652,7 +651,7 @@ public:
                 m_graph.performSubstitution(m_node);
                 
                 if (m_node->op() == Identity || m_node->op() == IdentityWithProfile) {
-                    m_node->replaceWith(m_node->child1().node());
+                    m_node->replaceWith(m_graph, m_node->child1().node());
                     m_changed = true;
                 } else
                     clobberize(m_graph, m_node, *this);
@@ -693,7 +692,7 @@ public:
         for (unsigned i = result.iterator->value.size(); i--;) {
             Node* candidate = result.iterator->value[i];
             if (m_graph.m_ssaDominators->dominates(candidate->owner, m_block)) {
-                m_node->replaceWith(candidate);
+                m_node->replaceWith(m_graph, candidate);
                 m_changed = true;
                 return;
             }
@@ -860,7 +859,7 @@ public:
                         Node* candidate = result.iterator->value[i];
                         if (m_graph.m_ssaDominators->dominates(candidate->owner, m_block)) {
                             ASSERT(candidate);
-                            match->replaceWith(candidate);
+                            match->replaceWith(m_graph, candidate);
                             match.setNode(candidate);
                             replaced = true;
                             break;
@@ -871,7 +870,7 @@ public:
                     result.iterator->value.append(match.asNode());
             }
             ASSERT(match.asNode());
-            m_node->replaceWith(match.asNode());
+            m_node->replaceWith(m_graph, match.asNode());
             m_changed = true;
         }
     }

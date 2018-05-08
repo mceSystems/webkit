@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,10 +32,12 @@
 #include "DFGCommonData.h"
 #include "ExceptionHelpers.h"
 #include "HeapInlines.h"
+#include "JSCPtrTag.h"
 #include "LLIntPCRanges.h"
 #include "MachineContext.h"
 #include "MachineStackMarker.h"
 #include "MacroAssembler.h"
+#include "MacroAssemblerCodeRef.h"
 #include "VM.h"
 #include "VMInspector.h"
 #include "Watchdog.h"
@@ -58,11 +60,10 @@ struct SignalContext {
         , trapPC(MachineContext::instructionPointer(registers))
         , stackPointer(MachineContext::stackPointer(registers))
         , framePointer(MachineContext::framePointer(registers))
-    {
-    }
+    { }
 
     PlatformRegisters& registers;
-    void* trapPC;
+    MacroAssemblerCodePtr<CFunctionPtrTag> trapPC;
     void* stackPointer;
     void* framePointer;
 };
@@ -70,23 +71,6 @@ struct SignalContext {
 inline static bool vmIsInactive(VM& vm)
 {
     return !vm.entryScope && !vm.ownerThread();
-}
-
-inline CallFrame* sanitizedTopCallFrame(CallFrame* topCallFrame)
-{
-#if !defined(NDEBUG) && !CPU(ARM) && !CPU(MIPS)
-    // prepareForExternalCall() in DFGSpeculativeJIT.h may set topCallFrame to a bad word
-    // before calling native functions, but tryInstallTrapBreakpoints() below expects
-    // topCallFrame to be null if not set.
-#if USE(JSVALUE64)
-    const uintptr_t badBeefWord = 0xbadbeef0badbeef;
-#else
-    const uintptr_t badBeefWord = 0xbadbeef;
-#endif
-    if (topCallFrame == reinterpret_cast<CallFrame*>(badBeefWord))
-        topCallFrame = nullptr;
-#endif
-    return topCallFrame;
 }
 
 static bool isSaneFrame(CallFrame* frame, CallFrame* calleeFrame, EntryFrame* entryFrame, StackBounds stackBounds)
@@ -103,22 +87,19 @@ void VMTraps::tryInstallTrapBreakpoints(SignalContext& context, StackBounds stac
     // This must be the initial signal to get the mutator thread's attention.
     // Let's get the thread to break at invalidation points if needed.
     VM& vm = this->vm();
-    void* trapPC = context.trapPC;
+    void* trapPC = context.trapPC.untaggedExecutableAddress();
+    // We must ensure we're in JIT/LLint code. If we are, we know a few things:
+    // - The JS thread isn't holding the malloc lock. Therefore, it's safe to malloc below.
+    // - The JS thread isn't holding the CodeBlockSet lock.
+    // If we're not in JIT/LLInt code, we can't run the C++ code below because it
+    // mallocs, and we must prove the JS thread isn't holding the malloc lock
+    // to be able to do that without risking a deadlock.
+    if (!isJITPC(trapPC) && !LLInt::isLLIntPC(trapPC))
+        return;
 
     CallFrame* callFrame = reinterpret_cast<CallFrame*>(context.framePointer);
 
-    auto& lock = vm.heap.codeBlockSet().getLock();
-    // If the target thread is in C++ code it might be holding the codeBlockSet lock.
-    // if it's in JIT code then it cannot be holding that lock but the GC might be.
-    auto codeBlockSetLocker = isJITPC(trapPC) ? holdLock(lock) : tryHoldLock(lock);
-    if (!codeBlockSetLocker)
-        return; // Let the SignalSender try again later.
-
-    if (!isJITPC(trapPC) && !LLInt::isLLIntPC(trapPC)) {
-        // We resort to topCallFrame to see if we can get anything
-        // useful. We usually get here when we're executing C code.
-        callFrame = sanitizedTopCallFrame(vm.topCallFrame);
-    }
+    auto codeBlockSetLocker = holdLock(vm.heap.codeBlockSet().getLock());
 
     CodeBlock* foundCodeBlock = nullptr;
     EntryFrame* entryFrame = vm.topEntryFrame;
@@ -207,10 +188,11 @@ public:
             installSignalHandler(Signal::BadAccess, [] (Signal, SigInfo&, PlatformRegisters& registers) -> SignalAction {
                 SignalContext context(registers);
 
-                if (!isJITPC(context.trapPC))
+                void* trapPC = context.trapPC.untaggedExecutableAddress();
+                if (!isJITPC(trapPC))
                     return SignalAction::NotHandled;
 
-                CodeBlock* currentCodeBlock = DFG::codeBlockForVMTrapPC(context.trapPC);
+                CodeBlock* currentCodeBlock = DFG::codeBlockForVMTrapPC(trapPC);
                 if (!currentCodeBlock) {
                     // Either we trapped for some other reason, e.g. Wasm OOB, or we didn't properly monitor the PC. Regardless, we can't do much now...
                     return SignalAction::NotHandled;

@@ -27,7 +27,6 @@
 #include "Element.h"
 
 #include "AXObjectCache.h"
-#include "AccessibleNode.h"
 #include "Attr.h"
 #include "AttributeChangeInvalidation.h"
 #include "CSSAnimationController.h"
@@ -52,6 +51,7 @@
 #include "EventNames.h"
 #include "FocusController.h"
 #include "FocusEvent.h"
+#include "Frame.h"
 #include "FrameSelection.h"
 #include "FrameView.h"
 #include "HTMLBodyElement.h"
@@ -73,7 +73,6 @@
 #include "JSLazyEventListener.h"
 #include "KeyboardEvent.h"
 #include "KeyframeEffect.h"
-#include "MainFrame.h"
 #include "MutationObserverInterestGroup.h"
 #include "MutationRecord.h"
 #include "NodeRenderStyle.h"
@@ -109,11 +108,13 @@
 #include "XMLNSNames.h"
 #include "XMLNames.h"
 #include "markup.h"
-#include <wtf/CurrentTime.h>
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(Element);
 
 using namespace HTMLNames;
 using namespace XMLNames;
@@ -272,7 +273,7 @@ bool Element::dispatchMouseEvent(const PlatformMouseEvent& platformEvent, const 
     if (isForceEvent(platformEvent) && !document().hasListenerTypeForEventType(platformEvent.type()))
         return false;
 
-    Ref<MouseEvent> mouseEvent = MouseEvent::create(eventType, document().defaultView(), platformEvent, detail, relatedTarget);
+    Ref<MouseEvent> mouseEvent = MouseEvent::create(eventType, document().windowProxy(), platformEvent, detail, relatedTarget);
 
     if (mouseEvent->type().isEmpty())
         return true; // Shouldn't happen.
@@ -303,7 +304,7 @@ bool Element::dispatchMouseEvent(const PlatformMouseEvent& platformEvent, const 
 
 bool Element::dispatchWheelEvent(const PlatformWheelEvent& platformEvent)
 {
-    auto event = WheelEvent::create(platformEvent, document().defaultView());
+    auto event = WheelEvent::create(platformEvent, document().windowProxy());
 
     // Events with no deltas are important because they convey platform information about scroll gestures
     // and momentum beginning or ending. However, those events should not be sent to the DOM since some
@@ -320,7 +321,7 @@ bool Element::dispatchWheelEvent(const PlatformWheelEvent& platformEvent)
 
 bool Element::dispatchKeyEvent(const PlatformKeyboardEvent& platformEvent)
 {
-    auto event = KeyboardEvent::create(platformEvent, document().defaultView());
+    auto event = KeyboardEvent::create(platformEvent, document().windowProxy());
 
     if (Frame* frame = document().frame()) {
         if (frame->eventHandler().accessibilityPreventsEventPropagation(event))
@@ -586,7 +587,7 @@ void Element::setActive(bool flag, bool pause)
         // "up" state. Once you assume this, you can just delay for 100ms - that time (assuming that after you
         // leave this method, it will be about that long before the flush of the up state happens again).
 #ifdef HAVE_FUNC_USLEEP
-        double startTime = monotonicallyIncreasingTime();
+        MonotonicTime startTime = MonotonicTime::now();
 #endif
 
         document().updateStyleIfNeeded();
@@ -598,9 +599,9 @@ void Element::setActive(bool flag, bool pause)
         // FIXME: Come up with a less ridiculous way of doing this.
 #ifdef HAVE_FUNC_USLEEP
         // Now pause for a small amount of time (1/10th of a second from before we repainted in the pressed state)
-        double remainingTime = 0.1 - (monotonicallyIncreasingTime() - startTime);
-        if (remainingTime > 0)
-            usleep(static_cast<useconds_t>(remainingTime * 1000000.0));
+        Seconds remainingTime = 100_ms - (MonotonicTime::now() - startTime);
+        if (remainingTime > 0_s)
+            usleep(static_cast<useconds_t>(remainingTime.microseconds()));
 #endif
     }
 }
@@ -1482,24 +1483,63 @@ ElementStyle Element::resolveStyle(const RenderStyle* parentStyle)
     return styleResolver().styleForElement(*this, parentStyle);
 }
 
+static void invalidateForSiblingCombinators(Element* sibling)
+{
+    for (; sibling; sibling = sibling->nextElementSibling()) {
+        if (sibling->styleIsAffectedByPreviousSibling())
+            sibling->invalidateStyleInternal();
+        if (sibling->descendantsAffectedByPreviousSibling()) {
+            for (auto* siblingChild = sibling->firstElementChild(); siblingChild; siblingChild = siblingChild->nextElementSibling())
+                siblingChild->invalidateStyleForSubtreeInternal();
+        }
+        if (!sibling->affectsNextSiblingElementStyle())
+            return;
+    }
+}
+
+static void invalidateSiblingsIfNeeded(Element& element)
+{
+    if (!element.affectsNextSiblingElementStyle())
+        return;
+    auto* parent = element.parentElement();
+    if (parent && parent->styleValidity() >= Style::Validity::SubtreeInvalid)
+        return;
+
+    invalidateForSiblingCombinators(element.nextElementSibling());
+}
+
 void Element::invalidateStyle()
 {
     Node::invalidateStyle(Style::Validity::ElementInvalid);
+    invalidateSiblingsIfNeeded(*this);
 }
 
 void Element::invalidateStyleAndLayerComposition()
 {
     Node::invalidateStyle(Style::Validity::ElementInvalid, Style::InvalidationMode::RecompositeLayer);
+    invalidateSiblingsIfNeeded(*this);
 }
 
 void Element::invalidateStyleForSubtree()
 {
     Node::invalidateStyle(Style::Validity::SubtreeInvalid);
+    invalidateSiblingsIfNeeded(*this);
 }
 
 void Element::invalidateStyleAndRenderersForSubtree()
 {
     Node::invalidateStyle(Style::Validity::SubtreeAndRenderersInvalid);
+    invalidateSiblingsIfNeeded(*this);
+}
+
+void Element::invalidateStyleInternal()
+{
+    Node::invalidateStyle(Style::Validity::ElementInvalid);
+}
+
+void Element::invalidateStyleForSubtreeInternal()
+{
+    Node::invalidateStyle(Style::Validity::SubtreeInvalid);
 }
 
 bool Element::hasDisplayContents() const
@@ -1755,12 +1795,15 @@ void Element::removedFromAncestor(RemovalType removalType, ContainerNode& oldPar
         document().accessSVGExtensions().removeElementFromPendingResources(this);
 
     RefPtr<Frame> frame = document().frame();
-    if (frame)
+    if (RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled()) {
+        if (auto* timeline = document().existingTimeline())
+            timeline->cancelDeclarativeAnimationsForElement(*this);
+    } else if (frame)
         frame->animation().cancelAnimations(*this);
 
 #if PLATFORM(MAC)
-    if (frame)
-        frame->mainFrame().removeLatchingStateForTarget(*this);
+    if (frame && frame->page())
+        frame->page()->removeLatchingStateForTarget(*this);
 #endif
 }
 
@@ -1977,6 +2020,43 @@ static void checkForEmptyStyleChange(Element& element)
     }
 }
 
+
+static void invalidateForForwardPositionalRules(Element& parent, Element* elementAfterChange)
+{
+    bool childrenAffected = parent.childrenAffectedByForwardPositionalRules();
+    bool descendantsAffected = parent.descendantsAffectedByForwardPositionalRules();
+
+    if (!childrenAffected && !descendantsAffected)
+        return;
+
+    for (auto* sibling = elementAfterChange; sibling; sibling = sibling->nextElementSibling()) {
+        if (childrenAffected)
+            sibling->invalidateStyleInternal();
+        if (descendantsAffected) {
+            for (auto* siblingChild = sibling->firstElementChild(); siblingChild; siblingChild = siblingChild->nextElementSibling())
+                siblingChild->invalidateStyleForSubtreeInternal();
+        }
+    }
+}
+
+static void invalidateForBackwardPositionalRules(Element& parent, Element* elementBeforeChange)
+{
+    bool childrenAffected = parent.childrenAffectedByBackwardPositionalRules();
+    bool descendantsAffected = parent.descendantsAffectedByBackwardPositionalRules();
+
+    if (!childrenAffected && !descendantsAffected)
+        return;
+
+    for (auto* sibling = elementBeforeChange; sibling; sibling = sibling->previousElementSibling()) {
+        if (childrenAffected)
+            sibling->invalidateStyleInternal();
+        if (descendantsAffected) {
+            for (auto* siblingChild = sibling->firstElementChild(); siblingChild; siblingChild = siblingChild->nextElementSibling())
+                siblingChild->invalidateStyleForSubtreeInternal();
+        }
+    }
+}
+
 enum SiblingCheckType { FinishedParsingChildren, SiblingElementRemoved, Other };
 
 static void checkForSiblingStyleChanges(Element& parent, SiblingCheckType checkType, Element* elementBeforeChange, Element* elementAfterChange)
@@ -1999,14 +2079,14 @@ static void checkForSiblingStyleChanges(Element& parent, SiblingCheckType checkT
         if (newFirstElement != elementAfterChange) {
             auto* style = elementAfterChange->renderStyle();
             if (!style || style->firstChildState())
-                elementAfterChange->invalidateStyleForSubtree();
+                elementAfterChange->invalidateStyleForSubtreeInternal();
         }
 
         // We also have to handle node removal.
         if (checkType == SiblingElementRemoved && newFirstElement == elementAfterChange && newFirstElement) {
             auto* style = newFirstElement->renderStyle();
             if (!style || !style->firstChildState())
-                newFirstElement->invalidateStyleForSubtree();
+                newFirstElement->invalidateStyleForSubtreeInternal();
         }
     }
 
@@ -2019,7 +2099,7 @@ static void checkForSiblingStyleChanges(Element& parent, SiblingCheckType checkT
         if (newLastElement != elementBeforeChange) {
             auto* style = elementBeforeChange->renderStyle();
             if (!style || style->lastChildState())
-                elementBeforeChange->invalidateStyleForSubtree();
+                elementBeforeChange->invalidateStyleForSubtreeInternal();
         }
 
         // We also have to handle node removal.  The parser callback case is similar to node removal as well in that we need to change the last child
@@ -2027,32 +2107,14 @@ static void checkForSiblingStyleChanges(Element& parent, SiblingCheckType checkT
         if ((checkType == SiblingElementRemoved || checkType == FinishedParsingChildren) && newLastElement == elementBeforeChange && newLastElement) {
             auto* style = newLastElement->renderStyle();
             if (!style || !style->lastChildState())
-                newLastElement->invalidateStyleForSubtree();
+                newLastElement->invalidateStyleForSubtreeInternal();
         }
     }
 
-    if (elementAfterChange) {
-        if (elementAfterChange->styleIsAffectedByPreviousSibling())
-            elementAfterChange->invalidateStyleForSubtree();
-        else if (elementAfterChange->affectsNextSiblingElementStyle()) {
-            Element* elementToInvalidate = elementAfterChange;
-            do {
-                elementToInvalidate = elementToInvalidate->nextElementSibling();
-            } while (elementToInvalidate && !elementToInvalidate->styleIsAffectedByPreviousSibling());
+    invalidateForSiblingCombinators(elementAfterChange);
 
-            if (elementToInvalidate)
-                elementToInvalidate->invalidateStyleForSubtree();
-        }
-    }
-
-    // Backward positional selectors include nth-last-child, nth-last-of-type, last-of-type and only-of-type.
-    // We have to invalidate everything following the insertion point in the forward case, and everything before the insertion point in the
-    // backward case.
-    // |afterChange| is 0 in the parser callback case, so we won't do any work for the forward case if we don't have to.
-    // For performance reasons we just mark the parent node as changed, since we don't want to make childrenChanged O(n^2) by crawling all our kids
-    // here.  recalcStyle will then force a walk of the children when it sees that this has happened.
-    if (parent.childrenAffectedByBackwardPositionalRules() && elementBeforeChange)
-        parent.invalidateStyleForSubtree();
+    invalidateForForwardPositionalRules(parent, elementAfterChange);
+    invalidateForBackwardPositionalRules(parent, elementBeforeChange);
 }
 
 void Element::childrenChanged(const ChildChange& change)
@@ -2301,9 +2363,8 @@ void Element::removeAttributeInternal(unsigned index, SynchronizationOfLazyAttri
         return;
     }
 
-    if (!valueBeingRemoved.isNull())
-        willModifyAttribute(name, valueBeingRemoved, nullAtom());
-
+    ASSERT(!valueBeingRemoved.isNull());
+    willModifyAttribute(name, valueBeingRemoved, nullAtom());
     {
         Style::AttributeChangeInvalidation styleInvalidation(*this, name, valueBeingRemoved, nullAtom());
         elementData.removeAttribute(index);
@@ -2484,28 +2545,28 @@ void Element::dispatchFocusInEvent(const AtomicString& eventType, RefPtr<Element
 {
     ASSERT_WITH_SECURITY_IMPLICATION(ScriptDisallowedScope::InMainThread::isScriptAllowed());
     ASSERT(eventType == eventNames().focusinEvent || eventType == eventNames().DOMFocusInEvent);
-    dispatchScopedEvent(FocusEvent::create(eventType, true, false, document().defaultView(), 0, WTFMove(oldFocusedElement)));
+    dispatchScopedEvent(FocusEvent::create(eventType, true, false, document().windowProxy(), 0, WTFMove(oldFocusedElement)));
 }
 
 void Element::dispatchFocusOutEvent(const AtomicString& eventType, RefPtr<Element>&& newFocusedElement)
 {
     ASSERT_WITH_SECURITY_IMPLICATION(ScriptDisallowedScope::InMainThread::isScriptAllowed());
     ASSERT(eventType == eventNames().focusoutEvent || eventType == eventNames().DOMFocusOutEvent);
-    dispatchScopedEvent(FocusEvent::create(eventType, true, false, document().defaultView(), 0, WTFMove(newFocusedElement)));
+    dispatchScopedEvent(FocusEvent::create(eventType, true, false, document().windowProxy(), 0, WTFMove(newFocusedElement)));
 }
 
 void Element::dispatchFocusEvent(RefPtr<Element>&& oldFocusedElement, FocusDirection)
 {
     if (auto* page = document().page())
         page->chrome().client().elementDidFocus(*this);
-    dispatchEvent(FocusEvent::create(eventNames().focusEvent, false, false, document().defaultView(), 0, WTFMove(oldFocusedElement)));
+    dispatchEvent(FocusEvent::create(eventNames().focusEvent, false, false, document().windowProxy(), 0, WTFMove(oldFocusedElement)));
 }
 
 void Element::dispatchBlurEvent(RefPtr<Element>&& newFocusedElement)
 {
     if (auto* page = document().page())
         page->chrome().client().elementDidBlur(*this);
-    dispatchEvent(FocusEvent::create(eventNames().blurEvent, false, false, document().defaultView(), 0, WTFMove(newFocusedElement)));
+    dispatchEvent(FocusEvent::create(eventNames().blurEvent, false, false, document().windowProxy(), 0, WTFMove(newFocusedElement)));
 }
 
 void Element::dispatchWebKitImageReadyEventForTesting()
@@ -2525,7 +2586,7 @@ bool Element::dispatchMouseForceWillBegin()
         return false;
 
     PlatformMouseEvent platformMouseEvent { frame->eventHandler().lastKnownMousePosition(), frame->eventHandler().lastKnownMouseGlobalPosition(), NoButton, PlatformEvent::NoType, 1, false, false, false, false, WallTime::now(), ForceAtClick, NoTap };
-    auto mouseForceWillBeginEvent = MouseEvent::create(eventNames().webkitmouseforcewillbeginEvent, document().defaultView(), platformMouseEvent, 0, nullptr);
+    auto mouseForceWillBeginEvent = MouseEvent::create(eventNames().webkitmouseforcewillbeginEvent, document().windowProxy(), platformMouseEvent, 0, nullptr);
     mouseForceWillBeginEvent->setTarget(this);
     dispatchEvent(mouseForceWillBeginEvent);
 
@@ -2782,9 +2843,24 @@ void Element::setChildrenAffectedByDrag()
     ensureElementRareData().setChildrenAffectedByDrag(true);
 }
 
+void Element::setChildrenAffectedByForwardPositionalRules()
+{
+    ensureElementRareData().setChildrenAffectedByForwardPositionalRules(true);
+}
+
+void Element::setDescendantsAffectedByForwardPositionalRules()
+{
+    ensureElementRareData().setDescendantsAffectedByForwardPositionalRules(true);
+}
+
 void Element::setChildrenAffectedByBackwardPositionalRules()
 {
     ensureElementRareData().setChildrenAffectedByBackwardPositionalRules(true);
+}
+
+void Element::setDescendantsAffectedByBackwardPositionalRules()
+{
+    ensureElementRareData().setDescendantsAffectedByBackwardPositionalRules(true);
 }
 
 void Element::setChildrenAffectedByPropertyBasedBackwardPositionalRules()
@@ -2807,7 +2883,10 @@ bool Element::hasFlagsSetDuringStylingOfChildren() const
         return false;
     return rareDataStyleAffectedByActive()
         || rareDataChildrenAffectedByDrag()
+        || rareDataChildrenAffectedByForwardPositionalRules()
+        || rareDataDescendantsAffectedByForwardPositionalRules()
         || rareDataChildrenAffectedByBackwardPositionalRules()
+        || rareDataDescendantsAffectedByBackwardPositionalRules()
         || rareDataChildrenAffectedByPropertyBasedBackwardPositionalRules();
 }
 
@@ -2835,10 +2914,28 @@ bool Element::rareDataChildrenAffectedByDrag() const
     return elementRareData()->childrenAffectedByDrag();
 }
 
+bool Element::rareDataChildrenAffectedByForwardPositionalRules() const
+{
+    ASSERT(hasRareData());
+    return elementRareData()->childrenAffectedByForwardPositionalRules();
+}
+
+bool Element::rareDataDescendantsAffectedByForwardPositionalRules() const
+{
+    ASSERT(hasRareData());
+    return elementRareData()->descendantsAffectedByForwardPositionalRules();
+}
+
 bool Element::rareDataChildrenAffectedByBackwardPositionalRules() const
 {
     ASSERT(hasRareData());
     return elementRareData()->childrenAffectedByBackwardPositionalRules();
+}
+
+bool Element::rareDataDescendantsAffectedByBackwardPositionalRules() const
+{
+    ASSERT(hasRareData());
+    return elementRareData()->descendantsAffectedByBackwardPositionalRules();
 }
 
 bool Element::rareDataChildrenAffectedByPropertyBasedBackwardPositionalRules() const
@@ -3546,7 +3643,7 @@ void Element::clearHasCSSAnimation()
 
 bool Element::canContainRangeEndPoint() const
 {
-    return !equalLettersIgnoringASCIICase(AccessibleNode::effectiveStringValueForElement(const_cast<Element&>(*this), AXPropertyName::Role), "img");
+    return !equalLettersIgnoringASCIICase(attributeWithoutSynchronization(roleAttr), "img");
 }
 
 String Element::completeURLsInAttributeValue(const URL& base, const Attribute& attribute) const
@@ -3635,7 +3732,7 @@ static ExceptionOr<Ref<Element>> contextElementForInsertion(const String& where,
 }
 
 // https://w3c.github.io/DOM-Parsing/#dom-element-insertadjacenthtml
-ExceptionOr<void> Element::insertAdjacentHTML(const String& where, const String& markup, std::optional<NodeVector&> addedNodes)
+ExceptionOr<void> Element::insertAdjacentHTML(const String& where, const String& markup, NodeVector* addedNodes)
 {
     // Steps 1 and 2.
     auto contextElement = contextElementForInsertion(where, *this);
@@ -3661,7 +3758,7 @@ ExceptionOr<void> Element::insertAdjacentHTML(const String& where, const String&
 
 ExceptionOr<void> Element::insertAdjacentHTML(const String& where, const String& markup)
 {
-    return insertAdjacentHTML(where, markup, std::nullopt);
+    return insertAdjacentHTML(where, markup, nullptr);
 }
 
 ExceptionOr<void> Element::insertAdjacentText(const String& where, const String& text)
@@ -3728,30 +3825,20 @@ ExceptionOr<Ref<WebAnimation>> Element::animate(JSC::ExecState& state, JSC::Stro
 Vector<RefPtr<WebAnimation>> Element::getAnimations()
 {
     // FIXME: Filter and order the list as specified (webkit.org/b/179535).
-    if (auto timeline = document().existingTimeline())
-        return timeline->animationsForElement(*this);
-    return { };
-}
 
-AccessibleNode* Element::accessibleNode()
-{
-    if (!RuntimeEnabledFeatures::sharedFeatures().accessibilityObjectModelEnabled())
-        return nullptr;
+    // For the list of animations to be current, we need to account for any pending CSS changes,
+    // such as updates to CSS Animations and CSS Transitions.
+    // FIXME: We might be able to use ComputedStyleExtractor which is more optimized.
+    document().updateStyleIfNeeded();
 
-    ElementRareData& data = ensureElementRareData();
-    if (!data.accessibleNode())
-        data.setAccessibleNode(std::make_unique<AccessibleNode>(*this));
-    return data.accessibleNode();
-}
-
-AccessibleNode* Element::existingAccessibleNode() const
-{
-    if (!RuntimeEnabledFeatures::sharedFeatures().accessibilityObjectModelEnabled())
-        return nullptr;
-
-    if (!hasRareData())
-        return nullptr;
-    return elementRareData()->accessibleNode();
+    Vector<RefPtr<WebAnimation>> animations;
+    if (auto timeline = document().existingTimeline()) {
+        for (auto& animation : timeline->animationsForElement(*this)) {
+            if (animation->canBeListed())
+                animations.append(animation);
+        }
+    }
+    return animations;
 }
 
 } // namespace WebCore

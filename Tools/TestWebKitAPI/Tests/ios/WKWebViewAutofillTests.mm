@@ -35,26 +35,6 @@
 #import <WebKit/_WKInputDelegate.h>
 #import <wtf/BlockPtr.h>
 
-#if !__has_include(<UIKit/UITextAutofillSuggestion.h>)
-// FIXME: This can be safely removed once <rdar://problem/34583628> lands in the SDK.
-@implementation UITextAutofillSuggestion
-- (instancetype)initWithUsername:(NSString *)username password:(NSString *)password
-{
-    self = [super init];
-    if (self) {
-        _username = username;
-        _password = password;
-    }
-    return self;
-}
-
-+ (instancetype)autofillSuggestionWithUsername:(NSString *)username password:(NSString *)password
-{
-    return [[self alloc] initWithUsername:username password:password];
-}
-@end
-#endif
-
 typedef UIView <UITextInputTraits_Private_Proposed_SPI_34583628> AutofillInputView;
 
 @interface TestInputDelegate : NSObject <_WKInputDelegate>

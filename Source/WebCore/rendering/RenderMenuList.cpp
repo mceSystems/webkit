@@ -27,7 +27,6 @@
 
 #include "AXObjectCache.h"
 #include "AccessibilityMenuList.h"
-#include "AccessibleNode.h"
 #include "CSSFontSelector.h"
 #include "Chrome.h"
 #include "Frame.h"
@@ -89,7 +88,7 @@ RenderMenuList::~RenderMenuList()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderMenuList::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderMenuList::willBeDestroyed()
 {
 #if !PLATFORM(IOS)
     if (m_popup)
@@ -97,7 +96,7 @@ void RenderMenuList::willBeDestroyed(RenderTreeBuilder& builder)
     m_popup = nullptr;
 #endif
 
-    RenderFlexibleBox::willBeDestroyed(builder);
+    RenderFlexibleBox::willBeDestroyed();
 }
 
 void RenderMenuList::setInnerRenderer(RenderBlock& innerRenderer)
@@ -166,17 +165,10 @@ HTMLSelectElement& RenderMenuList::selectElement() const
     return downcast<HTMLSelectElement>(nodeForNonAnonymous());
 }
 
-void RenderMenuList::addChild(RenderTreeBuilder&, RenderPtr<RenderObject> child, RenderObject*)
+void RenderMenuList::didAttachChild(RenderObject& child, RenderObject*)
 {
     if (AXObjectCache* cache = document().existingAXObjectCache())
-        cache->childrenChanged(this, child.get());
-}
-
-RenderPtr<RenderObject> RenderMenuList::takeChild(RenderTreeBuilder& builder, RenderObject& oldChild)
-{
-    if (!m_innerBlock || &oldChild == m_innerBlock)
-        return RenderFlexibleBox::takeChild(builder, oldChild);
-    return m_innerBlock->takeChild(builder, oldChild);
+        cache->childrenChanged(this, &child);
 }
 
 void RenderMenuList::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
@@ -287,9 +279,9 @@ void RenderMenuList::setText(const String& s)
         m_buttonText = makeWeakPtr(*newButtonText);
         // FIXME: This mutation should go through the normal RenderTreeBuilder path.
         if (RenderTreeBuilder::current())
-            RenderTreeBuilder::current()->insertChild(*this, WTFMove(newButtonText));
+            RenderTreeBuilder::current()->attach(*this, WTFMove(newButtonText));
         else
-            RenderTreeBuilder(*document().renderView()).insertChild(*this, WTFMove(newButtonText));
+            RenderTreeBuilder(*document().renderView()).attach(*this, WTFMove(newButtonText));
     }
 
     adjustInnerStyle();
@@ -464,7 +456,7 @@ String RenderMenuList::itemAccessibilityText(unsigned listIndex) const
     const Vector<HTMLElement*>& listItems = selectElement().listItems();
     if (listIndex >= listItems.size())
         return String();
-    return AccessibleNode::effectiveStringValueForElement(*listItems[listIndex], AXPropertyName::Label);
+    return listItems[listIndex]->attributeWithoutSynchronization(aria_labelAttr);
 }
     
 String RenderMenuList::itemToolTip(unsigned listIndex) const
@@ -515,7 +507,7 @@ PopupMenuStyle RenderMenuList::itemStyle(unsigned listIndex) const
     getItemBackgroundColor(listIndex, itemBackgroundColor, itemHasCustomBackgroundColor);
 
     auto& style = *element->computedStyle();
-    return PopupMenuStyle(style.visitedDependentColor(CSSPropertyColor), itemBackgroundColor, style.fontCascade(), style.visibility() == VISIBLE,
+    return PopupMenuStyle(style.visitedDependentColorWithColorFilter(CSSPropertyColor), itemBackgroundColor, style.fontCascade(), style.visibility() == VISIBLE,
         style.display() == NONE, true, style.textIndent(), style.direction(), isOverride(style.unicodeBidi()),
         itemHasCustomBackgroundColor ? PopupMenuStyle::CustomBackgroundColor : PopupMenuStyle::DefaultBackgroundColor);
 }
@@ -524,13 +516,13 @@ void RenderMenuList::getItemBackgroundColor(unsigned listIndex, Color& itemBackg
 {
     const Vector<HTMLElement*>& listItems = selectElement().listItems();
     if (listIndex >= listItems.size()) {
-        itemBackgroundColor = style().visitedDependentColor(CSSPropertyBackgroundColor);
+        itemBackgroundColor = style().visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
         itemHasCustomBackgroundColor = false;
         return;
     }
     HTMLElement* element = listItems[listIndex];
 
-    Color backgroundColor = element->computedStyle()->visitedDependentColor(CSSPropertyBackgroundColor);
+    Color backgroundColor = element->computedStyle()->visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
     itemHasCustomBackgroundColor = backgroundColor.isValid() && backgroundColor.isVisible();
     // If the item has an opaque background color, return that.
     if (backgroundColor.isOpaque()) {
@@ -539,7 +531,7 @@ void RenderMenuList::getItemBackgroundColor(unsigned listIndex, Color& itemBackg
     }
 
     // Otherwise, the item's background is overlayed on top of the menu background.
-    backgroundColor = style().visitedDependentColor(CSSPropertyBackgroundColor).blend(backgroundColor);
+    backgroundColor = style().visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor).blend(backgroundColor);
     if (backgroundColor.isOpaque()) {
         itemBackgroundColor = backgroundColor;
         return;
@@ -553,7 +545,7 @@ PopupMenuStyle RenderMenuList::menuStyle() const
 {
     const RenderStyle& styleToUse = m_innerBlock ? m_innerBlock->style() : style();
     IntRect absBounds = absoluteBoundingBoxRectIgnoringTransforms();
-    return PopupMenuStyle(styleToUse.visitedDependentColor(CSSPropertyColor), styleToUse.visitedDependentColor(CSSPropertyBackgroundColor),
+    return PopupMenuStyle(styleToUse.visitedDependentColorWithColorFilter(CSSPropertyColor), styleToUse.visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor),
         styleToUse.fontCascade(), styleToUse.visibility() == VISIBLE, styleToUse.display() == NONE,
         style().hasAppearance() && style().appearance() == MenulistPart, styleToUse.textIndent(),
         style().direction(), isOverride(style().unicodeBidi()), PopupMenuStyle::DefaultBackgroundColor,

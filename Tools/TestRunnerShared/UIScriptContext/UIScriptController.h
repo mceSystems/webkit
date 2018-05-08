@@ -84,6 +84,7 @@ public:
 
     void sendEventStream(JSStringRef eventsJSON, JSValueRef callback);
 
+    void enterText(JSStringRef);
     void typeCharacterUsingHardwareKeyboard(JSStringRef character, JSValueRef callback);
     void keyDownUsingHardwareKeyboard(JSStringRef character, JSValueRef callback);
     void keyUpUsingHardwareKeyboard(JSStringRef character, JSValueRef callback);
@@ -97,6 +98,9 @@ public:
     
     void dismissFormAccessoryView();
     void selectFormAccessoryPickerRow(long);
+    JSRetainPtr<JSStringRef> selectFormPopoverTitle() const;
+    JSRetainPtr<JSStringRef> formInputLabel() const;
+    void setTimePickerValue(long hour, long minute);
     
     JSObjectRef contentsOfUserInterfaceItem(JSStringRef) const;
     void overridePreference(JSStringRef preference, JSStringRef value);
@@ -173,6 +177,10 @@ public:
     void addViewToWindow(JSValueRef);
 
     void setSafeAreaInsets(double top, double right, double bottom, double left);
+
+    void firstResponderSuppressionForWebView(bool);
+    void makeWindowContentViewFirstResponder();
+    bool isWindowContentViewFirstResponder() const;
 
 private:
     UIScriptController(UIScriptContext&);

@@ -95,7 +95,7 @@ WI.NavigationSidebarPanel = class NavigationSidebarPanel extends WI.SidebarPanel
 
     get contentTreeOutlines()
     {
-        return this._contentTreeOutlineGroup.items;
+        return Array.from(this._contentTreeOutlineGroup);
     }
 
     get currentRepresentedObject()
@@ -199,6 +199,13 @@ WI.NavigationSidebarPanel = class NavigationSidebarPanel extends WI.SidebarPanel
 
         treeElement.revealAndSelect(true, false, true, true);
         return true;
+    }
+
+    canShowRepresentedObject(representedObject)
+    {
+        let selectedTabContentView = WI.tabBrowser.selectedTabContentView;
+        console.assert(selectedTabContentView instanceof WI.TabContentView, "Missing TabContentView for NavigationSidebarPanel.");
+        return selectedTabContentView && selectedTabContentView.canShowRepresentedObject(representedObject);
     }
 
     saveStateToCookie(cookie)

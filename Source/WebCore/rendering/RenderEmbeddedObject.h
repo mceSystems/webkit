@@ -45,6 +45,7 @@ public:
         PluginCrashed,
         PluginBlockedByContentSecurityPolicy,
         InsecurePluginVersion,
+        UnsupportedPlugin
     };
     WEBCORE_EXPORT void setPluginUnavailabilityReason(PluginUnavailabilityReason);
     WEBCORE_EXPORT void setPluginUnavailabilityReasonWithDescription(PluginUnavailabilityReason, const String& description);
@@ -58,6 +59,9 @@ public:
     bool allowsAcceleratedCompositing() const;
 
     LayoutRect unavailablePluginIndicatorBounds(const LayoutPoint& accumulatedOffset) const;
+
+    const String& pluginReplacementTextIfUnavailable() const { return m_unavailablePluginReplacementText; }
+
 protected:
     void paintReplaced(PaintInfo&, const LayoutPoint&) final;
     void paint(PaintInfo&, const LayoutPoint&) override;
@@ -66,7 +70,7 @@ protected:
 
 protected:
     void layout() override;
-    void willBeDestroyed(RenderTreeBuilder&) override;
+    void willBeDestroyed() override;
 
 private:
     const char* renderName() const override { return "RenderEmbeddedObject"; }

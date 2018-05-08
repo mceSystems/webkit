@@ -33,6 +33,7 @@
 #include "ComposedTreeAncestorIterator.h"
 #include "ContainerNodeAlgorithms.h"
 #include "ContextMenuController.h"
+#include "DOMWindow.h"
 #include "DataTransfer.h"
 #include "DocumentType.h"
 #include "ElementIterator.h"
@@ -71,6 +72,7 @@
 #include "WheelEvent.h"
 #include "XMLNSNames.h"
 #include "XMLNames.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/RefCountedLeakCounter.h>
 #include <wtf/SHA1.h>
 #include <wtf/Variant.h>
@@ -78,6 +80,8 @@
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(Node);
 
 using namespace HTMLNames;
 
@@ -2151,7 +2155,7 @@ static EventTargetDataMap& eventTargetDataMap()
     return map;
 }
 
-static StaticLock s_eventTargetDataMapLock;
+static Lock s_eventTargetDataMapLock;
 
 EventTargetData* Node::eventTargetData()
 {
@@ -2347,7 +2351,7 @@ void Node::dispatchDOMActivateEvent(Event& underlyingClickEvent)
 {
     ASSERT_WITH_SECURITY_IMPLICATION(ScriptDisallowedScope::InMainThread::isScriptAllowed());
     int detail = is<UIEvent>(underlyingClickEvent) ? downcast<UIEvent>(underlyingClickEvent).detail() : 0;
-    auto event = UIEvent::create(eventNames().DOMActivateEvent, true, true, document().defaultView(), detail);
+    auto event = UIEvent::create(eventNames().DOMActivateEvent, true, true, document().windowProxy(), detail);
     event->setUnderlyingEvent(&underlyingClickEvent);
     dispatchScopedEvent(event);
     if (event->defaultHandled())

@@ -32,3 +32,11 @@
 #ifndef WTF_PREPARE_VTBL_POINTER_FOR_INSPECTION
 #define WTF_PREPARE_VTBL_POINTER_FOR_INSPECTION(vtblPtr) (reinterpret_cast<void*>(vtblPtr))
 #endif
+
+#ifndef WTF_SET_POINTER_PREPARATION_OPTIONS
+#define WTF_SET_POINTER_PREPARATION_OPTIONS() do { } while (false)
+#endif
+
+#ifndef WTF_METHOD_TABLE_ENTRY
+#define WTF_METHOD_TABLE_ENTRY(method) method
+#endif

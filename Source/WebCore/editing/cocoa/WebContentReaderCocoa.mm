@@ -44,7 +44,6 @@
 #import "HTMLImageElement.h"
 #import "HTMLObjectElement.h"
 #import "LegacyWebArchive.h"
-#import "MainFrame.h"
 #import "Page.h"
 #import "PublicURLManager.h"
 #import "RuntimeEnabledFeatures.h"
@@ -457,7 +456,7 @@ bool WebContentReader::readWebArchive(SharedBuffer& buffer)
         return true;
     }
 
-    String sanitizedMarkup = sanitizeMarkupWithArchive(*frame.document(), *result, MSOListQuirks::Disabled, [&] (const String& type) {
+    String sanitizedMarkup = sanitizeMarkupWithArchive(*frame.document(), *result, msoListQuirksForMarkup(), [&] (const String& type) {
         return frame.loader().client().canShowMIMETypeAsHTML(type);
     });
     fragment = createFragmentFromMarkup(*frame.document(), sanitizedMarkup, blankURL(), DisallowScriptingAndPluginContent);
@@ -518,7 +517,7 @@ bool WebContentReader::readHTML(const String& string)
 
     String markup;
     if (RuntimeEnabledFeatures::sharedFeatures().customPasteboardDataEnabled() && shouldSanitize()) {
-        markup = sanitizeMarkup(stringOmittingMicrosoftPrefix, MSOListQuirks::Disabled, WTF::Function<void (DocumentFragment&)> { [] (DocumentFragment& fragment) {
+        markup = sanitizeMarkup(stringOmittingMicrosoftPrefix, msoListQuirksForMarkup(), WTF::Function<void (DocumentFragment&)> { [] (DocumentFragment& fragment) {
             removeSubresourceURLAttributes(fragment, [] (const URL& url) {
                 return shouldReplaceSubresourceURL(url);
             });

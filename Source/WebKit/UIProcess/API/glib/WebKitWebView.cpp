@@ -62,6 +62,7 @@
 #include "WebKitWindowPropertiesPrivate.h"
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/JSRetainPtr.h>
+#include <jsc/JSCContextPrivate.h>
 #include <WebCore/CertificateInfo.h>
 #include <WebCore/GUniquePtrSoup.h>
 #include <WebCore/JSDOMExceptionHandling.h>
@@ -144,7 +145,9 @@ enum {
 
     INSECURE_CONTENT_DETECTED,
 
+#if PLATFORM(GTK)
     WEB_PROCESS_CRASHED,
+#endif
     WEB_PROCESS_TERMINATED,
 
     AUTHENTICATE,
@@ -228,7 +231,6 @@ struct _WebKitWebViewPrivate {
     WebEvent::Modifiers mouseTargetModifiers;
 
     GRefPtr<WebKitFindController> findController;
-    JSRetainPtr<JSGlobalContextRef> javascriptGlobalContext;
 
     GRefPtr<WebKitWebResource> mainResource;
     LoadingResourcesMap loadingResourcesMap;
@@ -236,6 +238,8 @@ struct _WebKitWebViewPrivate {
     WebKitScriptDialog* currentScriptDialog;
 
 #if PLATFORM(GTK)
+    GRefPtr<JSCContext> jsContext;
+
     GRefPtr<WebKitWebInspector> inspector;
 
     RefPtr<cairo_surface_t> favicon;
@@ -365,11 +369,6 @@ private:
     void handleDownloadRequest(WKWPE::View&, DownloadProxy& downloadProxy) override
     {
         webkitWebViewHandleDownloadRequest(m_webView, &downloadProxy);
-    }
-
-    JSGlobalContextRef javascriptGlobalContext() override
-    {
-        return webkit_web_view_get_javascript_global_context(m_webView);
     }
 
     WebKitWebView* m_webView;
@@ -626,10 +625,6 @@ static void webkitWebViewConstructed(GObject* object)
 
     WebKitWebView* webView = WEBKIT_WEB_VIEW(object);
     WebKitWebViewPrivate* priv = webView->priv;
-#if PLATFORM(WPE)
-    if (!priv->backend)
-        priv->backend = webkitWebViewBackendCreateDefault();
-#endif
     if (priv->relatedView) {
         priv->context = webkit_web_view_get_context(priv->relatedView);
         priv->isEphemeral = webkit_web_view_is_ephemeral(priv->relatedView);
@@ -1795,6 +1790,7 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
             G_TYPE_NONE, 1,
             WEBKIT_TYPE_INSECURE_CONTENT_EVENT);
 
+#if PLATFORM(GTK)
     /**
      * WebKitWebView::web-process-crashed:
      * @web_view: the #WebKitWebView
@@ -1814,6 +1810,7 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
         g_signal_accumulator_true_handled, nullptr,
         g_cclosure_marshal_generic,
         G_TYPE_BOOLEAN, 0);
+#endif
 
     /**
      * WebKitWebView::web-process-terminated:
@@ -2349,9 +2346,13 @@ void webkitWebViewSubmitFormRequest(WebKitWebView* webView, WebKitFormSubmission
 
 void webkitWebViewHandleAuthenticationChallenge(WebKitWebView* webView, AuthenticationChallengeProxy* authenticationChallenge)
 {
+#if PLATFORM(GTK)
     G_GNUC_BEGIN_IGNORE_DEPRECATIONS;
     gboolean privateBrowsingEnabled = webView->priv->isEphemeral || webkit_settings_get_enable_private_browsing(webView->priv->settings.get());
     G_GNUC_END_IGNORE_DEPRECATIONS;
+#else
+    gboolean privateBrowsingEnabled = webView->priv->isEphemeral;
+#endif
     webView->priv->authenticationRequest = adoptGRef(webkitAuthenticationRequestCreate(authenticationChallenge, privateBrowsingEnabled));
     gboolean returnValue;
     g_signal_emit(webView, signals[AUTHENTICATE], 0, webView->priv->authenticationRequest.get(), &returnValue);
@@ -3033,7 +3034,7 @@ void webkit_web_view_go_to_back_forward_list_item(WebKitWebView* webView, WebKit
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(WEBKIT_IS_BACK_FORWARD_LIST_ITEM(listItem));
 
-    getPage(webView).goToBackForwardItem(webkitBackForwardListItemGetItem(listItem));
+    getPage(webView).goToBackForwardItem(*webkitBackForwardListItemGetItem(listItem));
 }
 
 /**
@@ -3250,8 +3251,9 @@ WebKitFindController* webkit_web_view_get_find_controller(WebKitWebView* webView
     return webView->priv->findController.get();
 }
 
+#if PLATFORM(GTK)
 /**
- * webkit_web_view_get_javascript_global_context:
+ * webkit_web_view_get_javascript_global_context: (skip)
  * @web_view: a #WebKitWebView
  *
  * Get the global JavaScript context used by @web_view to deserialize the
@@ -3259,15 +3261,20 @@ WebKitFindController* webkit_web_view_get_find_controller(WebKitWebView* webView
  *
  * Returns: the <function>JSGlobalContextRef</function> used by @web_view to deserialize
  *    the result values of scripts.
+ *
+ * Deprecated: 2.22: Use jsc_value_get_context() instead.
  */
 JSGlobalContextRef webkit_web_view_get_javascript_global_context(WebKitWebView* webView)
 {
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
 
-    if (!webView->priv->javascriptGlobalContext)
-        webView->priv->javascriptGlobalContext = adopt(JSGlobalContextCreate(nullptr));
-    return webView->priv->javascriptGlobalContext.get();
+    // We keep a reference to the js context in the view only when this method is called
+    // for backwards compatibility.
+    if (!webView->priv->jsContext)
+        webView->priv->jsContext = SharedJavascriptContext::singleton().getOrCreateContext();
+    return jscContextGetJSContext(webView->priv->jsContext.get());
 }
+#endif
 
 static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSerializedScriptValue, const ExceptionDetails& exceptionDetails, GTask* task)
 {
@@ -3294,9 +3301,7 @@ static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSer
         return;
     }
 
-    auto* jsContext = webkit_web_view_get_javascript_global_context(WEBKIT_WEB_VIEW(g_task_get_source_object(task)));
-    g_task_return_pointer(task, webkitJavascriptResultCreate(jsContext,
-        wkSerializedScriptValue->internalRepresentation()),
+    g_task_return_pointer(task, webkitJavascriptResultCreate(wkSerializedScriptValue->internalRepresentation()),
         reinterpret_cast<GDestroyNotify>(webkit_javascript_result_unref));
 }
 
@@ -3343,8 +3348,7 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
  *                               gpointer      user_data)
  * {
  *     WebKitJavascriptResult *js_result;
- *     JSValueRef              value;
- *     JSGlobalContextRef      context;
+ *     JSCValue               *value;
  *     GError                 *error = NULL;
  *
  *     js_result = webkit_web_view_run_javascript_finish (WEBKIT_WEB_VIEW (object), result, &error);
@@ -3354,19 +3358,17 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
  *         return;
  *     }
  *
- *     context = webkit_javascript_result_get_global_context (js_result);
- *     value = webkit_javascript_result_get_value (js_result);
- *     if (JSValueIsString (context, value)) {
- *         JSStringRef js_str_value;
- *         gchar      *str_value;
- *         gsize       str_length;
+ *     value = webkit_javascript_result_get_js_value (js_result);
+ *     if (jsc_value_is_string (value)) {
+ *         JSCException *exception;
+ *         gchar        *str_value;
  *
- *         js_str_value = JSValueToStringCopy (context, value, NULL);
- *         str_length = JSStringGetMaximumUTF8CStringSize (js_str_value);
- *         str_value = (gchar *)g_malloc (str_length);
- *         JSStringGetUTF8CString (js_str_value, str_value, str_length);
- *         JSStringRelease (js_str_value);
- *         g_print ("Script result: %s\n", str_value);
+ *         str_value = jsc_value_to_string (value);
+ *         exception = jsc_context_get_exception (jsc_value_get_context (value));
+ *         if (exception)
+ *             g_warning ("Error running javascript: %s", jsc_exception_get_message (exception));
+ *         else
+ *             g_print ("Script result: %s\n", str_value);
  *         g_free (str_value);
  *     } else {
  *         g_warning ("Error running javascript: unexpected return value");
@@ -3839,10 +3841,12 @@ cairo_surface_t* webkit_web_view_get_snapshot_finish(WebKitWebView* webView, GAs
 
 void webkitWebViewWebProcessTerminated(WebKitWebView* webView, WebKitWebProcessTerminationReason reason)
 {
+#if PLATFORM(GTK)
     if (reason == WEBKIT_WEB_PROCESS_CRASHED) {
         gboolean returnValue;
         g_signal_emit(webView, signals[WEB_PROCESS_CRASHED], 0, &returnValue);
     }
+#endif
     g_signal_emit(webView, signals[WEB_PROCESS_TERMINATED], 0, reason);
 }
 

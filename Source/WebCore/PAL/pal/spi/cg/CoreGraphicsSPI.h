@@ -28,7 +28,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 
-#if USE(IOSURFACE)
+#if HAVE(IOSURFACE)
 #include <pal/spi/cocoa/IOSurfaceSPI.h>
 #endif
 
@@ -249,11 +249,12 @@ bool CGContextGetAllowsFontSubpixelPositioning(CGContextRef);
 bool CGContextDrawsWithCorrectShadowOffsets(CGContextRef);
 CGPatternRef CGPatternCreateWithImage2(CGImageRef, CGAffineTransform, CGPatternTiling);
 
-#if USE(IOSURFACE)
+#if HAVE(IOSURFACE)
 CGContextRef CGIOSurfaceContextCreate(IOSurfaceRef, size_t, size_t, size_t, size_t, CGColorSpaceRef, CGBitmapInfo);
 CGImageRef CGIOSurfaceContextCreateImage(CGContextRef);
 CGImageRef CGIOSurfaceContextCreateImageReference(CGContextRef);
 CGColorSpaceRef CGIOSurfaceContextGetColorSpace(CGContextRef);
+void CGIOSurfaceContextSetDisplayMask(CGContextRef, uint32_t mask);
 #endif
 
 #if PLATFORM(COCOA)

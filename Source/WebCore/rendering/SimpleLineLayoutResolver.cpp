@@ -88,6 +88,30 @@ StringView RunResolver::Run::text() const
     return StringView(segment.text).substring(segment.toSegmentPosition(run.start), run.end - run.start);
 }
 
+const RenderObject& RunResolver::Run::renderer() const
+{
+    auto& run = m_iterator.simpleRun();
+    // FlowContents cannot differentiate empty runs.
+    ASSERT(run.start != run.end);
+    return m_iterator.resolver().m_flowContents.segmentForRun(run.start, run.end).renderer;
+}
+
+unsigned RunResolver::Run::localStart() const
+{
+    auto& run = m_iterator.simpleRun();
+    // FlowContents cannot differentiate empty runs.
+    ASSERT(run.start != run.end);
+    return m_iterator.resolver().m_flowContents.segmentForRun(run.start, run.end).toSegmentPosition(run.start);
+}
+
+unsigned RunResolver::Run::localEnd() const
+{
+    auto& run = m_iterator.simpleRun();
+    // FlowContents cannot differentiate empty runs.
+    ASSERT(run.start != run.end);
+    return m_iterator.resolver().m_flowContents.segmentForRun(run.start, run.end).toSegmentPosition(run.end);
+}
+
 RunResolver::Iterator::Iterator(const RunResolver& resolver, unsigned runIndex, unsigned lineIndex)
     : m_resolver(resolver)
     , m_runIndex(runIndex)
@@ -199,6 +223,16 @@ WTF::IteratorRange<RunResolver::Iterator> RunResolver::rangeForRect(const Layout
     auto rangeEnd = rangeBegin;
     ASSERT(lastLine >= firstLine);
     rangeEnd.advanceLines(lastLine - firstLine + 1);
+    return { rangeBegin, rangeEnd };
+}
+
+WTF::IteratorRange<RunResolver::Iterator> RunResolver::rangeForLine(unsigned lineIndex) const
+{
+    auto rangeBegin = begin().advanceLines(lineIndex);
+    if (rangeBegin == end())
+        return { end(), end() };
+    auto rangeEnd = rangeBegin;
+    rangeEnd.advanceLines(1);
     return { rangeBegin, rangeEnd };
 }
 

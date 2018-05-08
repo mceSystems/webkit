@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,7 +41,7 @@ private:
     void deviceScaleFactorDidChange() override;
     void sizeDidChange() override;
     void colorSpaceDidChange() override;
-    void minimumLayoutSizeDidChange() override;
+    void viewLayoutSizeDidChange() override;
 
     void enterAcceleratedCompositingMode(uint64_t backingStoreStateID, const LayerTreeContext&) override;
     void exitAcceleratedCompositingMode(uint64_t backingStoreStateID, const UpdateInfo&) override;
@@ -56,7 +56,7 @@ private:
 
     void willSendUpdateGeometry() override;
 
-    WebCore::MachSendRight createFence() override;
+    WTF::MachSendRight createFence() override;
 
     // Message handlers.
     void didUpdateGeometry() override;
@@ -71,7 +71,7 @@ private:
     WebCore::IntSize m_lastSentSize;
 
     // The last minimum layout size we sent to the web process.
-    WebCore::IntSize m_lastSentMinimumLayoutSize;
+    WebCore::IntSize m_lastSentViewLayoutSize;
 
     CallbackMap m_callbacks;
 };

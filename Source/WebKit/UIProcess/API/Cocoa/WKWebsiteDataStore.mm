@@ -37,6 +37,7 @@
 #import "WebsiteDataFetchOption.h"
 #import "_WKWebsiteDataStoreConfiguration.h"
 #import <WebCore/URL.h>
+#import <WebKit/ServiceWorkerProcessProxy.h>
 #import <wtf/BlockPtr.h>
 
 using namespace WebCore;
@@ -200,6 +201,10 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
         config.cookieStorageFile = configuration._cookieStorageFile.path;
     if (configuration._resourceLoadStatisticsDirectory)
         config.resourceLoadStatisticsDirectory = configuration._resourceLoadStatisticsDirectory.path;
+    if (configuration._cacheStorageDirectory)
+        config.cacheStorageDirectory = configuration._cacheStorageDirectory.path;
+    if (configuration._serviceWorkerRegistrationDirectory)
+        config.serviceWorkerRegistrationDirectory = configuration._serviceWorkerRegistrationDirectory.path;
 
     API::Object::constructInWrapper<API::WebsiteDataStore>(self, config, PAL::SessionID::generatePersistentSessionID());
 
@@ -295,6 +300,16 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     return _websiteDataStore->websiteDataStore().allowsCellularAccess() == WebKit::AllowsCellularAccess::Yes;
 }
 
+- (void)_setProxyConfiguration:(NSDictionary *)configuration
+{
+    _websiteDataStore->websiteDataStore().setProxyConfiguration((CFDictionaryRef)configuration);
+}
+
+- (NSDictionary *)_proxyConfiguration
+{
+    return (NSDictionary *)_websiteDataStore->websiteDataStore().proxyConfiguration();
+}
+
 - (void)_resourceLoadStatisticsSetShouldSubmitTelemetry:(BOOL)value
 {
     auto* store = _websiteDataStore->websiteDataStore().resourceLoadStatistics();
@@ -335,6 +350,11 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
 
         completionHandler(wrapper(API::Array::create(WTFMove(apiDomains))));
     });
+}
+
+- (bool)_hasRegisteredServiceWorker
+{
+    return WebKit::ServiceWorkerProcessProxy::hasRegisteredServiceWorkers(_websiteDataStore->websiteDataStore().serviceWorkerRegistrationDirectory());
 }
 
 @end

@@ -36,15 +36,14 @@
 
 #if USE(LIBEPOXY)
 #include <epoxy/gl.h>
-#elif USE(OPENGL_ES_2)
+#elif USE(OPENGL_ES)
 #include <GLES2/gl2.h>
 #else
 #include <GL/gl.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 Ref<ThreadedCompositor> ThreadedCompositor::create(Client& client, WebPage& webPage, const IntSize& viewportSize, float scaleFactor, ShouldDoFrameSync doFrameSync, TextureMapper::PaintFlags paintFlags)
 {
@@ -71,11 +70,10 @@ ThreadedCompositor::ThreadedCompositor(Client& client, WebPage& webPage, const I
     m_compositingRunLoop->performTaskSync([this, protectedThis = makeRef(*this)] {
         m_scene = adoptRef(new CoordinatedGraphicsScene(this));
         m_nativeSurfaceHandle = m_client.nativeSurfaceHandleForCompositing();
-        if (m_nativeSurfaceHandle) {
+
+        m_scene->setActive(!!m_nativeSurfaceHandle);
+        if (m_nativeSurfaceHandle)
             createGLContext();
-            m_scene->setActive(true);
-        } else
-            m_scene->setActive(false);
     });
 }
 
@@ -108,6 +106,8 @@ void ThreadedCompositor::invalidate()
     m_displayRefreshMonitor->invalidate();
 #endif
     m_compositingRunLoop->performTaskSync([this, protectedThis = makeRef(*this)] {
+        if (!m_context || !m_context->makeContextCurrent())
+            return;
         m_scene->purgeGLResources();
         m_context = nullptr;
         m_client.didDestroyGLContext();
@@ -123,13 +123,12 @@ void ThreadedCompositor::setNativeSurfaceHandleForCompositing(uint64_t handle)
         // A new native handle can't be set without destroying the previous one first if any.
         ASSERT(!!handle ^ !!m_nativeSurfaceHandle);
         m_nativeSurfaceHandle = handle;
-        if (m_nativeSurfaceHandle) {
+
+        m_scene->setActive(!!m_nativeSurfaceHandle);
+        if (m_nativeSurfaceHandle)
             createGLContext();
-            m_scene->setActive(true);
-        } else {
-            m_scene->setActive(false);
+        else
             m_context = nullptr;
-        }
     });
 }
 
@@ -162,18 +161,6 @@ void ThreadedCompositor::setDrawsBackground(bool drawsBackground)
     LockHolder locker(m_attributes.lock);
     m_attributes.drawsBackground = drawsBackground;
     m_compositingRunLoop->scheduleUpdate();
-}
-
-void ThreadedCompositor::renderNextFrame()
-{
-    ASSERT(RunLoop::isMain());
-    m_client.renderNextFrame();
-}
-
-void ThreadedCompositor::commitScrollOffset(uint32_t layerID, const IntSize& offset)
-{
-    ASSERT(RunLoop::isMain());
-    m_client.commitScrollOffset(layerID, offset);
 }
 
 void ThreadedCompositor::updateViewport()
@@ -210,7 +197,6 @@ void ThreadedCompositor::renderLayerTree()
     bool drawsBackground;
     bool needsResize;
     Vector<WebCore::CoordinatedGraphicsState> states;
-    Vector<uint32_t> atlasesToRemove;
 
     {
         LockHolder locker(m_attributes.lock);
@@ -221,7 +207,6 @@ void ThreadedCompositor::renderLayerTree()
         needsResize = m_attributes.needsResize;
 
         states = WTFMove(m_attributes.states);
-        atlasesToRemove = WTFMove(m_attributes.atlasesToRemove);
 
         if (!states.isEmpty()) {
             // Client has to be notified upon finishing this scene update.
@@ -256,9 +241,8 @@ void ThreadedCompositor::renderLayerTree()
     }
 
     m_scene->applyStateChanges(states);
-    m_scene->releaseUpdateAtlases(atlasesToRemove);
     m_scene->paintToCurrentGLContext(viewportTransform, 1, FloatRect { FloatPoint { }, viewportSize },
-        Color::transparent, !drawsBackground, scrollPosition, m_paintFlags);
+        Color::transparent, !drawsBackground, m_paintFlags);
 
     m_context->swapBuffers();
 
@@ -305,13 +289,6 @@ void ThreadedCompositor::updateSceneState(const CoordinatedGraphicsState& state)
 {
     LockHolder locker(m_attributes.lock);
     m_attributes.states.append(state);
-    m_compositingRunLoop->scheduleUpdate();
-}
-
-void ThreadedCompositor::releaseUpdateAtlases(const Vector<uint32_t>& atlasesToRemove)
-{
-    LockHolder locker(m_attributes.lock);
-    m_attributes.atlasesToRemove.appendVector(atlasesToRemove);
     m_compositingRunLoop->scheduleUpdate();
 }
 

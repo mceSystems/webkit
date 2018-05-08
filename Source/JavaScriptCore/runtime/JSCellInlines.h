@@ -29,7 +29,7 @@
 #include "CallFrame.h"
 #include "DeferGC.h"
 #include "Handle.h"
-#include "JSCell.h"
+#include "JSCast.h"
 #include "JSDestructibleObject.h"
 #include "JSObject.h"
 #include "JSString.h"
@@ -139,7 +139,7 @@ CompleteSubspace* JSCell::subspaceFor(VM& vm)
 {
     if (CellType::needsDestruction)
         return &vm.destructibleCellSpace;
-    return &vm.cellSpace;
+    return &vm.cellDangerousBitsSpace;
 }
 
 template<typename T>
@@ -235,7 +235,7 @@ ALWAYS_INLINE void JSCell::setStructure(VM& vm, Structure* structure)
         || this->structure()->transitionWatchpointSetHasBeenInvalidated()
         || Heap::heap(this)->structureIDTable().get(structure->id()) == structure);
     m_structureID = structure->id();
-    m_flags = structure->typeInfo().inlineTypeFlags();
+    m_flags = TypeInfo::mergeInlineTypeFlags(structure->typeInfo().inlineTypeFlags(), m_flags);
     m_type = structure->typeInfo().type();
     IndexingType newIndexingType = structure->indexingTypeIncludingHistory();
     if (m_indexingTypeAndMisc != newIndexingType) {
@@ -268,6 +268,12 @@ inline const MethodTable* JSCell::methodTable(VM& vm) const
 inline bool JSCell::inherits(VM& vm, const ClassInfo* info) const
 {
     return classInfo(vm)->isSubClassOf(info);
+}
+
+template<typename Target>
+inline bool JSCell::inherits(VM& vm) const
+{
+    return JSCastingHelpers::inherits<Target>(vm, this);
 }
 
 ALWAYS_INLINE JSValue JSCell::fastGetOwnProperty(VM& vm, Structure& structure, PropertyName name)
@@ -313,21 +319,6 @@ inline TriState JSCell::pureToBoolean() const
     return MixedTriState;
 }
 
-inline void JSCell::callDestructor(VM& vm)
-{
-    if (isZapped())
-        return;
-    ASSERT(structureID());
-    if (inlineTypeFlags() & StructureIsImmortal) {
-        Structure* structure = this->structure(vm);
-        const ClassInfo* classInfo = structure->classInfo();
-        MethodTable::DestroyFunctionPtr destroy = classInfo->methodTable.destroy;
-        destroy(this);
-    } else
-        static_cast<JSDestructibleObject*>(this)->classInfo()->methodTable.destroy(this);
-    zap();
-}
-
 inline void JSCellLock::lock()
 {
     Atomic<IndexingType>* lock = bitwise_cast<Atomic<IndexingType>*>(&m_indexingTypeAndMisc);
@@ -356,14 +347,14 @@ inline bool JSCellLock::isLocked() const
 
 inline bool JSCell::mayBePrototype() const
 {
-    return m_indexingTypeAndMisc & IndexingTypeMayBePrototype;
+    return TypeInfo::mayBePrototype(inlineTypeFlags());
 }
 
 inline void JSCell::didBecomePrototype()
 {
     if (mayBePrototype())
         return;
-    WTF::atomicExchangeOr(&m_indexingTypeAndMisc, IndexingTypeMayBePrototype);
+    m_flags |= static_cast<TypeInfo::InlineTypeFlags>(TypeInfoMayBePrototype);
 }
 
 inline JSObject* JSCell::toObject(ExecState* exec, JSGlobalObject* globalObject) const

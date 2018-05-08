@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -123,7 +123,7 @@ public:
                     auto writeHandler = [&] (VirtualRegister operand) {
                         if (operand.isHeader())
                             return;
-                        RELEASE_ASSERT(node->op() == PutStack || node->op() == LoadVarargs || node->op() == ForwardVarargs);
+                        RELEASE_ASSERT(node->op() == PutStack || node->op() == LoadVarargs || node->op() == ForwardVarargs || node->op() == KillStack);
                         writes.append(operand);
                     };
 
@@ -277,6 +277,10 @@ public:
                     } else if (node->op() == PutStack) {
                         VirtualRegister operand = node->stackAccessData()->local;
                         deferred.operand(operand) = node->stackAccessData()->format;
+                        continue;
+                    } else if (node->op() == KillStack) {
+                        // We don't want to sink a PutStack past a KillStack.
+                        deferred.operand(node->unlinkedLocal()) = ConflictingFlush;
                         continue;
                     }
                     
@@ -473,6 +477,11 @@ public:
                     node->convertToIdentity();
                     break;
                 }
+
+                case KillStack: {
+                    deferred.operand(node->unlinkedLocal()) = ConflictingFlush;
+                    break;
+                }
                 
                 default: {
                     auto escapeHandler = [&] (VirtualRegister operand) {
@@ -572,7 +581,7 @@ public:
                 if (!putStacksToSink.contains(node))
                     continue;
                 
-                node->remove();
+                node->remove(m_graph);
             }
         }
         

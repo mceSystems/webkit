@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -128,7 +128,7 @@ private:
                 case NewArrayWithSpread: {
                     if (m_graph.isWatchingHavingABadTimeWatchpoint(node)) {
                         BitVector* bitVector = node->bitVector();
-                        // We only allow for Spreads to be of rest nodes for now.
+                        // We only allow for Spreads to be of CreateRest or NewArrayBuffer nodes for now.
                         bool isOK = true;
                         for (unsigned i = 0; i < node->numChildren(); i++) {
                             if (bitVector->get(i)) {
@@ -314,16 +314,19 @@ private:
                     break;
                     
                 case GetByVal:
-                    escapeBasedOnArrayMode(node->arrayMode(), node->child1(), node);
-                    escape(node->child2(), node);
-                    escape(node->child3(), node);
+                    escapeBasedOnArrayMode(node->arrayMode(), m_graph.varArgChild(node, 0), node);
+                    escape(m_graph.varArgChild(node, 1), node);
+                    escape(m_graph.varArgChild(node, 2), node);
                     break;
 
                 case GetArrayLength:
-                    // FIXME: It would not be hard to support NewArrayWithSpread here if it is only over Spread(CreateRest) nodes.
                     escape(node->child2(), node);
+                    // Computing the length of a NewArrayWithSpread can require some additions.
+                    // These additions can overflow if the array is sufficiently enormous, and in that case we will need to exit.
+                    if ((node->child1()->op() == NewArrayWithSpread) && !node->origin.exitOK)
+                        escape(node->child1(), node);
                     break;
-                
+
                 case NewArrayWithSpread: {
                     BitVector* bitVector = node->bitVector();
                     bool isWatchingHavingABadTimeWatchpoint = m_graph.isWatchingHavingABadTimeWatchpoint(node); 
@@ -371,6 +374,7 @@ private:
                     break;
 
                 case Check:
+                case CheckVarargs:
                     m_graph.doToChildren(
                         node,
                         [&] (Edge edge) {
@@ -703,9 +707,7 @@ private:
                     if (!isEliminatedAllocation(candidate))
                         break;
 
-                    if (node->child2()->op() != PhantomClonedArguments)
-                        break;
-
+                    ASSERT(candidate->op() == PhantomClonedArguments);
                     ASSERT(node->storageAccessData().offset == clonedArgumentsLengthPropertyOffset);
 
                     // Meh, this is kind of hackish - we use an Identity so that we can reuse the
@@ -719,12 +721,10 @@ private:
                     if (!isEliminatedAllocation(candidate))
                         break;
                     
-                    // Meh, this is kind of hackish - we use an Identity so that we can reuse the
-                    // getArrayLength() helper.
                     node->convertToIdentityOn(getArrayLength(candidate));
                     break;
                 }
-                    
+
                 case GetByVal: {
                     // FIXME: For ClonedArguments, we would have already done a separate bounds check.
                     // This code will cause us to have two bounds checks - the original one that we
@@ -733,7 +733,7 @@ private:
                     // second bounds check, but still - that's just silly.
                     // https://bugs.webkit.org/show_bug.cgi?id=143076
                     
-                    Node* candidate = node->child1().node();
+                    Node* candidate = m_graph.varArgChild(node, 0).node();
                     if (!isEliminatedAllocation(candidate))
                         break;
 
@@ -742,8 +742,8 @@ private:
                         numberOfArgumentsToSkip = candidate->numberOfArgumentsToSkip();
                     
                     Node* result = nullptr;
-                    if (node->child2()->isInt32Constant()) {
-                        unsigned index = node->child2()->asUInt32();
+                    if (m_graph.varArgChild(node, 1)->isInt32Constant()) {
+                        unsigned index = m_graph.varArgChild(node, 1)->asUInt32();
                         InlineCallFrame* inlineCallFrame = candidate->origin.semantic.inlineCallFrame;
                         index += numberOfArgumentsToSkip;
                         
@@ -764,7 +764,7 @@ private:
                             if (!inlineCallFrame || inlineCallFrame->isVarargs()) {
                                 insertionSet.insertNode(
                                     nodeIndex, SpecNone, CheckInBounds, node->origin,
-                                    node->child2(), Edge(getArrayLength(candidate), Int32Use));
+                                    m_graph.varArgChild(node, 1), Edge(getArrayLength(candidate), Int32Use));
                             }
                             
                             result = insertionSet.insertNode(
@@ -780,7 +780,7 @@ private:
                             op = GetMyArgumentByValOutOfBounds;
                         result = insertionSet.insertNode(
                             nodeIndex, node->prediction(), op, node->origin, OpInfo(numberOfArgumentsToSkip),
-                            node->child1(), node->child2());
+                            m_graph.varArgChild(node, 0), m_graph.varArgChild(node, 1));
                     }
 
                     // Need to do this because we may have a data format conversion here.
@@ -904,7 +904,6 @@ private:
                                     }
 
                                     if (candidate->op() == PhantomNewArrayBuffer) {
-                                        bool canExit = true;
                                         auto* array = candidate->castOperand<JSFixedArray*>();
                                         for (unsigned index = 0; index < array->length(); ++index) {
                                             JSValue constant;
@@ -944,7 +943,7 @@ private:
                                     storeValue(undefined, storeIndex);
                                 }
                                 
-                                node->remove();
+                                node->remove(m_graph);
                                 node->origin.exitOK = canExit;
                                 break;
                             }
@@ -1009,7 +1008,7 @@ private:
                                     storeValue(value, storeIndex);
                                 }
                                 
-                                node->remove();
+                                node->remove(m_graph);
                                 node->origin.exitOK = canExit;
                                 break;
                             }
@@ -1186,7 +1185,7 @@ private:
                 case GetButterfly: {
                     if (!isEliminatedAllocation(node->child1().node()))
                         break;
-                    node->remove();
+                    node->remove(m_graph);
                     break;
                 }
 
@@ -1195,7 +1194,7 @@ private:
                     if (!isEliminatedAllocation(node->child1().node()))
                         break;
                     node->child1() = Edge(); // Remove the cell check since we've proven it's not needed and FTL lowering might botch this.
-                    node->remove();
+                    node->remove(m_graph);
                     break;
                     
                 default:

@@ -37,7 +37,7 @@
 #include <wayland-server-protocol.h>
 #include <wtf/UUID.h>
 
-#if USE(OPENGL_ES_2)
+#if USE(OPENGL_ES)
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 #include <WebCore/Extensions3DOpenGLES.h>
@@ -46,9 +46,8 @@
 #include <WebCore/OpenGLShims.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #if !defined(PFNEGLBINDWAYLANDDISPLAYWL)
 typedef EGLBoolean (*PFNEGLBINDWAYLANDDISPLAYWL) (EGLDisplay, struct wl_display*);
@@ -351,6 +350,7 @@ static const struct wl_compositor_interface compositorInterface = {
             wl_resource_set_implementation(surfaceResource, &surfaceInterface, new WaylandCompositor::Surface(),
                 [](struct wl_resource* resource) {
                     auto* surface = static_cast<WaylandCompositor::Surface*>(wl_resource_get_user_data(resource));
+                    WaylandCompositor::singleton().willDestroySurface(surface);
                     delete surface;
                 });
         } else
@@ -408,7 +408,7 @@ bool WaylandCompositor::initializeEGL()
     if (!m_eglContext->makeContextCurrent())
         return false;
 
-#if USE(OPENGL_ES_2)
+#if USE(OPENGL_ES)
     std::unique_ptr<Extensions3DOpenGLES> glExtensions = std::make_unique<Extensions3DOpenGLES>(nullptr,  false);
 #else
     std::unique_ptr<Extensions3DOpenGL> glExtensions = std::make_unique<Extensions3DOpenGL>(nullptr, GLContext::current()->version() >= 320);
@@ -476,7 +476,7 @@ static GRefPtr<GSource> createWaylandLoopSource(struct wl_display* display)
 
 WaylandCompositor::WaylandCompositor()
 {
-    WlUniquePtr<struct wl_display> display(wl_display_create());
+    std::unique_ptr<struct wl_display, DisplayDeleter> display(wl_display_create());
     if (!display) {
         WTFLogAlways("Nested Wayland compositor could not create display object");
         return;
@@ -561,6 +561,16 @@ void WaylandCompositor::unregisterWebPage(WebPageProxy& webPage)
 {
     if (auto* surface = m_pageMap.take(&webPage))
         surface->setWebPage(nullptr);
+}
+
+void WaylandCompositor::willDestroySurface(Surface* surface)
+{
+    for (auto it : m_pageMap) {
+        if (it.value == surface) {
+            it.value = nullptr;
+            return;
+        }
+    }
 }
 
 } // namespace WebKit

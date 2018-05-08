@@ -106,7 +106,8 @@ JSFunction::JSFunction(VM& vm, JSGlobalObject* globalObject, Structure* structur
 void JSFunction::finishCreation(VM& vm)
 {
     Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
+    ASSERT(jsDynamicCast<JSFunction*>(vm, this));
+    ASSERT(type() == JSFunctionType);
     if (isBuiltinFunction() && jsExecutable()->name().isPrivateName()) {
         // This is anonymous builtin function.
         rareData(vm)->setHasReifiedName();
@@ -117,6 +118,7 @@ void JSFunction::finishCreation(VM& vm, NativeExecutable* executable, int length
 {
     Base::finishCreation(vm);
     ASSERT(inherits(vm, info()));
+    ASSERT(type() == JSFunctionType);
     m_executable.set(vm, this, executable);
     // Some NativeExecutable functions, like JSBoundFunction, decide to lazily allocate their name string.
     if (!name.isNull())
@@ -139,9 +141,12 @@ FunctionRareData* JSFunction::allocateRareData(VM& vm)
 
 JSObject* JSFunction::prototypeForConstruction(VM& vm, ExecState* exec)
 {
+    // This code assumes getting the prototype is not effectful. That's only
+    // true when we can use the allocation profile.
+    ASSERT(canUseAllocationProfile()); 
     auto scope = DECLARE_CATCH_SCOPE(vm);
     JSValue prototype = get(exec, vm.propertyNames->prototype);
-    ASSERT_UNUSED(scope, !scope.exception());
+    scope.releaseAssertNoException();
     if (prototype.isObject())
         return asObject(prototype);
 
@@ -151,6 +156,7 @@ JSObject* JSFunction::prototypeForConstruction(VM& vm, ExecState* exec)
 FunctionRareData* JSFunction::allocateAndInitializeRareData(ExecState* exec, size_t inlineCapacity)
 {
     ASSERT(!m_rareData);
+    ASSERT(canUseAllocationProfile());
     VM& vm = exec->vm();
     JSObject* prototype = prototypeForConstruction(vm, exec);
     FunctionRareData* rareData = FunctionRareData::create(vm);
@@ -167,6 +173,7 @@ FunctionRareData* JSFunction::allocateAndInitializeRareData(ExecState* exec, siz
 FunctionRareData* JSFunction::initializeRareData(ExecState* exec, size_t inlineCapacity)
 {
     ASSERT(!!m_rareData);
+    ASSERT(canUseAllocationProfile());
     VM& vm = exec->vm();
     JSObject* prototype = prototypeForConstruction(vm, exec);
     m_rareData->initializeObjectAllocationProfile(vm, globalObject(vm), prototype, inlineCapacity, this);
@@ -307,7 +314,7 @@ public:
 
         JSCell* callee = visitor->callee().asCell();
 
-        if (callee && callee->inherits(*callee->vm(), JSBoundFunction::info()))
+        if (callee && callee->inherits<JSBoundFunction>(*callee->vm()))
             return StackVisitor::Continue;
 
         if (!m_hasFoundFrame && (callee != m_targetCallee))
@@ -348,7 +355,7 @@ EncodedJSValue JSFunction::callerGetter(ExecState* exec, EncodedJSValue thisValu
     JSValue caller = retrieveCallerFunction(exec, thisObj);
 
     // See ES5.1 15.3.5.4 - Function.caller may not be used to retrieve a strict caller.
-    if (!caller.isObject() || !asObject(caller)->inherits(vm, JSFunction::info())) {
+    if (!caller.isObject() || !asObject(caller)->inherits<JSFunction>(vm)) {
         // It isn't a JSFunction, but if it is a JSCallee from a program or eval call or an internal constructor, return null.
         if (jsDynamicCast<JSCallee*>(vm, caller) || jsDynamicCast<InternalFunction*>(vm, caller))
             return JSValue::encode(jsNull());
@@ -359,9 +366,34 @@ EncodedJSValue JSFunction::callerGetter(ExecState* exec, EncodedJSValue thisValu
     // Firefox returns null for native code callers, so we match that behavior.
     if (function->isHostOrBuiltinFunction())
         return JSValue::encode(jsNull());
-    if (!function->jsExecutable()->isStrictMode())
-        return JSValue::encode(caller);
-    return JSValue::encode(throwTypeError(exec, scope, ASCIILiteral("Function.caller used to retrieve strict caller")));
+    SourceParseMode parseMode = function->jsExecutable()->parseMode();
+    switch (parseMode) {
+    case SourceParseMode::GeneratorBodyMode:
+    case SourceParseMode::AsyncGeneratorBodyMode:
+        return JSValue::encode(throwTypeError(exec, scope, ASCIILiteral("Function.caller used to retrieve generator body")));
+    case SourceParseMode::AsyncFunctionBodyMode:
+    case SourceParseMode::AsyncArrowFunctionBodyMode:
+        return JSValue::encode(throwTypeError(exec, scope, ASCIILiteral("Function.caller used to retrieve async function body")));
+    case SourceParseMode::NormalFunctionMode:
+    case SourceParseMode::GeneratorWrapperFunctionMode:
+    case SourceParseMode::GetterMode:
+    case SourceParseMode::SetterMode:
+    case SourceParseMode::MethodMode:
+    case SourceParseMode::ArrowFunctionMode:
+    case SourceParseMode::AsyncFunctionMode:
+    case SourceParseMode::AsyncMethodMode:
+    case SourceParseMode::AsyncArrowFunctionMode:
+    case SourceParseMode::ProgramMode:
+    case SourceParseMode::ModuleAnalyzeMode:
+    case SourceParseMode::ModuleEvaluateMode:
+    case SourceParseMode::AsyncGeneratorWrapperFunctionMode:
+    case SourceParseMode::AsyncGeneratorWrapperMethodMode:
+    case SourceParseMode::GeneratorWrapperMethodMode:
+        if (!function->jsExecutable()->isStrictMode())
+            return JSValue::encode(caller);
+        return JSValue::encode(throwTypeError(exec, scope, ASCIILiteral("Function.caller used to retrieve strict caller")));
+    }
+    RELEASE_ASSERT_NOT_REACHED();
 }
 
 bool JSFunction::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyName propertyName, PropertySlot& slot)
@@ -374,6 +406,13 @@ bool JSFunction::getOwnPropertySlot(JSObject* object, ExecState* exec, PropertyN
     }
 
     if (propertyName == vm.propertyNames->prototype && thisObject->jsExecutable()->hasPrototypeProperty() && !thisObject->jsExecutable()->isClassConstructorFunction()) {
+        // NOTE: class constructors define the prototype property in bytecode using
+        // defineOwnProperty, which ends up calling into this code (see our defineOwnProperty
+        // implementation below). The bytecode will end up doing the proper definition
+        // with the property being non-writable/non-configurable. However, we must ignore
+        // the initial materialization of the property so that the defineOwnProperty call
+        // from bytecode succeeds. Otherwise, the materialization here would prevent the
+        // defineOwnProperty from being able to overwrite the property.
         unsigned attributes;
         PropertyOffset offset = thisObject->getDirectOffset(vm, propertyName, attributes);
         if (!isValidOffset(offset)) {
@@ -439,7 +478,7 @@ void JSFunction::getOwnNonIndexPropertyNames(JSObject* object, ExecState* exec, 
         } else {
             if (thisObject->isBuiltinFunction() && !thisObject->hasReifiedLength())
                 propertyNames.add(vm.propertyNames->length);
-            if ((thisObject->isBuiltinFunction() || thisObject->inherits(vm, JSBoundFunction::info())) && !thisObject->hasReifiedName())
+            if ((thisObject->isBuiltinFunction() || thisObject->inherits<JSBoundFunction>(vm)) && !thisObject->hasReifiedName())
                 propertyNames.add(vm.propertyNames->name);
         }
     }
@@ -740,7 +779,7 @@ JSFunction::PropertyStatus JSFunction::reifyLazyBoundNameIfNeeded(VM& vm, ExecSt
 
     if (isBuiltinFunction())
         reifyName(vm, exec);
-    else if (this->inherits(vm, JSBoundFunction::info())) {
+    else if (this->inherits<JSBoundFunction>(vm)) {
         FunctionRareData* rareData = this->rareData(vm);
         String name = makeString("bound ", static_cast<NativeExecutable*>(m_executable.get())->name());
         unsigned initialAttributes = PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly;

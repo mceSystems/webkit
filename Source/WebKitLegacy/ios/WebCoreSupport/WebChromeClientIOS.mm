@@ -227,6 +227,11 @@ FloatSize WebChromeClientIOS::availableScreenSize() const
     return FloatSize();
 }
 
+FloatSize WebChromeClientIOS::overrideScreenSize() const
+{
+    return screenSize();
+}
+
 void WebChromeClientIOS::dispatchViewportPropertiesDidChange(const WebCore::ViewportArguments& arguments) const
 {
     [[webView() _UIKitDelegateForwarder] webView:webView() didReceiveViewportArguments:dictionaryForViewportArguments(arguments)];
@@ -362,7 +367,7 @@ void WebChromeClientIOS::focusedElementChanged(Element* element)
     CallFormDelegate(webView(), @selector(didFocusTextField:inFrame:), kit(&inputElement), kit(inputElement.document().frame()));
 }
 
-void WebChromeClientIOS::showPlaybackTargetPicker(bool hasVideo)
+void WebChromeClientIOS::showPlaybackTargetPicker(bool hasVideo, WebCore::RouteSharingPolicy, const String&)
 {
     CGPoint point = [[webView() _UIKitDelegateForwarder] interactionLocation];
     CGRect elementRect = [[webView() mainFrame] elementRectAtPoint:point];

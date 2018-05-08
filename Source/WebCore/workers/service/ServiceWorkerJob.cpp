@@ -98,7 +98,12 @@ void ServiceWorkerJob::fetchScriptWithContext(ScriptExecutionContext& context, F
     request.setInitiatorIdentifier("serviceWorkerScriptLoad:");
     request.addHTTPHeaderField(ASCIILiteral("Service-Worker"), ASCIILiteral("script"));
 
-    m_scriptLoader->loadAsynchronously(context, WTFMove(request), FetchOptions::Mode::SameOrigin, cachePolicy, FetchOptions::Redirect::Error, ContentSecurityPolicyEnforcement::DoNotEnforce, *this);
+    FetchOptions options;
+    options.mode = FetchOptions::Mode::SameOrigin;
+    options.cache = cachePolicy;
+    options.redirect = FetchOptions::Redirect::Error;
+    options.destination = FetchOptions::Destination::Serviceworker;
+    m_scriptLoader->loadAsynchronously(context, WTFMove(request), WTFMove(options), ContentSecurityPolicyEnforcement::DoNotEnforce, ServiceWorkersMode::None, *this);
 }
 
 void ServiceWorkerJob::didReceiveResponse(unsigned long, const ResourceResponse& response)
@@ -107,7 +112,6 @@ void ServiceWorkerJob::didReceiveResponse(unsigned long, const ResourceResponse&
     ASSERT(!m_completed);
     ASSERT(m_scriptLoader);
 
-    m_lastResponse = response;
     // Extract a MIME type from the response's header list. If this MIME type (ignoring parameters) is not a JavaScript MIME type, then:
     if (!MIMETypeRegistry::isSupportedJavaScriptMIMEType(response.mimeType())) {
         // Invoke Reject Job Promise with job and "SecurityError" DOMException.

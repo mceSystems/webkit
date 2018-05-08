@@ -35,6 +35,7 @@
 #include "SQLiteFileSystem.h"
 #include "SQLiteStatement.h"
 #include "SQLiteTransaction.h"
+#include "SWServer.h"
 #include "SecurityOrigin.h"
 #include <wtf/CompletionHandler.h>
 #include <wtf/MainThread.h>
@@ -108,7 +109,13 @@ void RegistrationDatabase::openSQLiteDatabase(const String& fullFilename)
     String errorMessage;
     auto scopeExit = makeScopeExit([&, errorMessage = &errorMessage] {
         ASSERT_UNUSED(errorMessage, !errorMessage->isNull());
-        RELEASE_LOG_ERROR(ServiceWorker, "Failed to open Service Worker registration database: %s", errorMessage->utf8().data());
+
+#if RELEASE_LOG_DISABLED
+        LOG_ERROR("Failed to open Service Worker registration database: %s", errorMessage->utf8().data());
+#else
+        RELEASE_LOG_ERROR(ServiceWorker, "Failed to open Service Worker registration database: %{public}s", errorMessage->utf8().data());
+#endif
+
         m_database = nullptr;
         postTaskReply(createCrossThreadTask(*this, &RegistrationDatabase::databaseFailedToOpen));
     });
@@ -349,7 +356,7 @@ String RegistrationDatabase::importRecords()
         auto registrationIdentifier = generateObjectIdentifier<ServiceWorkerRegistrationIdentifierType>();
         auto serviceWorkerData = ServiceWorkerData { workerIdentifier, scriptURL, ServiceWorkerState::Activated, *workerType, registrationIdentifier };
         auto registration = ServiceWorkerRegistrationData { WTFMove(*key), registrationIdentifier, URL(originURL, scopePath), *updateViaCache, lastUpdateCheckTime, std::nullopt, std::nullopt, WTFMove(serviceWorkerData) };
-        auto contextData = ServiceWorkerContextData { std::nullopt, WTFMove(registration), workerIdentifier, WTFMove(script), WTFMove(contentSecurityPolicy), WTFMove(scriptURL), *workerType, true };
+        auto contextData = ServiceWorkerContextData { std::nullopt, WTFMove(registration), workerIdentifier, WTFMove(script), WTFMove(contentSecurityPolicy), WTFMove(scriptURL), *workerType, m_store.server().sessionID(), true };
 
         postTaskReply(createCrossThreadTask(*this, &RegistrationDatabase::addRegistrationToStore, WTFMove(contextData)));
     }

@@ -51,7 +51,6 @@
 #include "SmallStrings.h"
 #include "Strong.h"
 #include "StructureCache.h"
-#include "TemplateRegistryKeyTable.h"
 #include "VMEntryRecord.h"
 #include "VMTraps.h"
 #include "ThreadLocalCache.h"
@@ -70,6 +69,7 @@
 #include <wtf/Stopwatch.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/ThreadSpecific.h>
+#include <wtf/UniqueArray.h>
 #include <wtf/text/SymbolRegistry.h>
 #include <wtf/text/WTFString.h>
 #if ENABLE(REGEXP_TRACING)
@@ -78,6 +78,16 @@
 
 #if ENABLE(EXCEPTION_SCOPE_VERIFICATION)
 #include <wtf/StackTrace.h>
+#endif
+
+// Enable the Objective-C API for platforms with a modern runtime. This has to match exactly what we
+// have in JSBase.h.
+#if !defined(JSC_OBJC_API_ENABLED)
+#if (defined(__clang__) && defined(__APPLE__) && ((defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && !defined(__i386__)) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)))
+#define JSC_OBJC_API_ENABLED 1
+#else
+#define JSC_OBJC_API_ENABLED 0
+#endif
 #endif
 
 namespace WTF {
@@ -92,6 +102,7 @@ class BytecodeIntrinsicRegistry;
 class CodeBlock;
 class CodeCache;
 class CommonIdentifiers;
+class CompactVariableMap;
 class CustomGetterSetter;
 class DOMAttributeGetterSetter;
 class ExecState;
@@ -233,7 +244,7 @@ struct ScratchBuffer {
         double pad; // Make sure m_buffer is double aligned.
     } u;
 #if CPU(MIPS) && (defined WTF_MIPS_ARCH_REV && WTF_MIPS_ARCH_REV == 2)
-    void* m_buffer[0] __attribute__((aligned(8)));
+    alignas(8) void* m_buffer[0];
 #else
     void* m_buffer[0];
 #endif
@@ -294,7 +305,8 @@ public:
     std::unique_ptr<GigacageAlignedMemoryAllocator> jsValueGigacageAllocator;
 
     std::unique_ptr<HeapCellType> auxiliaryHeapCellType;
-    std::unique_ptr<HeapCellType> cellHeapCellType;
+    std::unique_ptr<HeapCellType> cellJSValueOOBHeapCellType;
+    std::unique_ptr<HeapCellType> cellDangerousBitsHeapCellType;
     std::unique_ptr<HeapCellType> destructibleCellHeapCellType;
     std::unique_ptr<JSStringHeapCellType> stringHeapCellType;
     std::unique_ptr<JSDestructibleObjectHeapCellType> destructibleObjectHeapCellType;
@@ -319,44 +331,65 @@ public:
             return primitiveGigacageAuxiliarySpace;
         case Gigacage::JSValue:
             return jsValueGigacageAuxiliarySpace;
-        case Gigacage::String:
-            break;
         }
         RELEASE_ASSERT_NOT_REACHED();
         return primitiveGigacageAuxiliarySpace;
     }
     
     // Whenever possible, use subspaceFor<CellType>(vm) to get one of these subspaces.
-    CompleteSubspace cellSpace;
-    CompleteSubspace jsValueGigacageCellSpace;
+    CompleteSubspace cellJSValueOOBSpace;
+    CompleteSubspace cellDangerousBitsSpace;
+    CompleteSubspace jsValueGigacageCellSpace; // FIXME: This space is problematic because we have things in here like DirectArguments and ScopedArguments; those should be split into JSValueOOB cells and JSValueStrict auxiliaries. https://bugs.webkit.org/show_bug.cgi?id=182858
     CompleteSubspace destructibleCellSpace;
     CompleteSubspace stringSpace;
     CompleteSubspace destructibleObjectSpace;
     CompleteSubspace eagerlySweptDestructibleObjectSpace;
     CompleteSubspace segmentedVariableObjectSpace;
-#if ENABLE(WEBASSEMBLY)
-    CompleteSubspace webAssemblyCodeBlockSpace;
-#endif
     
+    IsoSubspace arrayBufferConstructorSpace;
+    IsoSubspace asyncFunctionSpace;
+    IsoSubspace asyncGeneratorFunctionSpace;
+    IsoSubspace boundFunctionSpace;
+    IsoSubspace callbackFunctionSpace;
+    IsoSubspace customGetterSetterFunctionSpace;
     IsoSubspace directEvalExecutableSpace;
-    IsoSubspace errorInstanceSpace;
-    IsoSubspace exceptionSpace;
+    IsoSubspace errorConstructorSpace;
     IsoSubspace executableToCodeBlockEdgeSpace;
     IsoSubspace functionExecutableSpace;
+    IsoSubspace functionSpace;
+    IsoSubspace generatorFunctionSpace;
     IsoSubspace indirectEvalExecutableSpace;
     IsoSubspace inferredTypeSpace;
     IsoSubspace inferredValueSpace;
+    IsoSubspace internalFunctionSpace;
+#if ENABLE(INTL)
+    IsoSubspace intlCollatorConstructorSpace;
+    IsoSubspace intlDateTimeFormatConstructorSpace;
+    IsoSubspace intlNumberFormatConstructorSpace;
+    IsoSubspace intlPluralRulesConstructorSpace;
+#endif
     IsoSubspace moduleProgramExecutableSpace;
+    IsoSubspace nativeErrorConstructorSpace;
     IsoSubspace nativeExecutableSpace;
+    IsoSubspace nativeStdFunctionSpace;
+#if JSC_OBJC_API_ENABLED
+    IsoSubspace objCCallbackFunctionSpace;
+#endif
     IsoSubspace programExecutableSpace;
     IsoSubspace propertyTableSpace;
+    IsoSubspace proxyRevokeSpace;
+    IsoSubspace regExpConstructorSpace;
+    IsoSubspace strictModeTypeErrorFunctionSpace;
     IsoSubspace structureRareDataSpace;
     IsoSubspace structureSpace;
     IsoSubspace weakSetSpace;
     IsoSubspace weakMapSpace;
+#if ENABLE(WEBASSEMBLY)
+    IsoSubspace webAssemblyCodeBlockSpace;
+    IsoSubspace webAssemblyFunctionSpace;
+    IsoSubspace webAssemblyWrapperFunctionSpace;
+#endif
     
-    IsoCellSet errorInstancesWithFinalizers;
-    IsoCellSet exceptionsWithFinalizers;
     IsoCellSet executableToCodeBlockEdgesWithConstraints;
     IsoCellSet executableToCodeBlockEdgesWithFinalizers;
     IsoCellSet inferredTypesWithFinalizers;
@@ -436,7 +469,7 @@ public:
     Strong<Structure> scriptFetchParametersStructure;
     Strong<Structure> structureChainStructure;
     Strong<Structure> sparseArrayValueMapStructure;
-    Strong<Structure> templateRegistryKeyStructure;
+    Strong<Structure> templateObjectDescriptorStructure;
     Strong<Structure> arrayBufferNeuteringWatchpointStructure;
     Strong<Structure> unlinkedFunctionExecutableStructure;
     Strong<Structure> unlinkedProgramCodeBlockStructure;
@@ -475,7 +508,6 @@ public:
 
     AtomicStringTable* m_atomicStringTable;
     WTF::SymbolRegistry m_symbolRegistry;
-    TemplateRegistryKeyTable m_templateRegistryKeytable;
     CommonIdentifiers* propertyNames;
     const ArgList* emptyList;
     SmallStrings smallStrings;
@@ -488,8 +520,6 @@ public:
 
     AtomicStringTable* atomicStringTable() const { return m_atomicStringTable; }
     WTF::SymbolRegistry& symbolRegistry() { return m_symbolRegistry; }
-
-    TemplateRegistryKeyTable& templateRegistryKeyTable() { return m_templateRegistryKeytable; }
 
     WeakGCMap<SymbolImpl*, Symbol, PtrHash<SymbolImpl*>> symbolImplToSymbolMap;
 
@@ -539,7 +569,7 @@ public:
     Interpreter* interpreter;
 #if ENABLE(JIT)
     std::unique_ptr<JITThunks> jitStubs;
-    MacroAssemblerCodeRef getCTIStub(ThunkGenerator generator)
+    MacroAssemblerCodeRef<JITThunkPtrTag> getCTIStub(ThunkGenerator generator)
     {
         return jitStubs->ctiStub(this, generator);
     }
@@ -551,7 +581,7 @@ public:
     NativeExecutable* getHostFunction(NativeFunction, NativeFunction constructor, const String& name);
     NativeExecutable* getHostFunction(NativeFunction, Intrinsic, NativeFunction constructor, const DOMJIT::Signature*, const String& name);
 
-    MacroAssemblerCodePtr getCTIInternalFunctionTrampolineFor(CodeSpecializationKind);
+    MacroAssemblerCodePtr<JSEntryPtrTag> getCTIInternalFunctionTrampolineFor(CodeSpecializationKind);
 
     static ptrdiff_t exceptionOffset()
     {
@@ -561,11 +591,6 @@ public:
     static ptrdiff_t callFrameForCatchOffset()
     {
         return OBJECT_OFFSETOF(VM, callFrameForCatch);
-    }
-
-    static ptrdiff_t targetMachinePCForThrowOffset()
-    {
-        return OBJECT_OFFSETOF(VM, targetMachinePCForThrow);
     }
 
     static ptrdiff_t topEntryFrameOffset()
@@ -677,6 +702,16 @@ public:
     RegExpCache* m_regExpCache;
     BumpPointerAllocator m_regExpAllocator;
     ConcurrentJSLock m_regExpAllocatorLock;
+
+#if ENABLE(YARR_JIT_ALL_PARENS_EXPRESSIONS)
+    static constexpr size_t patternContextBufferSize = 8192; // Space allocated to save nested parenthesis context
+    UniqueArray<char> m_regExpPatternContexBuffer;
+    Lock m_regExpPatternContextLock;
+    char* acquireRegExpPatternContexBuffer();
+    void releaseRegExpPatternContexBuffer();
+#endif
+
+    Ref<CompactVariableMap> m_compactVariableMap;
 
     std::unique_ptr<HasOwnPropertyCache> m_hasOwnPropertyCache;
     ALWAYS_INLINE HasOwnPropertyCache* hasOwnPropertyCache() { return m_hasOwnPropertyCache.get(); }

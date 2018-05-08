@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005, 2007, 2008, 2015-2016 Apple Inc. All rights reserved.
+ *  Copyright (C) 2005-2018 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -261,6 +261,7 @@ public:
         ASSERT(attributes == attributesForStructure(attributes));
         
         ASSERT(getValue);
+        assertIsCFunctionPtr(getValue);
         m_data.custom.getValue = getValue;
         m_attributes = attributes;
 
@@ -282,6 +283,7 @@ public:
         ASSERT(attributes == attributesForStructure(attributes));
         
         ASSERT(getValue);
+        assertIsCFunctionPtr(getValue);
         m_data.custom.getValue = getValue;
         m_attributes = attributes;
 

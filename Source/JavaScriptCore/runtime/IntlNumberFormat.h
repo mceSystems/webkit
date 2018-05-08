@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Andy VanWagoner (thetalecrafter@gmail.com)
+ * Copyright (C) 2015 Andy VanWagoner (andy@vanwagoner.family)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,7 +35,7 @@ namespace JSC {
 class IntlNumberFormatConstructor;
 class JSBoundFunction;
 
-class IntlNumberFormat : public JSDestructibleObject {
+class IntlNumberFormat final : public JSDestructibleObject {
 public:
     typedef JSDestructibleObject Base;
 

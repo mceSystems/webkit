@@ -28,11 +28,12 @@
 
 #if ENABLE(SERVICE_WORKER)
 
+#include "SWServerToContextConnection.h"
 #include <wtf/NeverDestroyed.h>
 
 namespace WebCore {
 
-static HashMap<ServiceWorkerIdentifier, SWServerWorker*>& allWorkers()
+HashMap<ServiceWorkerIdentifier, SWServerWorker*>& SWServerWorker::allWorkers()
 {
     static NeverDestroyed<HashMap<ServiceWorkerIdentifier, SWServerWorker*>> workers;
     return workers;
@@ -44,10 +45,9 @@ SWServerWorker* SWServerWorker::existingWorkerForIdentifier(ServiceWorkerIdentif
 }
 
 // FIXME: Use r-value references for script and contentSecurityPolicy
-SWServerWorker::SWServerWorker(SWServer& server, SWServerRegistration& registration, std::optional<SWServerToContextConnectionIdentifier> contextConnectionIdentifier, const URL& scriptURL, const String& script, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicy, WorkerType type, ServiceWorkerIdentifier identifier)
+SWServerWorker::SWServerWorker(SWServer& server, SWServerRegistration& registration, const URL& scriptURL, const String& script, const ContentSecurityPolicyResponseHeaders& contentSecurityPolicy, WorkerType type, ServiceWorkerIdentifier identifier)
     : m_server(server)
     , m_registrationKey(registration.key())
-    , m_contextConnectionIdentifier(contextConnectionIdentifier)
     , m_data { identifier, scriptURL, ServiceWorkerState::Redundant, type, registration.identifier() }
     , m_script(script)
     , m_contentSecurityPolicy(contentSecurityPolicy)
@@ -73,7 +73,7 @@ ServiceWorkerContextData SWServerWorker::contextData() const
     auto* registration = m_server.getRegistration(m_registrationKey);
     ASSERT(registration);
 
-    return { std::nullopt, registration->data(), m_data.identifier, m_script, m_contentSecurityPolicy, m_data.scriptURL, m_data.type, false };
+    return { std::nullopt, registration->data(), m_data.identifier, m_script, m_contentSecurityPolicy, m_data.scriptURL, m_data.type, m_server.sessionID(), false };
 }
 
 void SWServerWorker::terminate()
@@ -85,9 +85,19 @@ void SWServerWorker::terminate()
 const ClientOrigin& SWServerWorker::origin() const
 {
     if (!m_origin)
-        m_origin = ClientOrigin { m_registrationKey.topOrigin(), SecurityOriginData::fromSecurityOrigin(SecurityOrigin::create(m_data.scriptURL)) };
+        m_origin = ClientOrigin { m_registrationKey.topOrigin(), SecurityOriginData::fromURL(m_data.scriptURL) };
 
     return *m_origin;
+}
+
+const SecurityOriginData& SWServerWorker::securityOrigin() const
+{
+    return origin().clientOrigin;
+}
+
+SWServerToContextConnection* SWServerWorker::contextConnection()
+{
+    return SWServerToContextConnection::connectionForOrigin(securityOrigin());
 }
 
 void SWServerWorker::scriptContextFailedToStart(const std::optional<ServiceWorkerJobDataIdentifier>& jobDataIdentifier, const String& message)
@@ -120,9 +130,9 @@ std::optional<ServiceWorkerClientData> SWServerWorker::findClientByIdentifier(co
     return m_server.serviceWorkerClientWithOriginByID(origin(), clientId);
 }
 
-void SWServerWorker::matchAll(const ServiceWorkerClientQueryOptions& options, ServiceWorkerClientsMatchAllCallback&& callback)
+void SWServerWorker::matchAll(const ServiceWorkerClientQueryOptions& options, const ServiceWorkerClientsMatchAllCallback& callback)
 {
-    return m_server.matchAll(*this, options, WTFMove(callback));
+    return m_server.matchAll(*this, options, callback);
 }
 
 void SWServerWorker::claim()
@@ -179,7 +189,7 @@ void SWServerWorker::setState(ServiceWorkerState state)
     ASSERT(registration || state == ServiceWorkerState::Redundant);
     if (registration) {
         registration->forEachConnection([&](auto& connection) {
-            connection.updateWorkerStateInClient(identifier(), state);
+            connection.updateWorkerStateInClient(this->identifier(), state);
         });
     }
 

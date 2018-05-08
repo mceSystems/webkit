@@ -27,12 +27,12 @@
 #include "ExternalStringImpl.h"
 
 namespace WTF {
-	WTF_EXPORT_STRING_API Ref<ExternalStringImpl> ExternalStringImpl::create(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free)
+	WTF_EXPORT_PRIVATE Ref<ExternalStringImpl> ExternalStringImpl::create(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free)
 	{
 		return adoptRef(*new ExternalStringImpl(characters, length, WTFMove(free)));
 	}
 
-	WTF_EXPORT_STRING_API Ref<ExternalStringImpl> ExternalStringImpl::create(const UChar * characters, unsigned length, ExternalStringImplFreeFunction&& free)
+	WTF_EXPORT_PRIVATE Ref<ExternalStringImpl> ExternalStringImpl::create(const UChar* characters, unsigned length, ExternalStringImplFreeFunction&& free)
 	{
 		return adoptRef(*new ExternalStringImpl(characters, length, WTFMove(free)));
 	}

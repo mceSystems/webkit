@@ -30,6 +30,7 @@
 #include "NetworkCacheKey.h"
 #include <WebCore/Timer.h>
 #include <wtf/BloomFilter.h>
+#include <wtf/CompletionHandler.h>
 #include <wtf/Deque.h>
 #include <wtf/Function.h>
 #include <wtf/HashSet.h>
@@ -62,7 +63,7 @@ public:
     void retrieve(const Key&, unsigned priority, RetrieveCompletionHandler&&);
 
     typedef Function<void (const Data& mappedBody)> MappedBodyHandler;
-    void store(const Record&, MappedBodyHandler&&);
+    void store(const Record&, MappedBodyHandler&&, CompletionHandler<void()>&& = { });
 
     void remove(const Key&);
     void remove(const Vector<Key>&, Function<void ()>&&);
@@ -87,10 +88,11 @@ public:
     size_t capacity() const { return m_capacity; }
     size_t approximateSize() const;
 
+    // Incrementing this number will delete all existing cache content for everyone. Do you really need to do it?
     static const unsigned version = 12;
 #if PLATFORM(MAC)
     /// Allow the last stable version of the cache to co-exist with the latest development one.
-    static const unsigned lastStableVersion = 11;
+    static const unsigned lastStableVersion = 12;
 #endif
 
     String basePath() const;

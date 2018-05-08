@@ -31,7 +31,6 @@
 #include "Performance.h"
 #include "UserGestureIndicator.h"
 #include "WorkerGlobalScope.h"
-#include <wtf/CurrentTime.h>
 
 namespace WebCore {
 
@@ -171,7 +170,7 @@ DOMHighResTimeStamp Event::timeStampForBindings(ScriptExecutionContext& context)
     if (!performance)
         return 0;
 
-    return performance->relativeTimeFromTimeOriginInReducedResolution(m_createTime);
+    return std::max(performance->relativeTimeFromTimeOriginInReducedResolution(m_createTime), 0.);
 }
 
 void Event::resetBeforeDispatch()

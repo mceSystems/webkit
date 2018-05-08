@@ -82,6 +82,11 @@ public:
 
     void didFirstPaint();
 
+#if PLATFORM(IOS)
+    enum class NetworkActivityTokenReleaseReason { LoadCompleted, ScreenLocked };
+    void releaseNetworkActivityToken(NetworkActivityTokenReleaseReason);
+#endif
+
 private:
     class NavigationClient final : public API::NavigationClient {
     public:
@@ -110,6 +115,8 @@ private:
         void processDidBecomeUnresponsive(WebPageProxy&) override;
 
         RefPtr<API::Data> webCryptoMasterKey(WebPageProxy&) override;
+
+        RefPtr<API::String> signedPublicKeyAndChallengeString(WebPageProxy&, unsigned keySizeIndex, const RefPtr<API::String>& challengeString, const WebCore::URL&) override;
 
 #if USE(QUICK_LOOK)
         void didStartLoadForQuickLookDocumentInMainFrame(const WTF::String& fileName, const WTF::String& uti) override;
@@ -170,7 +177,7 @@ private:
     void didChangeWebProcessIsResponsive() override;
 
 #if PLATFORM(IOS)
-    void releaseNetworkActivityToken();
+    void releaseNetworkActivityTokenAfterLoadCompletion() { releaseNetworkActivityToken(NetworkActivityTokenReleaseReason::LoadCompleted); }
 #endif
 
     WKWebView *m_webView;

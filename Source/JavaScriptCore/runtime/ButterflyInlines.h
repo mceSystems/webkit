@@ -33,22 +33,6 @@
 
 namespace JSC {
 
-template<typename T>
-const T& ContiguousData<T>::at(const JSObject* base, size_t index) const
-{
-    ASSERT(index < m_length);
-    ASSERT(base->butterflyIndexingMask() >= length());
-    return m_data[index & base->butterflyIndexingMask()];
-}
-
-template<typename T>
-T& ContiguousData<T>::at(const JSObject* base, size_t index)
-{
-    ASSERT(index < m_length);
-    ASSERT(base->butterflyIndexingMask() >= length());
-    return m_data[index & base->butterflyIndexingMask()];
-}
-
 ALWAYS_INLINE unsigned Butterfly::availableContiguousVectorLength(size_t propertyCapacity, unsigned vectorLength)
 {
     size_t cellSize = totalSize(0, propertyCapacity, true, sizeof(EncodedJSValue) * vectorLength);
@@ -93,7 +77,7 @@ inline Butterfly* Butterfly::tryCreate(VM& vm, JSCell*, size_t preCapacity, size
     Butterfly* result = fromBase(base, preCapacity, propertyCapacity);
     if (hasIndexingHeader)
         *result->indexingHeader() = indexingHeader;
-    fastZeroFill(result->propertyStorage() - propertyCapacity, propertyCapacity);
+    memset(result->propertyStorage() - propertyCapacity, 0, propertyCapacity * sizeof(EncodedJSValue));
     return result;
 }
 
@@ -129,13 +113,14 @@ inline Butterfly* Butterfly::createOrGrowPropertyStorage(
     bool hasIndexingHeader = structure->hasIndexingHeader(intendedOwner);
     Butterfly* result = createUninitialized(
         vm, intendedOwner, preCapacity, newPropertyCapacity, hasIndexingHeader, indexingPayloadSizeInBytes);
-    fastCopyBytes(
+    memcpy(
         result->propertyStorage() - oldPropertyCapacity,
         oldButterfly->propertyStorage() - oldPropertyCapacity,
         totalSize(0, oldPropertyCapacity, hasIndexingHeader, indexingPayloadSizeInBytes));
-    fastZeroFill(
+    memset(
         result->propertyStorage() - newPropertyCapacity,
-        newPropertyCapacity - oldPropertyCapacity);
+        0,
+        (newPropertyCapacity - oldPropertyCapacity) * sizeof(EncodedJSValue));
     return result;
 }
 
@@ -167,7 +152,8 @@ inline Butterfly* Butterfly::growArrayRight(
     void* newBase = vm.jsValueGigacageAuxiliarySpace.allocateNonVirtual(vm, newSize, nullptr, AllocationFailureMode::ReturnNull);
     if (!newBase)
         return nullptr;
-    fastCopyBytes(newBase, theBase, oldSize);
+    // FIXME: This probably shouldn't be a memcpy.
+    memcpy(newBase, theBase, oldSize);
     return fromBase(newBase, 0, propertyCapacity);
 }
 
@@ -197,7 +183,7 @@ inline Butterfly* Butterfly::resizeArray(
     size_t size = std::min(
         totalSize(0, propertyCapacity, oldHasIndexingHeader, oldIndexingPayloadSizeInBytes),
         totalSize(0, propertyCapacity, newHasIndexingHeader, newIndexingPayloadSizeInBytes));
-    fastCopyBytes(to, from, size);
+    memcpy(to, from, size);
     return result;
 }
 

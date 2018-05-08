@@ -275,7 +275,7 @@ static void assertProtocolIsGood(StringView protocol)
 
 #endif
 
-static StaticLock defaultPortForProtocolMapForTestingLock;
+static Lock defaultPortForProtocolMapForTestingLock;
 
 using DefaultPortForProtocolMapForTesting = HashMap<String, uint16_t>;
 static DefaultPortForProtocolMapForTesting*& defaultPortForProtocolMapForTesting()
@@ -415,18 +415,11 @@ static bool appendEncodedHostname(UCharBuffer& buffer, StringView string)
     
     UChar hostnameBuffer[hostnameBufferLength];
     UErrorCode error = U_ZERO_ERROR;
+    UIDNAInfo processingDetails = UIDNA_INFO_INITIALIZER;
+    int32_t numCharactersConverted = uidna_nameToASCII(&URLParser::internationalDomainNameTranscoder(),
+        string.upconvertedCharacters(), string.length(), hostnameBuffer, hostnameBufferLength, &processingDetails, &error);
     
-#if COMPILER(GCC_OR_CLANG)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-    int32_t numCharactersConverted = uidna_IDNToASCII(string.upconvertedCharacters(), string.length(), hostnameBuffer,
-        hostnameBufferLength, UIDNA_ALLOW_UNASSIGNED, 0, &error);
-#if COMPILER(GCC_OR_CLANG)
-#pragma GCC diagnostic pop
-#endif
-    
-    if (error == U_ZERO_ERROR) {
+    if (U_SUCCESS(error) && !processingDetails.errors) {
         buffer.append(hostnameBuffer, numCharactersConverted);
         return true;
     }
@@ -729,6 +722,18 @@ bool equalIgnoringFragmentIdentifier(const URL& a, const URL& b)
     return true;
 }
 
+bool equalIgnoringQueryAndFragment(const URL& a, const URL& b)
+{
+    if (a.pathEnd() != b.pathEnd())
+        return false;
+    unsigned pathEnd = a.pathEnd();
+    for (unsigned i = 0; i < pathEnd; ++i) {
+        if (a.string()[i] != b.string()[i])
+            return false;
+    }
+    return true;
+}
+
 bool protocolHostAndPortAreEqual(const URL& a, const URL& b)
 {
     if (a.m_schemeEnd != b.m_schemeEnd)
@@ -774,6 +779,24 @@ bool hostsAreEqual(const URL& a, const URL& b)
     }
 
     return true;
+}
+
+bool URL::isMatchingDomain(const String& domain) const
+{
+    if (isNull())
+        return false;
+
+    if (domain.isEmpty())
+        return true;
+
+    if (!protocolIsInHTTPFamily())
+        return false;
+
+    auto host = this->host();
+    if (!host.endsWith(domain))
+        return false;
+
+    return host.length() == domain.length() || host.characterAt(host.length() - domain.length() - 1) == '.';
 }
 
 String encodeWithURLEscapeSequences(const String& input)
@@ -953,6 +976,7 @@ bool portAllowed(const URL& url)
         531,  // Chat
         532,  // netnews
         540,  // UUCP
+        548,  // afpovertcp [Apple addition]
         556,  // remotefs
         563,  // NNTP+SSL
         587,  // ESMTP

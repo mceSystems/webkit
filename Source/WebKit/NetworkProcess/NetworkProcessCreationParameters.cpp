@@ -94,6 +94,8 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << ignoreTLSErrors;
     encoder << languages;
     encoder << proxySettings;
+#elif USE(CURL)
+    encoder << cookiePersistentStorageFile;
 #endif
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     encoder << logCookieInformation;
@@ -105,6 +107,16 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << recordReplayMode;
     encoder << recordReplayCacheLocation;
 #endif
+
+    encoder << urlSchemesRegisteredAsSecure;
+    encoder << urlSchemesRegisteredAsBypassingContentSecurityPolicy;
+    encoder << urlSchemesRegisteredAsLocal;
+    encoder << urlSchemesRegisteredAsNoAccess;
+    encoder << urlSchemesRegisteredAsDisplayIsolated;
+    encoder << urlSchemesRegisteredAsCORSEnabled;
+    encoder << urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
+
+    encoder << trackNetworkActivity;
 }
 
 bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProcessCreationParameters& result)
@@ -228,6 +240,9 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
         return false;
     if (!decoder.decode(result.proxySettings))
         return false;
+#elif USE(CURL)
+    if (!decoder.decode(result.cookiePersistentStorageFile))
+        return false;
 #endif
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
@@ -246,6 +261,24 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
     if (!decoder.decode(result.recordReplayCacheLocation))
         return false;
 #endif
+
+    if (!decoder.decode(result.urlSchemesRegisteredAsSecure))
+        return false;
+    if (!decoder.decode(result.urlSchemesRegisteredAsBypassingContentSecurityPolicy))
+        return false;
+    if (!decoder.decode(result.urlSchemesRegisteredAsLocal))
+        return false;
+    if (!decoder.decode(result.urlSchemesRegisteredAsNoAccess))
+        return false;
+    if (!decoder.decode(result.urlSchemesRegisteredAsDisplayIsolated))
+        return false;
+    if (!decoder.decode(result.urlSchemesRegisteredAsCORSEnabled))
+        return false;
+    if (!decoder.decode(result.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest))
+        return false;
+
+    if (!decoder.decode(result.trackNetworkActivity))
+        return false;
 
     return true;
 }

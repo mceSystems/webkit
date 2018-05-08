@@ -229,9 +229,10 @@ public:
 
     bool startAnimation(double timeOffset, const Animation*, const KeyframeList& keyframes);
     void animationPaused(double timeOffset, const String& name);
+    void animationSeeked(double timeOffset, const String& name);
     void animationFinished(const String& name);
 
-    void suspendAnimations(double time = 0);
+    void suspendAnimations(MonotonicTime = MonotonicTime());
 
     RenderBoxModelObject* continuation() const;
     WEBCORE_EXPORT RenderInline* inlineContinuation() const;
@@ -245,7 +246,7 @@ protected:
     RenderBoxModelObject(Element&, RenderStyle&&, BaseTypeFlags);
     RenderBoxModelObject(Document&, RenderStyle&&, BaseTypeFlags);
 
-    void willBeDestroyed(RenderTreeBuilder&) override;
+    void willBeDestroyed() override;
 
     LayoutPoint adjustedPositionRelativeToOffsetParent(const LayoutPoint&) const;
 
@@ -275,40 +276,28 @@ public:
     void setFirstLetterRemainingText(RenderTextFragment&);
     void clearFirstLetterRemainingText();
 
-    // NormalizeAfterInsertion::Yes ensures that the destination subtree is consistent after the insertion (anonymous wrappers etc).
-    enum class NormalizeAfterInsertion { No, Yes };
-    void moveChildTo(RenderTreeBuilder&, RenderBoxModelObject* toBoxModelObject, RenderObject* child, RenderObject* beforeChild, NormalizeAfterInsertion);
-    void moveChildTo(RenderTreeBuilder& builder, RenderBoxModelObject* toBoxModelObject, RenderObject* child, NormalizeAfterInsertion normalizeAfterInsertion)
-    {
-        moveChildTo(builder, toBoxModelObject, child, nullptr, normalizeAfterInsertion);
-    }
-    void moveAllChildrenTo(RenderTreeBuilder& builder, RenderBoxModelObject* toBoxModelObject, NormalizeAfterInsertion normalizeAfterInsertion)
-    {
-        moveAllChildrenTo(builder, toBoxModelObject, nullptr, normalizeAfterInsertion);
-    }
-    void moveAllChildrenTo(RenderTreeBuilder& builder, RenderBoxModelObject* toBoxModelObject, RenderObject* beforeChild, NormalizeAfterInsertion normalizeAfterInsertion)
-    {
-        moveChildrenTo(builder, toBoxModelObject, firstChild(), nullptr, beforeChild, normalizeAfterInsertion);
-    }
-    void moveAllChildrenToInternal(RenderElement& newParent);
-    // Move all of the kids from |startChild| up to but excluding |endChild|. 0 can be passed as the |endChild| to denote
-    // that all the kids from |startChild| onwards should be moved.
-    void moveChildrenTo(RenderTreeBuilder& builder, RenderBoxModelObject* toBoxModelObject, RenderObject* startChild, RenderObject* endChild, NormalizeAfterInsertion normalizeAfterInsertion)
-    {
-        moveChildrenTo(builder, toBoxModelObject, startChild, endChild, nullptr, normalizeAfterInsertion);
-    }
-    void moveChildrenTo(RenderTreeBuilder&, RenderBoxModelObject* toBoxModelObject, RenderObject* startChild, RenderObject* endChild, RenderObject* beforeChild, NormalizeAfterInsertion);
-
     enum ScaleByEffectiveZoomOrNot { ScaleByEffectiveZoom, DoNotScaleByEffectiveZoom };
     LayoutSize calculateImageIntrinsicDimensions(StyleImage*, const LayoutSize& scaledPositioningAreaSize, ScaleByEffectiveZoomOrNot) const;
 
     RenderBlock* containingBlockForAutoHeightDetection(Length logicalHeight) const;
 
-    struct ContinuationChainNode;
+    struct ContinuationChainNode {
+        WeakPtr<RenderBoxModelObject> renderer;
+        ContinuationChainNode* previous { nullptr };
+        ContinuationChainNode* next { nullptr };
+
+        ContinuationChainNode(RenderBoxModelObject&);
+        ~ContinuationChainNode();
+
+        void insertAfter(ContinuationChainNode&);
+
+        WTF_MAKE_FAST_ALLOCATED;
+    };
+
+    ContinuationChainNode* continuationChainNode() const;
 
 private:
     ContinuationChainNode& ensureContinuationChainNode();
-    void removeAndDestroyAllContinuations(RenderTreeBuilder&);
 
     LayoutUnit computedCSSPadding(const Length&) const;
     

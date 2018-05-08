@@ -52,7 +52,6 @@
 #include "InspectorOverlay.h"
 #include "InstrumentingAgents.h"
 #include "MIMETypeRegistry.h"
-#include "MainFrame.h"
 #include "MemoryCache.h"
 #include "Page.h"
 #include "RenderObject.h"
@@ -142,9 +141,6 @@ void InspectorPageAgent::resourceContent(ErrorString& errorString, Frame* frame,
 
 String InspectorPageAgent::sourceMapURLForResource(CachedResource* cachedResource)
 {
-    static NeverDestroyed<String> sourceMapHTTPHeader(MAKE_STATIC_STRING_IMPL("SourceMap"));
-    static NeverDestroyed<String> sourceMapHTTPHeaderDeprecated(MAKE_STATIC_STRING_IMPL("X-SourceMap"));
-
     if (!cachedResource)
         return String();
 
@@ -152,11 +148,11 @@ String InspectorPageAgent::sourceMapURLForResource(CachedResource* cachedResourc
     if (cachedResource->type() != CachedResource::CSSStyleSheet)
         return String();
 
-    String sourceMapHeader = cachedResource->response().httpHeaderField(sourceMapHTTPHeader);
+    String sourceMapHeader = cachedResource->response().httpHeaderField(HTTPHeaderName::SourceMap);
     if (!sourceMapHeader.isEmpty())
         return sourceMapHeader;
 
-    sourceMapHeader = cachedResource->response().httpHeaderField(sourceMapHTTPHeaderDeprecated);
+    sourceMapHeader = cachedResource->response().httpHeaderField(HTTPHeaderName::XSourceMap);
     if (!sourceMapHeader.isEmpty())
         return sourceMapHeader;
 
@@ -292,7 +288,7 @@ void InspectorPageAgent::willDestroyFrontendAndBackend(Inspector::DisconnectReas
 
 double InspectorPageAgent::timestamp()
 {
-    return m_environment.executionStopwatch()->elapsedTime();
+    return m_environment.executionStopwatch()->elapsedTime().seconds();
 }
 
 void InspectorPageAgent::enable(ErrorString&)
@@ -315,7 +311,7 @@ void InspectorPageAgent::disable(ErrorString&)
     setEmulatedMedia(unused, emptyString());
 }
 
-void InspectorPageAgent::reload(ErrorString&, const bool* const optionalReloadFromOrigin, const bool* const optionalRevalidateAllResources)
+void InspectorPageAgent::reload(ErrorString&, const bool* optionalReloadFromOrigin, const bool* optionalRevalidateAllResources)
 {
     bool reloadFromOrigin = optionalReloadFromOrigin && *optionalReloadFromOrigin;
     bool revalidateAllResources = optionalRevalidateAllResources && *optionalRevalidateAllResources;
@@ -471,7 +467,7 @@ void InspectorPageAgent::getResourceContent(ErrorString& errorString, const Stri
     resourceContent(errorString, frame, URL(ParsedURLString, url), content, base64Encoded);
 }
 
-void InspectorPageAgent::searchInResource(ErrorString& errorString, const String& frameId, const String& url, const String& query, const bool* const optionalCaseSensitive, const bool* const optionalIsRegex, const String* optionalRequestId, RefPtr<JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>>& results)
+void InspectorPageAgent::searchInResource(ErrorString& errorString, const String& frameId, const String& url, const String& query, const bool* optionalCaseSensitive, const bool* optionalIsRegex, const String* optionalRequestId, RefPtr<JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>>& results)
 {
     results = JSON::ArrayOf<Inspector::Protocol::GenericTypes::SearchMatch>::create();
 
@@ -524,7 +520,7 @@ static Ref<Inspector::Protocol::Page::SearchResult> buildObjectForSearchResult(c
         .release();
 }
 
-void InspectorPageAgent::searchInResources(ErrorString&, const String& text, const bool* const optionalCaseSensitive, const bool* const optionalIsRegex, RefPtr<JSON::ArrayOf<Inspector::Protocol::Page::SearchResult>>& result)
+void InspectorPageAgent::searchInResources(ErrorString&, const String& text, const bool* optionalCaseSensitive, const bool* optionalIsRegex, RefPtr<JSON::ArrayOf<Inspector::Protocol::Page::SearchResult>>& result)
 {
     result = JSON::ArrayOf<Inspector::Protocol::Page::SearchResult>::create();
 
@@ -582,7 +578,7 @@ void InspectorPageAgent::frameDetached(Frame& frame)
     m_identifierToFrame.remove(identifier);
 }
 
-MainFrame& InspectorPageAgent::mainFrame()
+Frame& InspectorPageAgent::mainFrame()
 {
     return m_page.mainFrame();
 }

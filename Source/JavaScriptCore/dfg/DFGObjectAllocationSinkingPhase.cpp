@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,8 +41,7 @@
 #include "DFGSSACalculator.h"
 #include "DFGValidate.h"
 #include "JSCInlines.h"
-
-#include <list>
+#include <wtf/StdList.h>
 
 namespace JSC { namespace DFG {
 
@@ -961,7 +960,7 @@ private:
                 PromotedHeapLocation location(NamedPropertyPLoc, allocation->identifier(), identifierNumber);
                 if (Node* value = heapResolve(location)) {
                     if (allocation->structures().isSubsetOf(validStructures))
-                        node->replaceWith(value);
+                        node->replaceWithWithoutChecks(value);
                     else {
                         Node* structure = heapResolve(PromotedHeapLocation(allocation->identifier(), StructurePLoc));
                         ASSERT(structure);
@@ -1071,6 +1070,7 @@ private:
             break;
 
         case Check:
+        case CheckVarargs:
             m_graph.doToChildren(
                 node,
                 [&] (Edge edge) {
@@ -1103,7 +1103,7 @@ private:
             ASSERT(writes.isEmpty());
             if (Node* value = heapResolve(PromotedHeapLocation(target->identifier(), exactRead))) {
                 ASSERT(!value->replacement());
-                node->replaceWith(value);
+                node->replaceWith(m_graph, value);
             }
             Node* identifier = target->get(exactRead);
             if (identifier)
@@ -1383,7 +1383,7 @@ private:
         // Nodes without remaining unmaterialized fields will be
         // materialized first - amongst the remaining unmaterialized
         // nodes
-        std::list<Allocation, FastAllocator<Allocation>> toMaterialize;
+        StdList<Allocation> toMaterialize;
         auto firstPos = toMaterialize.begin();
         auto materializeFirst = [&] (Allocation&& allocation) {
             materialize(allocation.identifier());
@@ -1928,7 +1928,7 @@ private:
                         break;
 
                     default:
-                        node->remove();
+                        node->remove(m_graph);
                         break;
                     }
                 }

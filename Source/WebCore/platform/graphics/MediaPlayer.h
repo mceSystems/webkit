@@ -335,6 +335,7 @@ public:
 #if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
     void setVideoFullscreenLayer(PlatformLayer*, WTF::Function<void()>&& completionHandler = [] { });
     void setVideoFullscreenFrame(FloatRect);
+    void updateVideoFullscreenInlineImage();
     using MediaPlayerEnums::VideoGravity;
     void setVideoFullscreenGravity(VideoGravity);
     void setVideoFullscreenMode(VideoFullscreenMode);
@@ -595,6 +596,9 @@ public:
     WEBCORE_EXPORT void simulateAudioInterruption();
 #endif
 
+    WEBCORE_EXPORT void beginSimulatedHDCPError();
+    WEBCORE_EXPORT void endSimulatedHDCPError();
+
     String languageOfPrimaryAudioTrack() const;
 
     size_t extraMemoryCost() const;
@@ -690,9 +694,18 @@ template <>
 struct LogArgument<MediaTime> {
     static String toString(const MediaTime& time)
     {
-        return time.toString();
+        return time.toJSONString();
     }
 };
+
+template <>
+struct LogArgument<MediaTimeRange> {
+    static String toString(const MediaTimeRange& range)
+    {
+        return range.toJSONString();
+    }
+};
+
 }
 
 #endif // ENABLE(VIDEO)

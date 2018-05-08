@@ -157,3 +157,43 @@ void WKContextConfigurationSetShouldCaptureAudioInUIProcess(WKContextConfigurati
 {
     toImpl(configuration)->setShouldCaptureAudioInUIProcess(should);
 }
+
+bool WKContextConfigurationProcessSwapsOnNavigation(WKContextConfigurationRef configuration)
+{
+    return toImpl(configuration)->processSwapsOnNavigation();
+}
+
+void WKContextConfigurationSetProcessSwapsOnNavigation(WKContextConfigurationRef configuration, bool swaps)
+{
+    toImpl(configuration)->setProcessSwapsOnNavigation(swaps);
+}
+
+bool WKContextConfigurationAlwaysKeepAndReuseSwappedProcesses(WKContextConfigurationRef configuration)
+{
+    return toImpl(configuration)->alwaysKeepAndReuseSwappedProcesses();
+}
+
+void WKContextConfigurationSetAlwaysKeepAndReuseSwappedProcesses(WKContextConfigurationRef configuration, bool keepAndReuse)
+{
+    toImpl(configuration)->setAlwaysKeepAndReuseSwappedProcesses(keepAndReuse);
+}
+
+bool WKContextConfigurationProcessSwapsOnWindowOpenWithOpener(WKContextConfigurationRef configuration)
+{
+    return toImpl(configuration)->processSwapsOnWindowOpenWithOpener();
+}
+
+void WKContextConfigurationSetProcessSwapsOnWindowOpenWithOpener(WKContextConfigurationRef configuration, bool swaps)
+{
+    toImpl(configuration)->setProcessSwapsOnWindowOpenWithOpener(swaps);
+}
+
+bool WKContextConfigurationTrackNetworkActivity(WKContextConfigurationRef configuration)
+{
+    return toImpl(configuration)->trackNetworkActivity();
+}
+
+void WKContextConfigurationSetTrackNetworkActivity(WKContextConfigurationRef configuration, bool track)
+{
+    toImpl(configuration)->setTrackNetworkActivity(track);
+}

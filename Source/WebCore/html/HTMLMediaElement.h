@@ -144,6 +144,7 @@ class HTMLMediaElement
     , private LoggerHelper
 #endif
 {
+    WTF_MAKE_ISO_ALLOCATED(HTMLMediaElement);
 public:
     WeakPtr<HTMLMediaElement> createWeakPtr() { return m_weakFactory.createWeakPtr(*this); }
     RefPtr<MediaPlayer> player() const { return m_player; }
@@ -155,6 +156,8 @@ public:
     static HashSet<HTMLMediaElement*>& allMediaElements();
 
     static HTMLMediaElement* bestMediaElementForShowingPlaybackControlsManager(MediaElementSession::PlaybackControlsPurpose);
+
+    static bool isRunningDestructor();
 
     WEBCORE_EXPORT void rewind(double timeDelta);
     WEBCORE_EXPORT void returnToRealtime() override;
@@ -552,6 +555,9 @@ public:
 
     bool isSuspended() const final;
 
+    WEBCORE_EXPORT void didBecomeFullscreenElement() override;
+    WEBCORE_EXPORT void willExitFullscreen();
+
 protected:
     HTMLMediaElement(const QualifiedName&, Document&, bool createdByParser);
     virtual void finishInitialization();
@@ -602,7 +608,6 @@ private:
     void didRecalcStyle(Style::Change) override;
 
     void willBecomeFullscreenElement() override;
-    void didBecomeFullscreenElement() override;
     void willStopBeingFullscreenElement() override;
 
     // ActiveDOMObject API.
@@ -769,6 +774,7 @@ private:
     };
     void markCaptionAndSubtitleTracksAsUnconfigured(ReconfigureMode);
     void captionPreferencesChanged() override;
+    CaptionUserPreferences::CaptionDisplayMode captionDisplayMode();
 #endif
 
     // These "internal" functions do not check user gesture restrictions.
@@ -963,7 +969,7 @@ private:
     bool m_volumeInitialized { false };
     MediaTime m_lastSeekTime;
     
-    double m_previousProgressTime { std::numeric_limits<double>::max() };
+    MonotonicTime m_previousProgressTime { MonotonicTime::infinity() };
     double m_playbackStartedTime { 0 };
 
     // The last time a timeupdate event was sent (based on monotonic clock).
@@ -1014,8 +1020,8 @@ private:
 #endif
 
     mutable MediaTime m_cachedTime;
-    mutable double m_clockTimeAtLastCachedTimeUpdate { 0 };
-    mutable double m_minimumClockTimeToUpdateCachedTime { 0 };
+    mutable MonotonicTime m_clockTimeAtLastCachedTimeUpdate;
+    mutable MonotonicTime m_minimumClockTimeToUpdateCachedTime;
 
     MediaTime m_fragmentStartTime;
     MediaTime m_fragmentEndTime;
@@ -1071,6 +1077,7 @@ private:
 #endif
 
     bool m_isScrubbingRemotely : 1;
+    bool m_waitingToEnterFullscreen : 1;
 
 #if ENABLE(VIDEO_TRACK)
     bool m_tracksAreReady : 1;
@@ -1083,7 +1090,7 @@ private:
     String m_subtitleTrackLanguage;
     MediaTime m_lastTextTrackUpdateTime { -1, 1 };
 
-    CaptionUserPreferences::CaptionDisplayMode m_captionDisplayMode { CaptionUserPreferences::Automatic };
+    std::optional<CaptionUserPreferences::CaptionDisplayMode> m_captionDisplayMode;
 
     RefPtr<AudioTrackList> m_audioTracks;
     RefPtr<TextTrackList> m_textTracks;

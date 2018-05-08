@@ -119,6 +119,10 @@ WK_EXPORT bool WKPreferencesGetCSSAnimationTriggersEnabled(WKPreferencesRef);
 WK_EXPORT void WKPreferencesSetWebAnimationsEnabled(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetWebAnimationsEnabled(WKPreferencesRef);
 
+// Defaults to false
+WK_EXPORT void WKPreferencesSetCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(WKPreferencesRef);
+
 // Defaults to false.
 WK_EXPORT void WKPreferencesSetNeedsSiteSpecificQuirks(WKPreferencesRef, bool);
 WK_EXPORT bool WKPreferencesGetNeedsSiteSpecificQuirks(WKPreferencesRef);
@@ -552,7 +556,11 @@ WK_EXPORT bool WKPreferencesGetAccessibilityObjectModelEnabled(WKPreferencesRef)
 // Defaults to false.
 WK_EXPORT void WKPreferencesSetShouldAllowUserInstalledFonts(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetShouldAllowUserInstalledFonts(WKPreferencesRef);
-    
+
+// Defaults to false.
+WK_EXPORT void WKPreferencesSetAllowCrossOriginSubresourcesToAskForCredentials(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetAllowCrossOriginSubresourcesToAskForCredentials(WKPreferencesRef);
+
 #ifdef __cplusplus
 }
 #endif

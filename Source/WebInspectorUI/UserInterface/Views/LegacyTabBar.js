@@ -364,8 +364,8 @@ WI.LegacyTabBar = class LegacyTabBar extends WI.View
     set selectedTabBarItem(tabBarItemOrIndex)
     {
         let tabBarItem = this._findTabBarItem(tabBarItemOrIndex);
-        if (tabBarItem === this._newTabTabBarItem) {
-            // Get the item before the New-Tab item since it is not selectable.
+        if (tabBarItem === this._newTabTabBarItem || tabBarItem === this._tabPickerTabBarItem) {
+            // Get the last normal tab item if the item is not selectable.
             tabBarItem = this._tabBarItems[this.normalTabCount - 1];
         }
 
@@ -394,6 +394,11 @@ WI.LegacyTabBar = class LegacyTabBar extends WI.View
     get normalTabCount()
     {
         return this._tabBarItems.filter((item) => !(item instanceof WI.PinnedTabBarItem)).length;
+    }
+
+    get saveableTabCount()
+    {
+        return this._tabBarItems.filter((item) => item.representedObject && item.representedObject.constructor.shouldSaveTab()).length;
     }
 
     // Protected
@@ -804,7 +809,7 @@ WI.LegacyTabBar = class LegacyTabBar extends WI.View
         let contextMenu = WI.ContextMenu.createFromEvent(event);
 
         for (let tabClass of WI.knownTabClasses()) {
-            if (tabClass.tabInfo().isEphemeral)
+            if (!tabClass.isTabAllowed() || tabClass.tabInfo().isEphemeral)
                 continue;
 
             let openTabBarItem = null;

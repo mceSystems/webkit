@@ -56,10 +56,12 @@ class FetchResponse;
 class File;
 class Frame;
 class GCObservation;
+class HTMLAnchorElement;
 class HTMLImageElement;
 class HTMLInputElement;
 class HTMLLinkElement;
 class HTMLMediaElement;
+class HTMLPictureElement;
 class HTMLSelectElement;
 class ImageData;
 class InspectorStubFrontend;
@@ -71,6 +73,7 @@ class MediaStreamTrack;
 class MemoryInfo;
 class MockCDMFactory;
 class MockContentFilterSettings;
+class MockCredentialsMessenger;
 class MockPageOverlay;
 class MockPaymentCoordinator;
 class NodeList;
@@ -346,7 +349,7 @@ public:
     unsigned numberOfLiveDocuments() const;
     unsigned referencingNodeCount(const Document&) const;
 
-    RefPtr<DOMWindow> openDummyInspectorFrontend(const String& url);
+    RefPtr<WindowProxy> openDummyInspectorFrontend(const String& url);
     void closeDummyInspectorFrontend();
     ExceptionOr<void> setInspectorIsUnderTest(bool);
 
@@ -381,6 +384,9 @@ public:
     void webkitWillExitFullScreenForElement(Element&);
     void webkitDidExitFullScreenForElement(Element&);
 #endif
+
+    void setFullscreenInsetTop(double);
+    void setFullscreenAutoHideDelay(double);
 
     WEBCORE_TESTSUPPORT_EXPORT void setApplicationCacheOriginQuota(unsigned long long);
 
@@ -462,6 +468,8 @@ public:
     Vector<String> mediaResponseContentRanges(HTMLMediaElement&);
     void simulateAudioInterruption(HTMLMediaElement&);
     ExceptionOr<bool> mediaElementHasCharacteristic(HTMLMediaElement&, const String&);
+    void beginSimulatedHDCPError(HTMLMediaElement&);
+    void endSimulatedHDCPError(HTMLMediaElement&);
 #endif
 
     bool isSelectPopupVisible(HTMLSelectElement&);
@@ -479,6 +487,7 @@ public:
     ExceptionOr<Ref<DOMRect>> selectionBounds();
 
     ExceptionOr<bool> isPluginUnavailabilityIndicatorObscured(Element&);
+    ExceptionOr<String> unavailablePluginReplacementText(Element&);
     bool isPluginSnapshotted(Element&);
 
 #if ENABLE(MEDIA_SOURCE)
@@ -615,6 +624,7 @@ public:
     void setMediaStreamTrackMuted(MediaStreamTrack&, bool);
     void removeMediaStreamTrack(MediaStream&, MediaStreamTrack&);
     void simulateMediaStreamTrackCaptureSourceFailure(MediaStreamTrack&);
+    void setMediaStreamTrackIdentifier(MediaStreamTrack&, String&& id);
 #endif
 
     String audioSessionCategory() const;
@@ -643,6 +653,16 @@ public:
 
     void testIncomingSyncIPCMessageWhileWaitingForSyncReply();
 
+#if ENABLE(WEB_AUTHN)
+    MockCredentialsMessenger& mockCredentialsMessenger() const;
+#endif
+
+    String systemPreviewRelType();
+    bool isSystemPreviewLink(Element&) const;
+    bool isSystemPreviewImage(Element&) const;
+
+    bool usingAppleInternalSDK() const;
+
 private:
     explicit Internals(Document&);
     Document* contextDocument() const;
@@ -667,6 +687,10 @@ private:
 
 #if ENABLE(APPLE_PAY)
     MockPaymentCoordinator* m_mockPaymentCoordinator { nullptr };
+#endif
+
+#if ENABLE(WEB_AUTHN)
+    std::unique_ptr<MockCredentialsMessenger> m_mockCredentialsMessenger;
 #endif
 };
 

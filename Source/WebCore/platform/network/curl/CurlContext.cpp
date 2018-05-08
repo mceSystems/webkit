@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Apple Inc.  All rights reserved.
- * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2018 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,8 +28,10 @@
 #include "CurlContext.h"
 
 #if USE(CURL)
+#include "CurlRequestScheduler.h"
 #include "HTTPHeaderMap.h"
 #include <NetworkLoadMetrics.h>
+#include <mutex>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
@@ -41,6 +43,36 @@
 #endif
 
 namespace WebCore {
+
+class EnvironmentVariableReader {
+public:
+    const char* read(const char* name) { return ::getenv(name); }
+    bool defined(const char* name) { return read(name) != nullptr; }
+
+    template<typename T> std::optional<T> readAs(const char* name)
+    {
+        if (const char* valueStr = read(name)) {
+            T value;
+            if (sscanf(valueStr, sscanTemplate<T>(), &value) == 1)
+                return value;
+        }
+
+        return std::nullopt;
+    }
+
+private:
+    template<typename T> const char* sscanTemplate()
+    {
+        ASSERT_NOT_REACHED();
+        return nullptr;
+    }
+};
+
+template<>
+constexpr const char* EnvironmentVariableReader::sscanTemplate<signed>() { return "%d"; }
+
+template<>
+constexpr const char* EnvironmentVariableReader::sscanTemplate<unsigned>() { return "%u"; }
 
 // CurlContext -------------------------------------------------------------------
 
@@ -54,10 +86,33 @@ CurlContext::CurlContext()
 {
     initShareHandle();
 
-#ifndef NDEBUG
-    m_verbose = getenv("DEBUG_CURL");
+    EnvironmentVariableReader envVar;
 
-    char* logFile = getenv("CURL_LOG_FILE");
+    if (auto value = envVar.readAs<unsigned>("WEBKIT_CURL_DNS_CACHE_TIMEOUT"))
+        m_dnsCacheTimeout = Seconds(*value);
+
+    if (auto value = envVar.readAs<unsigned>("WEBKIT_CURL_CONNECT_TIMEOUT"))
+        m_connectTimeout = Seconds(*value);
+
+    long maxConnects { CurlDefaultMaxConnects };
+    long maxTotalConnections { CurlDefaultMaxTotalConnections };
+    long maxHostConnections { CurlDefaultMaxHostConnections };
+
+    if (auto value = envVar.readAs<signed>("WEBKIT_CURL_MAXCONNECTS"))
+        maxConnects = *value;
+
+    if (auto value = envVar.readAs<signed>("WEBKIT_CURL_MAX_TOTAL_CONNECTIONS"))
+        maxTotalConnections = *value;
+
+    if (auto value = envVar.readAs<signed>("WEBKIT_CURL_MAX_HOST_CONNECTIONS"))
+        maxHostConnections = *value;
+
+    m_scheduler = std::make_unique<CurlRequestScheduler>(maxConnects, maxTotalConnections, maxHostConnections);
+
+#ifndef NDEBUG
+    m_verbose = envVar.defined("DEBUG_CURL");
+
+    auto logFile = envVar.read("CURL_LOG_FILE");
     if (logFile)
         m_logFile = fopen(logFile, "a");
 #endif
@@ -81,34 +136,6 @@ void CurlContext::initShareHandle()
     curl_easy_setopt(curl, CURLOPT_SHARE, m_shareHandle.handle());
 
     curl_easy_cleanup(curl);
-}
-
-// Proxy =======================
-
-const String CurlContext::ProxyInfo::url() const
-{
-    String userPass;
-    if (username.length() || password.length())
-        userPass = username + ":" + password + "@";
-
-    return String("http://") + userPass + host + ":" + String::number(port);
-}
-
-void CurlContext::setProxyInfo(const String& host,
-    unsigned long port,
-    CurlProxyType type,
-    const String& username,
-    const String& password)
-{
-    ProxyInfo info;
-
-    info.host = host;
-    info.port = port;
-    info.type = type;
-    info.username = username;
-    info.password = password;
-
-    setProxyInfo(info);
 }
 
 bool CurlContext::isHttp2Enabled() const
@@ -146,11 +173,11 @@ void CurlShareHandle::unlockCallback(CURL*, curl_lock_data data, void*)
         mutex->unlock();
 }
 
-StaticLock* CurlShareHandle::mutexFor(curl_lock_data data)
+Lock* CurlShareHandle::mutexFor(curl_lock_data data)
 {
-    static StaticLock cookieMutex;
-    static StaticLock dnsMutex;
-    static StaticLock shareMutex;
+    static Lock cookieMutex;
+    static Lock dnsMutex;
+    static Lock shareMutex;
 
     switch (data) {
     case CURL_LOCK_DATA_COOKIE:
@@ -176,6 +203,24 @@ CurlMultiHandle::~CurlMultiHandle()
 {
     if (m_multiHandle)
         curl_multi_cleanup(m_multiHandle);
+}
+
+void CurlMultiHandle::setMaxConnects(long maxConnects)
+{
+    if (maxConnects < 0)
+        return;
+
+    curl_multi_setopt(m_multiHandle, CURLMOPT_MAXCONNECTS, maxConnects);
+}
+
+void CurlMultiHandle::setMaxTotalConnections(long maxTotalConnections)
+{
+    curl_multi_setopt(m_multiHandle, CURLMOPT_MAX_TOTAL_CONNECTIONS, maxTotalConnections);
+}
+
+void CurlMultiHandle::setMaxHostConnections(long maxHostConnections)
+{
+    curl_multi_setopt(m_multiHandle, CURLMOPT_MAX_HOST_CONNECTIONS, maxHostConnections);
 }
 
 CURLMcode CurlMultiHandle::addHandle(CURL* handle)
@@ -439,24 +484,48 @@ void CurlHandle::setSslKeyPassword(const char* password)
 
 void CurlHandle::enableProxyIfExists()
 {
-    auto& proxy = CurlContext::singleton().proxyInfo();
+    auto& proxy = CurlContext::singleton().proxySettings();
 
-    if (proxy.type != CurlProxyType::Invalid) {
+    switch (proxy.mode()) {
+    case CurlProxySettings::Mode::Default :
+        // For the proxy set by environment variable
+        if (!proxy.user().isEmpty())
+            curl_easy_setopt(m_handle, CURLOPT_PROXYUSERNAME, proxy.user().utf8().data());
+        if (!proxy.password().isEmpty())
+            curl_easy_setopt(m_handle, CURLOPT_PROXYPASSWORD, proxy.password().utf8().data());
+        curl_easy_setopt(m_handle, CURLOPT_PROXYAUTH, CURLAUTH_ANY);
+        break;
+    case CurlProxySettings::Mode::NoProxy :
+        // Disable the use of a proxy, even if there is an environment variable set for it.
+        curl_easy_setopt(m_handle, CURLOPT_PROXY, "");
+        break;
+    case CurlProxySettings::Mode::Custom :
         curl_easy_setopt(m_handle, CURLOPT_PROXY, proxy.url().utf8().data());
-        curl_easy_setopt(m_handle, CURLOPT_PROXYTYPE, proxy.type);
+        curl_easy_setopt(m_handle, CURLOPT_NOPROXY, proxy.ignoreHosts().utf8().data());
+        curl_easy_setopt(m_handle, CURLOPT_PROXYAUTH, CURLAUTH_ANY);
+        break;
     }
 }
 
-void CurlHandle::enableTimeout()
+static CURLoption safeTimeValue(double time)
 {
-    static const long dnsCacheTimeout = 5 * 60; // [sec.]
-
-    curl_easy_setopt(m_handle, CURLOPT_DNS_CACHE_TIMEOUT, dnsCacheTimeout);
+    auto value = static_cast<unsigned>(time >= 0.0 ? time : 0);
+    return static_cast<CURLoption>(value);
 }
 
-void CurlHandle::setTimeout(long timeoutMilliseconds)
+void CurlHandle::setDnsCacheTimeout(Seconds timeout)
 {
-    curl_easy_setopt(m_handle, CURLOPT_TIMEOUT_MS, timeoutMilliseconds);
+    curl_easy_setopt(m_handle, CURLOPT_DNS_CACHE_TIMEOUT, safeTimeValue(timeout.seconds()));
+}
+
+void CurlHandle::setConnectTimeout(Seconds timeout)
+{
+    curl_easy_setopt(m_handle, CURLOPT_CONNECTTIMEOUT, safeTimeValue(timeout.seconds()));
+}
+
+void CurlHandle::setTimeout(Seconds timeout)
+{
+    curl_easy_setopt(m_handle, CURLOPT_TIMEOUT_MS, safeTimeValue(timeout.milliseconds()));
 }
 
 void CurlHandle::setHeaderCallbackFunction(curl_write_callback callbackFunc, void* userData)

@@ -30,6 +30,7 @@
 
 #import "CommonVM.h"
 #import "FloatingPointEnvironment.h"
+#import "Logging.h"
 #import "RuntimeApplicationChecks.h"
 #import "ThreadGlobalData.h"
 #import "WAKWindow.h"
@@ -91,11 +92,9 @@ extern void NSPopAutoreleasePool(NSAutoreleasePoolMark token);
 }
 #endif
 
-using StaticRecursiveLock = WTF::RecursiveLockAdapter<StaticLock>;
-
-static StaticRecursiveLock webLock;
-static StaticLock webThreadReleaseLock;
-static StaticRecursiveLock webCoreReleaseLock;
+static RecursiveLock webLock;
+static Lock webThreadReleaseLock;
+static RecursiveLock webCoreReleaseLock;
 
 static NSAutoreleasePoolMark autoreleasePoolMark;
 static CFRunLoopRef webThreadRunLoop;
@@ -117,7 +116,7 @@ static CFMutableArrayRef WebThreadReleaseObjArray;
 
 static void MainThreadAdoptAndRelease(id obj);
 
-static StaticLock delegateLock;
+static Lock delegateLock;
 static StaticCondition delegateCondition;
 static NSInvocation* delegateInvocation;
 static CFRunLoopSourceRef delegateSource = nullptr;
@@ -128,7 +127,7 @@ static BOOL sendingDelegateMessage;
 
 static CFRunLoopObserverRef mainRunLoopAutoUnlockObserver;
 
-static StaticLock startupLock;
+static Lock startupLock;
 static StaticCondition startupCondition;
 
 static WebThreadContext* webThreadContext;
@@ -878,6 +877,8 @@ WebThreadContext* WebThreadCurrentContext(void)
 void WebThreadEnable(void)
 {
     RELEASE_ASSERT_WITH_MESSAGE(!WebCore::IOSApplication::isWebProcess(), "The WebProcess should never run a Web Thread");
+    if (WebCore::IOSApplication::isSpringBoard())
+        RELEASE_LOG_FAULT(Threading, "SpringBoard enabled WebThread.");
 
     static std::once_flag flag;
     std::call_once(flag, StartWebThread);

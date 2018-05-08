@@ -32,7 +32,6 @@
 #include "NativeWebKeyboardEvent.h"
 #include "NativeWebMouseEvent.h"
 #include "NativeWebWheelEvent.h"
-#include "NotImplemented.h"
 #include "WebColorPickerGtk.h"
 #include "WebContextMenuProxyGtk.h"
 #include "WebEventFactory.h"
@@ -46,6 +45,7 @@
 #include <WebCore/Cursor.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/GtkUtilities.h>
+#include <WebCore/NotImplemented.h>
 #include <WebCore/RefPtrCairo.h>
 #include <wtf/Compiler.h>
 #include <wtf/text/CString.h>
@@ -473,14 +473,6 @@ bool PageClientImpl::decidePolicyForInstallMissingMediaPluginsPermissionRequest(
     return true;
 }
 #endif
-
-JSGlobalContextRef PageClientImpl::javascriptGlobalContext()
-{
-    if (!WEBKIT_IS_WEB_VIEW(m_viewWidget))
-        return nullptr;
-
-    return webkit_web_view_get_javascript_global_context(WEBKIT_WEB_VIEW(m_viewWidget));
-}
 
 void PageClientImpl::zoom(double zoomLevel)
 {

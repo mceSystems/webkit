@@ -89,6 +89,10 @@ class VM;
 class WeakGCMapBase;
 struct CurrentThreadState;
 
+#if USE(GLIB)
+class JSCGLibWrapperObject;
+#endif
+
 namespace DFG {
 class SpeculativeJIT;
 class Worklist;
@@ -257,7 +261,7 @@ public:
     void deleteAllUnlinkedCodeBlocks(DeleteAllCodeEffort);
 
     void didAllocate(size_t);
-    bool isPagedOut(double deadline);
+    bool isPagedOut(MonotonicTime deadline);
     
     const JITStubRoutineSet& jitStubRoutines() { return *m_jitStubRoutines; }
     
@@ -271,6 +275,9 @@ public:
 
 #if USE(FOUNDATION)
     template<typename T> void releaseSoon(RetainPtr<T>&&);
+#endif
+#if USE(GLIB)
+    void releaseSoon(std::unique_ptr<JSCGLibWrapperObject>&&);
 #endif
 
     JS_EXPORT_PRIVATE void registerWeakGCMap(WeakGCMapBase* weakGCMap);
@@ -375,6 +382,8 @@ public:
     void forEachSlotVisitor(const Func&);
     
     ThreadLocalCacheLayout& threadLocalCacheLayout() { return *m_threadLocalCacheLayout; }
+    
+    Seconds totalGCTime() const { return m_totalGCTime; }
 
 private:
     friend class AllocatingScope;
@@ -642,6 +651,10 @@ private:
     Vector<RetainPtr<CFTypeRef>> m_delayedReleaseObjects;
     unsigned m_delayedReleaseRecursionCount;
 #endif
+#if USE(GLIB)
+    Vector<std::unique_ptr<JSCGLibWrapperObject>> m_delayedReleaseObjects;
+    unsigned m_delayedReleaseRecursionCount { 0 };
+#endif
 
     HashSet<WeakGCMapBase*> m_weakGCMaps;
     
@@ -712,6 +725,7 @@ private:
     MonotonicTime m_lastGCStartTime;
     MonotonicTime m_lastGCEndTime;
     MonotonicTime m_currentGCStartTime;
+    Seconds m_totalGCTime;
     
     uintptr_t m_barriersExecuted { 0 };
     

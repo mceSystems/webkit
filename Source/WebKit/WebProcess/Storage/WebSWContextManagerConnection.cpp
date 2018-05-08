@@ -39,6 +39,7 @@
 #include "WebPreferencesKeys.h"
 #include "WebPreferencesStore.h"
 #include "WebProcess.h"
+#include "WebProcessPoolMessages.h"
 #include "WebSWServerToContextConnectionMessages.h"
 #include "WebServiceWorkerFetchTaskClient.h"
 #include "WebSocketProvider.h"
@@ -52,6 +53,8 @@
 #include <WebCore/SerializedScriptValue.h>
 #include <WebCore/ServiceWorkerClientData.h>
 #include <WebCore/ServiceWorkerClientIdentifier.h>
+#include <WebCore/ServiceWorkerClientQueryOptions.h>
+#include <WebCore/ServiceWorkerJobDataIdentifier.h>
 #include <WebCore/UserAgent.h>
 #include <pal/SessionID.h>
 
@@ -106,7 +109,11 @@ WebSWContextManagerConnection::WebSWContextManagerConnection(Ref<IPC::Connection
     : m_connectionToStorageProcess(WTFMove(connection))
     , m_pageGroupID(pageGroupID)
     , m_pageID(pageID)
+#if PLATFORM(COCOA)
     , m_userAgent(standardUserAgentWithApplicationName({ }))
+#else
+    , m_userAgent(standardUserAgent())
+#endif
 {
     updatePreferencesStore(store);
 }
@@ -121,6 +128,7 @@ void WebSWContextManagerConnection::updatePreferencesStore(const WebPreferencesS
     RuntimeEnabledFeatures::sharedFeatures().setUserTimingEnabled(store.getBoolValueForKey(WebPreferencesKey::userTimingEnabledKey()));
     RuntimeEnabledFeatures::sharedFeatures().setResourceTimingEnabled(store.getBoolValueForKey(WebPreferencesKey::resourceTimingEnabledKey()));
     RuntimeEnabledFeatures::sharedFeatures().setFetchAPIKeepAliveEnabled(store.getBoolValueForKey(WebPreferencesKey::fetchAPIKeepAliveEnabledKey()));
+    RuntimeEnabledFeatures::sharedFeatures().setRestrictedHTTPResponseAccess(store.getBoolValueForKey(WebPreferencesKey::restrictedHTTPResponseAccessKey()));
 
     m_storageBlockingPolicy = static_cast<SecurityOrigin::StorageBlockingPolicy>(store.getUInt32ValueForKey(WebPreferencesKey::storageBlockingPolicyKey()));
 }
@@ -173,6 +181,23 @@ void WebSWContextManagerConnection::serviceWorkerStartedWithMessage(std::optiona
         m_connectionToStorageProcess->send(Messages::WebSWServerToContextConnection::ScriptContextFailedToStart(jobDataIdentifier, serviceWorkerIdentifier, exceptionMessage), 0);
 }
 
+static inline bool isValidFetch(const ResourceRequest& request, const FetchOptions& options, const URL& serviceWorkerURL, const String& referrer)
+{
+    // For exotic service workers, do not enforce checks.
+    if (!serviceWorkerURL.protocolIsInHTTPFamily())
+        return true;
+
+    if (options.mode == FetchOptions::Mode::Navigate)
+        return protocolHostAndPortAreEqual(request.url(), serviceWorkerURL);
+
+    String origin = request.httpOrigin();
+    URL url { URL(), origin.isEmpty() ? referrer : origin };
+    if (!url.protocolIsInHTTPFamily())
+        return true;
+
+    return protocolHostAndPortAreEqual(url, serviceWorkerURL);
+}
+
 void WebSWContextManagerConnection::startFetch(SWServerConnectionIdentifier serverConnectionIdentifier, uint64_t fetchIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, ResourceRequest&& request, FetchOptions&& options, IPC::FormDataReference&& formData, String&& referrer)
 {
     auto* serviceWorkerThreadProxy = SWContextManager::singleton().serviceWorkerThreadProxy(serviceWorkerIdentifier);
@@ -180,6 +205,8 @@ void WebSWContextManagerConnection::startFetch(SWServerConnectionIdentifier serv
         m_connectionToStorageProcess->send(Messages::StorageProcess::DidNotHandleFetch(serverConnectionIdentifier, fetchIdentifier), 0);
         return;
     }
+
+    RELEASE_ASSERT(isValidFetch(request, options, serviceWorkerThreadProxy->scriptURL(), referrer));
 
     auto client = WebServiceWorkerFetchTaskClient::create(m_connectionToStorageProcess.copyRef(), serviceWorkerIdentifier, serverConnectionIdentifier, fetchIdentifier);
     std::optional<ServiceWorkerClientIdentifier> clientId;
@@ -219,7 +246,9 @@ void WebSWContextManagerConnection::syncTerminateWorker(ServiceWorkerIdentifier 
 
 void WebSWContextManagerConnection::postMessageToServiceWorkerClient(const ServiceWorkerClientIdentifier& destinationIdentifier, MessageWithMessagePorts&& message, ServiceWorkerIdentifier sourceIdentifier, const String& sourceOrigin)
 {
-    m_connectionToStorageProcess->send(Messages::StorageProcess::PostMessageToServiceWorkerClient(destinationIdentifier, WTFMove(message), sourceIdentifier, sourceOrigin), 0);
+    // FIXME: Temporarily pipe the SW postMessage messages via the UIProcess since this is where the MessagePort registry lives
+    // and this avoids races.
+    WebProcess::singleton().send(Messages::WebProcessPool::PostMessageToServiceWorkerClient(destinationIdentifier, WTFMove(message), sourceIdentifier, sourceOrigin), 0);
 }
 
 void WebSWContextManagerConnection::didFinishInstall(std::optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, bool wasSuccessful)
@@ -297,6 +326,12 @@ void WebSWContextManagerConnection::didFinishSkipWaiting(uint64_t callbackID)
 {
     if (auto callback = m_skipWaitingRequests.take(callbackID))
         callback();
+}
+
+NO_RETURN void WebSWContextManagerConnection::terminateProcess()
+{
+    RELEASE_LOG(ServiceWorker, "Service worker process is exiting because it is no longer needed");
+    _exit(EXIT_SUCCESS);
 }
 
 } // namespace WebCore

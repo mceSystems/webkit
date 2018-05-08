@@ -39,11 +39,11 @@
 #include "DFGScannable.h"
 #include "FullBytecodeLiveness.h"
 #include "MethodOfGettingAValueProfile.h"
-#include <unordered_map>
 #include <wtf/BitVector.h>
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/StdUnorderedMap.h>
 
 namespace WTF {
 template <typename T> class SingleRootGraph;
@@ -84,23 +84,12 @@ using SSANaturalLoops = NaturalLoops<SSACFG>;
                     thingToDo(_node, (graph).m_varArgChildren[_childIdx]); \
             }                                                           \
         } else {                                                        \
-            if (!_node->child1()) {                                     \
-                ASSERT(                                                 \
-                    !_node->child2()                                    \
-                    && !_node->child3());                               \
-                break;                                                  \
+            for (unsigned _edgeIndex = 0; _edgeIndex < AdjacencyList::Size; _edgeIndex++) { \
+                Edge& _edge = _node->children.child(_edgeIndex);        \
+                if (!_edge)                                             \
+                    break;                                              \
+                thingToDo(_node, _edge);                                \
             }                                                           \
-            thingToDo(_node, _node->child1());                          \
-                                                                        \
-            if (!_node->child2()) {                                     \
-                ASSERT(!_node->child3());                               \
-                break;                                                  \
-            }                                                           \
-            thingToDo(_node, _node->child2());                          \
-                                                                        \
-            if (!_node->child3())                                       \
-                break;                                                  \
-            thingToDo(_node, _node->child3());                          \
         }                                                               \
     } while (false)
 
@@ -525,6 +514,22 @@ public:
             return varArgNumChildren(node);
         return AdjacencyList::Size;
     }
+
+    template <typename Function = bool(*)(Edge)>
+    AdjacencyList copyVarargChildren(Node* node, Function filter = [] (Edge) { return true; })
+    {
+        ASSERT(node->flags() & NodeHasVarArgs);
+        unsigned firstChild = m_varArgChildren.size();
+        unsigned numChildren = 0;
+        doToChildren(node, [&] (Edge edge) {
+            if (filter(edge)) {
+                ++numChildren;
+                m_varArgChildren.append(edge);
+            }
+        });
+
+        return AdjacencyList(AdjacencyList::Variable, firstChild, numChildren);
+    }
     
     Edge& varArgChild(Node* node, unsigned index)
     {
@@ -703,13 +708,13 @@ public:
     }
     
     template<typename ChildFunctor>
-    void doToChildrenWithNode(Node* node, const ChildFunctor& functor)
+    ALWAYS_INLINE void doToChildrenWithNode(Node* node, const ChildFunctor& functor)
     {
         DFG_NODE_DO_TO_CHILDREN(*this, node, functor);
     }
     
     template<typename ChildFunctor>
-    void doToChildren(Node* node, const ChildFunctor& functor)
+    ALWAYS_INLINE void doToChildren(Node* node, const ChildFunctor& functor)
     {
         doToChildrenWithNode(
             node,
@@ -1064,7 +1069,7 @@ public:
     HashMap<const StringImpl*, String> m_copiedStrings;
 
 #if USE(JSVALUE32_64)
-    std::unordered_map<int64_t, double*, std::hash<int64_t>, std::equal_to<int64_t>, FastAllocator<std::pair<const int64_t, double*>>> m_doubleConstantsMap;
+    StdUnorderedMap<int64_t, double*> m_doubleConstantsMap;
     std::unique_ptr<Bag<double>> m_doubleConstants;
 #endif
     

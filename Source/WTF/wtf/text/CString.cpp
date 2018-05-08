@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2017 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,9 +28,7 @@
 #include "CString.h"
 
 #include <string.h>
-#include <wtf/FastCopy.h>
 #include <wtf/text/StringHasher.h>
-#include <wtf/text/StringMalloc.h>
 
 namespace WTF {
 
@@ -40,7 +38,7 @@ Ref<CStringBuffer> CStringBuffer::createUninitialized(size_t length)
 
     // The +1 is for the terminating null character.
     size_t size = sizeof(CStringBuffer) + length + 1;
-    CStringBuffer* stringBuffer = static_cast<CStringBuffer*>(stringMalloc(size));
+    CStringBuffer* stringBuffer = static_cast<CStringBuffer*>(fastMalloc(size));
     return adoptRef(*new (NotNull, stringBuffer) CStringBuffer(length));
 }
 
@@ -67,7 +65,7 @@ void CString::init(const char* str, size_t length)
     ASSERT(str);
 
     m_buffer = CStringBuffer::createUninitialized(length);
-    fastCopy(m_buffer->mutableData(), str, length); 
+    memcpy(m_buffer->mutableData(), str, length); 
     m_buffer->mutableData()[length] = '\0';
 }
 
@@ -97,7 +95,7 @@ void CString::copyBufferIfNeeded()
     RefPtr<CStringBuffer> buffer = WTFMove(m_buffer);
     size_t length = buffer->length();
     m_buffer = CStringBuffer::createUninitialized(length);
-    fastCopy(m_buffer->mutableData(), buffer->data(), length + 1);
+    memcpy(m_buffer->mutableData(), buffer->data(), length + 1);
 }
 
 bool CString::isSafeToSendToAnotherThread() const

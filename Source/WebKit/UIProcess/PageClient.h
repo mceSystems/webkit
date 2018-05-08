@@ -177,6 +177,7 @@ public:
     virtual void resetSecureInputState() = 0;
     virtual void notifyInputContextAboutDiscardedComposition() = 0;
     virtual void makeFirstResponder() = 0;
+    virtual void assistiveTechnologyMakeFirstResponder() = 0;
     virtual void setAcceleratedCompositingRootLayer(LayerOrView *) = 0;
     virtual LayerOrView *acceleratedCompositingRootLayer() const = 0;
     virtual RefPtr<ViewSnapshot> takeViewSnapshot() = 0;
@@ -294,10 +295,7 @@ public:
     virtual bool interpretKeyEvent(const NativeWebKeyboardEvent&, bool isCharEvent) = 0;
     virtual void positionInformationDidChange(const InteractionInformationAtPosition&) = 0;
     virtual void saveImageToLibrary(Ref<WebCore::SharedBuffer>&&) = 0;
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 120000
-    virtual void didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold) = 0;
-#endif
-    virtual void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect) = 0;
+    virtual void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect, WebCore::RouteSharingPolicy, const String&) = 0;
     virtual void disableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID) = 0;
     virtual double minimumZoomScale() const = 0;
     virtual WebCore::FloatRect documentRect() const = 0;
@@ -349,9 +347,9 @@ public:
     virtual void* immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult>, uint64_t, RefPtr<API::Object>) = 0;
 
     virtual void didHandleAcceptedCandidate() = 0;
-
-    virtual void videoControlsManagerDidChange() = 0;
 #endif
+
+    virtual void videoControlsManagerDidChange() { };
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS)
     virtual WebCore::WebMediaSessionManager& mediaSessionManager() = 0;
@@ -385,10 +383,6 @@ public:
 #if ENABLE(ATTACHMENT_ELEMENT)
     virtual void didInsertAttachment(const String& identifier, const String& source) { }
     virtual void didRemoveAttachment(const String& identifier) { }
-#endif
-
-#if PLATFORM(GTK) || PLATFORM(WPE)
-    virtual JSGlobalContextRef javascriptGlobalContext() { return nullptr; }
 #endif
 };
 

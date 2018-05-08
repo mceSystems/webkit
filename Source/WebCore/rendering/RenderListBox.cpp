@@ -104,11 +104,11 @@ RenderListBox::~RenderListBox()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderListBox::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderListBox::willBeDestroyed()
 {
     setHasVerticalScrollbar(false);
     view().frameView().removeScrollableArea(this);
-    RenderBlockFlow::willBeDestroyed(builder);
+    RenderBlockFlow::willBeDestroyed();
 }
 
 HTMLSelectElement& RenderListBox::selectElement() const
@@ -422,7 +422,7 @@ void RenderListBox::paintItemForeground(PaintInfo& paintInfo, const LayoutPoint&
         itemText = downcast<HTMLOptGroupElement>(*listItemElement).groupLabelText();
     itemText = applyTextTransform(style(), itemText, ' ');
 
-    Color textColor = itemStyle.visitedDependentColor(CSSPropertyColor);
+    Color textColor = itemStyle.visitedDependentColorWithColorFilter(CSSPropertyColor);
     if (isOptionElement && downcast<HTMLOptionElement>(*listItemElement).selected()) {
         if (frame().selection().isFocusedAndActive() && document().focusedElement() == &selectElement())
             textColor = theme().activeListBoxSelectionForegroundColor();
@@ -460,9 +460,9 @@ void RenderListBox::paintItemBackground(PaintInfo& paintInfo, const LayoutPoint&
         if (frame().selection().isFocusedAndActive() && document().focusedElement() == &selectElement())
             backColor = theme().activeListBoxSelectionBackgroundColor();
         else
-            backColor = theme().inactiveListBoxSelectionBackgroundColor();
+            backColor = theme().inactiveListBoxSelectionBackgroundColor(document().useSystemAppearance());
     } else
-        backColor = itemStyle.visitedDependentColor(CSSPropertyBackgroundColor);
+        backColor = itemStyle.visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
 
     // Draw the background for this list box item
     if (itemStyle.visibility() == HIDDEN)

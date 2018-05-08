@@ -41,12 +41,11 @@
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(WPE)
-#include <wpe/renderer-host.h>
+#include <wpe/wpe.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static void childSetupFunction(gpointer userData)
 {

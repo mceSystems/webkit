@@ -62,6 +62,8 @@ namespace WebKit {
 typedef NSBundle *PlatformBundle;
 #elif USE(GLIB)
 typedef ::GModule* PlatformBundle;
+#else
+typedef void* PlatformBundle;
 #endif
 
 class InjectedBundleScriptWorld;
@@ -149,6 +151,7 @@ public:
     void setSerialLoadingEnabled(bool);
     void setCSSAnimationTriggersEnabled(bool);
     void setWebAnimationsEnabled(bool);
+    void setCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(bool);
     void dispatchPendingLoadRequests();
 
 #if PLATFORM(COCOA) && WK_API_ENABLED

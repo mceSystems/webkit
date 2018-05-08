@@ -36,15 +36,14 @@
 #include <WebCore/NotImplemented.h>
 #include <string.h>
 #include <sys/sysinfo.h>
-#include <wtf/CurrentTime.h>
+#include <wtf/WallTime.h>
 #include <wtf/linux/CurrentProcessMemoryStatus.h>
 #include <wtf/text/WTFString.h>
 
+namespace WebKit {
 using namespace WebCore;
 using namespace JSC;
 using namespace WTF;
-
-namespace WebKit {
 
 static const unsigned int maxBuffer = 128;
 static const unsigned int maxProcessPath = 35;
@@ -96,9 +95,9 @@ WebMemoryStatistics WebMemorySampler::sampleWebKit() const
 {
     WebMemoryStatistics webKitMemoryStats;
 
-    double now = currentTime();
+    WallTime now = WallTime::now();
 
-    appendKeyValuePair(webKitMemoryStats, ASCIILiteral("Timestamp"), now);
+    appendKeyValuePair(webKitMemoryStats, ASCIILiteral("Timestamp"), now.secondsSinceEpoch().seconds());
 
     ProcessMemoryStatus processMemoryStatus;
     currentProcessMemoryStatus(processMemoryStatus);

@@ -31,6 +31,7 @@
 #include "HTMLUListElement.h"
 #include "InlineElementBox.h"
 #include "PseudoElement.h"
+#include "RenderTreeBuilder.h"
 #include "RenderView.h"
 #include "StyleInheritedData.h"
 #include <wtf/IsoMallocInlines.h>
@@ -52,13 +53,7 @@ RenderListItem::RenderListItem(Element& element, RenderStyle&& style)
 RenderListItem::~RenderListItem()
 {
     // Do not add any code here. Add it to willBeDestroyed() instead.
-}
-
-void RenderListItem::willBeDestroyed(RenderTreeBuilder& builder)
-{
-    if (m_marker)
-        m_marker->removeFromParentAndDestroy(builder);
-    RenderBlockFlow::willBeDestroyed(builder);
+    ASSERT(!m_marker);
 }
 
 RenderStyle RenderListItem::computeMarkerStyle() const
@@ -277,9 +272,9 @@ void RenderListItem::positionListMarker()
     LayoutUnit markerOldLogicalLeft = m_marker->logicalLeft();
     LayoutUnit blockOffset = 0;
     LayoutUnit lineOffset = 0;
-    for (RenderBox* o = m_marker->parentBox(); o != this; o = o->parentBox()) {
-        blockOffset += o->logicalTop();
-        lineOffset += o->logicalLeft();
+    for (auto* ancestor = m_marker->parentBox(); ancestor && ancestor != this; ancestor = ancestor->parentBox()) {
+        blockOffset += ancestor->logicalTop();
+        lineOffset += ancestor->logicalLeft();
     }
 
     bool adjustOverflow = false;

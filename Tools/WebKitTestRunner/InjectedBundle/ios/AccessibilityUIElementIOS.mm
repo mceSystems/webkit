@@ -80,6 +80,8 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (NSUInteger)accessibilityBlockquoteLevel;
 - (NSArray *)accessibilityFindMatchingObjects:(NSDictionary *)parameters;
 - (NSArray<NSString *> *)accessibilitySpeechHint;
+- (BOOL)_accessibilityIsStrongPasswordField;
+- (CGRect)accessibilityVisibleContentRect;
 
 // TextMarker related
 - (NSArray *)textMarkerRange;
@@ -355,6 +357,12 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::stringAttributeValue(JSStringRe
     
     if (JSStringIsEqualToUTF8CString(attribute, "AXSortDirection"))
         return [[m_element accessibilitySortDirection] createJSStringRef];
+    
+    if (JSStringIsEqualToUTF8CString(attribute, "AXVisibleContentRect")) {
+        CGRect screenRect = [m_element accessibilityVisibleContentRect];
+        NSString *rectStr = [NSString stringWithFormat:@"{%.2f, %.2f, %.2f, %.2f}", screenRect.origin.x, screenRect.origin.y, screenRect.size.width, screenRect.size.height];
+        return [rectStr createJSStringRef];
+    }
 
     return JSStringCreateWithCharacters(0, 0);
 }
@@ -400,6 +408,8 @@ bool AccessibilityUIElement::boolAttributeValue(JSStringRef attribute)
 {
     if (JSStringIsEqualToUTF8CString(attribute, "AXHasTouchEventListener"))
         return [m_element _accessibilityHasTouchEventListener];
+    if (JSStringIsEqualToUTF8CString(attribute, "AXIsStrongPasswordField"))
+        return [m_element _accessibilityIsStrongPasswordField];
     return false;
 }
 
@@ -834,6 +844,11 @@ void AccessibilityUIElement::press()
 {
     [m_element _accessibilityActivate];
 }
+    
+bool AccessibilityUIElement::dismiss()
+{
+    return [m_element accessibilityPerformEscape];
+}
 
 void AccessibilityUIElement::setSelectedChild(AccessibilityUIElement* element) const
 {
@@ -1120,6 +1135,16 @@ RefPtr<AccessibilityUIElement> AccessibilityUIElement::accessibilityElementForTe
     id obj = [m_element accessibilityObjectForTextMarker:(id)marker->platformTextMarker()];
     if (obj)
         return AccessibilityUIElement::create(obj);
+    return nullptr;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForTextMarkerRange(AccessibilityTextMarkerRange* markerRange)
+{
+    return nullptr;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForTextMarkerRangeWithOptions(AccessibilityTextMarkerRange* markerRange, bool)
+{
     return nullptr;
 }
 

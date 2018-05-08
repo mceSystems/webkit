@@ -137,6 +137,12 @@ class WinPort(ApplePort):
         env['XML_CATALOG_FILES'] = ''  # work around missing /etc/catalog <rdar://problem/4292995>
         return env
 
+    def environment_for_api_tests(self):
+        env = super(WinPort, self).environment_for_api_tests()
+        for variable in ['SYSTEMROOT', 'WEBKIT_LIBRARIES']:
+            self._copy_value_from_environ_if_set(env, variable)
+        return env
+
     def operating_system(self):
         return 'win'
 
@@ -184,10 +190,11 @@ class WinPort(ApplePort):
         return True
 
     def _path_to_apache(self):
-        httpdPath = os.path.join('C:', 'xampp', 'apache', 'bin', 'httpd.exe')
-        if self._filesystem.exists(httpdPath):
-            return httpdPath
-        _log.error("Could not find apache. Not installed or unknown path.")
+        root = os.environ.get('XAMPP_ROOT', 'C:\\xampp')
+        path = self._filesystem.join(root, 'apache', 'bin', 'httpd.exe')
+        if self._filesystem.exists(path):
+            return path
+        _log.error('Could not find apache in the expected location. (path=%s)' % path)
         return None
 
     def _path_to_lighttpd(self):
@@ -449,6 +456,8 @@ class WinPort(ApplePort):
 class WinCairoPort(WinPort):
     port_name = "wincairo"
 
+    DEFAULT_ARCHITECTURE = 'x86_64'
+
     TEST_PATH_SEPARATOR = os.sep
 
     def default_baseline_search_path(self):
@@ -461,3 +470,19 @@ class WinCairoPort(WinPort):
         fallback_names = ['wincairo-' + version_name_map.to_name(version, platform=self.port_name).lower().replace(' ', '') for version in fallback_versions]
         fallback_names.append('wincairo')
         return map(self._webkit_baseline_path, fallback_names)
+
+    def check_httpd(self):
+        if not super(WinCairoPort, self).check_httpd():
+            return False
+
+        path = self._path_to_apache()
+        if not path:
+            return False
+
+        # To launch Apache as a daemon, service installation is required.
+        exit_code = self._executive.run_command([path, '-k', 'install', '-T'], return_exit_code=True)
+        # 0=success, 2=already installed, 720005=permission error, etc.
+        if exit_code == 0 or exit_code == 2:
+            return True
+        _log.error('Httpd cannot run as a service. Perhaps you forgot to log in as an adminstrator user? (exit code=%s)' % exit_code)
+        return False

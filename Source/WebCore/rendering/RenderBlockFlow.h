@@ -59,7 +59,7 @@ public:
     void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0) override;
 
 protected:
-    void willBeDestroyed(RenderTreeBuilder&) override;
+    void willBeDestroyed() override;
     
     // This method is called at the start of layout to wipe away all of the floats in our floating objects list. It also
     // repopulates the list with any floats that intrude from previous siblings or parents. Floats that were added by
@@ -360,6 +360,7 @@ public:
     const SimpleLineLayout::Layout* simpleLineLayout() const;
     void deleteLineBoxesBeforeSimpleLineLayout();
     void ensureLineBoxes();
+    void generateLineBoxTree();
 
 #if ENABLE(TREE_DEBUGGING)
     void outputLineTreeAndMark(WTF::TextStream&, const InlineBox* markedBox, int depth) const;
@@ -377,9 +378,6 @@ public:
     LayoutUnit pageRemainingLogicalHeightForOffset(LayoutUnit offset, PageBoundaryRule = IncludePageBoundary) const;
     LayoutUnit logicalHeightForChildForFragmentation(const RenderBox& child) const;
     bool hasNextPage(LayoutUnit logicalOffset, PageBoundaryRule = ExcludePageBoundary) const;
-
-    void addChild(RenderTreeBuilder&, RenderPtr<RenderObject> newChild, RenderObject* beforeChild = 0) override;
-    RenderPtr<RenderObject> takeChild(RenderTreeBuilder&, RenderObject&) override;
 
     void updateColumnProgressionFromStyle(RenderStyle&);
     void updateStylesForColumnChildren();
@@ -464,7 +462,7 @@ protected:
     // Called to lay out the legend for a fieldset or the ruby text of a ruby run. Also used by multi-column layout to handle
     // the flow thread child.
     void layoutExcludedChildren(bool relayoutChildren) override;
-    void moveAllChildrenIncludingFloatsTo(RenderTreeBuilder&, RenderBlock& toBlock, RenderBoxModelObject::NormalizeAfterInsertion) override;
+    void addOverflowFromFloats();
 
 private:
     bool recomputeLogicalWidthAndColumnWidth();
@@ -511,7 +509,6 @@ private:
     bool hitTestFloats(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset) override;
     bool hitTestInlineChildren(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) override;
 
-    void addOverflowFromFloats();
     void addOverflowFromInlineChildren() override;
     
     void fitBorderToLinesIfNeeded(); // Shrink the box in which the border paints if border-fit is set.
@@ -537,6 +534,7 @@ public:
     LayoutUnit startAlignedOffsetForLine(LayoutUnit position, IndentTextOrNot shouldIndentText);
     virtual ETextAlign textAlignmentForLine(bool endsWithSoftBreak) const;
     virtual void adjustInlineDirectionLineBounds(int /* expansionOpportunityCount */, float& /* logicalLeft */, float& /* logicalWidth */) const { }
+    RootInlineBox* constructLine(BidiRunList<BidiRun>&, const LineInfo&);
 
 private:        
     void adjustIntrinsicLogicalWidthsForColumns(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const;
@@ -546,7 +544,6 @@ private:
 
     virtual std::unique_ptr<RootInlineBox> createRootInlineBox(); // Subclassed by RenderSVGText.
     InlineFlowBox* createLineBoxes(RenderObject*, const LineInfo&, InlineBox* childBox);
-    RootInlineBox* constructLine(BidiRunList<BidiRun>&, const LineInfo&);
     void setMarginsForRubyRun(BidiRun*, RenderRubyRun&, RenderObject*, const LineInfo&);
     void computeInlineDirectionPositionsForLine(RootInlineBox*, const LineInfo&, BidiRun* firstRun, BidiRun* trailingSpaceRun, bool reachedEnd, GlyphOverflowAndFallbackFontsMap&, VerticalPositionCache&, WordMeasurements&);
     void updateRubyForJustifiedText(RenderRubyRun&, BidiRun&, const Vector<unsigned, 16>& expansionOpportunities, unsigned& expansionOpportunityCount, float& totalLogicalWidth, float availableLogicalWidth, size_t& expansionIndex);

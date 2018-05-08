@@ -32,9 +32,9 @@
 
 #include "InjectedBundle.h"
 #include "InjectedBundlePage.h"
-#include "NotImplemented.h"
 #include <JavaScriptCore/JSStringRef.h>
 #include <JavaScriptCore/OpaqueJSString.h>
+#include <WebCore/NotImplemented.h>
 #if ATK_CHECK_VERSION(2,11,90)
 #include <WebKit/WKBundleFrame.h>
 #endif
@@ -1777,7 +1777,6 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForRange(unsign
     builder.append(attributeSetToString(getAttributeSet(m_element.get(), TextAttributeType), "\n\t\t"));
 
     // The attribute run provides attributes specific to the range of text at the specified offset.
-    AtkAttributeSet* attributeSet;
     AtkText* text = ATK_TEXT(m_element.get());
     gint start = 0, end = 0;
     for (unsigned i = location; i < location + length; i = end) {
@@ -1786,8 +1785,6 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForRange(unsign
         builder.append(String::format("\n\tRange attributes for '%s':\n\t\t", substring.get()));
         builder.append(attributeSetToString(attributeSet, "\n\t\t"));
     }
-
-    atk_attribute_set_free(attributeSet);
 
     return JSStringCreateWithUTF8CString(builder.toString().utf8().data());
 }
@@ -2215,6 +2212,16 @@ RefPtr<AccessibilityTextMarker> AccessibilityUIElement::textMarkerForPoint(int x
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::accessibilityElementForTextMarker(AccessibilityTextMarker* marker)
 {
     // FIXME: implement
+    return nullptr;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForTextMarkerRange(AccessibilityTextMarkerRange*)
+{
+    return nullptr;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::attributedStringForTextMarkerRangeWithOptions(AccessibilityTextMarkerRange*, bool)
+{
     return nullptr;
 }
 

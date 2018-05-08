@@ -40,6 +40,7 @@
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WebItemProviderPasteboard.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
+#import <wtf/Seconds.h>
 
 typedef void (^FileLoadCompletionBlock)(NSURL *, BOOL, NSError *);
 typedef void (^DataLoadCompletionBlock)(NSData *, NSError *);
@@ -855,11 +856,17 @@ TEST(DataInteractionTests, ExternalSourceMultipleURLsToContentEditable)
     [dataInteractionSimulator setExternalItemProviders:@[ firstItem.get(), secondItem.get(), thirdItem.get() ]];
     [dataInteractionSimulator runFrom:CGPointMake(300, 400) to:CGPointMake(100, 300)];
 
-    NSArray *separatedLinks = [[webView stringByEvaluatingJavaScript:@"editor.textContent"] componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    EXPECT_EQ(3UL, separatedLinks.count);
-    EXPECT_WK_STREQ("https://www.apple.com/iphone/", separatedLinks[0]);
-    EXPECT_WK_STREQ("https://www.apple.com/mac/", separatedLinks[1]);
-    EXPECT_WK_STREQ("https://webkit.org/", separatedLinks[2]);
+    NSArray *droppedURLs = [webView objectByEvaluatingJavaScript:@"Array.from(editor.querySelectorAll('a')).map(a => a.href)"];
+    EXPECT_EQ(3UL, droppedURLs.count);
+    EXPECT_WK_STREQ("https://www.apple.com/iphone/", droppedURLs[0]);
+    EXPECT_WK_STREQ("https://www.apple.com/mac/", droppedURLs[1]);
+    EXPECT_WK_STREQ("https://webkit.org/", droppedURLs[2]);
+
+    NSArray *linksSeparatedByLine = [[webView objectByEvaluatingJavaScript:@"editor.innerText"] componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+    EXPECT_EQ(3UL, linksSeparatedByLine.count);
+    EXPECT_WK_STREQ("https://www.apple.com/iphone/", linksSeparatedByLine[0]);
+    EXPECT_WK_STREQ("https://www.apple.com/mac/", linksSeparatedByLine[1]);
+    EXPECT_WK_STREQ("https://webkit.org/", linksSeparatedByLine[2]);
 }
 
 TEST(DataInteractionTests, RespectsExternalSourceFidelityRankings)
@@ -1168,7 +1175,7 @@ TEST(DataInteractionTests, InjectedBundleAllowPerformTwoStepDrop)
     [configuration.processPool _setObject:@NO forBundleParameter:@"BundleOverridePerformTwoStepDrop"];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration]);
-    [webView loadTestPageNamed:@"autofocus-contenteditable"];
+    [webView synchronouslyLoadTestPageNamed:@"autofocus-contenteditable"];
     [webView stringByEvaluatingJavaScript:@"getSelection().removeAllRanges()"];
 
     auto simulatedItemProvider = adoptNS([[UIItemProvider alloc] init]);
@@ -1399,7 +1406,7 @@ TEST(DataInteractionTests, WebItemProviderPasteboardLoading)
     auto slowItem = adoptNS([[UIItemProvider alloc] init]);
     [slowItem registerDataRepresentationForTypeIdentifier:(NSString *)kUTTypeUTF8PlainText options:nil loadHandler:^NSProgress *(UIItemProviderDataLoadCompletionBlock completionBlock)
     {
-        sleep(2);
+        sleep(2_s);
         completionBlock([slowString dataUsingEncoding:NSUTF8StringEncoding], nil);
         return nil;
     }];
@@ -1465,7 +1472,7 @@ TEST(DataInteractionTests, AdditionalLinkAndImageIntoContentEditable)
         @0.33: [NSValue valueWithCGPoint:CGPointMake(50, 150)],
         @0.66: [NSValue valueWithCGPoint:CGPointMake(50, 250)]
     }];
-    EXPECT_WK_STREQ("ABCD A link", [webView stringByEvaluatingJavaScript:@"editor.textContent"]);
+    EXPECT_WK_STREQ("ABCDA link", [webView stringByEvaluatingJavaScript:@"editor.textContent"]);
     EXPECT_TRUE([webView stringByEvaluatingJavaScript:@"!!editor.querySelector('img')"]);
     EXPECT_WK_STREQ("https://www.apple.com/", [webView stringByEvaluatingJavaScript:@"editor.querySelector('a').href"]);
 }
@@ -1580,8 +1587,14 @@ TEST(DataInteractionTests, DataTransferGetDataWhenDroppingURL)
     [webView stringByEvaluatingJavaScript:@"rich.innerHTML = '<a href=\"https://www.apple.com/\">This is a link.</a>'"];
     [simulator runFrom:CGPointMake(50, 225) to:CGPointMake(50, 375)];
     checkJSONWithLogging([webView stringByEvaluatingJavaScript:@"output.value"], @{
-        @"dragover": @{ @"text/uri-list" : @"" },
-        @"drop": @{ @"text/uri-list" : @"https://www.apple.com/" }
+        @"dragover": @{
+            @"text/uri-list" : @"",
+            @"text/plain" : @""
+        },
+        @"drop": @{
+            @"text/uri-list" : @"https://www.apple.com/",
+            @"text/plain" : @"https://www.apple.com/"
+        }
     });
 }
 

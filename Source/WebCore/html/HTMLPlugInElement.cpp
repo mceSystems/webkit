@@ -50,6 +50,7 @@
 #include "ShadowRoot.h"
 #include "SubframeLoader.h"
 #include "Widget.h"
+#include <wtf/IsoMallocInlines.h>
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
 #include "npruntime_impl.h"
@@ -61,6 +62,8 @@
 #endif
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLPlugInElement);
 
 using namespace HTMLNames;
 
@@ -286,9 +289,13 @@ void HTMLPlugInElement::swapRendererTimerFired()
 
 void HTMLPlugInElement::setDisplayState(DisplayState state)
 {
+    if (state == m_displayState)
+        return;
+
     m_displayState = state;
     
-    if ((state == DisplayingSnapshot || displayState() == PreparingPluginReplacement) && !m_swapRendererTimer.isActive())
+    m_swapRendererTimer.stop();
+    if (state == DisplayingSnapshot || displayState() == PreparingPluginReplacement)
         m_swapRendererTimer.startOneShot(0_s);
 }
 
@@ -399,13 +406,16 @@ JSC::JSObject* HTMLPlugInElement::scriptObjectForPluginReplacement()
     return nullptr;
 }
 
-// Return whether or not the replacement content for blocked plugins is accessible to the user.
-bool HTMLPlugInElement::isReplacementObscured(const String& unavailabilityDescription)
+bool HTMLPlugInElement::setReplacement(RenderEmbeddedObject::PluginUnavailabilityReason reason, const String& unavailabilityDescription)
 {
     if (!is<RenderEmbeddedObject>(renderer()))
         return false;
+
+    if (reason == RenderEmbeddedObject::UnsupportedPlugin)
+        document().addConsoleMessage(MessageSource::JS, MessageLevel::Warning, ASCIILiteral("Tried to use an unsupported plug-in."));
+
     Ref<HTMLPlugInElement> protectedThis(*this);
-    downcast<RenderEmbeddedObject>(*renderer()).setPluginUnavailabilityReasonWithDescription(RenderEmbeddedObject::InsecurePluginVersion, unavailabilityDescription);
+    downcast<RenderEmbeddedObject>(*renderer()).setPluginUnavailabilityReasonWithDescription(reason, unavailabilityDescription);
     bool replacementIsObscured = isReplacementObscured();
     // hittest in isReplacementObscured() method could destroy the renderer. Let's refetch it.
     if (is<RenderEmbeddedObject>(renderer()))

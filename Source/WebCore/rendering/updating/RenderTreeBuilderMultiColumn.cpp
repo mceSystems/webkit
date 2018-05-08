@@ -31,6 +31,7 @@
 #include "RenderMultiColumnSet.h"
 #include "RenderMultiColumnSpannerPlaceholder.h"
 #include "RenderTreeBuilder.h"
+#include "RenderTreeBuilderBlock.h"
 
 namespace WebCore {
 
@@ -160,23 +161,23 @@ void RenderTreeBuilder::MultiColumn::createFragmentedFlow(RenderBlockFlow& flow)
             // Move the spanner back to its original position.
             auto& spannerOriginalParent = *placeholder->parent();
             // Detaching the spanner takes care of removing the placeholder (and merges the RenderMultiColumnSets).
-            auto spannerToReInsert = spanner->parent()->takeChild(m_builder, *spanner);
-            m_builder.insertChild(spannerOriginalParent, WTFMove(spannerToReInsert));
+            auto spannerToReInsert = m_builder.detach(*spanner->parent(), *spanner);
+            m_builder.attach(spannerOriginalParent, WTFMove(spannerToReInsert));
         }
     }
 
     auto newFragmentedFlow = !flow.style().hasLinesClamp() ? WebCore::createRenderer<RenderMultiColumnFlow>(flow.document(), RenderStyle::createAnonymousStyleWithDisplay(flow.style(), BLOCK)) :  WebCore::createRenderer<RenderLinesClampFlow>(flow.document(), RenderStyle::createAnonymousStyleWithDisplay(flow.style(), BLOCK));
     newFragmentedFlow->initializeStyle();
     auto& fragmentedFlow = *newFragmentedFlow;
-    m_builder.insertChildToRenderBlock(flow, WTFMove(newFragmentedFlow));
+    m_builder.blockBuilder().attach(flow, WTFMove(newFragmentedFlow), nullptr);
 
     // Reparent children preceding the fragmented flow into the fragmented flow.
-    flow.moveChildrenTo(m_builder, &fragmentedFlow, flow.firstChild(), &fragmentedFlow, RenderBoxModelObject::NormalizeAfterInsertion::Yes);
+    m_builder.moveChildren(flow, fragmentedFlow, flow.firstChild(), &fragmentedFlow, RenderTreeBuilder::NormalizeAfterInsertion::Yes);
     if (flow.isFieldset()) {
         // Keep legends out of the flow thread.
         for (auto& box : childrenOfType<RenderBox>(fragmentedFlow)) {
             if (box.isLegend())
-                fragmentedFlow.moveChildTo(m_builder, &flow, &box, RenderBoxModelObject::NormalizeAfterInsertion::Yes);
+                m_builder.move(fragmentedFlow, flow, box, RenderTreeBuilder::NormalizeAfterInsertion::Yes);
         }
     }
 
@@ -184,7 +185,7 @@ void RenderTreeBuilder::MultiColumn::createFragmentedFlow(RenderBlockFlow& flow)
         // Keep the middle block out of the flow thread.
         for (auto& element : childrenOfType<RenderElement>(fragmentedFlow)) {
             if (!downcast<RenderLinesClampFlow>(fragmentedFlow).isChildAllowedInFragmentedFlow(flow, element))
-                fragmentedFlow.moveChildTo(m_builder, &flow, &element, RenderBoxModelObject::NormalizeAfterInsertion::Yes);
+                m_builder.move(fragmentedFlow, flow, element, RenderTreeBuilder::NormalizeAfterInsertion::Yes);
         }
     }
 
@@ -208,16 +209,16 @@ void RenderTreeBuilder::MultiColumn::destroyFragmentedFlow(RenderBlockFlow& flow
             spannerOriginalParent = &flow;
         // Detaching the spanner takes care of removing the placeholder (and merges the RenderMultiColumnSets).
         auto* spanner = placeholder->spanner();
-        parentAndSpannerList.append(std::make_pair(spannerOriginalParent, spanner->parent()->takeChild(m_builder, *spanner)));
+        parentAndSpannerList.append(std::make_pair(spannerOriginalParent, m_builder.detach(*spanner->parent(), *spanner)));
     }
     while (auto* columnSet = multiColumnFlow.firstMultiColumnSet())
-        columnSet->removeFromParentAndDestroy(m_builder);
+        m_builder.destroy(*columnSet);
 
     flow.clearMultiColumnFlow();
-    multiColumnFlow.moveAllChildrenTo(m_builder, &flow, RenderBoxModelObject::NormalizeAfterInsertion::Yes);
-    multiColumnFlow.removeFromParentAndDestroy(m_builder);
+    m_builder.moveAllChildren(multiColumnFlow, flow, RenderTreeBuilder::NormalizeAfterInsertion::Yes);
+    m_builder.destroy(multiColumnFlow);
     for (auto& parentAndSpanner : parentAndSpannerList)
-        m_builder.insertChild(*parentAndSpanner.first, WTFMove(parentAndSpanner.second));
+        m_builder.attach(*parentAndSpanner.first, WTFMove(parentAndSpanner.second));
 }
 
 
@@ -312,12 +313,12 @@ RenderObject* RenderTreeBuilder::MultiColumn::processPossibleSpannerDescendant(R
         // end flowing one column set and move to the next one.
         auto newPlaceholder = RenderMultiColumnSpannerPlaceholder::createAnonymous(flow, downcast<RenderBox>(descendant), container->style());
         auto& placeholder = *newPlaceholder;
-        m_builder.insertChild(*container, WTFMove(newPlaceholder), descendant.nextSibling());
-        auto takenDescendant = container->takeChild(m_builder, descendant);
+        m_builder.attach(*container, WTFMove(newPlaceholder), descendant.nextSibling());
+        auto takenDescendant = m_builder.detach(*container, descendant);
 
         // This is a guard to stop an ancestor flow thread from processing the spanner.
         gShiftingSpanner = true;
-        m_builder.insertChildToRenderBlock(*multicolContainer, WTFMove(takenDescendant), insertBeforeMulticolChild);
+        m_builder.blockBuilder().attach(*multicolContainer, WTFMove(takenDescendant), insertBeforeMulticolChild);
         gShiftingSpanner = false;
 
         // The spanner has now been moved out from the flow thread, but we don't want to
@@ -354,7 +355,7 @@ RenderObject* RenderTreeBuilder::MultiColumn::processPossibleSpannerDescendant(R
     auto newSet = flow.createMultiColumnSet(RenderStyle::createAnonymousStyleWithDisplay(multicolContainer->style(), BLOCK));
     newSet->initializeStyle();
     auto& set = *newSet;
-    m_builder.insertChildToRenderBlock(*multicolContainer, WTFMove(newSet), insertBeforeMulticolChild);
+    m_builder.blockBuilder().attach(*multicolContainer, WTFMove(newSet), insertBeforeMulticolChild);
     flow.invalidateFragments();
 
     // We cannot handle immediate column set siblings at the moment (and there's no need for
@@ -371,13 +372,13 @@ void RenderTreeBuilder::MultiColumn::handleSpannerRemoval(RenderMultiColumnFlow&
 {
     // The placeholder may already have been removed, but if it hasn't, do so now.
     if (auto placeholder = flow.spannerMap().take(&downcast<RenderBox>(spanner)))
-        placeholder->removeFromParentAndDestroy(m_builder);
+        m_builder.destroy(*placeholder);
 
     if (auto* next = spanner.nextSibling()) {
         if (auto* previous = spanner.previousSibling()) {
             if (previous->isRenderMultiColumnSet() && next->isRenderMultiColumnSet()) {
                 // Merge two sets that no longer will be separated by a spanner.
-                next->removeFromParentAndDestroy(m_builder);
+                m_builder.destroy(*next);
                 previous->setNeedsLayout();
             }
         }
@@ -404,6 +405,25 @@ void RenderTreeBuilder::MultiColumn::multiColumnRelativeWillBeRemoved(RenderMult
     // Note that we might end up with empty column sets if all column content is removed. That's no
     // big deal though (and locating them would be expensive), and they will be found and re-used if
     // content is added again later.
+}
+
+RenderObject* RenderTreeBuilder::MultiColumn::adjustBeforeChildForMultiColumnSpannerIfNeeded(RenderObject& beforeChild)
+{
+    if (!is<RenderBox>(beforeChild))
+        return &beforeChild;
+
+    auto* nextSibling = beforeChild.nextSibling();
+    if (!nextSibling)
+        return &beforeChild;
+
+    if (!is<RenderMultiColumnSet>(*nextSibling))
+        return &beforeChild;
+
+    auto* multiColumnFlow = downcast<RenderMultiColumnSet>(*nextSibling).multiColumnFlow();
+    if (!multiColumnFlow)
+        return &beforeChild;
+
+    return multiColumnFlow->findColumnSpannerPlaceholder(downcast<RenderBox>(&beforeChild));
 }
 
 }

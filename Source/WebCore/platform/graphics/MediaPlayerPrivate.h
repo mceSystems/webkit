@@ -61,6 +61,7 @@ public:
 
 #if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
     virtual void setVideoFullscreenLayer(PlatformLayer*, WTF::Function<void()>&& completionHandler) { completionHandler(); }
+    virtual void updateVideoFullscreenInlineImage() { }
     virtual void setVideoFullscreenFrame(FloatRect) { }
     virtual void setVideoFullscreenGravity(MediaPlayer::VideoGravity) { }
     virtual void setVideoFullscreenMode(MediaPlayer::VideoFullscreenMode) { }
@@ -252,6 +253,9 @@ public:
 #if USE(GSTREAMER)
     virtual void simulateAudioInterruption() { }
 #endif
+
+    virtual void beginSimulatedHDCPError() { }
+    virtual void endSimulatedHDCPError() { }
 
     virtual String languageOfPrimaryAudioTrack() const { return emptyString(); }
 

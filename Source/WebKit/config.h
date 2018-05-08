@@ -34,14 +34,8 @@
 #include <wtf/DisallowCType.h>
 
 #if PLATFORM(WIN)
-
-#ifndef _WINSOCKAPI_
-#define _WINSOCKAPI_ // Prevent inclusion of winsock.h in windows.h
-#endif
-
 #undef WEBCORE_EXPORT
 #define WEBCORE_EXPORT WTF_EXPORT_DECLARATION
-
 #endif // PLATFORM(WIN)
 
 #ifdef __cplusplus
@@ -116,7 +110,7 @@
 #endif
 
 #ifndef HAVE_SAFARI_SERVICES_FRAMEWORK
-#if PLATFORM(IOS) && (!defined TARGET_OS_IOS || TARGET_OS_IOS)
+#if PLATFORM(IOS) && (!defined TARGET_OS_IOS || TARGET_OS_IOS) && !ENABLE(MINIMAL_SIMULATOR)
 #define HAVE_SAFARI_SERVICES_FRAMEWORK 1
 #else
 #define HAVE_SAFARI_SERVICES_FRAMEWORK 0
@@ -128,5 +122,13 @@
 #define HAVE_LINK_PREVIEW 1
 #else
 #define HAVE_LINK_PREVIEW 0
+#endif
+#endif
+
+#ifndef HAVE_MOBILE_WIFI
+#if PLATFORM(IOS) && !TARGET_OS_SIMULATOR && !ENABLE(MINIMAL_SIMULATOR) && USE(APPLE_INTERNAL_SDK)
+#define HAVE_MOBILE_WIFI 1
+#else
+#define HAVE_MOBILE_WIFI 0
 #endif
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -132,10 +132,10 @@ ALWAYS_INLINE static bool linkCodeInline(const char* name, CCallHelpers& jit, St
 {
     if (jit.m_assembler.buffer().codeSize() <= stubInfo.patch.inlineSize) {
         bool needsBranchCompaction = false;
-        LinkBuffer linkBuffer(jit, stubInfo.patch.start.dataLocation(), stubInfo.patch.inlineSize, JITCompilationMustSucceed, needsBranchCompaction);
+        LinkBuffer linkBuffer(jit, stubInfo.patch.start, stubInfo.patch.inlineSize, JITCompilationMustSucceed, needsBranchCompaction);
         ASSERT(linkBuffer.isValid());
         function(linkBuffer);
-        FINALIZE_CODE(linkBuffer, ("InlineAccessType: '%s'", name));
+        FINALIZE_CODE(linkBuffer, NoPtrTag, "InlineAccessType: '%s'", name);
         return true;
     }
 
@@ -249,9 +249,7 @@ bool InlineAccess::isCacheableArrayLength(StructureStubInfo& stubInfo, JSArray* 
     if (!hasFreeRegister(stubInfo))
         return false;
 
-    return array->indexingType() == ArrayWithInt32
-        || array->indexingType() == ArrayWithDouble
-        || array->indexingType() == ArrayWithContiguous;
+    return !hasAnyArrayStorage(array->indexingType()) && array->indexingType() != ArrayClass;
 }
 
 bool InlineAccess::generateArrayLength(StructureStubInfo& stubInfo, JSArray* array)
@@ -278,7 +276,7 @@ bool InlineAccess::generateArrayLength(StructureStubInfo& stubInfo, JSArray* arr
     return linkedCodeInline;
 }
 
-void InlineAccess::rewireStubAsJump(StructureStubInfo& stubInfo, CodeLocationLabel target)
+void InlineAccess::rewireStubAsJump(StructureStubInfo& stubInfo, CodeLocationLabel<JITStubRoutinePtrTag> target)
 {
     CCallHelpers jit;
 
@@ -286,11 +284,11 @@ void InlineAccess::rewireStubAsJump(StructureStubInfo& stubInfo, CodeLocationLab
 
     // We don't need a nop sled here because nobody should be jumping into the middle of an IC.
     bool needsBranchCompaction = false;
-    LinkBuffer linkBuffer(jit, stubInfo.patch.start.dataLocation(), jit.m_assembler.buffer().codeSize(), JITCompilationMustSucceed, needsBranchCompaction);
+    LinkBuffer linkBuffer(jit, stubInfo.patch.start, jit.m_assembler.buffer().codeSize(), JITCompilationMustSucceed, needsBranchCompaction);
     RELEASE_ASSERT(linkBuffer.isValid());
     linkBuffer.link(jump, target);
 
-    FINALIZE_CODE(linkBuffer, ("InlineAccess: linking constant jump"));
+    FINALIZE_CODE(linkBuffer, NoPtrTag, "InlineAccess: linking constant jump");
 }
 
 } // namespace JSC

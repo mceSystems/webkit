@@ -33,7 +33,7 @@
 #include "WebPage.h"
 #include "WebPageCreationParameters.h"
 #include "WebPreferencesKeys.h"
-#include <WebCore/MainFrame.h>
+#include <WebCore/Frame.h>
 #include <WebCore/Page.h>
 #include <WebCore/PageOverlayController.h>
 #include <WebCore/Settings.h>
@@ -42,9 +42,8 @@
 #include <wtf/glib/RunLoopSourcePriority.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 AcceleratedDrawingArea::~AcceleratedDrawingArea()
 {
@@ -383,16 +382,6 @@ void AcceleratedDrawingArea::exitAcceleratedCompositingModeSoon()
 
     m_exitCompositingTimer.startOneShot(0_s);
 }
-
-#if USE(COORDINATED_GRAPHICS)
-void AcceleratedDrawingArea::resetUpdateAtlasForTesting()
-{
-    if (!m_layerTreeHost || exitAcceleratedCompositingModePending())
-        return;
-
-    m_layerTreeHost->clearUpdateAtlases();
-}
-#endif
 
 void AcceleratedDrawingArea::exitAcceleratedCompositingModeNow()
 {

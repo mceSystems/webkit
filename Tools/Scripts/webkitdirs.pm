@@ -92,6 +92,7 @@ BEGIN {
        &shutDownIOSSimulatorDevice
        &willUseIOSDeviceSDK
        &willUseIOSSimulatorSDK
+       DO_NOT_USE_OPEN_COMMAND
        SIMULATOR_DEVICE_SUFFIX_FOR_WEBKIT_DEVELOPMENT
        USE_OPEN_COMMAND
    );
@@ -114,6 +115,7 @@ use constant {
 };
 
 use constant USE_OPEN_COMMAND => 1; # Used in runMacWebKitApp().
+use constant DO_NOT_USE_OPEN_COMMAND => 2;
 use constant SIMULATOR_DEVICE_STATE_SHUTDOWN => "1";
 use constant SIMULATOR_DEVICE_STATE_BOOTED => "3";
 use constant SIMULATOR_DEVICE_SUFFIX_FOR_WEBKIT_DEVELOPMENT  => "For WebKit Development";
@@ -142,6 +144,7 @@ my $iosVersion;
 my $generateDsym;
 my $isCMakeBuild;
 my $isGenerateProjectOnly;
+my $shouldBuild32Bit;
 my $isWin64;
 my $isInspectorFrontend;
 my $portName;
@@ -935,7 +938,7 @@ sub determinePassedArchitecture
     $searchedForPassedArchitecture = 1;
 
     $passedArchitecture = undef;
-    if (checkForArgumentAndRemoveFromARGV("--32-bit")) {
+    if (shouldBuild32Bit()) {
         if (isAppleCocoaWebKit()) {
             # PLATFORM_IOS: Don't run `arch` command inside Simulator environment
             local %ENV = %ENV;
@@ -1033,7 +1036,7 @@ sub builtDylibPathForName
         }
     }
     if (isWPE()) {
-        return "$configurationProductDir/lib/libWPEWebKit.so";
+        return "$configurationProductDir/lib/libWPEWebKit-0.1.so";
     }
 
     die "Unsupported platform, can't determine built library locations.\nTry `build-webkit --help` for more information.\n";
@@ -1233,6 +1236,18 @@ sub isWinCairo()
     return portName() eq WinCairo;
 }
 
+sub shouldBuild32Bit()
+{
+    determineShouldBuild32Bit();
+    return $shouldBuild32Bit;
+}
+
+sub determineShouldBuild32Bit()
+{
+    return if defined($shouldBuild32Bit);
+    $shouldBuild32Bit = checkForArgumentAndRemoveFromARGV("--32-bit");
+}
+
 sub isWin64()
 {
     determineIsWin64();
@@ -1242,7 +1257,7 @@ sub isWin64()
 sub determineIsWin64()
 {
     return if defined($isWin64);
-    $isWin64 = checkForArgumentAndRemoveFromARGV("--64-bit");
+    $isWin64 = checkForArgumentAndRemoveFromARGV("--64-bit") || isWinCairo() && !shouldBuild32Bit();
 }
 
 sub determineIsWin64FromArchitecture($)
@@ -2436,6 +2451,14 @@ sub waitUntilIOSSimulatorDeviceIsInState($$)
     }
 }
 
+sub waitUntilProcessNotRunning($)
+{
+    my ($process) = @_;
+    while (system("/bin/ps -eo pid,comm | /usr/bin/grep '$process\$'") == 0) {
+        usleep(500 * 1000);
+    }
+}
+
 sub shutDownIOSSimulatorDevice($)
 {
     my ($simulatorDevice) = @_;
@@ -2461,6 +2484,7 @@ sub relaunchIOSSimulator($)
     system("open", "-a", $iosSimulatorPath, "--args", "-CurrentDeviceUDID", $simulatedDevice->{UDID}) == 0 or die "Failed to open $iosSimulatorPath: $!"; 
 
     waitUntilIOSSimulatorDeviceIsInState($simulatedDevice->{UDID}, SIMULATOR_DEVICE_STATE_BOOTED);
+    waitUntilProcessNotRunning("com.apple.datamigrator");
 }
 
 sub quitIOSSimulator(;$)

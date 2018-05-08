@@ -102,9 +102,9 @@ public:
     void updateStateMachine(AnimationStateInput, double param);
 
     // Animation has actually started, at passed time
-    void onAnimationStartResponse(double startTime)
+    void onAnimationStartResponse(MonotonicTime startTime)
     {
-        updateStateMachine(AnimationStateInput::StartTimeSet, startTime);
+        updateStateMachine(AnimationStateInput::StartTimeSet, startTime.secondsSinceEpoch().seconds());
     }
 
     // Called to change to or from paused state
@@ -186,6 +186,7 @@ public:
 #if ENABLE(FILTERS_LEVEL_2)
     bool backdropFilterFunctionListsMatch() const override { return m_backdropFilterFunctionListsMatch; }
 #endif
+    bool colorFilterFunctionListsMatch() const override { return m_colorFilterFunctionListsMatch; }
 
     // Freeze the animation; used by DumpRenderTree.
     void freezeAtTime(double t);
@@ -260,6 +261,7 @@ protected:
 #if ENABLE(FILTERS_LEVEL_2)
     bool m_backdropFilterFunctionListsMatch { false };
 #endif
+    bool m_colorFilterFunctionListsMatch { false };
 };
 
 } // namespace WebCore

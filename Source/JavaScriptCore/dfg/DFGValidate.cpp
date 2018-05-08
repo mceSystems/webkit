@@ -271,6 +271,7 @@ public:
                 case CompareBelowEq:
                 case CompareEq:
                 case CompareStrictEq:
+                case SameValue:
                 case StrCat:
                     VALIDATE((node), !!node->child1());
                     VALIDATE((node), !!node->child2());
@@ -346,6 +347,17 @@ public:
                     }
                     break;
                 }
+                case GetArgumentCountIncludingThis: {
+                    if (InlineCallFrame* inlineCallFrame = node->argumentsInlineCallFrame())
+                        VALIDATE((node), inlineCallFrame->isVarargs());
+                    break;
+                }
+                case NewArray:
+                    VALIDATE((node), node->vectorLengthHint() >= node->numChildren());
+                    break;
+                case NewArrayBuffer:
+                    VALIDATE((node), node->vectorLengthHint() >= node->castOperand<JSFixedArray*>()->length());
+                    break;
                 default:
                     break;
                 }
@@ -752,6 +764,7 @@ private:
                     break;
 
                 case Check:
+                case CheckVarargs:
                     // FIXME: This is probably not correct.
                     break;
 
@@ -781,6 +794,7 @@ private:
 
                 case PhantomNewArrayBuffer:
                     VALIDATE((node), m_graph.m_form == SSA);
+                    VALIDATE((node), node->vectorLengthHint() >= node->castOperand<JSFixedArray*>()->length());
                     break;
 
                 case NewArrayWithSpread: {

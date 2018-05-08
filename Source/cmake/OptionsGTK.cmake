@@ -1,11 +1,11 @@
 include(GNUInstallDirs)
 include(VersioningUtils)
 
-SET_PROJECT_VERSION(2 19 6)
+SET_PROJECT_VERSION(2 21 1)
 set(WEBKITGTK_API_VERSION 4.0)
 
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT 64 2 27)
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 25 4 7)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT 66 0 29)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 26 0 8)
 
 # These are shared variables, but we special case their definition so that we can use the
 # CMAKE_INSTALL_* variables that are populated by the GNUInstallDirs macro.
@@ -13,8 +13,6 @@ set(LIB_INSTALL_DIR "${CMAKE_INSTALL_FULL_LIBDIR}" CACHE PATH "Absolute path to 
 set(EXEC_INSTALL_DIR "${CMAKE_INSTALL_FULL_BINDIR}" CACHE PATH "Absolute path to executable installation directory")
 set(LIBEXEC_INSTALL_DIR "${CMAKE_INSTALL_FULL_LIBEXECDIR}/webkit2gtk-${WEBKITGTK_API_VERSION}" CACHE PATH "Absolute path to install executables executed by the library")
 
-set(DATA_BUILD_DIR "${CMAKE_BINARY_DIR}/share/${WebKit_OUTPUT_NAME}")
-set(DATA_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/webkitgtk-${WEBKITGTK_API_VERSION}")
 set(WEBKITGTK_HEADER_INSTALL_DIR "${CMAKE_INSTALL_INCLUDEDIR}/webkitgtk-${WEBKITGTK_API_VERSION}")
 set(INTROSPECTION_INSTALL_GIRDIR "${CMAKE_INSTALL_FULL_DATADIR}/gir-1.0")
 set(INTROSPECTION_INSTALL_TYPELIBDIR "${LIB_INSTALL_DIR}/girepository-1.0")
@@ -81,13 +79,13 @@ WEBKIT_OPTION_DEFINE(ENABLE_WAYLAND_TARGET "Whether to enable support for the Wa
 WEBKIT_OPTION_DEFINE(USE_LIBNOTIFY "Whether to enable the default web notification implementation." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_LIBHYPHEN "Whether to enable the default automatic hyphenation implementation." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_LIBSECRET "Whether to enable the persistent credential storage using libsecret." PUBLIC ON)
-WEBKIT_OPTION_DEFINE(USE_UPOWER "Whether to enable the low power mode implementation." PUBLIC ON)
 WEBKIT_OPTION_DEFINE(USE_WOFF2 "Whether to enable support for WOFF2 Web Fonts." PUBLIC ON)
 
 # Private options specific to the GTK+ port. Changing these options is
 # completely unsupported. They are intended for use only by WebKit developers.
 WEBKIT_OPTION_DEFINE(USE_REDIRECTED_XCOMPOSITE_WINDOW "Whether to use a Redirected XComposite Window for accelerated compositing in X11." PRIVATE ON)
 WEBKIT_OPTION_DEFINE(USE_OPENVR "Whether to use OpenVR as WebVR backend." PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
+WEBKIT_OPTION_DEFINE(USE_LIBWEBRTC "Whether to use libwebrtc for WebRTC support" PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
 
 # FIXME: Can we use cairo-glesv2 to avoid this conflict?
 WEBKIT_OPTION_CONFLICT(ENABLE_ACCELERATED_2D_CANVAS ENABLE_GLES2)
@@ -99,6 +97,8 @@ WEBKIT_OPTION_DEPEND(ENABLE_PLUGIN_PROCESS_GTK2 ENABLE_X11_TARGET)
 WEBKIT_OPTION_DEPEND(ENABLE_WEBGL ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(USE_REDIRECTED_XCOMPOSITE_WINDOW ENABLE_OPENGL)
 WEBKIT_OPTION_DEPEND(USE_REDIRECTED_XCOMPOSITE_WINDOW ENABLE_X11_TARGET)
+
+WEBKIT_OPTION_DEPEND(USE_LIBWEBRTC ENABLE_WEB_RTC)
 
 SET_AND_EXPOSE_TO_BUILD(ENABLE_DEVELOPER_MODE ${DEVELOPER_MODE})
 if (DEVELOPER_MODE)
@@ -121,6 +121,7 @@ endif ()
 # without approval from a GTK+ reviewer. There must be strong reason to support
 # changing the value of the option.
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ACCELERATED_2D_CANVAS PUBLIC OFF)
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ASYNC_SCROLLING PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DRAG_SUPPORT PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GEOLOCATION PUBLIC ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ICONDATABASE PUBLIC ON)
@@ -141,6 +142,7 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_FTPDIR PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_INPUT_TYPE_COLOR PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MHTML PRIVATE ON)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEDIA_STREAM PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
+WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SERVICE_WORKER PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEB_RTC PRIVATE ${ENABLE_EXPERIMENTAL_FEATURES})
 
 include(GStreamerDefinitions)
@@ -166,8 +168,8 @@ set(ENABLE_PLUGIN_PROCESS ${ENABLE_NETSCAPE_PLUGIN_API})
 
 add_definitions(-DBUILDING_GTK__=1)
 add_definitions(-DGETTEXT_PACKAGE="WebKit2GTK-${WEBKITGTK_API_VERSION}")
-add_definitions(-DDATA_DIR="${CMAKE_INSTALL_DATADIR}")
 add_definitions(-DWEBKITGTK_API_VERSION_STRING="${WEBKITGTK_API_VERSION}")
+add_definitions(-DJSC_GLIB_API_ENABLED)
 
 set(GTK_LIBRARIES ${GTK3_LIBRARIES})
 set(GTK_INCLUDE_DIRS ${GTK3_INCLUDE_DIRS})
@@ -219,6 +221,12 @@ if (ENABLE_INTROSPECTION)
     endif ()
 endif ()
 
+if (ENABLE_MEDIA_STREAM OR ENABLE_WEB_RTC)
+    set(USE_LIBWEBRTC TRUE)
+    SET_AND_EXPOSE_TO_BUILD(USE_LIBWEBRTC TRUE)
+    SET_AND_EXPOSE_TO_BUILD(WEBRTC_WEBKIT_BUILD TRUE)
+endif ()
+
 if (ENABLE_SUBTLE_CRYPTO)
     find_package(Libtasn1 REQUIRED)
     if (NOT LIBTASN1_FOUND)
@@ -246,7 +254,7 @@ if (ENABLE_OPENGL)
     # But USE_OPENGL is the opposite of ENABLE_GLES2.
     if (ENABLE_GLES2)
         find_package(OpenGLES2 REQUIRED)
-        SET_AND_EXPOSE_TO_BUILD(USE_OPENGL_ES_2 TRUE)
+        SET_AND_EXPOSE_TO_BUILD(USE_OPENGL_ES TRUE)
 
         if (NOT EGL_FOUND)
             message(FATAL_ERROR "EGL is needed for ENABLE_GLES2.")
@@ -341,13 +349,6 @@ if (USE_LIBHYPHEN)
     endif ()
 endif ()
 
-if (USE_UPOWER)
-    find_package(UPowerGLib)
-    if (NOT UPOWERGLIB_FOUND)
-       message(FATAL_ERROR "upower-glib is needed for USE_UPOWER.")
-    endif ()
-endif ()
-
 if (USE_WOFF2)
     find_package(WOFF2Dec 1.0.2)
     if (NOT WOFF2DEC_FOUND)
@@ -375,10 +376,12 @@ set(DERIVED_SOURCES_WEBKITGTK_DIR ${DERIVED_SOURCES_DIR}/webkitgtk)
 set(DERIVED_SOURCES_WEBKITGTK_API_DIR ${DERIVED_SOURCES_WEBKITGTK_DIR}/webkit)
 set(DERIVED_SOURCES_WEBKIT2GTK_DIR ${DERIVED_SOURCES_DIR}/webkit2gtk)
 set(DERIVED_SOURCES_WEBKIT2GTK_API_DIR ${DERIVED_SOURCES_WEBKIT2GTK_DIR}/webkit2)
+set(DERIVED_SOURCES_JAVASCRIPCOREGTK_DIR ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/javascriptcoregtk)
+set(DERIVED_SOURCES_JAVASCRIPCORE_GLIB_API_DIR ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/javascriptcoregtk/jsc)
 set(FORWARDING_HEADERS_WEBKIT2GTK_DIR ${FORWARDING_HEADERS_DIR}/webkit2gtk)
 set(FORWARDING_HEADERS_WEBKIT2GTK_EXTENSION_DIR ${FORWARDING_HEADERS_DIR}/webkit2gtk-webextension)
 
-set(WebKit_PKGCONFIG_FILE ${CMAKE_BINARY_DIR}/Source/WebKitLegacy/gtk/webkitgtk-${WEBKITGTK_API_VERSION}.pc)
+set(JavaScriptCore_PKGCONFIG_FILE ${CMAKE_BINARY_DIR}/Source/JavaScriptCore/javascriptcoregtk-${WEBKITGTK_API_VERSION}.pc)
 set(WebKit2_PKGCONFIG_FILE ${CMAKE_BINARY_DIR}/Source/WebKit/webkit2gtk-${WEBKITGTK_API_VERSION}.pc)
 set(WebKit2WebExtension_PKGCONFIG_FILE ${CMAKE_BINARY_DIR}/Source/WebKit/webkit2gtk-web-extension-${WEBKITGTK_API_VERSION}.pc)
 
@@ -404,10 +407,15 @@ macro(ADD_WHOLE_ARCHIVE_TO_LIBRARIES _list_name)
     if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
         list(APPEND ${_list_name} -Wl,-all_load)
     else ()
-        foreach (library IN LISTS ${_list_name})
-          list(APPEND ${_list_name}_TMP -Wl,--whole-archive ${library} -Wl,--no-whole-archive)
+        set(_tmp)
+        foreach (item IN LISTS ${_list_name})
+            if ("${item}" STREQUAL "PRIVATE" OR "${item}" STREQUAL "PUBLIC")
+                list(APPEND _tmp "${item}")
+            else ()
+                list(APPEND _tmp -Wl,--whole-archive "${item}" -Wl,--no-whole-archive)
+            endif ()
         endforeach ()
-        set(${_list_name} "${${_list_name}_TMP}")
+        set(${_list_name} ${_tmp})
     endif ()
 endmacro()
 

@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "NetworkActivityTracker.h"
 #include <WebCore/BlobDataFileReference.h>
 #include <WebCore/ResourceLoaderOptions.h>
 #include <WebCore/ResourceRequest.h>
@@ -48,8 +49,10 @@ public:
     bool shouldClearReferrerOnHTTPSToHTTPRedirect { true };
     bool defersLoading { false };
     bool needsCertificateInfo { false };
+    bool isMainFrameNavigation { false };
     Vector<RefPtr<WebCore::BlobDataFileReference>> blobFileReferences;
     PreconnectOnly shouldPreconnectOnly { PreconnectOnly::No };
+    std::optional<NetworkActivityTracker> networkActivityTracker;
 };
 
 } // namespace WebKit

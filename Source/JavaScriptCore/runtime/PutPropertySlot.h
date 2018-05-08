@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -50,8 +50,8 @@ public:
         , m_isInitialization(isInitialization)
         , m_context(context)
         , m_cacheability(CachingAllowed)
+        , m_customAPIValue(nullptr)
     {
-		m_setter.putFunction = nullptr;
     }
 
     void setExistingProperty(JSObject* base, PropertyOffset offset)
@@ -68,27 +68,29 @@ public:
         m_offset = offset;
     }
 
-    void setCustomValue(JSObject* base, PutValueFunc function)
+    void setCustomValue(JSObject* base, FunctionPtr<OperationPtrTag> function)
     {
         m_type = CustomValue;
         m_base = base;
-		m_setter.putFunction = function;
+        m_putFunction = function;
+        m_customAPIValue = nullptr;
     }
 
-    void setCustomAccessor(JSObject* base, PutValueFunc function)
+    void setCustomAccessor(JSObject* base, FunctionPtr<OperationPtrTag> function)
     {
         m_type = CustomAccessor;
         m_base = base;
-		m_setter.putFunction = function;
+        m_putFunction = function;
+        m_customAPIValue = nullptr;
     }
 
-	void setCustomAPIValue(JSObject* base, JSC::CustomAPIValue * value)
-	{
-		m_type = CustomAPIValue;
-		m_base = base;
-		m_setter.customAPIValue = value;
-		disableCaching();
-	}
+    void setCustomAPIValue(JSObject* base, JSC::CustomAPIValue* value)
+    {
+        m_type = CustomAPIValue;
+        m_base = base;
+        m_customAPIValue = value;
+        disableCaching();
+    }
 
     void setCacheableSetter(JSObject* base, PropertyOffset offset)
     {
@@ -107,10 +109,10 @@ public:
         m_isStrictMode = value;
     }
 
-    PutValueFunc customSetter() const
+    FunctionPtr<OperationPtrTag> customSetter() const
     {
         ASSERT(isCacheableCustom());
-        return m_setter.putFunction;
+        return m_putFunction;
     }
 
     Context context() const { return static_cast<Context>(m_context); }
@@ -147,11 +149,10 @@ private:
     bool m_isInitialization;
     uint8_t m_context;
     CacheabilityType m_cacheability;
-	union {
-		PutValueFunc putFunction;
-		JSC::CustomAPIValue * customAPIValue;
-	} m_setter;
+    FunctionPtr<OperationPtrTag> m_putFunction;
     
+	// TODO: Put in a union with m_putFunction?
+	JSC::CustomAPIValue* m_customAPIValue;
 };
 
 } // namespace JSC

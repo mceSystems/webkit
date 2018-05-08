@@ -49,6 +49,7 @@
 #import "HTMLInputElement.h"
 #import "HTMLNames.h"
 #import "HTMLSelectElement.h"
+#import "IOSurface.h"
 #import "Icon.h"
 #import "LocalizedDateCache.h"
 #import "NodeRenderStyle.h"
@@ -67,6 +68,7 @@
 #import "UserAgentStyleSheets.h"
 #import "WebCoreThreadRun.h"
 #import <CoreGraphics/CoreGraphics.h>
+#import <CoreImage/CoreImage.h>
 #import <objc/runtime.h>
 #import <pal/spi/cocoa/CoreTextSPI.h>
 #import <pal/spi/ios/UIKitSPI.h>
@@ -74,6 +76,10 @@
 #import <wtf/RefPtr.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/StdLibExtras.h>
+
+#if USE(SYSTEM_PREVIEW) && USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/SystemPreviewArtwork.cpp>
+#endif
 
 SOFT_LINK_FRAMEWORK(UIKit)
 SOFT_LINK_CLASS(UIKit, UIApplication)
@@ -870,9 +876,9 @@ Seconds RenderThemeIOS::animationRepeatIntervalForProgressBar(RenderProgress&) c
     return 0_s;
 }
 
-double RenderThemeIOS::animationDurationForProgressBar(RenderProgress&) const
+Seconds RenderThemeIOS::animationDurationForProgressBar(RenderProgress&) const
 {
-    return 0;
+    return 0_s;
 }
 
 bool RenderThemeIOS::paintProgressBar(const RenderObject& renderer, const PaintInfo& paintInfo, const IntRect& rect)
@@ -1397,8 +1403,18 @@ String RenderThemeIOS::mediaControlsBase64StringForIconNameAndType(const String&
 
 #endif // ENABLE(VIDEO)
 
-Color RenderThemeIOS::systemColor(CSSValueID cssValueID) const
+Color RenderThemeIOS::systemColor(CSSValueID cssValueID, OptionSet<StyleColor::Options> options) const
 {
+    const bool forVisitedLink = options.contains(StyleColor::Options::ForVisitedLink);
+
+    // The system color cache below can't handle visited links. The only color value
+    // that cares about visited links is CSSValueWebkitLink, so handle it here by
+    // calling through to RenderTheme's base implementation.
+    if (forVisitedLink && cssValueID == CSSValueWebkitLink)
+        return RenderTheme::systemColor(cssValueID, options);
+
+    ASSERT(!forVisitedLink);
+
     auto addResult = m_systemColorCache.add(cssValueID, Color());
     if (!addResult.isNewEntry)
         return addResult.iterator->value;
@@ -1434,7 +1450,7 @@ Color RenderThemeIOS::systemColor(CSSValueID cssValueID) const
     }
 
     if (!color.isValid())
-        color = RenderTheme::systemColor(cssValueID);
+        color = RenderTheme::systemColor(cssValueID, options);
 
     addResult.iterator->value = color;
 
@@ -1798,6 +1814,147 @@ bool RenderThemeIOS::paintAttachment(const RenderObject& renderer, const PaintIn
 }
 
 #endif // ENABLE(ATTACHMENT_ELEMENT)
+
+#if ENABLE(EXTRA_ZOOM_MODE)
+
+String RenderThemeIOS::extraDefaultStyleSheet()
+{
+    return ASCIILiteral("* { -webkit-text-size-adjust: auto; -webkit-hyphens: auto !important; }");
+}
+
+#endif
+
+#if USE(SYSTEM_PREVIEW)
+void RenderThemeIOS::paintSystemPreviewBadge(Image& image, const PaintInfo& paintInfo, const FloatRect& rect)
+{
+    static const int largeBadgeDimension = 70;
+    static const int largeBadgeOffset = 20;
+
+    static const int smallBadgeDimension = 35;
+    static const int smallBadgeOffset = 8;
+
+    static const int minimumSizeForLargeBadge = 240;
+
+    bool useSmallBadge = rect.width() < minimumSizeForLargeBadge || rect.height() < minimumSizeForLargeBadge;
+    int badgeOffset = useSmallBadge ? smallBadgeOffset : largeBadgeOffset;
+    int badgeDimension = useSmallBadge ? smallBadgeDimension : largeBadgeDimension;
+
+    int minimumDimension = badgeDimension + 2 * badgeOffset;
+    if (rect.width() < minimumDimension || rect.height() < minimumDimension)
+        return;
+
+    CGRect absoluteBadgeRect = CGRectMake(rect.x() + rect.width() - badgeDimension - badgeOffset, rect.y() + badgeOffset, badgeDimension, badgeDimension);
+    CGRect insetBadgeRect = CGRectMake(rect.width() - badgeDimension - badgeOffset, badgeOffset, badgeDimension, badgeDimension);
+    CGRect badgeRect = CGRectMake(0, 0, badgeDimension, badgeDimension);
+
+    CIImage *inputImage = [CIImage imageWithCGImage:image.nativeImage().get()];
+
+    // Create a circle to be used for the clipping path in the badge, as well as the drop shadow.
+    RetainPtr<CGPathRef> circle = adoptCF(CGPathCreateWithRoundedRect(absoluteBadgeRect, badgeDimension / 2, badgeDimension / 2, nullptr));
+
+    CGContextRef ctx = paintInfo.context().platformContext();
+
+    CGContextSaveGState(ctx);
+
+    // Draw a drop shadow around the circle.
+    CGFloat shadowColorComponents[4] = { 0, 0, 0, 0.1 };
+    RetainPtr<CGColorRef> shadowColor = adoptCF(CGColorCreate(sRGBColorSpaceRef(), shadowColorComponents));
+    // The circle must have an alpha channel value of 1 for the shadow color to appear.
+    CGFloat circleColorComponents[4] = { 0, 0, 0, 1 };
+    RetainPtr<CGColorRef> circleColor = adoptCF(CGColorCreate(sRGBColorSpaceRef(), circleColorComponents));
+    CGContextSetFillColorWithColor(ctx, circleColor.get());
+    CGContextSetShadowWithColor(ctx, CGSizeZero, 16, shadowColor.get());
+
+    // Draw a slightly smaller circle with a shadow, otherwise we'll see a fringe of the solid
+    // black circle around the edges of the cliped path below.
+    CGContextBeginPath(ctx);
+    CGRect slightlySmallerAbsoluteBadgeRect = CGRectMake(absoluteBadgeRect.origin.x + 0.5, absoluteBadgeRect.origin.y + 0.5, badgeDimension - 1, badgeDimension - 1);
+    RetainPtr<CGPathRef> slightlySmallerCircle = adoptCF(CGPathCreateWithRoundedRect(slightlySmallerAbsoluteBadgeRect, slightlySmallerAbsoluteBadgeRect.size.width / 2, slightlySmallerAbsoluteBadgeRect.size.height / 2, nullptr));
+    CGContextAddPath(ctx, slightlySmallerCircle.get());
+    CGContextClosePath(ctx);
+    CGContextFillPath(ctx);
+
+    CGContextRestoreGState(ctx);
+
+    // Draw the blurred backdrop. Scale from intrinsic size to render size.
+    CGAffineTransform transform = CGAffineTransformIdentity;
+    transform = CGAffineTransformScale(transform, rect.width() / image.width(), rect.height() / image.height());
+    CIImage *scaledImage = [inputImage imageByApplyingTransform:transform];
+
+    // CoreImage coordinates are y-up, so we need to flip the badge rectangle within the image frame.
+    CGRect flippedInsetBadgeRect = CGRectMake(insetBadgeRect.origin.x, rect.height() - insetBadgeRect.origin.y - insetBadgeRect.size.height, badgeDimension, badgeDimension);
+
+    // Create a cropped region with pixel values extending outwards.
+    CIImage *clampedImage = [scaledImage imageByClampingToRect:flippedInsetBadgeRect];
+
+    // Blur.
+    CIImage *blurredImage = [clampedImage imageByApplyingGaussianBlurWithSigma:10];
+
+    // Saturate.
+    CIFilter *saturationFilter = [CIFilter filterWithName:@"CIColorControls"];
+    [saturationFilter setValue:blurredImage forKey:kCIInputImageKey];
+    [saturationFilter setValue:@1.8 forKey:kCIInputSaturationKey];
+
+    // Tint.
+    CIFilter *tintFilter1 = [CIFilter filterWithName:@"CIConstantColorGenerator"];
+    CIColor *tintColor1 = [CIColor colorWithRed:1 green:1 blue:1 alpha:0.18];
+    [tintFilter1 setValue:tintColor1 forKey:kCIInputColorKey];
+
+    // Blend the tint with the saturated output.
+    CIFilter *sourceOverFilter = [CIFilter filterWithName:@"CISourceOverCompositing"];
+    [sourceOverFilter setValue:tintFilter1.outputImage forKey:kCIInputImageKey];
+    [sourceOverFilter setValue:saturationFilter.outputImage forKey:kCIInputBackgroundImageKey];
+
+    if (!m_ciContext)
+        m_ciContext = [CIContext context];
+
+    RetainPtr<CGImageRef> cgImage;
+#if HAVE(IOSURFACE)
+    // Crop the result to the badge location.
+    CIImage *croppedImage = [sourceOverFilter.outputImage imageByCroppingToRect:flippedInsetBadgeRect];
+    CIImage *translatedImage = [croppedImage imageByApplyingTransform:CGAffineTransformMakeTranslation(-flippedInsetBadgeRect.origin.x, -flippedInsetBadgeRect.origin.y)];
+    IOSurfaceRef surface;
+    if (useSmallBadge) {
+        if (!m_smallBadgeSurface)
+            m_smallBadgeSurface = IOSurface::create({ smallBadgeDimension, smallBadgeDimension }, sRGBColorSpaceRef());
+        surface = m_smallBadgeSurface->surface();
+    } else {
+        if (!m_largeBadgeSurface)
+            m_largeBadgeSurface = IOSurface::create({ largeBadgeDimension, largeBadgeDimension }, sRGBColorSpaceRef());
+        surface = m_largeBadgeSurface->surface();
+    }
+    [m_ciContext.get() render:translatedImage toIOSurface:surface bounds:badgeRect colorSpace:sRGBColorSpaceRef()];
+    cgImage = useSmallBadge ? m_smallBadgeSurface->createImage() : m_largeBadgeSurface->createImage();
+#else
+    cgImage = adoptCF([m_ciContext.get() createCGImage:sourceOverFilter.outputImage fromRect:flippedInsetBadgeRect]);
+#endif
+
+    // Before we render the result, we should clip to a circle around the badge rectangle.
+    CGContextSaveGState(ctx);
+    CGContextBeginPath(ctx);
+    CGContextAddPath(ctx, circle.get());
+    CGContextClosePath(ctx);
+    CGContextClip(ctx);
+
+    CGContextTranslateCTM(ctx, absoluteBadgeRect.origin.x, absoluteBadgeRect.origin.y);
+    CGContextTranslateCTM(ctx, 0, badgeDimension);
+    CGContextScaleCTM(ctx, 1, -1);
+    CGContextDrawImage(ctx, badgeRect, cgImage.get());
+
+#if USE(APPLE_INTERNAL_SDK)
+    if (auto logo = systemPreviewLogo()) {
+        CGSize pdfSize = CGPDFPageGetBoxRect(logo, kCGPDFMediaBox).size;
+        CGFloat scaleX = badgeDimension / pdfSize.width;
+        CGFloat scaleY = badgeDimension / pdfSize.height;
+        CGContextScaleCTM(ctx, scaleX, scaleY);
+        CGContextDrawPDFPage(ctx, logo);
+    }
+#endif
+
+    CGContextFlush(ctx);
+    CGContextRestoreGState(ctx);
+}
+#endif
 
 } // namespace WebCore
 

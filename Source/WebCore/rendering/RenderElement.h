@@ -70,7 +70,7 @@ public:
     bool canContainFixedPositionObjects() const;
     bool canContainAbsolutelyPositionedObjects() const;
 
-    Color selectionColor(int colorProperty) const;
+    Color selectionColor(CSSPropertyID) const;
     std::unique_ptr<RenderStyle> selectionPseudoStyle() const;
 
     // Obtains the selection colors that should be used when painting a selection.
@@ -87,10 +87,7 @@ public:
     bool isRenderInline() const;
 
     virtual bool isChildAllowed(const RenderObject&, const RenderStyle&) const { return true; }
-    virtual void addChild(RenderTreeBuilder&, RenderPtr<RenderObject>, RenderObject* beforeChild);
-    virtual void addChildIgnoringContinuation(RenderTreeBuilder&, RenderPtr<RenderObject> newChild, RenderObject* beforeChild = nullptr);
-    virtual RenderPtr<RenderObject> takeChild(RenderTreeBuilder&, RenderObject&) WARN_UNUSED_RETURN;
-    void removeAndDestroyChild(RenderTreeBuilder&, RenderObject&);
+    void didAttachChild(RenderObject& child, RenderObject* beforeChild);
 
     // The following functions are used when the render tree hierarchy changes to make sure layers get
     // properly added and removed. Since containership can be implemented by any subclass, and since a hierarchy
@@ -99,9 +96,6 @@ public:
     void removeLayers(RenderLayer* parentLayer);
     void moveLayers(RenderLayer* oldParent, RenderLayer* newParent);
     RenderLayer* findNextLayer(RenderLayer* parentLayer, RenderObject* startPoint, bool checkParent = true);
-
-    void insertChildInternal(RenderPtr<RenderObject>, RenderObject* beforeChild);
-    RenderPtr<RenderObject> takeChildInternal(RenderObject&) WARN_UNUSED_RETURN;
 
     virtual RenderElement* hoverAncestor() const;
 
@@ -260,7 +254,7 @@ protected:
 
     void insertedIntoTree() override;
     void willBeRemovedFromTree() override;
-    void willBeDestroyed(RenderTreeBuilder&) override;
+    void willBeDestroyed() override;
 
     void setRenderInlineAlwaysCreatesLineBoxes(bool b) { m_renderInlineAlwaysCreatesLineBoxes = b; }
     bool renderInlineAlwaysCreatesLineBoxes() const { return m_renderInlineAlwaysCreatesLineBoxes; }
@@ -286,7 +280,6 @@ protected:
     void removeFromRenderFragmentedFlowIncludingDescendants(bool shouldUpdateState);
     void adjustFragmentedFlowStateOnContainingBlockChangeIfNeeded();
     
-    bool noLongerAffectsParentBlock() const { return s_noLongerAffectsParentBlock; }
     bool isVisibleInViewport() const;
 
 private:
@@ -354,11 +347,6 @@ private:
     RenderObject* m_lastChild;
 
     RenderStyle m_style;
-
-    // FIXME: Get rid of this hack.
-    // Store state between styleWillChange and styleDidChange
-    static bool s_affectsParentBlock;
-    static bool s_noLongerAffectsParentBlock;
 };
 
 inline void RenderElement::setAncestorLineBoxDirty(bool f)

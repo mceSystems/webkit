@@ -44,6 +44,13 @@ public:
 
 template<> struct SVGPropertyTraits<SVGTransformListValues> {
     static SVGTransformListValues initialValue() { return { }; }
+    static SVGTransformListValues fromString(const String& string)
+    {
+        SVGTransformListValues values;
+        values.parse(string);
+        return values;
+    }
+    static std::optional<SVGTransformListValues> parse(const QualifiedName&, const String&) { ASSERT_NOT_REACHED(); return initialValue(); }
     static String toString(const SVGTransformListValues& list) { return list.valueAsString(); }
 
     using ListItemType = SVGTransformValue;

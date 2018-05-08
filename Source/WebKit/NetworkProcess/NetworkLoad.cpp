@@ -191,31 +191,6 @@ bool NetworkLoad::shouldCaptureExtraNetworkLoadMetrics() const
     return m_client.get().shouldCaptureExtraNetworkLoadMetrics();
 }
 
-NetworkLoadClient::ShouldContinueDidReceiveResponse NetworkLoad::sharedDidReceiveResponse(ResourceResponse&& response)
-{
-    response.setSource(ResourceResponse::Source::Network);
-    if (m_parameters.needsCertificateInfo)
-        response.includeCertificateInfo();
-
-    return m_client.get().didReceiveResponse(WTFMove(response));
-}
-
-void NetworkLoad::sharedWillSendRedirectedRequest(ResourceRequest&& request, ResourceResponse&& redirectResponse)
-{
-    // We only expect to get the willSendRequest callback from ResourceHandle as the result of a redirect.
-    ASSERT(!redirectResponse.isNull());
-    ASSERT(RunLoop::isMain());
-
-#if ENABLE(NETWORK_CAPTURE)
-    if (m_recorder)
-        m_recorder->recordRedirectReceived(request, redirectResponse);
-#endif
-
-    auto oldRequest = WTFMove(m_currentRequest);
-    m_currentRequest = request;
-    m_client.get().willSendRedirectedRequest(WTFMove(oldRequest), WTFMove(request), WTFMove(redirectResponse));
-}
-
 bool NetworkLoad::isAllowedToAskUserForCredentials() const
 {
     return m_client.get().isAllowedToAskUserForCredentials();
@@ -258,11 +233,25 @@ void NetworkLoad::setPendingDownload(PendingDownload& pendingDownload)
     m_task->setPendingDownload(pendingDownload);
 }
 
-void NetworkLoad::willPerformHTTPRedirection(ResourceResponse&& response, ResourceRequest&& request, RedirectCompletionHandler&& completionHandler)
+void NetworkLoad::willPerformHTTPRedirection(ResourceResponse&& redirectResponse, ResourceRequest&& request, RedirectCompletionHandler&& completionHandler)
 {
+    ASSERT(!redirectResponse.isNull());
+    ASSERT(RunLoop::isMain());
     ASSERT(!m_redirectCompletionHandler);
+
+    redirectResponse.setSource(ResourceResponse::Source::Network);
     m_redirectCompletionHandler = WTFMove(completionHandler);
-    sharedWillSendRedirectedRequest(WTFMove(request), WTFMove(response));
+
+#if ENABLE(NETWORK_CAPTURE)
+    if (m_recorder)
+        m_recorder->recordRedirectReceived(request, redirectResponse);
+#endif
+
+    auto oldRequest = WTFMove(m_currentRequest);
+    request.setRequester(oldRequest.requester());
+
+    m_currentRequest = request;
+    m_client.get().willSendRedirectedRequest(WTFMove(oldRequest), WTFMove(request), WTFMove(redirectResponse));
 }
 
 void NetworkLoad::didReceiveChallenge(const AuthenticationChallenge& challenge, ChallengeCompletionHandler&& completionHandler)
@@ -343,7 +332,11 @@ void NetworkLoad::notifyDidReceiveResponse(ResourceResponse&& response, Response
         m_recorder->recordResponseReceived(response);
 #endif
 
-    if (sharedDidReceiveResponse(WTFMove(response)) == NetworkLoadClient::ShouldContinueDidReceiveResponse::No) {
+    response.setSource(ResourceResponse::Source::Network);
+    if (m_parameters.needsCertificateInfo)
+        response.includeCertificateInfo();
+
+    if (m_client.get().didReceiveResponse(WTFMove(response)) == NetworkLoadClient::ShouldContinueDidReceiveResponse::No) {
         m_responseCompletionHandler = WTFMove(completionHandler);
         return;
     }
@@ -401,6 +394,14 @@ void NetworkLoad::wasBlocked()
 void NetworkLoad::cannotShowURL()
 {
     m_client.get().didFailLoading(cannotShowURLError(m_currentRequest));
+}
+
+
+String NetworkLoad::description() const
+{
+    if (m_task.get())
+        return m_task->description();
+    return emptyString();
 }
 
 } // namespace WebKit

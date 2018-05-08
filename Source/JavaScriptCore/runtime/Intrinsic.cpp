@@ -115,6 +115,8 @@ const char* intrinsicName(Intrinsic intrinsic)
         return "RegExpMatchFastIntrinsic";
     case ObjectGetPrototypeOfIntrinsic:
         return "ObjectGetPrototypeOfIntrinsic";
+    case ObjectIsIntrinsic:
+        return "ObjectIsIntrinsic";
     case ReflectGetPrototypeOfIntrinsic:
         return "ReflectGetPrototypeOfIntrinsic";
     case StringPrototypeValueOfIntrinsic:
@@ -129,6 +131,8 @@ const char* intrinsicName(Intrinsic intrinsic)
         return "StringPrototypeToLowerCaseIntrinsic";
     case NumberPrototypeToStringIntrinsic:
         return "NumberPrototypeToStringIntrinsic";
+    case NumberIsIntegerIntrinsic:
+        return "NumberIsIntegerIntrinsic";
     case IMulIntrinsic:
         return "IMulIntrinsic";
     case RandomIntrinsic:
@@ -213,6 +217,8 @@ const char* intrinsicName(Intrinsic intrinsic)
         return "UnderscoreProtoIntrinsic";
     case DFGTrueIntrinsic:
         return "DFGTrueIntrinsic";
+    case FTLTrueIntrinsic:
+        return "FTLTrueIntrinsic";
     case OSRExitIntrinsic:
         return "OSRExitIntrinsic";
     case IsFinalTierIntrinsic:

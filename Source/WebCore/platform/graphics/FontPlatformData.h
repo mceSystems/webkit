@@ -41,6 +41,7 @@
 #if USE(FREETYPE)
 #include "FcUniquePtr.h"
 #include "HarfBuzzFace.h"
+#include <memory>
 #endif
 
 #if USE(APPKIT)
@@ -161,9 +162,8 @@ public:
 #endif
 
 #if USE(FREETYPE)
-    HarfBuzzFace* harfBuzzFace() const;
+    HarfBuzzFace& harfBuzzFace() const;
     bool hasCompatibleCharmap() const;
-    FcFontSet* fallbacks() const;
 #endif
 
     unsigned hash() const;
@@ -241,8 +241,7 @@ private:
 
 #if USE(FREETYPE)
     RefPtr<FcPattern> m_pattern;
-    mutable FcUniquePtr<FcFontSet> m_fallbacks;
-    mutable RefPtr<HarfBuzzFace> m_harfBuzzFace;
+    mutable std::unique_ptr<HarfBuzzFace> m_harfBuzzFace;
 #endif
 
     // The values below are common to all ports

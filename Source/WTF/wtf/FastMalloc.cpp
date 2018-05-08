@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2005, 2007, Google Inc. All rights reserved.
- * Copyright (C) 2005-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -27,12 +27,9 @@
 #include "FastMalloc.h"
 
 #include "CheckedArithmetic.h"
-#include "CurrentTime.h"
 #include <limits>
 #include <string.h>
 #include <wtf/DataLog.h>
-#include <wtf/FastCopy.h>
-#include <wtf/FastZeroFill.h>
 
 #if OS(WINDOWS)
 #include <windows.h>
@@ -80,7 +77,7 @@ void fastSetMaxSingleAllocationSize(size_t size)
 void* fastZeroedMalloc(size_t n) 
 {
     void* result = fastMalloc(n);
-    fastZeroFillBytes(result, n);
+    memset(result, 0, n);
     return result;
 }
 
@@ -88,7 +85,7 @@ char* fastStrDup(const char* src)
 {
     size_t len = strlen(src) + 1;
     char* dup = static_cast<char*>(fastMalloc(len));
-    fastCopy(dup, src, len);
+    memcpy(dup, src, len);
     return dup;
 }
 
@@ -97,13 +94,15 @@ TryMallocReturnValue tryFastZeroedMalloc(size_t n)
     void* result;
     if (!tryFastMalloc(n).getValue(result))
         return 0;
-    fastZeroFillBytes(result, n);
+    memset(result, 0, n);
     return result;
 }
 
 } // namespace WTF
 
 #if defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
+
+#include <wtf/OSAllocator.h>
 
 #if OS(WINDOWS)
 #include <malloc.h>
@@ -241,6 +240,16 @@ size_t fastMallocSize(const void* p)
 #endif
 }
 
+void fastCommitAlignedMemory(void* ptr, size_t size)
+{
+    OSAllocator::commit(ptr, size, true, false);
+}
+
+void fastDecommitAlignedMemory(void* ptr, size_t size)
+{
+    OSAllocator::decommit(ptr, size);
+}
+
 } // namespace WTF
 
 #else // defined(USE_SYSTEM_MALLOC) && USE_SYSTEM_MALLOC
@@ -362,6 +371,16 @@ FastMallocStatistics fastMallocStatistics()
 
 #endif // OS(WINDOWS)
     return statistics;
+}
+
+void fastCommitAlignedMemory(void* ptr, size_t size)
+{
+    bmalloc::api::commitAlignedPhysical(ptr, size);
+}
+
+void fastDecommitAlignedMemory(void* ptr, size_t size)
+{
+    bmalloc::api::decommitAlignedPhysical(ptr, size);
 }
 
 } // namespace WTF

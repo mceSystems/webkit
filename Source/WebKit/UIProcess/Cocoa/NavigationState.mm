@@ -66,6 +66,7 @@
 #import "_WKSameDocumentNavigationTypeInternal.h"
 #import "_WKWebsitePoliciesInternal.h"
 #import <WebCore/Credential.h>
+#import <WebCore/SSLKeyGenerator.h>
 #import <WebCore/SecurityOriginData.h>
 #import <WebCore/SerializedCryptoKeyWrap.h>
 #import <WebCore/URL.h>
@@ -96,7 +97,7 @@ NavigationState::NavigationState(WKWebView *webView)
     , m_navigationDelegateMethods()
     , m_historyDelegateMethods()
 #if PLATFORM(IOS)
-    , m_releaseActivityTimer(RunLoop::current(), this, &NavigationState::releaseNetworkActivityToken)
+    , m_releaseActivityTimer(RunLoop::current(), this, &NavigationState::releaseNetworkActivityTokenAfterLoadCompletion)
 #endif
 {
     ASSERT(m_webView->_page);
@@ -476,6 +477,7 @@ static void tryAppLink(Ref<API::NavigationAction>&& navigationAction, const Stri
 
 void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageProxy& webPageProxy, Ref<API::NavigationAction>&& navigationAction, Ref<WebFramePolicyListenerProxy>&& listener, API::Object* userInfo)
 {
+    ASSERT(webPageProxy.mainFrame());
     String mainFrameURLString = webPageProxy.mainFrame()->url();
     bool subframeNavigation = navigationAction->targetFrame() && !navigationAction->targetFrame()->isMainFrame();
 
@@ -607,7 +609,7 @@ void NavigationState::NavigationClient::contentRuleListNotification(WebPageProxy
     [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState.m_webView URL:url contentRuleListIdentifiers:identifiers.get() notifications:nsNotifications.get()];
 }
     
-void NavigationState::NavigationClient::decidePolicyForNavigationResponse(WebPageProxy&, Ref<API::NavigationResponse>&& navigationResponse, Ref<WebFramePolicyListenerProxy>&& listener, API::Object* userData)
+void NavigationState::NavigationClient::decidePolicyForNavigationResponse(WebPageProxy& page, Ref<API::NavigationResponse>&& navigationResponse, Ref<WebFramePolicyListenerProxy>&& listener, API::Object* userData)
 {
     if (!m_navigationState.m_navigationDelegateMethods.webViewDecidePolicyForNavigationResponseDecisionHandler) {
         NSURL *url = navigationResponse->response().nsURLResponse().URL;
@@ -635,6 +637,7 @@ void NavigationState::NavigationClient::decidePolicyForNavigationResponse(WebPag
 
     RefPtr<WebFramePolicyListenerProxy> localListener = WTFMove(listener);
     RefPtr<CompletionHandlerCallChecker> checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(webView:decidePolicyForNavigationResponse:decisionHandler:));
+    RefPtr<API::NavigationResponse> navigationResponseRefPtr(navigationResponse.ptr());
     [navigationDelegate webView:m_navigationState.m_webView decidePolicyForNavigationResponse:wrapper(navigationResponse) decisionHandler:[localListener, checker](WKNavigationResponsePolicy responsePolicy) {
         if (checker->completionHandlerHasBeenCalled())
             return;
@@ -653,8 +656,8 @@ void NavigationState::NavigationClient::decidePolicyForNavigationResponse(WebPag
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wswitch"
         case _WKNavigationResponsePolicyBecomeDownload:
-#pragma clang diagnostic pop
             localListener->download();
+#pragma clang diagnostic pop
             break;
         }
     }];
@@ -961,6 +964,10 @@ static _WKProcessTerminationReason wkProcessTerminationReason(ProcessTermination
         return _WKProcessTerminationReasonExceededMemoryLimit;
     case ProcessTerminationReason::ExceededCPULimit:
         return _WKProcessTerminationReasonExceededCPULimit;
+    case ProcessTerminationReason::NavigationSwap:
+        // We probably shouldn't bother coming up with a new API type for process-swapping.
+        // "Requested by client" seems like the best match for existing types.
+        FALLTHROUGH;
     case ProcessTerminationReason::RequestedByClient:
         return _WKProcessTerminationReasonRequestedByClient;
     case ProcessTerminationReason::Crash:
@@ -1039,6 +1046,12 @@ RefPtr<API::Data> NavigationState::NavigationClient::webCryptoMasterKey(WebPageP
     return API::Data::createWithoutCopying((const unsigned char*)[data bytes], [data length], [] (unsigned char*, const void* data) {
         [(NSData *)data release];
     }, data.leakRef());
+}
+
+RefPtr<API::String> NavigationState::NavigationClient::signedPublicKeyAndChallengeString(WebPageProxy& page, unsigned keySizeIndex, const RefPtr<API::String>& challengeString, const WebCore::URL& url)
+{
+    // WebKitTestRunner uses C API. Hence, no SPI is provided to override the following function.
+    return API::String::create(WebCore::signedPublicKeyAndChallengeString(keySizeIndex, challengeString->string(), url));
 }
 
 #if USE(QUICK_LOOK)
@@ -1132,11 +1145,21 @@ void NavigationState::willChangeIsLoading()
 }
 
 #if PLATFORM(IOS)
-void NavigationState::releaseNetworkActivityToken()
+void NavigationState::releaseNetworkActivityToken(NetworkActivityTokenReleaseReason reason)
 {
-    RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p UIProcess is releasing a background assertion because a page load completed", this);
-    ASSERT(m_activityToken);
+    if (!m_activityToken)
+        return;
+
+    switch (reason) {
+    case NetworkActivityTokenReleaseReason::LoadCompleted:
+        RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p NavigationState is releasing background process assertion because a page load completed", this);
+        break;
+    case NetworkActivityTokenReleaseReason::ScreenLocked:
+        RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p NavigationState is releasing background process assertion because the screen was locked", this);
+        break;
+    }
     m_activityToken = nullptr;
+    m_releaseActivityTimer.stop();
 }
 #endif
 
@@ -1144,17 +1167,27 @@ void NavigationState::didChangeIsLoading()
 {
 #if PLATFORM(IOS)
     if (m_webView->_page->pageLoadState().isLoading()) {
-        if (m_releaseActivityTimer.isActive())
+        // We do not take a network activity token if a load starts after the screen has been locked.
+        if ([UIApp isSuspendedUnderLock])
+            return;
+
+        if (m_releaseActivityTimer.isActive()) {
+            RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NavigationState keeps its process network assertion because a new page load started", this);
             m_releaseActivityTimer.stop();
-        else {
-            RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - UIProcess is taking a background assertion because a page load started", this);
-            ASSERT(!m_activityToken);
+        }
+        if (!m_activityToken) {
+            RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NavigationState is taking a process network assertion because a page load started", this);
             m_activityToken = m_webView->_page->process().throttler().backgroundActivityToken();
         }
-    } else {
-        // Delay releasing the background activity for 3 seconds to give the application a chance to start another navigation
-        // before suspending the WebContent process <rdar://problem/27910964>.
-        m_releaseActivityTimer.startOneShot(3_s);
+    } else if (m_activityToken) {
+        if (m_webView._isBackground)
+            releaseNetworkActivityTokenAfterLoadCompletion();
+        else {
+            // The application is visible so we delay releasing the background activity for 3 seconds to give it a chance to start another navigation
+            // before suspending the WebContent process <rdar://problem/27910964>.
+            RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NavigationState will release its process network assertion soon because the page load completed", this);
+            m_releaseActivityTimer.startOneShot(3_s);
+        }
     }
 #endif
 

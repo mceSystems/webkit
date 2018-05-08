@@ -32,18 +32,19 @@
 #include "ComposedTreeIterator.h"
 #include "DocumentTimeline.h"
 #include "ElementIterator.h"
+#include "Frame.h"
 #include "HTMLBodyElement.h"
 #include "HTMLMeterElement.h"
 #include "HTMLNames.h"
 #include "HTMLProgressElement.h"
 #include "HTMLSlotElement.h"
 #include "LoaderStrategy.h"
-#include "MainFrame.h"
 #include "NodeRenderStyle.h"
 #include "Page.h"
 #include "PlatformStrategies.h"
 #include "RenderElement.h"
 #include "RenderView.h"
+#include "RuntimeEnabledFeatures.h"
 #include "Settings.h"
 #include "ShadowRoot.h"
 #include "StyleFontSizeFunctions.h"
@@ -137,14 +138,8 @@ std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, con
 
 static void resetStyleForNonRenderedDescendants(Element& current)
 {
-    // FIXME: This is not correct with shadow trees. This should be done with ComposedTreeIterator.
-    bool elementNeedingStyleRecalcAffectsNextSiblingElementStyle = false;
     for (auto& child : childrenOfType<Element>(current)) {
-        bool affectedByPreviousSibling = child.styleIsAffectedByPreviousSibling() && elementNeedingStyleRecalcAffectsNextSiblingElementStyle;
-        if (child.needsStyleRecalc() || elementNeedingStyleRecalcAffectsNextSiblingElementStyle)
-            elementNeedingStyleRecalcAffectsNextSiblingElementStyle = child.affectsNextSiblingElementStyle();
-
-        if (child.needsStyleRecalc() || affectedByPreviousSibling) {
+        if (child.needsStyleRecalc()) {
             child.resetComputedStyle();
             child.resetStyleRelations();
             child.setHasValidStyle();
@@ -292,7 +287,21 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
 {
     auto* oldStyle = renderOrDisplayContentsStyle(element);
 
-    if (auto timeline = element.document().existingTimeline()) {
+    // New code path for CSS Animations and CSS Transitions.
+    if (RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled()) {
+        // First, we need to make sure that any new CSS animation occuring on this element has a matching WebAnimation
+        // on the document timeline. Note that we get timeline() on the Document here because we need a timeline created
+        // in case no Web Animations have been created through the JS API.
+        if ((oldStyle && oldStyle->hasTransitions()) || newStyle->hasTransitions())
+            m_document.timeline().updateCSSTransitionsForElement(element, *newStyle, oldStyle);
+
+        if ((oldStyle && oldStyle->hasAnimations()) || newStyle->hasAnimations())
+            m_document.timeline().updateCSSAnimationsForElement(element, *newStyle, oldStyle);
+    }
+
+    if (auto timeline = m_document.existingTimeline()) {
+        // Now we can update all Web animations, which will include CSS Animations as well
+        // as animations created via the JS API.
         auto webAnimations = timeline->animationsForElement(element);
         if (!webAnimations.isEmpty()) {
             auto animatedStyle = RenderStyle::clonePtr(*newStyle);
@@ -302,12 +311,18 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
         }
     }
 
-    auto& animationController = m_document.frame()->animation();
+    bool shouldRecompositeLayer = false;
 
-    auto animationUpdate = animationController.updateAnimations(element, *newStyle, oldStyle);
+    // Old code path for CSS Animations and CSS Transitions.
+    if (!RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled()) {
+        auto& animationController = m_document.frame()->animation();
 
-    if (animationUpdate.style)
-        newStyle = WTFMove(animationUpdate.style);
+        auto animationUpdate = animationController.updateAnimations(element, *newStyle, oldStyle);
+        shouldRecompositeLayer = animationUpdate.stateChanged;
+
+        if (animationUpdate.style)
+            newStyle = WTFMove(animationUpdate.style);
+    }
 
     auto change = oldStyle ? determineChange(*oldStyle, *newStyle) : Detach;
 
@@ -315,7 +330,7 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
     if (validity >= Validity::SubtreeAndRenderersInvalid || parentChange == Detach)
         change = Detach;
 
-    bool shouldRecompositeLayer = element.styleResolutionShouldRecompositeLayer() || animationUpdate.stateChanged;
+    shouldRecompositeLayer |= element.styleResolutionShouldRecompositeLayer();
 
     return { WTFMove(newStyle), change, shouldRecompositeLayer };
 }
@@ -471,16 +486,11 @@ void TreeResolver::resolveComposedTree()
             continue;
         }
 
-        // FIXME: We should deal with this during style invalidation.
-        bool affectedByPreviousSibling = element.styleIsAffectedByPreviousSibling() && parent.elementNeedingStyleRecalcAffectsNextSiblingElementStyle;
-        if (element.needsStyleRecalc() || parent.elementNeedingStyleRecalcAffectsNextSiblingElementStyle)
-            parent.elementNeedingStyleRecalcAffectsNextSiblingElementStyle = element.affectsNextSiblingElementStyle();
-
         auto* style = renderOrDisplayContentsStyle(element);
         auto change = NoChange;
         auto descendantsToResolve = DescendantsToResolve::None;
 
-        bool shouldResolve = shouldResolveElement(element, parent.descendantsToResolve) || affectedByPreviousSibling;
+        bool shouldResolve = shouldResolveElement(element, parent.descendantsToResolve);
         if (shouldResolve) {
             if (!element.hasDisplayContents())
                 element.resetComputedStyle();
@@ -497,9 +507,6 @@ void TreeResolver::resolveComposedTree()
             style = elementUpdates.update.style.get();
             change = elementUpdates.update.change;
             descendantsToResolve = elementUpdates.descendantsToResolve;
-
-            if (affectedByPreviousSibling)
-                descendantsToResolve = DescendantsToResolve::All;
 
             if (elementUpdates.update.style)
                 m_update->addElement(element, parent.element, WTFMove(elementUpdates));
@@ -587,7 +594,7 @@ static void suspendMemoryCacheClientCalls(Document& document)
 
     page->setMemoryCacheClientCallsEnabled(false);
 
-    postResolutionCallbackQueue().append([protectedMainFrame = Ref<MainFrame>(page->mainFrame())] {
+    postResolutionCallbackQueue().append([protectedMainFrame = makeRef(page->mainFrame())] {
         if (Page* page = protectedMainFrame->page())
             page->setMemoryCacheClientCallsEnabled(true);
     });

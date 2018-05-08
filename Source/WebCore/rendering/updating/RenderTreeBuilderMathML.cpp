@@ -28,6 +28,7 @@
 
 #include "RenderMathMLFenced.h"
 #include "RenderMathMLFencedOperator.h"
+#include "RenderTreeBuilderBlock.h"
 
 namespace WebCore {
 
@@ -47,17 +48,20 @@ RenderPtr<RenderMathMLFencedOperator> RenderTreeBuilder::MathML::createMathMLOpe
 void RenderTreeBuilder::MathML::makeFences(RenderMathMLFenced& parent)
 {
     auto openFence = createMathMLOperator(parent, parent.openingBrace(), MathMLOperatorDictionary::Prefix, MathMLOperatorDictionary::Fence);
-    parent.RenderMathMLRow::addChild(m_builder, WTFMove(openFence), parent.firstChild());
+    m_builder.blockBuilder().attach(parent, WTFMove(openFence), parent.firstChild());
 
     auto closeFence = createMathMLOperator(parent, parent.closingBrace(), MathMLOperatorDictionary::Postfix, MathMLOperatorDictionary::Fence);
     parent.setCloseFenceRenderer(*closeFence);
-    parent.RenderMathMLRow::addChild(m_builder, WTFMove(closeFence));
+    m_builder.blockBuilder().attach(parent, WTFMove(closeFence), nullptr);
 }
 
-void RenderTreeBuilder::MathML::insertChild(RenderMathMLFenced& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild)
+void RenderTreeBuilder::MathML::attach(RenderMathMLFenced& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild)
 {
-    if (!parent.firstChild())
+    // make the fences if the render object is empty
+    if (!parent.firstChild()) {
+        parent.updateFromElement();
         makeFences(parent);
+    }
     // FIXME: Adding or removing a child should possibly cause all later separators to shift places
     // if they're different, as later child positions change by +1 or -1.
     // This should also handle surrogate pairs. See https://bugs.webkit.org/show_bug.cgi?id=125938.
@@ -92,14 +96,14 @@ void RenderTreeBuilder::MathML::insertChild(RenderMathMLFenced& parent, RenderPt
 
     if (beforeChild) {
         // Adding |x| before an existing |y| e.g. in element (y) - first insert our new child |x|, then its separator, to get (x, y).
-        parent.RenderMathMLRow::addChild(m_builder, WTFMove(child), beforeChild);
+        m_builder.blockBuilder().attach(parent, WTFMove(child), beforeChild);
         if (separatorRenderer)
-            parent.RenderMathMLRow::addChild(m_builder, WTFMove(separatorRenderer), beforeChild);
+            m_builder.blockBuilder().attach(parent, WTFMove(separatorRenderer), beforeChild);
     } else {
         // Adding |y| at the end of an existing element e.g. (x) - insert the separator first before the closing fence, then |y|, to get (x, y).
         if (separatorRenderer)
-            parent.RenderMathMLRow::addChild(m_builder, WTFMove(separatorRenderer), parent.closeFenceRenderer());
-        parent.RenderMathMLRow::addChild(m_builder, WTFMove(child), parent.closeFenceRenderer());
+            m_builder.blockBuilder().attach(parent, WTFMove(separatorRenderer), parent.closeFenceRenderer());
+        m_builder.blockBuilder().attach(parent, WTFMove(child), parent.closeFenceRenderer());
     }
 }
 

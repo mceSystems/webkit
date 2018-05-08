@@ -42,6 +42,7 @@
 #include "EventNames.h"
 #include "FloatRect.h"
 #include "FocusController.h"
+#include "Frame.h"
 #include "FrameLoader.h"
 #include "FrameLoaderClient.h"
 #include "FrameSelection.h"
@@ -62,7 +63,6 @@
 #include "InspectorController.h"
 #include "InspectorInstrumentation.h"
 #include "Logging.h"
-#include "MainFrame.h"
 #include "MemoryCache.h"
 #include "OverflowEvent.h"
 #include "Page.h"
@@ -84,6 +84,7 @@
 #include "RenderTheme.h"
 #include "RenderView.h"
 #include "RenderWidget.h"
+#include "RuntimeEnabledFeatures.h"
 #include "SVGDocument.h"
 #include "SVGSVGElement.h"
 #include "ScriptedAnimationController.h"
@@ -98,7 +99,6 @@
 #include "WheelEventTestTrigger.h"
 #include <wtf/text/TextStream.h>
 
-#include <wtf/CurrentTime.h>
 #include <wtf/IsoMallocInlines.h>
 #include <wtf/MemoryPressureHandler.h>
 #include <wtf/Ref.h>
@@ -124,7 +124,7 @@ using namespace HTMLNames;
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(FrameView);
 
-double FrameView::sCurrentPaintTimeStamp = 0.0;
+MonotonicTime FrameView::sCurrentPaintTimeStamp { };
 
 // The maximum number of updateEmbeddedObjects iterations that should be done before returning.
 static const unsigned maxUpdateEmbeddedObjectsIterations = 2;
@@ -272,7 +272,7 @@ void FrameView::reset()
     m_lastZoomFactor = 1.0f;
     m_isTrackingRepaints = false;
     m_trackedRepaintRects.clear();
-    m_lastPaintTime = 0;
+    m_lastPaintTime = MonotonicTime();
     m_paintBehavior = PaintBehaviorNormal;
     m_isPainting = false;
     m_visuallyNonEmptyCharacterCount = 0;
@@ -460,8 +460,8 @@ void FrameView::setFrameRect(const IntRect& newRect)
             renderView->compositor().frameViewDidChangeSize();
     }
 
-    if (frame().isMainFrame())
-        frame().mainFrame().pageOverlayController().didChangeViewSize();
+    if (frame().isMainFrame() && frame().page())
+        frame().page()->pageOverlayController().didChangeViewSize();
 
     viewportContentsChanged();
 }
@@ -591,7 +591,8 @@ void FrameView::didDestroyRenderTree()
     ASSERT(!m_viewportConstrainedObjects || m_viewportConstrainedObjects->isEmpty());
     ASSERT(!m_slowRepaintObjects || m_slowRepaintObjects->isEmpty());
 
-    ASSERT(!frame().animation().hasAnimations());
+    if (!RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled())
+        ASSERT(!frame().animation().hasAnimations());
 }
 
 void FrameView::setContentsSize(const IntSize& size)
@@ -613,7 +614,7 @@ void FrameView::setContentsSize(const IntSize& size)
     page->chrome().contentsSizeChanged(frame(), size); // Notify only.
 
     if (frame().isMainFrame()) {
-        frame().mainFrame().pageOverlayController().didChangeDocumentSize();
+        page->pageOverlayController().didChangeDocumentSize();
         PageCache::singleton().markPagesForContentsSizeChanged(*page);
     }
     layoutContext().enableSetNeedsLayout();
@@ -721,7 +722,11 @@ void FrameView::applyPaginationToViewport()
     if (overflowY == OPAGEDX || overflowY == OPAGEDY) {
         pagination.mode = WebCore::paginationModeForRenderStyle(documentOrBodyRenderer->style());
         GapLength columnGapLength = documentOrBodyRenderer->style().columnGap();
-        pagination.gap = columnGapLength.isNormal() ? 0 : valueForLength(columnGapLength.length(), downcast<RenderBox>(documentOrBodyRenderer)->availableLogicalWidth()).toUnsigned();
+        pagination.gap = 0;
+        if (!columnGapLength.isNormal()) {
+            if (auto* containerForPaginationGap = is<RenderBox>(documentOrBodyRenderer) ? downcast<RenderBox>(documentOrBodyRenderer) : documentOrBodyRenderer->containingBlock())
+                pagination.gap = valueForLength(columnGapLength.length(), containerForPaginationGap->availableLogicalWidth()).toUnsigned();
+        }
     }
     setPagination(pagination);
 }
@@ -1308,7 +1313,7 @@ void FrameView::didLayout(WeakPtr<RenderElement> layoutRoot)
 
 bool FrameView::shouldDeferScrollUpdateAfterContentSizeChange()
 {
-    return (layoutContext().layoutPhase() < LayoutContext::LayoutPhase::InPostLayout) && (layoutContext().layoutPhase() != LayoutContext::LayoutPhase::OutsideLayout);
+    return (layoutContext().layoutPhase() < FrameViewLayoutContext::LayoutPhase::InPostLayout) && (layoutContext().layoutPhase() != FrameViewLayoutContext::LayoutPhase::OutsideLayout);
 }
 
 RenderBox* FrameView::embeddedContentBox() const
@@ -1528,6 +1533,19 @@ void FrameView::removeViewportConstrainedObject(RenderElement* object)
     }
 }
 
+LayoutSize FrameView::expandedLayoutViewportSize(const LayoutSize& baseLayoutViewportSize, const LayoutSize& documentSize, double heightExpansionFactor)
+{
+    if (!heightExpansionFactor)
+        return baseLayoutViewportSize;
+
+    auto documentHeight = documentSize.height();
+    auto layoutViewportHeight = baseLayoutViewportSize.height();
+    if (layoutViewportHeight > documentHeight)
+        return baseLayoutViewportSize;
+
+    return { baseLayoutViewportSize.width(), std::min<LayoutUnit>(documentHeight, (1 + heightExpansionFactor) * layoutViewportHeight) };
+}
+
 LayoutRect FrameView::computeUpdatedLayoutViewportRect(const LayoutRect& layoutViewport, const LayoutRect& documentRect, const LayoutSize& unobscuredContentSize, const LayoutRect& unobscuredContentRect, const LayoutSize& baseLayoutViewportSize, const LayoutPoint& stableLayoutViewportOriginMin, const LayoutPoint& stableLayoutViewportOriginMax, LayoutViewportConstraint constraint)
 {
     LayoutRect layoutViewportRect = layoutViewport;
@@ -1663,7 +1681,7 @@ void FrameView::updateLayoutViewport()
     
     // Don't update the layout viewport if we're in the middle of adjusting scrollbars. We'll get another call
     // as a post-layout task.
-    if (layoutContext().layoutPhase() == LayoutContext::LayoutPhase::InViewSizeAdjust)
+    if (layoutContext().layoutPhase() == FrameViewLayoutContext::LayoutPhase::InViewSizeAdjust)
         return;
 
     LayoutRect layoutViewport = layoutViewportRect();
@@ -2362,7 +2380,8 @@ void FrameView::setViewportConstrainedObjectsNeedLayout()
 
 void FrameView::didChangeScrollOffset()
 {
-    frame().mainFrame().pageOverlayController().didScrollFrame(frame());
+    if (auto* page = frame().page())
+        page->pageOverlayController().didScrollFrame(frame());
     frame().loader().client().didChangeScrollOffset();
 }
 
@@ -2455,7 +2474,7 @@ void FrameView::resumeVisibleImageAnimationsIncludingSubframes()
 void FrameView::updateLayerPositionsAfterScrolling()
 {
     // If we're scrolling as a result of updating the view size after layout, we'll update widgets and layer positions soon anyway.
-    if (layoutContext().layoutPhase() == LayoutContext::LayoutPhase::InViewSizeAdjust)
+    if (layoutContext().layoutPhase() == FrameViewLayoutContext::LayoutPhase::InViewSizeAdjust)
         return;
 
     if (!layoutContext().isLayoutNested() && hasViewportConstrainedObjects()) {
@@ -2495,7 +2514,7 @@ bool FrameView::shouldUpdateCompositingLayersAfterScrolling() const
 
 void FrameView::updateCompositingLayersAfterScrolling()
 {
-    ASSERT(layoutContext().layoutPhase() >= LayoutContext::LayoutPhase::InPostLayout || layoutContext().layoutPhase() == LayoutContext::LayoutPhase::OutsideLayout);
+    ASSERT(layoutContext().layoutPhase() >= FrameViewLayoutContext::LayoutPhase::InPostLayout || layoutContext().layoutPhase() == FrameViewLayoutContext::LayoutPhase::OutsideLayout);
 
     if (!shouldUpdateCompositingLayersAfterScrolling())
         return;
@@ -2603,7 +2622,7 @@ void FrameView::availableContentSizeChanged(AvailableSizeChangeReason reason)
         // FIXME: Merge this logic with m_setNeedsLayoutWasDeferred and find a more appropriate
         // way of handling potential recursive layouts when the viewport is resized to accomodate
         // the content but the content always overflows the viewport. See webkit.org/b/165781.
-        if (!(layoutContext().layoutPhase() == LayoutContext::LayoutPhase::InViewSizeAdjust && useFixedLayout()))
+        if (!(layoutContext().layoutPhase() == FrameViewLayoutContext::LayoutPhase::InViewSizeAdjust && useFixedLayout()))
             document->updateViewportUnitsOnResize();
     }
 
@@ -3870,9 +3889,9 @@ Color FrameView::documentBackgroundColor() const
     Color htmlBackgroundColor;
     Color bodyBackgroundColor;
     if (htmlElement && htmlElement->renderer())
-        htmlBackgroundColor = htmlElement->renderer()->style().visitedDependentColor(CSSPropertyBackgroundColor);
+        htmlBackgroundColor = htmlElement->renderer()->style().visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
     if (bodyElement && bodyElement->renderer())
-        bodyBackgroundColor = bodyElement->renderer()->style().visitedDependentColor(CSSPropertyBackgroundColor);
+        bodyBackgroundColor = bodyElement->renderer()->style().visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
 
     if (!bodyBackgroundColor.isValid()) {
         if (!htmlBackgroundColor.isValid())
@@ -4015,7 +4034,7 @@ void FrameView::willPaintContents(GraphicsContext& context, const IntRect&, Pain
     paintingState.isTopLevelPainter = !sCurrentPaintTimeStamp;
 
     if (paintingState.isTopLevelPainter)
-        sCurrentPaintTimeStamp = monotonicallyIncreasingTime();
+        sCurrentPaintTimeStamp = MonotonicTime::now();
 
     paintingState.paintBehavior = m_paintBehavior;
     
@@ -4049,7 +4068,7 @@ void FrameView::didPaintContents(GraphicsContext& context, const IntRect& dirtyR
         notifyWidgetsInAllFrames(DidPaintFlattened);
 
     m_paintBehavior = paintingState.paintBehavior;
-    m_lastPaintTime = monotonicallyIncreasingTime();
+    m_lastPaintTime = MonotonicTime::now();
 
     // Regions may have changed as a result of the visibility/z-index of element changing.
 #if ENABLE(DASHBOARD_SUPPORT)
@@ -4058,7 +4077,7 @@ void FrameView::didPaintContents(GraphicsContext& context, const IntRect& dirtyR
 #endif
 
     if (paintingState.isTopLevelPainter)
-        sCurrentPaintTimeStamp = 0;
+        sCurrentPaintTimeStamp = MonotonicTime();
 
     if (!context.paintingDisabled()) {
         InspectorInstrumentation::didPaint(*renderView(), dirtyRect);
@@ -5044,7 +5063,8 @@ void FrameView::setViewExposedRect(std::optional<FloatRect> viewExposedRect)
     if (auto* view = renderView())
         view->compositor().scheduleLayerFlush(false /* canThrottle */);
 
-    frame().mainFrame().pageOverlayController().didChangeViewExposedRect();
+    if (auto* page = frame().page())
+        page->pageOverlayController().didChangeViewExposedRect();
 }
     
 void FrameView::setViewportSizeForCSSViewportUnits(IntSize size)
@@ -5076,10 +5096,5 @@ bool FrameView::shouldPlaceBlockDirectionScrollbarOnLeft() const
 {
     return renderView() && renderView()->shouldPlaceBlockDirectionScrollbarOnLeft();
 }
-
-IntSize FrameView::layoutSizeForMediaQuery() const
-{
-    return m_frameFlatteningViewSizeForMediaQuery.value_or(ScrollView::layoutSize());
-}
-
+    
 } // namespace WebCore

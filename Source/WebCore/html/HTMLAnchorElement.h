@@ -40,6 +40,7 @@ enum class Relation {
 };
 
 class HTMLAnchorElement : public HTMLElement, public URLUtils<HTMLAnchorElement> {
+    WTF_MAKE_ISO_ALLOCATED(HTMLAnchorElement);
 public:
     static Ref<HTMLAnchorElement> create(Document&);
     static Ref<HTMLAnchorElement> create(const QualifiedName&, Document&);
@@ -65,7 +66,11 @@ public:
     SharedStringHash visitedLinkHash() const;
     void invalidateCachedVisitedLinkHash() { m_cachedVisitedLinkHash = 0; }
 
-    WEBCORE_EXPORT DOMTokenList& relList();
+    WEBCORE_EXPORT DOMTokenList& relList() const;
+
+#if USE(SYSTEM_PREVIEW)
+    WEBCORE_EXPORT bool isSystemPreviewLink() const;
+#endif
 
 protected:
     HTMLAnchorElement(const QualifiedName&, Document&);
@@ -106,7 +111,7 @@ private:
     OptionSet<Relation> m_linkRelations;
     mutable SharedStringHash m_cachedVisitedLinkHash;
 
-    std::unique_ptr<DOMTokenList> m_relList;
+    mutable std::unique_ptr<DOMTokenList> m_relList;
 };
 
 inline SharedStringHash HTMLAnchorElement::visitedLinkHash() const

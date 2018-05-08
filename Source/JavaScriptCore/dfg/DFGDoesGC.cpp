@@ -51,6 +51,7 @@ bool doesGC(Graph& graph, Node* node)
     case Identity:
     case IdentityWithProfile:
     case GetCallee:
+    case SetCallee:
     case GetArgumentCountIncludingThis:
     case SetArgumentCountIncludingThis:
     case GetRestLength:
@@ -100,6 +101,8 @@ bool doesGC(Graph& graph, Node* node)
     case GetById:
     case GetByIdFlush:
     case GetByIdWithThis:
+    case GetByIdDirect:
+    case GetByIdDirectFlush:
     case PutById:
     case PutByIdFlush:
     case PutByIdWithThis:
@@ -141,6 +144,7 @@ bool doesGC(Graph& graph, Node* node)
     case RegExpExecNonGlobalOrSticky:
     case RegExpTest:
     case RegExpMatchFast:
+    case RegExpMatchFastGlobal:
     case CompareLess:
     case CompareLessEq:
     case CompareGreater:
@@ -150,6 +154,7 @@ bool doesGC(Graph& graph, Node* node)
     case CompareEq:
     case CompareStrictEq:
     case CompareEqPtr:
+    case SameValue:
     case Call:
     case DirectCall:
     case TailCallInlinedCaller:
@@ -174,6 +179,7 @@ bool doesGC(Graph& graph, Node* node)
     case IsUndefined:
     case IsBoolean:
     case IsNumber:
+    case NumberIsInteger:
     case IsObject:
     case IsObjectOrNull:
     case IsFunction:
@@ -229,6 +235,7 @@ bool doesGC(Graph& graph, Node* node)
     case CheckInBounds:
     case ConstantStoragePointer:
     case Check:
+    case CheckVarargs:
     case CheckTypeInfoFlags:
     case MultiGetByOffset:
     case ValueRep:

@@ -30,13 +30,14 @@
 namespace WebCore {
 
 class RenderTreeBuilder::BlockFlow {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     BlockFlow(RenderTreeBuilder&);
 
-    void insertChild(RenderBlockFlow& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void attach(RenderBlockFlow& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void moveAllChildrenIncludingFloats(RenderBlockFlow& from, RenderBlock& to, RenderTreeBuilder::NormalizeAfterInsertion);
 
 private:
-
     RenderTreeBuilder& m_builder;
 };
 

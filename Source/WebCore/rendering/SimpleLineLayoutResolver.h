@@ -43,8 +43,13 @@ public:
     public:
         explicit Run(const Iterator&);
 
+        // Position relative to the enclosing flow block.
         unsigned start() const;
         unsigned end() const;
+        // Position relative to the actual renderer.
+        unsigned localStart() const;
+        unsigned localEnd() const;
+
         float logicalLeft() const;
         float logicalRight() const;
 
@@ -54,8 +59,10 @@ public:
         int baselinePosition() const;
         StringView text() const;
         String textWithHyphen() const;
+        const RenderObject& renderer() const;
         bool isEndOfLine() const;
         bool hasHyphen() const { return m_iterator.simpleRun().hasHyphen; }
+        const SimpleLineLayout::Run& simpleRun() const { return m_iterator.simpleRun(); }
 
         unsigned lineIndex() const;
 
@@ -103,6 +110,7 @@ public:
 
     WTF::IteratorRange<Iterator> rangeForRect(const LayoutRect&) const;
     WTF::IteratorRange<Iterator> rangeForRenderer(const RenderObject&) const;
+    WTF::IteratorRange<Iterator> rangeForLine(unsigned lineIndex) const;
     Iterator runForPoint(const LayoutPoint&) const;
     WTF::IteratorRange<Iterator> rangeForRendererWithOffsets(const RenderObject&, unsigned start, unsigned end) const;
 

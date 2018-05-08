@@ -32,6 +32,7 @@
 #include <WebCore/AuthenticationChallenge.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Optional.h>
+#include <wtf/text/WTFString.h>
 
 #if ENABLE(NETWORK_CAPTURE)
 #include "NetworkCaptureRecorder.h"
@@ -72,15 +73,14 @@ public:
     void continueCanAuthenticateAgainstProtectionSpace(bool);
 #endif
 
+    String description() const;
+
 private:
 #if ENABLE(NETWORK_CAPTURE)
     void initializeForRecord(NetworkSession&);
     void initializeForReplay(NetworkSession&);
 #endif
     void initialize(NetworkSession&);
-
-    NetworkLoadClient::ShouldContinueDidReceiveResponse sharedDidReceiveResponse(WebCore::ResourceResponse&&);
-    void sharedWillSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceResponse&&);
 
     // NetworkDataTaskClient
     void willPerformHTTPRedirection(WebCore::ResourceResponse&&, WebCore::ResourceRequest&&, RedirectCompletionHandler&&) final;

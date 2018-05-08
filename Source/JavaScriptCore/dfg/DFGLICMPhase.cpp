@@ -281,7 +281,7 @@ private:
             && !m_graph.m_controlEquivalenceAnalysis->dominatesEquivalently(data.preHeader, fromBlock);
         
         if (addsBlindSpeculation
-            && m_graph.hasExitSite(originalOrigin.semantic, HoistingFailed)) {
+            && m_graph.hasGlobalExitSite(originalOrigin.semantic, HoistingFailed)) {
             if (verbose) {
                 dataLog(
                     "    Not hoisting ", node, " because it may exit and the pre-header (",
@@ -343,12 +343,10 @@ private:
             m_interpreter.execute(node);
         }
 
-        // It just so happens that all of the nodes we currently know how to hoist
-        // don't have var-arg children. That may change and then we can fix this
-        // code. But for now we just assert that's the case.
-        DFG_ASSERT(m_graph, node, !(node->flags() & NodeHasVarArgs), node->op(), node->flags());
-        
-        nodeRef = m_graph.addNode(Check, originalOrigin, node->children);
+        if (node->flags() & NodeHasVarArgs)
+            nodeRef = m_graph.addNode(CheckVarargs, originalOrigin, m_graph.copyVarargChildren(node));
+        else
+            nodeRef = m_graph.addNode(Check, originalOrigin, node->children);
         
         return true;
     }

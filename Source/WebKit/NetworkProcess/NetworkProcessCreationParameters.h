@@ -108,6 +108,8 @@ struct NetworkProcessCreationParameters {
     bool ignoreTLSErrors { false };
     Vector<String> languages;
     WebCore::SoupNetworkProxySettings proxySettings;
+#elif USE(CURL)
+    String cookiePersistentStorageFile;
 #endif
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
@@ -122,6 +124,16 @@ struct NetworkProcessCreationParameters {
     String recordReplayMode;
     String recordReplayCacheLocation;
 #endif
+
+    Vector<String> urlSchemesRegisteredAsSecure;
+    Vector<String> urlSchemesRegisteredAsBypassingContentSecurityPolicy;
+    Vector<String> urlSchemesRegisteredAsLocal;
+    Vector<String> urlSchemesRegisteredAsNoAccess;
+    Vector<String> urlSchemesRegisteredAsDisplayIsolated;
+    Vector<String> urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
+    Vector<String> urlSchemesRegisteredAsCORSEnabled;
+
+    bool trackNetworkActivity { false };
 };
 
 } // namespace WebKit

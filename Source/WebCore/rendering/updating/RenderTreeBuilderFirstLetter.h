@@ -32,10 +32,12 @@ namespace WebCore {
 class RenderElement;
 
 class RenderTreeBuilder::FirstLetter {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     FirstLetter(RenderTreeBuilder&);
 
     void updateAfterDescendants(RenderBlock&);
+    void cleanupOnDestroy(RenderTextFragment&);
 
 private:
     void updateStyle(RenderBlock& firstLetterBlock, RenderObject& currentChild);

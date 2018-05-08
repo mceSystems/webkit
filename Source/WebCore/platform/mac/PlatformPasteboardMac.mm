@@ -26,7 +26,10 @@
 #import "config.h"
 #import "PlatformPasteboard.h"
 
+#if PLATFORM(MAC)
+
 #import "Color.h"
+#import "ColorMac.h"
 #import "LegacyNSPasteboardTypes.h"
 #import "Pasteboard.h"
 #import "URL.h"
@@ -62,10 +65,23 @@ RefPtr<SharedBuffer> PlatformPasteboard::bufferForType(const String& pasteboardT
 int PlatformPasteboard::numberOfFiles() const
 {
     Vector<String> files;
-    getPathnamesForType(files, String(legacyFilenamesPasteboardType()));
-    if (!files.size())
+
+    NSArray *pasteboardTypes = [m_pasteboard types];
+    if ([pasteboardTypes containsObject:legacyFilesPromisePasteboardType()]) {
+        // FIXME: legacyFilesPromisePasteboardType() contains file types, not path names, but in
+        // this case we are only concerned with the count of them. The count of types should equal
+        // the count of files, but this isn't guaranteed as some legacy providers might only write
+        // unique file types.
         getPathnamesForType(files, String(legacyFilesPromisePasteboardType()));
-    return files.size();
+        return files.size();
+    }
+
+    if ([pasteboardTypes containsObject:legacyFilenamesPasteboardType()]) {
+        getPathnamesForType(files, String(legacyFilenamesPasteboardType()));
+        return files.size();
+    }
+
+    return 0;
 }
 
 void PlatformPasteboard::getPathnamesForType(Vector<String>& pathnames, const String& pasteboardType) const
@@ -195,18 +211,7 @@ String PlatformPasteboard::uniqueName()
 
 Color PlatformPasteboard::color()
 {
-    NSColor *color = [NSColor colorFromPasteboard:m_pasteboard.get()];
-
-    // The color may not be in an RGB colorspace. This commonly occurs when a color is
-    // dragged from the NSColorPanel grayscale picker.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    if ([[color colorSpace] colorSpaceModel] != NSRGBColorSpaceModel)
-        color = [color colorUsingColorSpaceName:NSCalibratedRGBColorSpace];
-#pragma clang diagnostic pop
-
-    return makeRGBA((int)([color redComponent] * 255.0 + 0.5), (int)([color greenComponent] * 255.0 + 0.5),
-        (int)([color blueComponent] * 255.0 + 0.5), (int)([color alphaComponent] * 255.0 + 0.5));
+    return colorFromNSColor([NSColor colorFromPasteboard:m_pasteboard.get()]);
 }
 
 URL PlatformPasteboard::url()
@@ -310,3 +315,5 @@ long PlatformPasteboard::setStringForType(const String& string, const String& pa
 }
 
 }
+
+#endif // PLATFORM(MAC)

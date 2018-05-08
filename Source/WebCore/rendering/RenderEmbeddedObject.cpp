@@ -113,10 +113,10 @@ RenderEmbeddedObject::~RenderEmbeddedObject()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderEmbeddedObject::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderEmbeddedObject::willBeDestroyed()
 {
     view().frameView().removeEmbeddedObjectToUpdate(*this);
-    RenderWidget::willBeDestroyed(builder);
+    RenderWidget::willBeDestroyed();
 }
 
 RenderPtr<RenderEmbeddedObject> RenderEmbeddedObject::createForApplet(HTMLAppletElement& applet, RenderStyle&& style)
@@ -156,6 +156,8 @@ static String unavailablePluginReplacementText(RenderEmbeddedObject::PluginUnava
         return blockedPluginByContentSecurityPolicyText();
     case RenderEmbeddedObject::InsecurePluginVersion:
         return insecurePluginVersionText();
+    case RenderEmbeddedObject::UnsupportedPlugin:
+        return unsupportedPluginText();
     }
 
     ASSERT_NOT_REACHED();

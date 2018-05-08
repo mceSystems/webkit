@@ -36,7 +36,7 @@
 #include <wtf/NeverDestroyed.h>
 
 #define HAS_CORE_TEXT_WIDTH_ATTRIBUTE ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000))
-#define CAN_DISALLOW_USER_INSTALLED_FONTS ((PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 130000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500))
+#define CAN_DISALLOW_USER_INSTALLED_FONTS ((PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000))
 
 namespace WebCore {
 
@@ -893,7 +893,7 @@ public:
             CFDictionaryAddValue(attributes.get(), kCTFontFamilyNameAttribute, familyNameString.get());
             addAttributesForInstalledFonts(attributes.get(), m_allowUserInstalledFonts);
             auto fontDescriptorToMatch = adoptCF(CTFontDescriptorCreateWithAttributes(attributes.get()));
-            RetainPtr<CFSetRef> mandatoryAttributes = installedFontMandatoryAttributes(m_allowUserInstalledFonts);
+            auto mandatoryAttributes = installedFontMandatoryAttributes(m_allowUserInstalledFonts);
             if (auto matches = adoptCF(CTFontDescriptorCreateMatchingFontDescriptors(fontDescriptorToMatch.get(), mandatoryAttributes.get()))) {
                 auto count = CFArrayGetCount(matches.get());
                 Vector<InstalledFont> result;
@@ -923,7 +923,7 @@ public:
             CFDictionaryAddValue(attributes.get(), nameAttribute, postScriptNameString.get());
             addAttributesForInstalledFonts(attributes.get(), m_allowUserInstalledFonts);
             auto fontDescriptorToMatch = adoptCF(CTFontDescriptorCreateWithAttributes(attributes.get()));
-            RetainPtr<CFSetRef> mandatoryAttributes = installedFontMandatoryAttributes(m_allowUserInstalledFonts);
+            auto mandatoryAttributes = installedFontMandatoryAttributes(m_allowUserInstalledFonts);
             auto match = adoptCF(CTFontDescriptorCreateMatchingFontDescriptor(fontDescriptorToMatch.get(), mandatoryAttributes.get()));
             return InstalledFont(match.get());
         }).iterator->value;
@@ -1201,7 +1201,7 @@ static RetainPtr<CTFontRef> fontWithFamily(const AtomicString& family, const Fon
 
     const auto& request = fontDescription.fontSelectionRequest();
     FontLookup fontLookup;
-    fontLookup.result = platformFontWithFamilySpecialCase(family, request, size);
+    fontLookup.result = platformFontWithFamilySpecialCase(family, request, size, fontDescription.shouldAllowUserInstalledFonts());
     if (!fontLookup.result)
         fontLookup = platformFontLookupWithFamily(family, request, size, fontDescription.shouldAllowUserInstalledFonts());
     return preparePlatformFont(fontLookup.result.get(), fontDescription, fontFaceFeatures, fontFaceVariantSettings, fontFaceCapabilities, size, !fontLookup.createdFromPostScriptName);
@@ -1426,6 +1426,28 @@ void addAttributesForInstalledFonts(CFMutableDictionaryRef attributes, AllowUser
     UNUSED_PARAM(attributes);
     UNUSED_PARAM(allowUserInstalledFonts);
 #endif
+}
+
+RetainPtr<CTFontRef> createFontForInstalledFonts(CTFontDescriptorRef fontDescriptor, CGFloat size, AllowUserInstalledFonts allowUserInstalledFonts)
+{
+    auto attributes = adoptCF(CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    addAttributesForInstalledFonts(attributes.get(), allowUserInstalledFonts);
+    if (CFDictionaryGetCount(attributes.get())) {
+        auto resultFontDescriptor = adoptCF(CTFontDescriptorCreateCopyWithAttributes(fontDescriptor, attributes.get()));
+        return adoptCF(CTFontCreateWithFontDescriptor(resultFontDescriptor.get(), size, nullptr));
+    }
+    return adoptCF(CTFontCreateWithFontDescriptor(fontDescriptor, size, nullptr));
+}
+
+RetainPtr<CTFontRef> createFontForInstalledFonts(CTFontRef font, AllowUserInstalledFonts allowUserInstalledFonts)
+{
+    auto attributes = adoptCF(CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    addAttributesForInstalledFonts(attributes.get(), allowUserInstalledFonts);
+    if (CFDictionaryGetCount(attributes.get())) {
+        auto modification = adoptCF(CTFontDescriptorCreateWithAttributes(attributes.get()));
+        return adoptCF(CTFontCreateCopyWithAttributes(font, CTFontGetSize(font), nullptr, modification.get()));
+    }
+    return font;
 }
 
 void addAttributesForWebFonts(CFMutableDictionaryRef attributes, AllowUserInstalledFonts allowUserInstalledFonts)

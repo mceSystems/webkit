@@ -33,12 +33,22 @@
 
 namespace WebCore {
 
-const auto timeEpsilon = Seconds::fromMilliseconds(0.001);
-
 AnimationEffectReadOnly::AnimationEffectReadOnly(ClassType classType, Ref<AnimationEffectTimingReadOnly>&& timing)
     : m_classType(classType)
     , m_timing(WTFMove(timing))
 {
+    m_timing->setEffect(this);
+}
+
+AnimationEffectReadOnly::~AnimationEffectReadOnly()
+{
+    m_timing->setEffect(nullptr);
+}
+
+void AnimationEffectReadOnly::timingDidChange()
+{
+    if (m_animation)
+        m_animation->timingModelDidChange();
 }
 
 std::optional<Seconds> AnimationEffectReadOnly::localTime() const

@@ -74,11 +74,15 @@ public:
     const IntSize& contentsSize() const { return m_contentSize; }
     WEBCORE_EXPORT bool setContentsSize(const IntSize&);
 
+    FloatSize viewLayoutSize() const { return m_viewLayoutSize; }
+
     const FloatSize& minimumLayoutSize() const { return m_minimumLayoutSize; }
-    WEBCORE_EXPORT bool setMinimumLayoutSize(const FloatSize&);
+    WEBCORE_EXPORT bool setViewLayoutSize(const FloatSize&);
 
     const ViewportArguments& viewportArguments() const { return m_viewportArguments; }
     WEBCORE_EXPORT bool setViewportArguments(const ViewportArguments&);
+
+    bool shouldOverrideDeviceWidthAndShrinkToFit() const;
 
     WEBCORE_EXPORT bool setCanIgnoreScalingConstraints(bool);
     void setForceAlwaysUserScalable(bool forceAlwaysUserScalable) { m_forceAlwaysUserScalable = forceAlwaysUserScalable; }
@@ -112,14 +116,18 @@ private:
     int layoutWidth() const;
     int layoutHeight() const;
 
+    bool shouldIgnoreScalingConstraintsRegardlessOfContentSize() const;
     bool shouldIgnoreScalingConstraints() const;
     bool shouldIgnoreVerticalScalingConstraints() const;
     bool shouldIgnoreHorizontalScalingConstraints() const;
+
+    void updateMinimumLayoutSize();
 
     Parameters m_configuration;
     Parameters m_defaultConfiguration;
     IntSize m_contentSize;
     FloatSize m_minimumLayoutSize;
+    FloatSize m_viewLayoutSize;
     ViewportArguments m_viewportArguments;
 
     bool m_canIgnoreScalingConstraints;

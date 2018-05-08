@@ -112,6 +112,18 @@ constexpr bool enableAsyncIteration = true;
 constexpr bool enableAsyncIteration = false;
 #endif
 
+#if ENABLE(INTL_PLURAL_RULES)
+constexpr bool enableIntlPluralRules = true;
+#else
+constexpr bool enableIntlPluralRules = false;
+#endif
+
+#if ENABLE(WEBASSEMBLY_STREAMING_API)
+constexpr bool enableWebAssemblyStreamingApi = true;
+#else
+constexpr bool enableWebAssemblyStreamingApi = false;
+#endif
+
 #define JSC_OPTIONS(v) \
     v(bool, validateOptions, false, Normal, "crashes if mis-typed JSC options were passed to the VM") \
     v(unsigned, dumpOptions, 0, Normal, "dumps JSC options (0 = None, 1 = Overridden only, 2 = All, 3 = Verbose)") \
@@ -193,8 +205,9 @@ constexpr bool enableAsyncIteration = false;
     v(bool, reportBaselineCompileTimes, false, Normal, "dumps JS function signature and the time it took to BaselineJIT compile") \
     v(bool, reportDFGCompileTimes, false, Normal, "dumps JS function signature and the time it took to DFG and FTL compile") \
     v(bool, reportFTLCompileTimes, false, Normal, "dumps JS function signature and the time it took to FTL compile") \
-    v(bool, reportDFGPhaseTimes, false, Normal, "dumps JS function name and the time is took for each DFG phase") \
     v(bool, reportTotalCompileTimes, false, Normal, nullptr) \
+    v(bool, reportParseTimes, false, Normal, "dumps JS function signature and the time it took to parse") \
+    v(bool, reportBytecodeCompileTimes, false, Normal, "dumps JS function signature and the time it took to bytecode compile") \
     v(bool, verboseExitProfile, false, Normal, nullptr) \
     v(bool, verboseCFA, false, Normal, nullptr) \
     v(bool, verboseDFGFailure, false, Normal, nullptr) \
@@ -250,7 +263,7 @@ constexpr bool enableAsyncIteration = false;
     v(bool, b3AlwaysFailsBeforeLink, false, Normal, nullptr) \
     v(bool, ftlCrashes, false, Normal, nullptr) /* fool-proof way of checking that you ended up in the FTL. ;-) */\
     v(bool, clobberAllRegsInFTLICSlowPath, !ASSERT_DISABLED, Normal, nullptr) \
-    v(bool, enableJITDebugAssetions, !ASSERT_DISABLED, Normal, nullptr) \
+    v(bool, enableJITDebugAssertions, !ASSERT_DISABLED, Normal, nullptr) \
     v(bool, useAccessInlining, true, Normal, nullptr) \
     v(unsigned, maxAccessVariantListSize, 8, Normal, nullptr) \
     v(bool, usePolyvariantDevirtualization, true, Normal, nullptr) \
@@ -286,7 +299,7 @@ constexpr bool enableAsyncIteration = false;
     \
     v(unsigned, maximumOptimizationCandidateInstructionCount, 100000, Normal, nullptr) \
     \
-    v(unsigned, maximumFunctionForCallInlineCandidateInstructionCount, 180, Normal, nullptr) \
+    v(unsigned, maximumFunctionForCallInlineCandidateInstructionCount, 190, Normal, nullptr) \
     v(unsigned, maximumFunctionForClosureCallInlineCandidateInstructionCount, 100, Normal, nullptr) \
     v(unsigned, maximumFunctionForConstructInlineCandidateInstructionCount, 100, Normal, nullptr) \
     \
@@ -420,14 +433,16 @@ constexpr bool enableAsyncIteration = false;
     v(unsigned, fireOSRExitFuzzAt, 0, Normal, nullptr) \
     v(unsigned, fireOSRExitFuzzAtOrAfter, 0, Normal, nullptr) \
     \
-    v(bool, logB3PhaseTimes, false, Normal, nullptr) \
+    v(bool, logPhaseTimes, false, Normal, nullptr) \
     v(double, rareBlockPenalty, 0.001, Normal, nullptr) \
     v(bool, airLinearScanVerbose, false, Normal, nullptr) \
     v(bool, airLinearScanSpillsEverything, false, Normal, nullptr) \
     v(bool, airForceBriggsAllocator, false, Normal, nullptr) \
     v(bool, airForceIRCAllocator, false, Normal, nullptr) \
+    v(bool, airRandomizeRegs, false, Normal, nullptr) \
     v(bool, coalesceSpillSlots, true, Normal, nullptr) \
     v(bool, logAirRegisterPressure, false, Normal, nullptr) \
+    v(bool, useB3TailDup, true, Normal, nullptr) \
     v(unsigned, maxB3TailDupBlockSize, 3, Normal, nullptr) \
     v(unsigned, maxB3TailDupBlockSuccessors, 3, Normal, nullptr) \
     \
@@ -442,8 +457,6 @@ constexpr bool enableAsyncIteration = false;
     \
     v(bool, useICStats, false, Normal, nullptr) \
     \
-    v(unsigned, prototypeHitCountForLLIntCaching, 2, Normal, "Number of prototype property hits before caching a prototype in the LLInt. A count of 0 means never cache.") \
-    \
     v(bool, dumpCompiledRegExpPatterns, false, Normal, nullptr) \
     \
     v(bool, dumpModuleRecord, false, Normal, nullptr) \
@@ -451,9 +464,6 @@ constexpr bool enableAsyncIteration = false;
     v(bool, exposeInternalModuleLoader, false, Normal, "expose the internal module loader object to the global space for debugging") \
     \
     v(bool, useSuperSampler, false, Normal, nullptr) \
-    \
-    v(bool, reportLLIntStats, false, Configurable, "Reports LLInt statistics") \
-    v(optionString, llintStatsFile, nullptr, Configurable, "File to collect LLInt statistics in") \
     \
     v(bool, useSourceProviderCache, true, Normal, "If false, the parser will not use the source provider cache. It's good to verify everything works when this is false. Because the cache is so successful, it can mask bugs.") \
     v(bool, useCodeCache, true, Normal, "If false, the unlinked byte code cache will not be used.") \
@@ -463,6 +473,7 @@ constexpr bool enableAsyncIteration = false;
     v(bool, enableSpectreMitigations, true, Restricted, "Enable Spectre mitigations.") \
     v(bool, enableSpectreGadgets, false, Restricted, "enable gadgets to test Spectre mitigations.") \
     v(bool, usePoisoning, true, Normal, "Poison is randomized at load time when true, and initialized to 0 if false which defeats some Spectre and type confusion mitigations, but allows tools such as leak detectors to function better.") \
+    v(bool, zeroStackFrame, false, Normal, "Zero stack frame on entry to a function.") \
     \
     v(bool, useAsyncIterator, enableAsyncIteration, Normal, "Allow to use Async Iterator in JS.") \
     \
@@ -483,10 +494,12 @@ constexpr bool enableAsyncIteration = false;
     v(bool, crashIfWebAssemblyCantFastMemory, false, Normal, "If true, we will crash if we can't obtain fast memory for wasm.") \
     v(unsigned, maxNumWebAssemblyFastMemories, 4, Normal, nullptr) \
     v(bool, useFastTLSForWasmContext, true, Normal, "If true, we will store context in fast TLS. If false, we will pin it to a register.") \
+    v(bool, useWebAssemblyStreamingApi, enableWebAssemblyStreamingApi, Normal, "Allow to run WebAssembly's Streaming API") \
     v(bool, useCallICsForWebAssemblyToJSCalls, true, Normal, "If true, we will use CallLinkInfo to inline cache Wasm to JS calls.") \
     v(bool, useEagerWebAssemblyModuleHashing, false, Normal, "Unnamed WebAssembly modules are identified in backtraces through their hash, if available.") \
     v(bool, useObjectRestSpread, true, Normal, "If true, we will enable Object Rest/Spread feature.") \
     v(bool, useBigInt, false, Normal, "If true, we will enable BigInt support.") \
+    v(bool, useIntlPluralRules, enableIntlPluralRules, Normal, "If true, we will enable Intl.PluralRules.") \
     v(bool, useArrayAllocationProfiling, true, Normal, "If true, we will use our normal array allocation profiling. If false, the allocation profile will always claim to be undecided.")\
     v(bool, forcePolyProto, false, Normal, "If true, create_this will always create an object with a poly proto structure.")
 
@@ -637,7 +650,7 @@ private:
     static bool overrideAliasedOptionWithHeuristic(const char* name);
 
     // Declare the singleton instance of the options store:
-    JS_EXPORTDATA static Entry s_options[numberOfOptions];
+    JS_EXPORT_PRIVATE static Entry s_options[numberOfOptions];
     static Entry s_defaultOptions[numberOfOptions];
     static const EntryInfo s_optionsInfo[numberOfOptions];
 

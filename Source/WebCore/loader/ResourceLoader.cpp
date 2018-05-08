@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2007, 2010-2011, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
  *           (C) 2007 Graham Dennis (graham.dennis@gmail.com)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +41,6 @@
 #include "FrameLoaderClient.h"
 #include "InspectorInstrumentation.h"
 #include "LoaderStrategy.h"
-#include "MainFrame.h"
-#include "MixedContentChecker.h"
 #include "Page.h"
 #include "PlatformStrategies.h"
 #include "ProgressTracker.h"
@@ -68,7 +66,6 @@ ResourceLoader::ResourceLoader(Frame& frame, ResourceLoaderOptions options)
     : m_frame { &frame }
     , m_documentLoader { frame.loader().activeDocumentLoader() }
     , m_defersLoading { options.defersLoadingPolicy == DefersLoadingPolicy::AllowDefersLoading && frame.page()->defersLoading() }
-    , m_canAskClientForCredentials { options.clientCredentialPolicy == ClientCredentialPolicy::MayAskClientForCredentials }
     , m_options { options }
 {
 }
@@ -133,24 +130,23 @@ void ResourceLoader::init(ResourceRequest&& clientRequest, CompletionHandler<voi
 #endif
     
     m_defersLoading = m_options.defersLoadingPolicy == DefersLoadingPolicy::AllowDefersLoading && m_frame->page()->defersLoading();
-    m_canAskClientForCredentials = m_options.clientCredentialPolicy == ClientCredentialPolicy::MayAskClientForCredentials;
-    m_wasInsecureRequestSeen = isMixedContent(clientRequest.url());
 
     if (m_options.securityCheck == DoSecurityCheck && !m_frame->document()->securityOrigin().canDisplay(clientRequest.url())) {
         FrameLoader::reportLocalLoadFailed(m_frame.get(), clientRequest.url().string());
         releaseResources();
         return completionHandler(false);
     }
-    
-    // https://bugs.webkit.org/show_bug.cgi?id=26391
+
     // The various plug-in implementations call directly to ResourceLoader::load() instead of piping requests
     // through FrameLoader. As a result, they miss the FrameLoader::addExtraFieldsToRequest() step which sets
-    // up the 1st party for cookies URL. Until plug-in implementations can be reigned in to pipe through that
-    // method, we need to make sure there is always a 1st party for cookies set.
+    // up the 1st party for cookies URL and Same-Site info. Until plug-in implementations can be reigned in
+    // to pipe through that method, we need to make sure there is always both a 1st party for cookies set and
+    // Same-Site info. See <https://bugs.webkit.org/show_bug.cgi?id=26391>.
     if (clientRequest.firstPartyForCookies().isNull()) {
         if (Document* document = m_frame->document())
             clientRequest.setFirstPartyForCookies(document->firstPartyForCookies());
     }
+    FrameLoader::addSameSiteInfoToRequestIfNeeded(clientRequest, m_frame->document());
 
     willSendRequestInternal(WTFMove(clientRequest), ResourceResponse(), [this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)](ResourceRequest&& request) mutable {
 
@@ -173,21 +169,20 @@ void ResourceLoader::init(ResourceRequest&& clientRequest, CompletionHandler<voi
 
 void ResourceLoader::deliverResponseAndData(const ResourceResponse& response, RefPtr<SharedBuffer>&& buffer)
 {
-    Ref<ResourceLoader> protectedThis(*this);
-
-    didReceiveResponse(response);
-    if (reachedTerminalState())
-        return;
-
-    if (buffer) {
-        unsigned size = buffer->size();
-        didReceiveBuffer(buffer.releaseNonNull(), size, DataPayloadWholeResource);
+    didReceiveResponse(response, [this, protectedThis = makeRef(*this), buffer = WTFMove(buffer)]() mutable {
         if (reachedTerminalState())
             return;
-    }
 
-    NetworkLoadMetrics emptyMetrics;
-    didFinishLoading(emptyMetrics);
+        if (buffer) {
+            unsigned size = buffer->size();
+            didReceiveBuffer(buffer.releaseNonNull(), size, DataPayloadWholeResource);
+            if (reachedTerminalState())
+                return;
+        }
+
+        NetworkLoadMetrics emptyMetrics;
+        didFinishLoading(emptyMetrics);
+    });
 }
 
 void ResourceLoader::start()
@@ -217,6 +212,13 @@ void ResourceLoader::start()
         loadDataURL();
         return;
     }
+
+#if USE(SOUP)
+    if (m_request.url().protocolIs("resource")) {
+        loadGResource();
+        return;
+    }
+#endif
 
     m_handle = ResourceHandle::create(frameLoader()->networkingContext(), m_request, this, m_defersLoading, m_options.sniffContent == SniffContent, m_options.sniffContentEncoding == ContentEncodingSniffingPolicy::Sniff);
 }
@@ -255,14 +257,14 @@ void ResourceLoader::loadDataURL()
     if (auto* scheduledPairs = m_frame->page()->scheduledRunLoopPairs())
         scheduleContext.scheduledPairs = *scheduledPairs;
 #endif
-    DataURLDecoder::decode(url, scheduleContext, [protectedThis = makeRef(*this), url](auto decodeResult) {
-        if (protectedThis->reachedTerminalState())
+    DataURLDecoder::decode(url, scheduleContext, [this, protectedThis = makeRef(*this), url](auto decodeResult) mutable {
+        if (this->reachedTerminalState())
             return;
         if (!decodeResult) {
             protectedThis->didFail(ResourceError(errorDomainWebKitInternal, 0, url, "Data URL decoding failed"));
             return;
         }
-        if (protectedThis->wasCancelled())
+        if (this->wasCancelled())
             return;
         auto& result = decodeResult.value();
         auto dataSize = result.data ? result.data->size() : 0;
@@ -272,15 +274,15 @@ void ResourceLoader::loadDataURL()
         dataResponse.setHTTPStatusText(ASCIILiteral("OK"));
         dataResponse.setHTTPHeaderField(HTTPHeaderName::ContentType, result.contentType);
         dataResponse.setSource(ResourceResponse::Source::Network);
-        protectedThis->didReceiveResponse(dataResponse);
+        this->didReceiveResponse(dataResponse, [this, protectedThis = WTFMove(protectedThis), dataSize, data = result.data.releaseNonNull()]() mutable {
+            if (!this->reachedTerminalState() && dataSize)
+                this->didReceiveBuffer(WTFMove(data), dataSize, DataPayloadWholeResource);
 
-        if (!protectedThis->reachedTerminalState() && dataSize)
-            protectedThis->didReceiveBuffer(result.data.releaseNonNull(), dataSize, DataPayloadWholeResource);
-
-        if (!protectedThis->reachedTerminalState()) {
-            NetworkLoadMetrics emptyMetrics;
-            protectedThis->didFinishLoading(emptyMetrics);
-        }
+            if (!this->reachedTerminalState()) {
+                NetworkLoadMetrics emptyMetrics;
+                this->didFinishLoading(emptyMetrics);
+            }
+        });
     });
 }
 
@@ -326,18 +328,8 @@ void ResourceLoader::clearResourceData()
         m_resourceData->clear();
 }
 
-bool ResourceLoader::isSubresourceLoader()
+bool ResourceLoader::isSubresourceLoader() const
 {
-    return false;
-}
-
-bool ResourceLoader::isMixedContent(const URL& url) const
-{
-    if (MixedContentChecker::isMixedContent(m_frame->document()->securityOrigin(), url))
-        return true;
-    Frame& topFrame = m_frame->tree().top();
-    if (&topFrame != m_frame && MixedContentChecker::isMixedContent(topFrame.document()->securityOrigin(), url))
-        return true;
     return false;
 }
 
@@ -403,10 +395,6 @@ void ResourceLoader::willSendRequestInternal(ResourceRequest&& request, const Re
 #endif
 
     bool isRedirect = !redirectResponse.isNull();
-
-    if (isMixedContent(m_request.url()) || (isRedirect && isMixedContent(request.url())))
-        m_wasInsecureRequestSeen = true;
-
     if (isRedirect)
         platformStrategies()->loaderStrategy()->crossOriginRedirectReceived(this, request.url());
 
@@ -456,6 +444,7 @@ static void logResourceResponseSource(Frame* frame, ResourceResponse::Source sou
         break;
     case ResourceResponse::Source::MemoryCache:
     case ResourceResponse::Source::MemoryCacheAfterValidation:
+    case ResourceResponse::Source::ApplicationCache:
     case ResourceResponse::Source::Unknown:
         return;
     }
@@ -463,34 +452,24 @@ static void logResourceResponseSource(Frame* frame, ResourceResponse::Source sou
     frame->page()->diagnosticLoggingClient().logDiagnosticMessage(DiagnosticLoggingKeys::resourceResponseSourceKey(), sourceKey, ShouldSample::Yes);
 }
 
+bool ResourceLoader::shouldAllowResourceToAskForCredentials() const
+{
+    return m_canCrossOriginRequestsAskUserForCredentials || m_frame->tree().top().document()->securityOrigin().canRequest(m_request.url());
+}
+
 void ResourceLoader::didBlockAuthenticationChallenge()
 {
     m_wasAuthenticationChallengeBlocked = true;
-
-    if (!m_canAskClientForCredentials)
+    if (m_options.clientCredentialPolicy == ClientCredentialPolicy::CannotAskClientForCredentials)
         return;
-
-    if (!m_wasInsecureRequestSeen)
-        return;
-
-    // Comparing the initial request URL and final request URL does not tell us whether a redirect happened or not since
-    // a server can serve a redirect to the same URL that was requested. However, this is good enough for our purpose.
-    bool wasRedirected = m_request.url() != originalRequest().url();
-
-    bool isMixedContent = this->isMixedContent(m_request.url());
-    String reason;
-    if (isMixedContent && wasRedirected)
-        reason = makeString("it is insecure content that was loaded via a redirect from ", originalRequest().url().stringCenterEllipsizedToLength());
-    else if (isMixedContent)
-        reason = ASCIILiteral { "it is insecure content" };
-    else
-        reason = makeString("it was loaded via an insecure redirect from ", originalRequest().url().stringCenterEllipsizedToLength());
-    FrameLoader::reportAuthenticationChallengeBlocked(m_frame.get(), m_request.url(), reason);
+    ASSERT(!shouldAllowResourceToAskForCredentials());
+    FrameLoader::reportAuthenticationChallengeBlocked(m_frame.get(), m_request.url(), ASCIILiteral("it is a cross-origin request"));
 }
 
-void ResourceLoader::didReceiveResponse(const ResourceResponse& r)
+void ResourceLoader::didReceiveResponse(const ResourceResponse& r, CompletionHandler<void()>&& policyCompletionHandler)
 {
     ASSERT(!m_reachedTerminalState);
+    CompletionHandlerCallingScope completionHandlerCaller(WTFMove(policyCompletionHandler));
 
     // Protect this in this delegate method since the additional processing can do
     // anything including possibly derefing this; one example of this is Radar 3266216.
@@ -689,8 +668,7 @@ void ResourceLoader::didReceiveResponseAsync(ResourceHandle*, ResourceResponse&&
         completionHandler();
         return;
     }
-    didReceiveResponse(response);
-    completionHandler();
+    didReceiveResponse(response, WTFMove(completionHandler));
 }
 
 void ResourceLoader::didReceiveData(ResourceHandle*, const char* data, unsigned length, int encodedDataLength)
@@ -737,9 +715,9 @@ bool ResourceLoader::shouldUseCredentialStorage()
 
 bool ResourceLoader::isAllowedToAskUserForCredentials() const
 {
-    if (!m_canAskClientForCredentials)
+    if (m_options.clientCredentialPolicy == ClientCredentialPolicy::CannotAskClientForCredentials)
         return false;
-    if (m_wasInsecureRequestSeen)
+    if (!shouldAllowResourceToAskForCredentials())
         return false;
     return m_options.credentials == FetchOptions::Credentials::Include || (m_options.credentials == FetchOptions::Credentials::SameOrigin && m_frame->document()->securityOrigin().canRequest(originalRequest().url()));
 }
@@ -765,9 +743,9 @@ void ResourceLoader::didReceiveAuthenticationChallenge(ResourceHandle* handle, c
 }
 
 #if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-void ResourceLoader::canAuthenticateAgainstProtectionSpaceAsync(ResourceHandle* handle, const ProtectionSpace& protectionSpace)
+void ResourceLoader::canAuthenticateAgainstProtectionSpaceAsync(ResourceHandle*, const ProtectionSpace& protectionSpace, CompletionHandler<void(bool)>&& completionHandler)
 {
-    handle->continueCanAuthenticateAgainstProtectionSpace(canAuthenticateAgainstProtectionSpace(protectionSpace));
+    completionHandler(canAuthenticateAgainstProtectionSpace(protectionSpace));
 }
 
 bool ResourceLoader::canAuthenticateAgainstProtectionSpace(const ProtectionSpace& protectionSpace)

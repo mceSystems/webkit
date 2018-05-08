@@ -1134,11 +1134,11 @@ RenderListMarker::~RenderListMarker()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderListMarker::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderListMarker::willBeDestroyed()
 {
     if (m_image)
         m_image->removeClient(this);
-    RenderBox::willBeDestroyed(builder);
+    RenderBox::willBeDestroyed();
 }
 
 void RenderListMarker::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
@@ -1221,7 +1221,7 @@ void RenderListMarker::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffse
         context.fillRect(snappedIntRect(selRect), m_listItem.selectionBackgroundColor());
     }
 
-    const Color color(style().visitedDependentColor(CSSPropertyColor));
+    const Color color(style().visitedDependentColorWithColorFilter(CSSPropertyColor));
     context.setStrokeColor(color);
     context.setStrokeStyle(SolidStroke);
     context.setStrokeThickness(1.0f);
@@ -1382,8 +1382,8 @@ void RenderListMarker::layout()
     ASSERT(needsLayout());
 
     LayoutUnit blockOffset;
-    for (auto* box = parentBox(); box && box != &m_listItem; box = box->parentBox())
-        blockOffset += box->logicalTop();
+    for (auto* ancestor = parentBox(); ancestor && ancestor != &m_listItem; ancestor = ancestor->parentBox())
+        blockOffset += ancestor->logicalTop();
     if (style().isLeftToRightDirection())
         m_lineOffsetForListItem = m_listItem.logicalLeftOffsetForLine(blockOffset, DoNotIndentText, LayoutUnit());
     else

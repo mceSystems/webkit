@@ -31,7 +31,6 @@
 #include "DOMWrapperWorld.h"
 #include "JSDOMGlobalObjectTask.h"
 #include "JSDedicatedWorkerGlobalScope.h"
-#include "JSDynamicDowncast.h"
 #include "JSWorkerGlobalScope.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerThread.h"
@@ -62,7 +61,9 @@ const GlobalObjectMethodTable JSWorkerGlobalScopeBase::s_globalObjectMethodTable
     nullptr, // moduleLoaderCreateImportMetaProperties
     nullptr, // moduleLoaderEvaluate
     nullptr, // promiseRejectionTracker
-    &defaultLanguage
+    &defaultLanguage,
+    nullptr, // compileStreaming
+    nullptr, // instantiateStreaming
 };
 
 JSWorkerGlobalScopeBase::JSWorkerGlobalScopeBase(JSC::VM& vm, JSC::Structure* structure, RefPtr<WorkerGlobalScope>&& impl)
@@ -154,7 +155,7 @@ JSDedicatedWorkerGlobalScope* toJSDedicatedWorkerGlobalScope(VM& vm, JSValue val
     if (classInfo == JSDedicatedWorkerGlobalScope::info())
         return jsCast<JSDedicatedWorkerGlobalScope*>(asObject(value));
     if (classInfo == JSProxy::info())
-        return jsDynamicDowncast<JSDedicatedWorkerGlobalScope*>(vm, jsCast<JSProxy*>(asObject(value))->target());
+        return jsDynamicCast<JSDedicatedWorkerGlobalScope*>(vm, jsCast<JSProxy*>(asObject(value))->target());
     return nullptr;
 }
 
@@ -172,7 +173,7 @@ JSWorkerGlobalScope* toJSWorkerGlobalScope(VM& vm, JSValue value)
 #endif
 
     if (classInfo == JSProxy::info())
-        return jsDynamicDowncast<JSWorkerGlobalScope*>(vm, jsCast<JSProxy*>(asObject(value))->target());
+        return jsDynamicCast<JSWorkerGlobalScope*>(vm, jsCast<JSProxy*>(asObject(value))->target());
 
     return nullptr;
 }
@@ -186,7 +187,7 @@ JSServiceWorkerGlobalScope* toJSServiceWorkerGlobalScope(VM& vm, JSValue value)
     if (classInfo == JSServiceWorkerGlobalScope::info())
         return jsCast<JSServiceWorkerGlobalScope*>(asObject(value));
     if (classInfo == JSProxy::info())
-        return jsDynamicDowncast<JSServiceWorkerGlobalScope*>(vm, jsCast<JSProxy*>(asObject(value))->target());
+        return jsDynamicCast<JSServiceWorkerGlobalScope*>(vm, jsCast<JSProxy*>(asObject(value))->target());
     return nullptr;
 }
 #endif

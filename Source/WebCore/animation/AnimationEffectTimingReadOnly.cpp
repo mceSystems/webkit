@@ -26,6 +26,8 @@
 #include "config.h"
 #include "AnimationEffectTimingReadOnly.h"
 
+#include "AnimationEffectReadOnly.h"
+
 namespace WebCore {
 
 Ref<AnimationEffectTimingReadOnly> AnimationEffectTimingReadOnly::create()
@@ -41,6 +43,11 @@ AnimationEffectTimingReadOnly::AnimationEffectTimingReadOnly(ClassType classType
 
 AnimationEffectTimingReadOnly::~AnimationEffectTimingReadOnly()
 {
+}
+
+void AnimationEffectTimingReadOnly::propertyDidChange()
+{
+    m_effect->timingDidChange();
 }
 
 ExceptionOr<void> AnimationEffectTimingReadOnly::setProperties(std::optional<Variant<double, KeyframeEffectOptions>>&& options)
@@ -80,6 +87,18 @@ ExceptionOr<void> AnimationEffectTimingReadOnly::setProperties(std::optional<Var
     return { };
 }
 
+void AnimationEffectTimingReadOnly::copyPropertiesFromSource(AnimationEffectTimingReadOnly* source)
+{
+    m_fill = source->m_fill;
+    m_delay = source->m_delay;
+    m_endDelay = source->m_endDelay;
+    m_direction = source->m_direction;
+    m_iterations = source->m_iterations;
+    m_timingFunction = source->m_timingFunction;
+    m_iterationStart = source->m_iterationStart;
+    m_iterationDuration = source->m_iterationDuration;
+}
+
 ExceptionOr<void> AnimationEffectTimingReadOnly::setIterationStart(double iterationStart)
 {
     // https://drafts.csswg.org/web-animations-1/#dom-animationeffecttiming-iterationstart
@@ -88,7 +107,12 @@ ExceptionOr<void> AnimationEffectTimingReadOnly::setIterationStart(double iterat
     if (iterationStart < 0)
         return Exception { TypeError };
 
+    if (m_iterationStart == iterationStart)
+        return { };
+
     m_iterationStart = iterationStart;
+    propertyDidChange();
+
     return { };
 }
 
@@ -100,7 +124,12 @@ ExceptionOr<void> AnimationEffectTimingReadOnly::setIterations(double iterations
     if (iterations < 0 || std::isnan(iterations))
         return Exception { TypeError };
 
+    if (m_iterations == iterations)
+        return { };
+        
     m_iterations = iterations;
+    propertyDidChange();
+
     return { };
 }
 
@@ -124,14 +153,14 @@ ExceptionOr<void> AnimationEffectTimingReadOnly::setBindingsDuration(Variant<dou
         auto durationAsDouble = WTF::get<double>(duration);
         if (durationAsDouble < 0 || std::isnan(durationAsDouble))
             return Exception { TypeError };
-        m_iterationDuration = Seconds::fromMilliseconds(durationAsDouble);
+        setIterationDuration(Seconds::fromMilliseconds(durationAsDouble));
         return { };
     }
 
     if (WTF::get<String>(duration) != "auto")
         return Exception { TypeError };
 
-    m_iterationDuration = 0_s;
+    setIterationDuration(0_s);
 
     return { };
 }
@@ -141,7 +170,7 @@ ExceptionOr<void> AnimationEffectTimingReadOnly::setEasing(const String& easing)
     auto timingFunctionResult = TimingFunction::createFromCSSText(easing);
     if (timingFunctionResult.hasException())
         return timingFunctionResult.releaseException();
-    m_timingFunction = timingFunctionResult.returnValue();
+    setTimingFunction(timingFunctionResult.returnValue());
     return { };
 }
 
@@ -153,6 +182,57 @@ Seconds AnimationEffectTimingReadOnly::endTime() const
     // The end time of an animation effect is the result of evaluating max(start delay + active duration + end delay, 0).
     auto endTime = m_delay + activeDuration() + m_endDelay;
     return endTime > 0_s ? endTime : 0_s;
+}
+
+void AnimationEffectTimingReadOnly::setDelay(const Seconds& delay)
+{
+    if (m_delay == delay)
+        return;
+
+    m_delay = delay;
+    propertyDidChange();
+}
+
+void AnimationEffectTimingReadOnly::setEndDelay(const Seconds& endDelay)
+{
+    if (m_endDelay == endDelay)
+        return;
+
+    m_endDelay = endDelay;
+    propertyDidChange();
+}
+
+void AnimationEffectTimingReadOnly::setFill(FillMode fill)
+{
+    if (m_fill == fill)
+        return;
+
+    m_fill = fill;
+    propertyDidChange();
+}
+
+void AnimationEffectTimingReadOnly::setIterationDuration(const Seconds& duration)
+{
+    if (m_iterationDuration == duration)
+        return;
+
+    m_iterationDuration = duration;
+    propertyDidChange();
+}
+
+void AnimationEffectTimingReadOnly::setDirection(PlaybackDirection direction)
+{
+    if (m_direction == direction)
+        return;
+
+    m_direction = direction;
+    propertyDidChange();
+}
+
+void AnimationEffectTimingReadOnly::setTimingFunction(const RefPtr<TimingFunction>& timingFunction)
+{
+    m_timingFunction = timingFunction;
+    propertyDidChange();
 }
 
 Seconds AnimationEffectTimingReadOnly::activeDuration() const

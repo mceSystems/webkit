@@ -40,6 +40,7 @@
 #include "Chrome.h"
 #include "ChromeClient.h"
 #include "DOMWindow.h"
+#include "DocumentTimeline.h"
 #include "DocumentType.h"
 #include "Editing.h"
 #include "Editor.h"
@@ -66,9 +67,8 @@
 #include "HitTestResult.h"
 #include "ImageBuffer.h"
 #include "InspectorInstrumentation.h"
-#include "JSDOMWindowProxy.h"
+#include "JSWindowProxy.h"
 #include "Logging.h"
-#include "MainFrame.h"
 #include "MathMLNames.h"
 #include "MediaFeatureNames.h"
 #include "NavigationScheduler.h"
@@ -151,7 +151,7 @@ static inline float parentTextZoomFactor(Frame* frame)
 }
 
 Frame::Frame(Page& page, HTMLFrameOwnerElement* ownerElement, FrameLoaderClient& frameLoaderClient)
-    : m_mainFrame(ownerElement ? page.mainFrame() : static_cast<MainFrame&>(*this))
+    : m_mainFrame(ownerElement ? page.mainFrame() : *this)
     , m_page(&page)
     , m_settings(&page.settings())
     , m_treeNode(*this, parentFromOwnerElement(ownerElement))
@@ -282,6 +282,11 @@ void Frame::setDocument(RefPtr<Document>&& newDocument)
         if (m_page)
             m_page->didChangeMainDocument();
         m_loader->client().dispatchDidChangeMainDocument();
+
+        // We want to generate the same unique names whenever a page is loaded to avoid making layout tests
+        // flaky and for things like form state restoration to work. To achieve this, we reset our frame
+        // identifier generator every time the page is navigated.
+        tree().resetFrameIdentifiers();
     }
 
 #if ENABLE(ATTACHMENT_ELEMENT)
@@ -778,7 +783,10 @@ void Frame::clearTimers(FrameView *view, Document *document)
 {
     if (view) {
         view->layoutContext().unscheduleLayout();
-        view->frame().animation().suspendAnimationsForDocument(document);
+        if (RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled())
+            document->timeline().suspendAnimations();
+        else
+            view->frame().animation().suspendAnimationsForDocument(document);
         view->frame().eventHandler().stopAutoscrollTimer();
     }
 }
@@ -940,6 +948,16 @@ void Frame::createView(const IntSize& viewportSize, const Color& backgroundColor
         view()->setCanHaveScrollbars(owner->scrollingMode() != ScrollbarAlwaysOff);
 }
 
+DOMWindow* Frame::window() const
+{
+    return document() ? document()->domWindow() : nullptr;
+}
+
+AbstractDOMWindow* Frame::virtualWindow() const
+{
+    return window();
+}
+
 String Frame::layerTreeAsText(LayerTreeFlags flags) const
 {
     document()->updateLayout();
@@ -1087,6 +1105,35 @@ bool Frame::isURLAllowed(const URL& url) const
 bool Frame::isAlwaysOnLoggingAllowed() const
 {
     return page() && page()->isAlwaysOnLoggingAllowed();
+}
+
+void Frame::dropChildren()
+{
+    ASSERT(isMainFrame());
+    while (Frame* child = tree().firstChild())
+        tree().removeChild(*child);
+}
+
+void Frame::selfOnlyRef()
+{
+    ASSERT(isMainFrame());
+    if (m_selfOnlyRefCount++)
+        return;
+
+    ref();
+}
+
+void Frame::selfOnlyDeref()
+{
+    ASSERT(isMainFrame());
+    ASSERT(m_selfOnlyRefCount);
+    if (--m_selfOnlyRefCount)
+        return;
+
+    if (hasOneRef())
+        dropChildren();
+
+    deref();
 }
 
 } // namespace WebCore

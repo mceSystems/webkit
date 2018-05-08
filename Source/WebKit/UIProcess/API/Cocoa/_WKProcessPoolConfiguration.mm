@@ -227,6 +227,46 @@
     return _processPoolConfiguration->presentingApplicationPID();
 }
 
+- (void)setProcessSwapsOnNavigation:(BOOL)swaps
+{
+    _processPoolConfiguration->setProcessSwapsOnNavigation(swaps);
+}
+
+- (BOOL)processSwapsOnNavigation
+{
+    return _processPoolConfiguration->processSwapsOnNavigation();
+}
+
+- (void)setAlwaysKeepAndReuseSwappedProcesses:(BOOL)swaps
+{
+    _processPoolConfiguration->setAlwaysKeepAndReuseSwappedProcesses(swaps);
+}
+
+- (BOOL)alwaysKeepAndReuseSwappedProcesses
+{
+    return _processPoolConfiguration->alwaysKeepAndReuseSwappedProcesses();
+}
+
+- (void)setProcessSwapsOnWindowOpenWithOpener:(BOOL)swaps
+{
+    _processPoolConfiguration->setProcessSwapsOnWindowOpenWithOpener(swaps);
+}
+
+- (BOOL)processSwapsOnWindowOpenWithOpener
+{
+    return _processPoolConfiguration->processSwapsOnWindowOpenWithOpener();
+}
+
+- (BOOL)trackNetworkActivity
+{
+    return _processPoolConfiguration->trackNetworkActivity();
+}
+
+- (void)setTrackNetworkActivity:(BOOL)track
+{
+    _processPoolConfiguration->setTrackNetworkActivity(track);
+}
+
 #if PLATFORM(IOS)
 - (NSString *)CTDataConnectionServiceType
 {

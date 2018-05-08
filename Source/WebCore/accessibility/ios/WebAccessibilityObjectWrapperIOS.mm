@@ -1084,6 +1084,18 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     return m_object->isValueAutofilled();
 }
 
+- (BOOL)_accessibilityIsStrongPasswordField
+{
+    if (![self _prepareAccessibilityCall])
+        return NO;
+    
+    if (!m_object->isPasswordField())
+        return NO;
+    
+    AutoFillButtonType type = m_object->valueAutofillButtonType();
+    return type == AutoFillButtonType::StrongConfirmationPassword || type == AutoFillButtonType::StrongPassword;
+}
+
 - (CGFloat)_accessibilityMinValue
 {
     if (![self _prepareAccessibilityCall])
@@ -1408,7 +1420,7 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
         return [NSString stringWithFormat:@"%d", 1];
 
     // rdar://8131388 WebKit should expose the same info as UIKit for its password fields.
-    if (m_object->isPasswordField()) {
+    if (m_object->isPasswordField() && ![self _accessibilityIsStrongPasswordField]) {
         int passwordLength = m_object->accessibilityPasswordFieldLength();
         NSMutableString* string = [NSMutableString string];
         for (int k = 0; k < passwordLength; ++k)
@@ -1486,6 +1498,17 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     
     FloatPoint floatPoint = FloatPoint(point);
     return [self convertPointToScreenSpace:floatPoint];
+}
+
+- (BOOL)accessibilityPerformEscape
+{
+    if (![self _prepareAccessibilityCall])
+        return NO;
+    
+    m_object->dispatchAccessibilityEventWithType(AccessibilityEventType::Dismiss);
+    
+    // Return whether a listener received this event so it prevents other callers up the hierarchy chain.
+    return m_object->shouldDispatchAccessibilityEvent() && m_object->hasAccessibleDismissEventListener();
 }
 
 - (BOOL)_accessibilityScrollToVisible
@@ -1641,6 +1664,18 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     
     LayoutRect rect = m_object->elementRect();
     return CGRectMake(rect.x(), rect.y(), rect.width(), rect.height());
+}
+
+- (CGRect)accessibilityVisibleContentRect
+{
+    if (![self _prepareAccessibilityCall])
+        return CGRectZero;
+    
+    Document* document = m_object->document();
+    if (!document || !document->view())
+        return CGRectZero;
+    IntRect rect = snappedIntRect(document->view()->unobscuredContentRect());
+    return [self convertRectToScreenSpace:rect];
 }
 
 // The "center point" is where VoiceOver will "press" an object. This may not be the actual

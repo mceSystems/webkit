@@ -206,10 +206,12 @@ class CompileWebKit(shell.Compile):
             self.setCommand(self.command + ['ARCHS=' + architecture])
             if platform == 'ios':
                 self.setCommand(self.command + ['ONLY_ACTIVE_ARCH=NO'])
-        # Generating dSYM files is slow, but these are needed to have line numbers in crash reports on testers.
-        # Debug builds on Yosemite can't use dSYMs, because crash logs end up unsymbolicated.
-        if platform in ('mac', 'ios') and buildOnly and (self.getProperty('fullPlatform') != "mac-yosemite" or self.getProperty('configuration') != "debug"):
+        if platform in ('mac', 'ios') and buildOnly:
+            # For build-only bots, the expectation is that tests will be run on separate machines,
+            # so we need to package debug info as dSYMs. Only generating line tables makes
+            # this much faster than full debug info, and crash logs still have line numbers.
             self.setCommand(self.command + ['DEBUG_INFORMATION_FORMAT=dwarf-with-dsym'])
+            self.setCommand(self.command + ['CLANG_DEBUG_INFORMATION_LEVEL=line-tables-only'])
 
         appendCustomBuildFlags(self, platform, self.getProperty('fullPlatform'))
 
@@ -257,6 +259,15 @@ class ArchiveMinifiedBuiltProduct(ArchiveBuiltProduct):
     command = ["python", "./Tools/BuildSlaveSupport/built-product-archive",
                WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "archive", "--minify"]
 
+
+class GenerateJSCBundle(shell.ShellCommand):
+    command = ["python", "./Tools/Scripts/generate-jsc-bundle", "--builder-name", WithProperties("%(buildername)s"),
+               WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"),
+               WithProperties("--revision=%(got_revision)s"), "--remote-config-file", "../../remote-jsc-bundle-upload-config.json"]
+    name = "generate-jsc-bundle"
+    description = ["generating jsc bundle"]
+    descriptionDone = ["generated jsc bundle"]
+    haltOnFailure = False
 
 class ExtractBuiltProduct(shell.ShellCommand):
     command = ["python", "./Tools/BuildSlaveSupport/built-product-archive",
@@ -316,6 +327,10 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
         # Check: https://bugs.webkit.org/show_bug.cgi?id=175140
         if platform in ('gtk', 'wpe'):
             self.setCommand(self.command + ['--memory-limited'])
+        # WinCairo uses the Windows command prompt, not Cygwin.
+        elif platform == 'wincairo':
+            self.setCommand(self.command + ['--test-writer=ruby'])
+
         appendCustomBuildFlags(self, platform, self.getProperty('fullPlatform'))
         return shell.Test.start(self)
 
@@ -483,7 +498,7 @@ class RunUnitTests(TestWithFailureCount):
     name = "run-api-tests"
     description = ["unit tests running"]
     descriptionDone = ["unit-tests"]
-    command = ["perl", "./Tools/Scripts/run-api-tests", "--no-build", WithProperties("--%(configuration)s"), "--verbose"]
+    command = ["python", "./Tools/Scripts/run-api-tests", "--no-build", WithProperties("--%(configuration)s"), "--verbose"]
     failedTestsFormatString = "%d unit test%s failed or timed out"
 
     def start(self):
@@ -492,17 +507,11 @@ class RunUnitTests(TestWithFailureCount):
 
     def countFailures(self, cmd):
         log_text = cmd.logs['stdio'].getText()
-        count = 0
 
-        split = re.split(r'\sTests that timed out:\s', log_text)
-        if len(split) > 1:
-            count += len(re.findall(r'^\s+\S+$', split[1], flags=re.MULTILINE))
-
-        split = re.split(r'\sTests that failed:\s', split[0])
-        if len(split) > 1:
-            count += len(re.findall(r'^\s+\S+$', split[1], flags=re.MULTILINE))
-
-        return count
+        match = re.search(r'Ran (?P<ran>\d+) tests of (?P<total>\d+) with (?P<passed>\d+) successful', log_text)
+        if not match:
+            return -1
+        return int(match.group('ran')) - int(match.group('passed'))
 
 
 class RunPythonTests(TestWithFailureCount):
@@ -707,10 +716,10 @@ class RunWebDriverTests(shell.Test):
 
         self.failuresCount = 0
         self.newPassesCount = 0
-        foundItems = re.findall("Unexpected.+\((\d+)\)", logText)
+        foundItems = re.findall("^Unexpected .+ \((\d+)\)", logText, re.MULTILINE)
         if foundItems:
             self.failuresCount = int(foundItems[0])
-        foundItems = re.findall("Expected to .+, but passed \((\d+)\)", logText)
+        foundItems = re.findall("^Expected to .+, but passed \((\d+)\)", logText, re.MULTILINE)
         if foundItems:
             self.newPassesCount = int(foundItems[0])
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010, 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -72,6 +72,7 @@
 #include "WebProcessProxy.h"
 #include "WebProtectionSpace.h"
 #include <WebCore/Page.h>
+#include <WebCore/SSLKeyGenerator.h>
 #include <WebCore/SecurityOriginData.h>
 #include <WebCore/SerializedCryptoKeyWrap.h>
 #include <WebCore/WindowFeatures.h>
@@ -102,7 +103,7 @@ template<> struct ClientTraits<WKPageLoaderClientBase> {
 };
 
 template<> struct ClientTraits<WKPageNavigationClientBase> {
-    typedef std::tuple<WKPageNavigationClientV0, WKPageNavigationClientV1, WKPageNavigationClientV2> Versions;
+    typedef std::tuple<WKPageNavigationClientV0, WKPageNavigationClientV1, WKPageNavigationClientV2, WKPageNavigationClientV3> Versions;
 };
 
 template<> struct ClientTraits<WKPagePolicyClientBase> {
@@ -110,7 +111,7 @@ template<> struct ClientTraits<WKPagePolicyClientBase> {
 };
 
 template<> struct ClientTraits<WKPageUIClientBase> {
-    typedef std::tuple<WKPageUIClientV0, WKPageUIClientV1, WKPageUIClientV2, WKPageUIClientV3, WKPageUIClientV4, WKPageUIClientV5, WKPageUIClientV6, WKPageUIClientV7, WKPageUIClientV8, WKPageUIClientV9, WKPageUIClientV10> Versions;
+    typedef std::tuple<WKPageUIClientV0, WKPageUIClientV1, WKPageUIClientV2, WKPageUIClientV3, WKPageUIClientV4, WKPageUIClientV5, WKPageUIClientV6, WKPageUIClientV7, WKPageUIClientV8, WKPageUIClientV9, WKPageUIClientV10, WKPageUIClientV11, WKPageUIClientV12> Versions;
 };
 
 #if ENABLE(CONTEXT_MENUS)
@@ -305,7 +306,7 @@ bool WKPageCanGoBack(WKPageRef pageRef)
 
 void WKPageGoToBackForwardListItem(WKPageRef pageRef, WKBackForwardListItemRef itemRef)
 {
-    toImpl(pageRef)->goToBackForwardItem(toImpl(itemRef));
+    toImpl(pageRef)->goToBackForwardItem(*toImpl(itemRef));
 }
 
 void WKPageTryRestoreScrollPosition(WKPageRef pageRef)
@@ -326,7 +327,7 @@ bool WKPageWillHandleHorizontalScrollEvents(WKPageRef pageRef)
 void WKPageUpdateWebsitePolicies(WKPageRef pageRef, WKWebsitePoliciesRef websitePoliciesRef)
 {
     auto data = toImpl(websitePoliciesRef)->data();
-    RELEASE_ASSERT_WITH_MESSAGE(!data.websiteDataStoreParameters, "Setting WebsitePolicies.WebsiteDataStore is not supported in the C API.");
+    RELEASE_ASSERT_WITH_MESSAGE(!data.websiteDataStoreParameters, "Setting WebsitePolicies.WebsiteDataStore is only supported during WKFramePolicyListenerUseWithPolicies().");
     toImpl(pageRef)->updateWebsitePolicies(WTFMove(data));
 }
 
@@ -1509,10 +1510,36 @@ private:
     Function<void (const String&)> m_completionHandler;
 };
 
+class RequestStorageAccessConfirmResultListener : public API::ObjectImpl<API::Object::Type::RequestStorageAccessConfirmResultListener> {
+public:
+    static Ref<RequestStorageAccessConfirmResultListener> create(CompletionHandler<void(bool)>&& completionHandler)
+    {
+        return adoptRef(*new RequestStorageAccessConfirmResultListener(WTFMove(completionHandler)));
+    }
+    
+    virtual ~RequestStorageAccessConfirmResultListener()
+    {
+    }
+    
+    void call(bool result)
+    {
+        m_completionHandler(result);
+    }
+    
+private:
+    explicit RequestStorageAccessConfirmResultListener(CompletionHandler<void(bool)>&& completionHandler)
+        : m_completionHandler(WTFMove(completionHandler))
+    {
+    }
+    
+    CompletionHandler<void(bool)> m_completionHandler;
+};
+
 WK_ADD_API_MAPPING(WKPageRunBeforeUnloadConfirmPanelResultListenerRef, RunBeforeUnloadConfirmPanelResultListener)
 WK_ADD_API_MAPPING(WKPageRunJavaScriptAlertResultListenerRef, RunJavaScriptAlertResultListener)
 WK_ADD_API_MAPPING(WKPageRunJavaScriptConfirmResultListenerRef, RunJavaScriptConfirmResultListener)
 WK_ADD_API_MAPPING(WKPageRunJavaScriptPromptResultListenerRef, RunJavaScriptPromptResultListener)
+WK_ADD_API_MAPPING(WKPageRequestStorageAccessConfirmResultListenerRef, RequestStorageAccessConfirmResultListener)
 
 }
 
@@ -1554,6 +1581,16 @@ WKTypeID WKPageRunJavaScriptPromptResultListenerGetTypeID()
 void WKPageRunJavaScriptPromptResultListenerCall(WKPageRunJavaScriptPromptResultListenerRef listener, WKStringRef result)
 {
     toImpl(listener)->call(toWTFString(result));
+}
+
+WKTypeID WKPageRequestStorageAccessConfirmResultListenerGetTypeID()
+{
+    return toAPI(RequestStorageAccessConfirmResultListener::APIType);
+}
+
+void WKPageRequestStorageAccessConfirmResultListenerCall(WKPageRequestStorageAccessConfirmResultListenerRef listener, bool result)
+{
+    toImpl(listener)->call(result);
 }
 
 void WKPageSetPageUIClient(WKPageRef pageRef, const WKPageUIClientBase* wkClient)
@@ -1981,6 +2018,17 @@ void WKPageSetPageUIClient(WKPageRef pageRef, const WKPageUIClientBase* wkClient
             m_client.decidePolicyForNotificationPermissionRequest(toAPI(&page), toAPI(&origin), toAPI(NotificationPermissionRequest::create(WTFMove(completionHandler)).ptr()), m_client.base.clientInfo);
         }
 
+        void requestStorageAccessConfirm(WebPageProxy& page, WebFrameProxy* frame, const WTF::String& requestingDomain, const WTF::String& currentDomain, CompletionHandler<void(bool)>&& completionHandler) final
+        {
+            if (!m_client.requestStorageAccessConfirm) {
+                completionHandler(true);
+                return;
+            }
+
+            auto listener = RequestStorageAccessConfirmResultListener::create(WTFMove(completionHandler));
+            m_client.requestStorageAccessConfirm(toAPI(&page), toAPI(frame), toAPI(requestingDomain.impl()), toAPI(currentDomain.impl()), toAPI(listener.ptr()), m_client.base.clientInfo);
+        }
+
         // Printing.
         float headerHeight(WebPageProxy& page, WebFrameProxy& frame) final
         {
@@ -2065,6 +2113,14 @@ void WKPageSetPageUIClient(WKPageRef pageRef, const WKPageUIClientBase* wkClient
                 return;
 
             m_client.didClickAutoFillButton(toAPI(&page), toAPI(userInfo), m_client.base.clientInfo);
+        }
+
+        void didResignInputElementStrongPasswordAppearance(WebPageProxy& page, API::Object* userInfo) final
+        {
+            if (!m_client.didResignInputElementStrongPasswordAppearance)
+                return;
+
+            m_client.didResignInputElementStrongPasswordAppearance(toAPI(&page), toAPI(userInfo), m_client.base.clientInfo);
         }
 
 #if ENABLE(MEDIA_SESSION)
@@ -2266,6 +2322,13 @@ void WKPageSetPageNavigationClient(WKPageRef pageRef, const WKPageNavigationClie
 #endif
 
             return API::Data::create(masterKey.data(), masterKey.size());
+        }
+
+        RefPtr<API::String> signedPublicKeyAndChallengeString(WebPageProxy& page, unsigned keySizeIndex, const RefPtr<API::String>& challengeString, const WebCore::URL& url) override
+        {
+            if (m_client.copySignedPublicKeyAndChallengeString)
+                return adoptRef(toImpl(m_client.copySignedPublicKeyAndChallengeString(toAPI(&page), m_client.base.clientInfo)));
+            return API::String::create(WebCore::signedPublicKeyAndChallengeString(keySizeIndex, challengeString->string(), url));
         }
 
         void didBeginNavigationGesture(WebPageProxy& page) override

@@ -29,6 +29,7 @@
 
 #if !LOG_DISABLED || !RELEASE_LOG_DISABLED
 
+#include <windows.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/WTFString.h>
 
@@ -42,12 +43,12 @@ String logLevelString()
     if (!length)
         return emptyString();
 
-    auto buffer = std::make_unique<char[]>(length);
+    Vector<char> buffer(length);
 
-    if (!GetEnvironmentVariableA(loggingEnvironmentVariable, buffer.get(), length))
+    if (!GetEnvironmentVariableA(loggingEnvironmentVariable, buffer.data(), length))
         return emptyString();
 
-    return String(buffer.get());
+    return String(buffer.data());
 }
 
 } // namespace WebKit

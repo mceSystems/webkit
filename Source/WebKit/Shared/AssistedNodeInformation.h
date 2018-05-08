@@ -94,7 +94,9 @@ struct AssistedNodeInformation {
     double maximumScaleFactorIgnoringAlwaysScalable { INFINITY };
     double nodeFontSize { 0 };
     bool hasNextNode { false };
+    WebCore::IntRect nextNodeRect;
     bool hasPreviousNode { false };
+    WebCore::IntRect previousNodeRect;
     bool isAutocorrect { false };
     bool isRTL { false };
     bool isMultiSelect { false };
@@ -113,6 +115,11 @@ struct AssistedNodeInformation {
     bool acceptsAutofilledLoginCredentials { false };
     WebCore::URL representingPageURL;
     WebCore::AutofillFieldName autofillFieldName { WebCore::AutofillFieldName::None };
+    String placeholder;
+    String label;
+    String ariaLabel;
+
+    uint64_t assistedNodeIdentifier { 0 };
 
     void encode(IPC::Encoder&) const;
     static bool decode(IPC::Decoder&, AssistedNodeInformation&);

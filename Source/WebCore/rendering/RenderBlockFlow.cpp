@@ -53,6 +53,7 @@
 #include "Settings.h"
 #include "SimpleLineLayoutFunctions.h"
 #include "SimpleLineLayoutPagination.h"
+#include "SimpleLineLayoutResolver.h"
 #include "TextAutoSizing.h"
 #include "VerticalPositionCache.h"
 #include "VisiblePosition.h"
@@ -127,7 +128,7 @@ RenderBlockFlow::~RenderBlockFlow()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderBlockFlow::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderBlockFlow::willBeDestroyed()
 {
     if (!renderTreeBeingDestroyed()) {
         if (firstRootBox()) {
@@ -154,7 +155,7 @@ void RenderBlockFlow::willBeDestroyed(RenderTreeBuilder& builder)
     blockWillBeDestroyed();
 
     // NOTE: This jumps down to RenderBox, bypassing RenderBlock since it would do duplicate work.
-    RenderBox::willBeDestroyed(builder);
+    RenderBox::willBeDestroyed();
 }
 
 RenderBlockFlow* RenderBlockFlow::previousSiblingWithOverhangingFloats(bool& parentHasFloats) const
@@ -2020,10 +2021,6 @@ void RenderBlockFlow::styleDidChange(StyleDifference diff, const RenderStyle* ol
         parentBlock->markAllDescendantsWithFloatsForLayout();
         parentBlock->markSiblingsWithFloatsForLayout();
     }
-    // Fresh floats need to be reparented if they actually belong to the previous anonymous block.
-    // It copies the logic of RenderBlock::addChildIgnoringContinuation
-    if (noLongerAffectsParentBlock() && style().isFloating() && previousSibling() && previousSibling()->isAnonymousBlock())
-        downcast<RenderBoxModelObject>(*parent()).moveChildTo(*RenderTreeBuilder::current(), &downcast<RenderBoxModelObject>(*previousSibling()), this, RenderBoxModelObject::NormalizeAfterInsertion::No);
 
     if (diff >= StyleDifferenceRepaint) {
         // FIXME: This could use a cheaper style-only test instead of SimpleLineLayout::canUseFor.
@@ -2103,13 +2100,6 @@ void RenderBlockFlow::addFloatsToNewParent(RenderBlockFlow& toBlockFlow) const
             continue;
         toBlockFlow.m_floatingObjects->add(floatingObject->cloneForNewParent());
     }
-}
-
-void RenderBlockFlow::moveAllChildrenIncludingFloatsTo(RenderTreeBuilder& builder, RenderBlock& toBlock, RenderBoxModelObject::NormalizeAfterInsertion normalizeAfterInsertion)
-{
-    auto& toBlockFlow = downcast<RenderBlockFlow>(toBlock);
-    moveAllChildrenTo(builder, &toBlockFlow, normalizeAfterInsertion);
-    addFloatsToNewParent(toBlockFlow);
 }
 
 void RenderBlockFlow::addOverflowFromFloats()
@@ -3631,6 +3621,12 @@ void RenderBlockFlow::ensureLineBoxes()
     setLineLayoutPath(ForceLineBoxesPath);
     if (!m_simpleLineLayout)
         return;
+
+    if (SimpleLineLayout::canUseForLineBoxTree(*this, *m_simpleLineLayout)) {
+        SimpleLineLayout::generateLineBoxTree(*this, *m_simpleLineLayout);
+        m_simpleLineLayout = nullptr;
+        return;
+    }
     bool isPaginated = m_simpleLineLayout->isPaginated();
     m_simpleLineLayout = nullptr;
 
@@ -3731,16 +3727,18 @@ static bool isNonBlocksOrNonFixedHeightListItems(const RenderObject& renderer)
     return false;
 }
 
-//  For now, we auto size single lines of text the same as multiple lines.
-//  We've been experimenting with low values for single lines of text.
-static inline float oneLineTextMultiplier(float specifiedSize)
+// For now, we auto size single lines of text the same as multiple lines.
+// We've been experimenting with low values for single lines of text.
+static inline float oneLineTextMultiplier(RenderObject& renderer, float specifiedSize)
 {
-    return std::max((1.0f / log10f(specifiedSize) * 1.7f), 1.0f);
+    const float coefficient = renderer.settings().oneLineTextMultiplierCoefficient();
+    return std::max((1.0f / log10f(specifiedSize) * coefficient), 1.0f);
 }
 
-static inline float textMultiplier(float specifiedSize)
+static inline float textMultiplier(RenderObject& renderer, float specifiedSize)
 {
-    return std::max((1.0f / log10f(specifiedSize) * 1.95f), 1.0f);
+    const float coefficient = renderer.settings().multiLineTextMultiplierCoefficient();
+    return std::max((1.0f / log10f(specifiedSize) * coefficient), 1.0f);
 }
 
 void RenderBlockFlow::adjustComputedFontSizes(float size, float visibleWidth)
@@ -3794,7 +3792,7 @@ void RenderBlockFlow::adjustComputedFontSizes(float size, float visibleWidth)
             if (m_widthForTextAutosizing == -1)
                 m_widthForTextAutosizing = actualWidth;
 
-            float lineTextMultiplier = lineCount == ONE_LINE ? oneLineTextMultiplier(specifiedSize) : textMultiplier(specifiedSize);
+            float lineTextMultiplier = lineCount == ONE_LINE ? oneLineTextMultiplier(text, specifiedSize) : textMultiplier(text, specifiedSize);
             float candidateNewSize = roundf(std::min(minFontSize, specifiedSize * lineTextMultiplier));
             if (candidateNewSize > specifiedSize && candidateNewSize != fontDescription.computedSize() && text.textNode() && oldStyle.textSizeAdjust().isAuto())
                 document().textAutoSizing().addTextNode(*text.textNode(), candidateNewSize);
@@ -3842,21 +3840,6 @@ void RenderBlockFlow::layoutExcludedChildren(bool relayoutChildren)
     determineLogicalLeftPositionForChild(*fragmentedFlow);
     
     fragmentedFlow->layoutFlowExcludedObjects(relayoutChildren);
-}
-
-void RenderBlockFlow::addChild(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
-{
-    builder.insertChildToRenderBlockFlow(*this, WTFMove(newChild), beforeChild);
-}
-
-RenderPtr<RenderObject> RenderBlockFlow::takeChild(RenderTreeBuilder& builder, RenderObject& oldChild)
-{
-    if (!renderTreeBeingDestroyed()) {
-        auto* fragmentedFlow = multiColumnFlow();
-        if (fragmentedFlow && fragmentedFlow != &oldChild)
-            builder.multiColumnRelativeWillBeRemoved(*fragmentedFlow, oldChild);
-    }
-    return RenderBlock::takeChild(builder, oldChild);
 }
 
 void RenderBlockFlow::checkForPaginationLogicalHeightChange(bool& relayoutChildren, LayoutUnit& pageLogicalHeight, bool& pageLogicalHeightChanged)

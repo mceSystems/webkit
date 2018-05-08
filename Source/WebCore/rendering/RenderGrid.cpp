@@ -70,36 +70,6 @@ RenderGrid::RenderGrid(Element& element, RenderStyle&& style)
 
 RenderGrid::~RenderGrid() = default;
 
-void RenderGrid::addChild(RenderTreeBuilder& builder, RenderPtr<RenderObject> newChild, RenderObject* beforeChild)
-{
-    auto& child = *newChild;
-    builder.insertChildToRenderBlock(*this, WTFMove(newChild), beforeChild);
-
-    // Positioned grid items do not take up space or otherwise participate in the layout of the grid,
-    // for that reason we don't need to mark the grid as dirty when they are added.
-    if (child.isOutOfFlowPositioned())
-        return;
-
-    // The grid needs to be recomputed as it might contain auto-placed items that
-    // will change their position.
-    dirtyGrid();
-}
-
-RenderPtr<RenderObject> RenderGrid::takeChild(RenderTreeBuilder& builder, RenderObject& child)
-{
-    auto takenChild = RenderBlock::takeChild(builder, child);
-
-    // Positioned grid items do not take up space or otherwise participate in the layout of the grid,
-    // for that reason we don't need to mark the grid as dirty when they are removed.
-    if (child.isOutOfFlowPositioned())
-        return takenChild;
-
-    // The grid needs to be recomputed as it might contain auto-placed items that
-    // will change their position.
-    dirtyGrid();
-    return takenChild;
-}
-
 StyleSelfAlignmentData RenderGrid::selfAlignmentForChild(GridAxis axis, const RenderBox& child, const RenderStyle* gridStyle) const
 {
     return axis == GridRowAxis ? justifySelfForChild(child, gridStyle) : alignSelfForChild(child, gridStyle);
@@ -536,12 +506,15 @@ unsigned RenderGrid::computeAutoRepeatTracksCount(GridTrackSizingDirection direc
     if (freeSpace <= 0)
         return autoRepeatTrackListLength;
 
-    unsigned repetitions = 1 + (freeSpace / (autoRepeatTracksSize + gapSize)).toInt();
+    LayoutUnit autoRepeatSizeWithGap = autoRepeatTracksSize + gapSize;
+    unsigned repetitions = 1 + (freeSpace / autoRepeatSizeWithGap).toUnsigned();
+    freeSpace -= autoRepeatSizeWithGap * (repetitions - 1);
+    ASSERT(freeSpace >= 0);
 
     // Provided the grid container does not have a definite size or max-size in the relevant axis,
     // if the min size is definite then the number of repetitions is the largest possible positive
     // integer that fulfills that minimum requirement.
-    if (needsToFulfillMinimumSize)
+    if (needsToFulfillMinimumSize && freeSpace)
         ++repetitions;
 
     return repetitions * autoRepeatTrackListLength;
@@ -1203,15 +1176,16 @@ std::optional<int> RenderGrid::firstLineBaseline() const
     // Finding the first grid item in grid order.
     unsigned numColumns = m_grid.numTracks(ForColumns);
     for (size_t column = 0; column < numColumns; column++) {
-        for (const auto* child : m_grid.cell(0, column)) {
+        for (auto& child : m_grid.cell(0, column)) {
+            ASSERT(child.get());
             // If an item participates in baseline alignment, we select such item.
             if (isInlineBaselineAlignedChild(*child)) {
                 // FIXME: self-baseline and content-baseline alignment not implemented yet.
-                baselineChild = child;
+                baselineChild = child.get();
                 break;
             }
             if (!baselineChild)
-                baselineChild = child;
+                baselineChild = child.get();
         }
     }
 

@@ -27,10 +27,10 @@
 #include "EventSenderProxy.h"
 
 #include "HeadlessViewBackend.h"
-#include "NotImplemented.h"
 #include "PlatformWebView.h"
 #include "TestController.h"
-#include <wpe/view-backend.h>
+#include <WebCore/NotImplemented.h>
+#include <wpe/wpe.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
 

@@ -36,29 +36,60 @@ RenderTreeBuilder::FormControls::FormControls(RenderTreeBuilder& builder)
 {
 }
 
-RenderBlock& RenderTreeBuilder::FormControls::createInnerRendererIfNeeded(RenderButton& button)
+void RenderTreeBuilder::FormControls::attach(RenderButton& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild)
 {
-    auto* innerRenderer = button.innerRenderer();
+    m_builder.blockBuilder().attach(findOrCreateParentForChild(parent), WTFMove(child), beforeChild);
+}
+
+void RenderTreeBuilder::FormControls::attach(RenderMenuList& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild)
+{
+    auto& newChild = *child.get();
+    m_builder.blockBuilder().attach(findOrCreateParentForChild(parent), WTFMove(child), beforeChild);
+    parent.didAttachChild(newChild, beforeChild);
+}
+
+RenderPtr<RenderObject> RenderTreeBuilder::FormControls::detach(RenderMenuList& parent, RenderObject& child)
+{
+    auto* innerRenderer = parent.innerRenderer();
+    if (!innerRenderer || &child == innerRenderer)
+        return m_builder.blockBuilder().detach(parent, child);
+    return m_builder.detach(*innerRenderer, child);
+}
+
+RenderPtr<RenderObject> RenderTreeBuilder::FormControls::detach(RenderButton& parent, RenderObject& child)
+{
+    auto* innerRenderer = parent.innerRenderer();
+    if (!innerRenderer || &child == innerRenderer || child.parent() == &parent) {
+        ASSERT(&child == innerRenderer || !innerRenderer);
+        return m_builder.blockBuilder().detach(parent, child);
+    }
+    return m_builder.detach(*innerRenderer, child);
+}
+
+
+RenderBlock& RenderTreeBuilder::FormControls::findOrCreateParentForChild(RenderButton& parent)
+{
+    auto* innerRenderer = parent.innerRenderer();
     if (innerRenderer)
         return *innerRenderer;
 
-    auto wrapper = button.createAnonymousBlock(button.style().display());
+    auto wrapper = parent.createAnonymousBlock(parent.style().display());
     innerRenderer = wrapper.get();
-    button.RenderFlexibleBox::addChild(m_builder, WTFMove(wrapper));
-    button.setInnerRenderer(*innerRenderer);
+    m_builder.blockBuilder().attach(parent, WTFMove(wrapper), nullptr);
+    parent.setInnerRenderer(*innerRenderer);
     return *innerRenderer;
 }
 
-RenderBlock& RenderTreeBuilder::FormControls::createInnerRendererIfNeeded(RenderMenuList& menuList)
+RenderBlock& RenderTreeBuilder::FormControls::findOrCreateParentForChild(RenderMenuList& parent)
 {
-    auto* innerRenderer = menuList.innerRenderer();
+    auto* innerRenderer = parent.innerRenderer();
     if (innerRenderer)
         return *innerRenderer;
 
-    auto wrapper = menuList.createAnonymousBlock();
+    auto wrapper = parent.createAnonymousBlock();
     innerRenderer = wrapper.get();
-    menuList.RenderFlexibleBox::addChild(m_builder, WTFMove(wrapper));
-    menuList.setInnerRenderer(*innerRenderer);
+    m_builder.blockBuilder().attach(parent, WTFMove(wrapper), nullptr);
+    parent.setInnerRenderer(*innerRenderer);
     return *innerRenderer;
 }
 

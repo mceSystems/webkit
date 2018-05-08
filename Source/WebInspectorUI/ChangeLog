@@ -1,3 +1,970 @@
+2018-05-04  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: simplify the WI.Collection interface
+        https://bugs.webkit.org/show_bug.cgi?id=185187
+
+        Reviewed by Brian Burg.
+
+        * UserInterface/Models/Collection.js:
+        (WI.Collection.prototype.get size): Added.
+        (WI.Collection.prototype.has): Added.
+        (WI.Collection.prototype.toJSON):
+        (WI.Collection.prototype.[Symbol.iterator]): Added.
+        (WI.Collection.prototype.get items): Deleted.
+        (WI.Collection.prototype.toArray): Deleted.
+
+        * UserInterface/Controllers/CanvasManager.js:
+        (WI.CanvasManager.prototype._removeCanvas):
+        * UserInterface/Controllers/DOMDebuggerManager.js:
+        (WebInspector.DOMDebuggerManager.prototype.get domBreakpoints):
+        * UserInterface/Models/Frame.js:
+        (WI.Frame.prototype.removeAllChildFrames):
+        (WI.Frame.prototype.resourceForURL):
+        (WI.Frame.prototype.removeAllResources):
+        * UserInterface/Models/Script.js:
+        (WI.Script):
+        * UserInterface/Views/CanvasContentView.js:
+        (WI.CanvasContentView.prototype.initialLayout):
+        * UserInterface/Views/CanvasOverviewContentView.js:
+        (WI.CanvasOverviewContentView.prototype._updateNavigationItems):
+        * UserInterface/Views/CanvasSidebarPanel.js:
+        (WI.CanvasSidebarPanel.prototype._recordingRemoved):
+        (WI.CanvasSidebarPanel.prototype._canvasChanged):
+        (WI.CanvasSidebarPanel.prototype._updateRecordingScopeBar):
+        * UserInterface/Views/CanvasTabContentView.js:
+        (WI.CanvasTabContentView.prototype.attached):
+        (WI.CanvasTabContentView.prototype._addCanvas):
+        (WI.CanvasTabContentView.prototype._removeCanvas):
+        * UserInterface/Views/CanvasTreeElement.js:
+        (WI.CanvasTreeElement.prototype.onpopulate):
+        * UserInterface/Views/CollectionContentView.js:
+        (WI.CollectionContentView.prototype.initialLayout):
+        (WI.CollectionContentView.prototype.attached):
+        * UserInterface/Views/CookieStorageContentView.js:
+        (WI.CookieStorageContentView.prototype._filterCookies):
+        * UserInterface/Views/DebuggerSidebarPanel.js:
+        (WI.DebuggerSidebarPanel.prototype._addResourcesRecursivelyForFrame):
+        * UserInterface/Views/FolderizedTreeElement.js:
+        (WI.FolderizedTreeElement.prototype.updateParentStatus):
+        (WI.FolderizedTreeElement.prototype._shouldGroupIntoFolders):
+        * UserInterface/Views/FrameTreeElement.js:
+        (WI.FrameTreeElement.prototype.onpopulate):
+        * UserInterface/Views/NavigationSidebarPanel.js:
+        (WI.NavigationSidebarPanel.prototype.get contentTreeOutlines):
+        * UserInterface/Views/NetworkTableContentView.js:
+        (WI.NetworkTableContentView.prototype._populateWithInitialResourcesIfNeeded):
+        * UserInterface/Views/OpenResourceDialog.js:
+        (WI.OpenResourceDialog.prototype._addResourcesForFrame):
+        (WI.OpenResourceDialog.prototype._addResourcesForTarget):
+        * UserInterface/Views/TreeOutlineGroup.js:
+        (WI.TreeOutlineGroup.prototype.get selectedTreeElement):
+        (WI.TreeOutlineGroup.prototype._removeConflictingTreeSelections):
+        * UserInterface/Views/WorkerTreeElement.js:
+        (WI.WorkerTreeElement.prototype.onpopulate):
+
+2018-05-04  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Styles: Newly added unsupported properties sometimes don't have warnings
+        https://bugs.webkit.org/show_bug.cgi?id=183097
+        <rdar://problem/37843816>
+
+        Reviewed by Matt Baker.
+
+        Update status of properties warnings every time focus moves.
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.js:
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.layout):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.spreadsheetStylePropertyFocusMoved):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype._propertiesChanged):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype._updatePropertiesStatus):
+        * UserInterface/Views/SpreadsheetStyleProperty.js:
+        (WI.SpreadsheetStyleProperty.prototype.spreadsheetTextFieldDidBlur):
+
+2018-05-04  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: Styles Redesign: ensure that tabbing through the last section wraps back to the first
+        https://bugs.webkit.org/show_bug.cgi?id=181973
+
+        Reviewed by Matt Baker.
+
+        Unified delegate functions to start editing previous/next rules into a single function for
+        simplicity.
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.js:
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.spreadsheetCSSStyleDeclarationEditorFocusMoved):
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationSection.js:
+        (WI.SpreadsheetCSSStyleDeclarationSection.prototype.startEditingRuleSelector):
+        (WI.SpreadsheetCSSStyleDeclarationSection.prototype.spreadsheetSelectorFieldDidChange):
+        (WI.SpreadsheetCSSStyleDeclarationSection.prototype.spreadsheetCSSStyleDeclarationEditorStartEditingAdjacentRule):
+        (WI.SpreadsheetCSSStyleDeclarationSection.prototype.cssStyleDeclarationEditorStartEditingAdjacentRule): Deleted.
+
+        * UserInterface/Views/SpreadsheetRulesStyleDetailsPanel.js:
+        (WI.SpreadsheetRulesStyleDetailsPanel.prototype.focusFirstSection):
+        (WI.SpreadsheetRulesStyleDetailsPanel.prototype.focusLastSection):
+        (WI.SpreadsheetRulesStyleDetailsPanel.prototype.spreadsheetCSSStyleDeclarationSectionStartEditingAdjacentRule):
+        (WI.SpreadsheetRulesStyleDetailsPanel.prototype.cssStyleDeclarationSectionStartEditingNextRule): Deleted.
+        (WI.SpreadsheetRulesStyleDetailsPanel.prototype.cssStyleDeclarationSectionStartEditingPreviousRule): Deleted.
+
+        * UserInterface/Views/GeneralStyleDetailsSidebarPanel.js:
+        (WI.GeneralStyleDetailsSidebarPanel.prototype.styleDetailsPanelFocusLastPseudoClassCheckbox):
+        (WI.GeneralStyleDetailsSidebarPanel.prototype.styleDetailsPanelFocusFilterBar):
+        (WI.GeneralStyleDetailsSidebarPanel.prototype.initialLayout):
+        (WI.GeneralStyleDetailsSidebarPanel.prototype._handleForcedPseudoClassCheckboxKeydown):
+        (WI.GeneralStyleDetailsSidebarPanel.prototype._forcedPseudoClassCheckboxChanged):
+        (WI.GeneralStyleDetailsSidebarPanel.prototype._handleFilterBarInputFieldKeyDown):
+
+        Drive-by fix: provide tabbing support for the Computed styles panel.
+
+        * UserInterface/Views/CSSStyleDeclarationTextEditor.js:
+        (WI.CSSStyleDeclarationTextEditor.prototype._handleShiftTabKey.switchRule):
+        (WI.CSSStyleDeclarationTextEditor.prototype._handleTabKey.switchRule):
+
+        * UserInterface/Views/ComputedStyleDetailsPanel.js:
+        (WI.ComputedStyleDetailsPanel.prototype.focusFirstSection):
+        (WI.ComputedStyleDetailsPanel.prototype.focusLastSection):
+        (WI.ComputedStyleDetailsPanel.prototype.cssStyleDeclarationTextEditorStartEditingAdjacentRule):
+
+2018-05-04  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: Canvas tab: Determine isFunction by looking at the prototype
+        https://bugs.webkit.org/show_bug.cgi?id=184990
+
+        Reviewed by Brian Burg.
+
+        * UserInterface/Models/RecordingAction.js:
+        (WI.RecordingAction.isFunctionForType):
+        (WI.RecordingAction._prototypeForType):
+        (WI.RecordingAction.prototype.async.swizzle):
+
+2018-05-01  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: Canvas tab: determine hasVisibleEffect for all actions immediately after recording is added
+        https://bugs.webkit.org/show_bug.cgi?id=182995
+
+        Reviewed by Matt Baker.
+
+        Previously, we'd swizzle the entirety of the `WI.Recording` in one, which would usually
+        freeze the UI, especially for larger recordings. This patch uses `WI.YieldableTask` to split
+        the work and allow the rest of the UI to still be usable while `WI.Recording` are processing.
+        Additionally, since we no longer have to worry about hangs, we can do more work upfront,
+        such as calculating `hasVisibleEffect` and the current state of 2D canvases.
+
+        These changes require that all uses of `WI.Recording` call `process()` before attempting to
+        use any `frames`/`actions`/`initialState`, as they will have their original payload values
+        and will have not been swizzled or applied.
+
+        * Localizations/en.lproj/localizedStrings.js:
+
+        * UserInterface/Models/Recording.js:
+        (WI.Recording):
+        (WI.Recording.prototype.process):
+        (WI.Recording.prototype.createContext): Added.
+        (WI.Recording.prototype.async yieldableTaskWillProcessItem): Added.
+        (WI.Recording.prototype.async yieldableTaskDidFinish): Added.
+
+        * UserInterface/Models/RecordingAction.js:
+        (WI.RecordingAction):
+        (WI.RecordingAction.prototype.process): Added.
+        (WI.RecordingAction.prototype.async swizzle): Added.
+        (WI.RecordingAction.prototype.apply):
+        (WI.RecordingAction.prototype.toJSON):
+        (WI.RecordingAction.prototype.set state): Deleted.
+        (WI.RecordingAction.prototype.swizzle): Deleted.
+        (WI.RecordingAction.prototype.apply.getContent): Deleted.
+        (WI.RecordingAction.prototype.async _swizzle): Deleted.
+        * UserInterface/Models/RecordingInitialStateAction.js:
+        (WI.RecordingInitialStateAction):
+
+        * UserInterface/Views/CanvasSidebarPanel.js:
+        (WI.CanvasSidebarPanel):
+        (WI.CanvasSidebarPanel.prototype.set action):
+        (WI.CanvasSidebarPanel.prototype._treeOutlineSelectionDidChange):
+        (WI.CanvasSidebarPanel.prototype._recordingChanged):
+
+        * UserInterface/Views/CanvasSidebarPanel.css:
+        (.sidebar > .panel.navigation.canvas > .content > .recording-content > .indeterminate-progress-spinner):
+
+        * UserInterface/Views/RecordingActionTreeElement.js:
+        (WI.RecordingActionTreeElement):
+        (WI.RecordingActionTreeElement.prototype.onattach):
+        (WI.RecordingActionTreeElement.prototype._handleHasVisibleEffectChanged): Deleted.
+
+        * UserInterface/Views/RecordingContentView.js:
+        (WI.RecordingContentView):
+        (WI.RecordingContentView.prototype.get navigationItems):
+        (WI.RecordingContentView.prototype.updateActionIndex):
+        (WI.RecordingContentView.prototype.initialLayout):
+        (WI.RecordingContentView.prototype._generateContentCanvas2D): Added.
+        (WI.RecordingContentView.prototype._generateContentCanvasWebGL): Added.
+        (WI.RecordingContentView.prototype._updateCanvasPath):
+        (WI.RecordingContentView.prototype._updateProcessProgress): Added.
+        (WI.RecordingContentView.prototype._handleRecordingProcessedActionSwizzle): Added.
+        (WI.RecordingContentView.prototype._handleRecordingProcessedActionApply): Added.
+        (WI.RecordingContentView.supportsCanvasPathDebugging): Deleted.
+        (WI.RecordingContentView.prototype.async _generateContentCanvas2D): Deleted.
+        (WI.RecordingContentView.prototype.async _generateContentCanvasWebGL): Deleted.
+
+        * UserInterface/Views/RecordingContentView.css:
+        (.content-view:not(.tab).recording > .preview-container):
+
+        * UserInterface/Base/ImageUtilities.js:
+        (WI.ImageUtilities.supportsCanvasPathDebugging):
+
+2018-04-26  Jer Noble  <jer.noble@apple.com>
+
+        Unreviewed build fix; fix WebInspectorUI copy resources step after r231063.
+
+        * Configurations/Base.xcconfig:
+
+2018-04-26  Jer Noble  <jer.noble@apple.com>
+
+        WK_COCOA_TOUCH all the things.
+        https://bugs.webkit.org/show_bug.cgi?id=185006
+
+        Reviewed by Tim Horton.
+
+        * Configurations/WebInspectorUIFramework.xcconfig:
+
+2018-04-21  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        REGRESSION(r214076): Web Inspector: Timelines load and DOMContentLoaded markers aren't visible
+        https://bugs.webkit.org/show_bug.cgi?id=184858
+
+        Reviewed by Brian Burg.
+
+        r214076 changed the color of all markers to light gray.
+
+        * UserInterface/Views/TimelineRuler.css:
+        (.timeline-ruler > .markers > .marker):
+        (body[dir=ltr] .timeline-ruler > .markers > .marker):
+        (body[dir=rtl] .timeline-ruler > .markers > .marker):
+        (.timeline-ruler > .markers > .marker.current-time):
+        (.timeline-ruler > .markers > .marker.load-event):
+        (.timeline-ruler > .markers > .marker.dom-content-event):
+        (.timeline-ruler > .markers > .marker.timestamp):
+        (body[dir=ltr] .timeline-ruler > .markers > .marker.current-time): Deleted.
+        (body[dir=rtl] .timeline-ruler > .markers > .marker.current-time): Deleted.
+
+2018-04-19  Chris Dumez  <cdumez@apple.com>
+
+        Rename JSDOMWindowProxy to JSWindowProxy
+        https://bugs.webkit.org/show_bug.cgi?id=184797
+
+        Reviewed by Sam Weinig.
+
+        Rename JSDOMWindowProxy to JSWindowProxy for consistency with WindowProxy.
+
+        * UserInterface/Workers/HeapSnapshot/HeapSnapshot.js:
+        (HeapSnapshot.prototype._isNodeGlobalObject):
+
+2018-04-19  David Kilzer  <ddkilzer@apple.com>
+
+        Enable Objective-C weak references
+        <https://webkit.org/b/184789>
+        <rdar://problem/39571716>
+
+        Reviewed by Dan Bernstein.
+
+        * Configurations/Base.xcconfig:
+        (CLANG_ENABLE_OBJC_WEAK): Enable.
+
+2018-04-16  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Can't select and copy text from Network tab popover
+        https://bugs.webkit.org/show_bug.cgi?id=184606
+
+        Reviewed by Matt Baker.
+
+        * UserInterface/Views/ResourceTimingBreakdownView.css:
+        (.waterfall-popover .resource-timing-breakdown):
+
+2018-04-12  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Refactoring: move popover styles from JS to CSS
+        https://bugs.webkit.org/show_bug.cgi?id=184558
+
+        Reviewed by Brian Burg.
+
+        Introduce several CSS variables to customize popover appearance in CSS
+        and not JavaScript.
+
+        * UserInterface/Views/NetworkTableContentView.js:
+        (WI.NetworkTableContentView.prototype._waterfallPopoverContentForResource):
+        (WI.NetworkTableContentView.prototype._handleMousedownWaterfall):
+        * UserInterface/Views/Popover.css:
+        (.popover):
+        * UserInterface/Views/Popover.js:
+        (WI.Popover):
+        (WI.Popover.prototype._drawBackground):
+        Replace `var` with `let`.
+
+        (WI.Popover.prototype.get backgroundStyle): Deleted.
+        (WI.Popover.prototype.set backgroundStyle): Deleted.
+        * UserInterface/Views/ResourceTimingBreakdownView.css:
+        (.popover.waterfall-popover):
+        (.waterfall-popover-content .resource-timing-breakdown):
+        (.waterfall-popover .resource-timing-breakdown): Deleted.
+
+        * UserInterface/Views/NetworkTableContentView.js:
+        (WI.NetworkTableContentView.prototype._waterfallPopoverContentForResource):
+        (WI.NetworkTableContentView.prototype._handleMousedownWaterfall):
+        * UserInterface/Views/Popover.css:
+        (.popover):
+        * UserInterface/Views/Popover.js:
+        (WI.Popover):
+        (WI.Popover.prototype._drawBackground):
+        * UserInterface/Views/ResourceTimingBreakdownView.css:
+        (.popover.waterfall-popover):
+        (.waterfall-popover-content .resource-timing-breakdown):
+
+2018-04-07  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Errors glyph doesn't fully change to blue when active
+        https://bugs.webkit.org/show_bug.cgi?id=184389
+
+        Reviewed by Joseph Pecoraro.
+
+        The dot of the exclamation mark was always black.
+
+        * UserInterface/Images/Errors.svg:
+
+2018-04-03  Aaron Chu  <aaron_chu@apple.com>
+
+        AX: Add Experimental setting for Accessibility Audit
+        https://bugs.webkit.org/show_bug.cgi?id=183646
+        <rdar://problem/38478583>
+
+        Reviewed by Brian Burg.
+
+        Added experimental feature flag for Accessibility Audit work.
+
+        * Localizations/en.lproj/localizedStrings.js:
+        * UserInterface/Base/Setting.js:
+        * UserInterface/Views/SettingsTabContentView.js:
+        (WI.SettingsTabContentView.prototype._createExperimentalSettingsView):
+
+2018-04-01  Matt Baker  <mattbaker@apple.com>
+
+        Web Inspector: Remove dead TabBrowser/TabContentView code
+        https://bugs.webkit.org/show_bug.cgi?id=184104
+
+        Reviewed by Devin Rousso.
+
+        * UserInterface/Base/Main.js:
+        (WI._tryToRestorePendingTabs):
+        * UserInterface/Views/NewTabContentView.js:
+        (WI.NewTabContentView.prototype.shown):
+        (WI.NewTabContentView.prototype.hidden):
+        * UserInterface/Views/TabBrowser.js:
+        (WI.TabBrowser.prototype.addTabForContentView):
+        (WI.TabBrowser.prototype.showTabForContentView):
+        (WI.TabBrowser._tabBarItemRemoved):
+        * UserInterface/Views/TabContentView.js:
+        (WI.TabContentView.prototype.get parentTabBrowser): Deleted.
+        (WI.TabContentView.prototype.set parentTabBrowser): Deleted.
+
+2018-03-30  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: tint all pixels drawn by shader program when hovering ShaderProgramTreeElement
+        https://bugs.webkit.org/show_bug.cgi?id=175223
+
+        Reviewed by Matt Baker.
+
+        * UserInterface/Models/ShaderProgram.js:
+        (WI.ShaderProgram):
+        (WI.ShaderProgram.prototype.showHighlight):
+        (WI.ShaderProgram.prototype.hideHighlight):
+
+        * UserInterface/Views/ShaderProgramTreeElement.js:
+        (WI.ShaderProgramTreeElement.prototype.onattach):
+        (WI.ShaderProgramTreeElement.prototype._handleMouseOver):
+        (WI.ShaderProgramTreeElement.prototype._handleMouseOut):
+        Whenever a ShaderProgramTreeElement is hovered, highlight the corresponding shader program
+        by tinting the pixels it draws via a blend.
+
+2018-03-27  Timothy Hatcher  <timothy@apple.com>
+
+        Web Inspector: Modernize some utility functions
+        https://bugs.webkit.org/show_bug.cgi?id=184047
+
+        Reviewed by Matt Baker.
+
+        * UserInterface/Base/Utilities.js:
+        (Node.prototype.enclosingNodeOrSelfWithClass): Use parentElement instead of parentNode, so we don't need to check for document.
+        (Node.prototype.enclosingNodeOrSelfWithNodeNameInArray): Ditto. Also just toUpperCase input, since nodeName is already upper case.
+        (String.prototype.escapeCharacters): Use Set and string iteration instead of indexOf and charAt.
+
+2018-03-27  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Command-Shift-left/right arrow keys should not switch tabs when focused on color picker text fields
+        https://bugs.webkit.org/show_bug.cgi?id=184028
+
+        Reviewed by Timothy Hatcher.
+
+        * UserInterface/Views/EditingSupport.js:
+        (WI.isEventTargetAnEditableField):
+        Detect <input type="number"> as an editable text field.
+
+2018-03-23  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Styles: don't show checkboxes for invalid properties
+        https://bugs.webkit.org/show_bug.cgi?id=183951
+        <rdar://problem/38807602>
+
+        Reviewed by Matt Baker.
+
+        Since toggling of invalid properties isn't supported by the backend, don't show checkboxes for invalid properties.
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.css:
+        (.spreadsheet-css-declaration:matches(:hover, :focus) .property:not(:matches(.invalid-name, .invalid-value)) .property-toggle,):
+        (.spreadsheet-css-declaration:matches(:hover, :focus) .property-toggle,): Deleted.
+        Don't show checkboxes for invalid properties but still show them for duplicate properties.
+
+2018-03-23  Brian Burg  <bburg@apple.com>
+
+        Web Inspector: add WebKitAdditions hooks for WebInspectorUI
+        https://bugs.webkit.org/show_bug.cgi?id=183940
+        <rdar://problem/38796310>
+
+        Reviewed by Timothy Hatcher.
+
+        * Scripts/combine-resources.pl:
+        (debugLog): Added. Leave in the logging I used to debug this.
+
+        (concatenateIncludedFilesMatchingPattern):
+        (stripIncludedFilesMatchingPattern):
+        (concatenateFiles): Deleted.
+        This function tried to do too many things. Split it into
+        two functions, one for stripping includes and one for concatenating
+        files referenced by includes.
+
+        Lastly, add a negative lookahead clause for 'WebKitAdditions' so includes
+        containing that string are not combined when no input directory is passed
+        to the script.
+
+        * Scripts/copy-user-interface-resources.pl:
+        WebKitAdditions is computed either from BUILT_PRODUCTS_DIR or SDKROOT,
+        depending on the build style. Just try them in order and use the first
+        one that exists. WebInspectorUI files are in their own directory, so
+        we can assume there are files to process if that directory exists.
+
+        Copy Main.html to derived sources before doing any processing on it.
+        This makes all combining phases have the same --input-html argument.
+
+        (debugLog): Added. Leave in the logging I used to debug this.
+
+        (combineOrStripResourcesForWebKitAdditions):
+        (stripResourcesForWebKitAdditions):
+        (combineResourcesForWebKitAdditions):
+        Determine if WebKitAdditions exists and whether there are any
+        resources for WebInspectorUI present that need to be processed.
+
+        * UserInterface/Main.html:
+        Add stub .js and .css WebKitAdditions files. We can add more later
+        if it makes sense but this is good enough to validate the build machinery.
+
+2018-03-23  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Styles Redesign: flashing when switching between nodes
+        https://bugs.webkit.org/show_bug.cgi?id=179291
+        <rdar://problem/35352660>
+
+        Reviewed by Matt Baker.
+
+        Flashing was happening because the layout was a two-step process:
+        1. Append empty sections.
+        2. Layout everything inside of the section on requestAnimationFrame.
+
+        SpreadsheetRulesStyleDetailsPanel was converted to use layout method,
+        so both steps happen on requestAnimationFrame.
+
+        * UserInterface/Views/SpreadsheetRulesStyleDetailsPanel.js:
+        (WI.SpreadsheetRulesStyleDetailsPanel):
+        (WI.SpreadsheetRulesStyleDetailsPanel.prototype.refresh):
+        (WI.SpreadsheetRulesStyleDetailsPanel.prototype.layout):
+        The removed lines from the refresh method moved to the layout method without any changes.
+
+2018-03-22  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Uncaught Exception: TypeError: this._textEditor.toggleUnexecutedCodeHighlights().then is not a function
+        https://bugs.webkit.org/show_bug.cgi?id=181912
+        <rdar://problem/36700022>
+
+        Reviewed by Matt Baker.
+
+        The uncaught exception was caused by returning `false` instead of a promise object.
+        This patch only fixes the exception. Further enhancements should be done in <https://webkit.org/b/183887>.
+
+        * UserInterface/Views/SourceCodeTextEditor.js:
+        (WI.SourceCodeTextEditor.prototype.toggleTypeAnnotations):
+        (WI.SourceCodeTextEditor.prototype.toggleUnexecutedCodeHighlights):
+
+2018-03-20  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Styles: Loses focus when editing a property while page is being loaded
+        https://bugs.webkit.org/show_bug.cgi?id=182619
+        <rdar://problem/37363185>
+
+        Reviewed by Matt Baker.
+
+        Adding or removing a stylesheet causes SpreadsheetRulesStyleDetailsPanel to refresh, triggering a layout
+        of all SpreadsheetCSSStyleDeclarationSection child views. This resets the focus, selection, and
+        auto-completion state.
+
+        This patch prevents SpreadsheetCSSStyleDeclarationSection from performing a layout when a property is being edited.
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.js:
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.layout):
+        Allow re-layout after creating a blank CSS property and pasting CSS code.
+        - _pendingAddBlankPropertyIndexOffset is a number after pasting CSS rules.
+        - _propertyPendingStartEditing is a property model after creating a new property.
+
+2018-03-20  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: Session dividers are not added when Console tab is not visible
+        https://bugs.webkit.org/show_bug.cgi?id=168622
+
+        Reviewed by Matt Baker.
+
+        Restructure `_pendingMessages` to be a `Map [ConsoleSession, ConsoleMessageView]`. Instead
+        of rendering to the `_currentConsoleGroup`, we now render to the saved `ConsoleSession`.
+        Also ensure that `_pendingMessages` is cleared when navigating and "Preserve Log" is off.
+
+        * UserInterface/Controllers/JavaScriptLogViewController.js:
+        (WI.JavaScriptLogViewController):
+        (WI.JavaScriptLogViewController.prototype.startNewSession):
+        (WI.JavaScriptLogViewController.prototype.consolePromptHistoryDidChange):
+        (WI.JavaScriptLogViewController.prototype._appendConsoleMessageView):
+        (WI.JavaScriptLogViewController.prototype.renderPendingMessages):
+        (WI.JavaScriptLogViewController.prototype.get prompt): Deleted.
+        (WI.JavaScriptLogViewController.prototype.get currentConsoleGroup): Deleted.
+
+2018-03-20  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Can't add a new class by editing class attribute in DOM outline
+        https://bugs.webkit.org/show_bug.cgi?id=180890
+
+        Reviewed by Ryosuke Niwa.
+
+        Typing "my-foo my-bar" creates a single "my-foo\xA0my-bar" class name because
+        contentEditable-based attribute editor sometimes inserts non-breaking space characters (\xA0).
+
+        Replace all non-breaking space characters with the regular space characters when
+        commiting attribute change.
+
+        * UserInterface/Views/DOMTreeElement.js:
+
+2018-03-16  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Elements: "Force Print Media Styles" should not persist across Web Inspector sessions
+        https://bugs.webkit.org/show_bug.cgi?id=183708
+        <rdar://problem/36452183>
+
+        Reviewed by Matt Baker.
+
+        * UserInterface/Base/Main.js:
+        (WI.loaded):
+        * UserInterface/Views/DOMTreeContentView.js:
+        (WI.DOMTreeContentView):
+        (WI.DOMTreeContentView.prototype._showPrintStylesChanged):
+        (WI.DOMTreeContentView.prototype._togglePrintStyles):
+        (WI.DOMTreeContentView.prototype._showPrintStylesSettingChanged): Deleted.
+        (WI.DOMTreeContentView.prototype._togglePrintStylesSetting): Deleted.
+
+2018-03-14  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: Canvas: a recording initiated by the user should be shown immediately on completion
+        https://bugs.webkit.org/show_bug.cgi?id=183647
+        <rdar://problem/38479187>
+
+        Reviewed by Matt Baker.
+
+        When recordings are initiated via `console.record`, we don't want to automatically show the
+        recording after it's payload is sent to the frontend. We determine whether a recording came
+        from the console by comparing the recording's associated canvas with the current value of
+        `_recordingCanvas`. Previously, when stopping a recording, we would always null the value,
+        which meant that all non-single-frame recordings (single-frame recordings are stopped by
+        the agent after the first paint or tick after an action is performed) would be categorized
+        as coming from the console, since `_recordingCanvas` would be null by the time the frontend
+        recieved the payload.
+
+        This patch changes it so that the nulling of `_recordingCanvas` in `stopRecording` is only
+        done if the agent command errors. It was already the case that `_recordingCanvas` was nulled
+        in `stopRecording`, so this patch just prevents it from being nulled too early.
+
+        * UserInterface/Controllers/CanvasManager.js:
+        (WI.CanvasManager.prototype.stopRecording):
+
+2018-03-12  Jon Davis  <jond@apple.com>
+
+        Web Inspector: Remove redundant tooltips
+        https://bugs.webkit.org/show_bug.cgi?id=183099
+
+        Reviewed by Matt Baker.
+
+        * Localizations/en.lproj/localizedStrings.js:
+        * UserInterface/Base/Main.js:
+        (WI.contentLoaded):
+        Instantiate ConsoleDrawer so the keyboard shortcuts for FindBanner are available.
+
+        * UserInterface/Views/BreakpointTreeElement.js:
+        (WI.BreakpointTreeElement):
+        Suppress tooltips by setting the tooltipHandledSeprately flag with no custom handler.
+
+        * UserInterface/Views/ButtonNavigationItem.js:
+        (WI.ButtonNavigationItem):
+        Only show tooltips when the button style is an image.
+
+        * UserInterface/Views/ConsoleDrawer.js:
+        (WI.ConsoleDrawer):
+        (WI.ConsoleDrawer.prototype.toggleButtonShortcutTooltip):
+        Added helper to set the toggle button keyboard shortcut tooltip.
+
+        * UserInterface/Views/DOMBreakpointTreeElement.js:
+        (WI.DOMBreakpointTreeElement):
+        Suppress tooltips by setting the tooltipHandledSeprately flag with no custom handler.
+
+        * UserInterface/Views/DOMNodeTreeElement.js:
+        (WI.DOMNodeTreeElement):
+        Suppress tooltips by setting the tooltipHandledSeprately flag with no custom handler.
+
+        * UserInterface/Views/FindBanner.js:
+        (WI.FindBanner):
+        * UserInterface/Views/HierarchicalPathComponent.js:
+        (WI.HierarchicalPathComponent):
+        (WI.HierarchicalPathComponent.prototype.get tooltip):
+        (WI.HierarchicalPathComponent.prototype.set tooltip):
+        (WI.HierarchicalPathComponent.prototype.get hideTooltip):
+        (WI.HierarchicalPathComponent.prototype.set hideTooltip):
+        (WI.HierarchicalPathComponent.prototype._updateElementTitleAndText):
+        Add tooltip management features to manage tooltips separately of the displayName,
+        and provide a behavior to hide tooltips while retaining the tooltip data.
+
+        * UserInterface/Views/HierarchicalPathNavigationItem.js:
+        (WI.HierarchicalPathNavigationItem.prototype.updateLayout):
+        Hide tooltips when fully visible, show tooltips for collapsed items.
+
+        * UserInterface/Views/PinnedTabBarItem.js:
+        (WI.PinnedTabBarItem.prototype.titleDidChange):
+        Set tooltips for pinned tab bar items.
+
+        * UserInterface/Views/QuickConsole.js:
+        (WI.QuickConsole):
+        Set the ConsoleDrawer toggle button tooltip after the keyboard shortcut is registered.
+
+        * UserInterface/Views/StorageTreeElement.js:
+        (WI.StorageTreeElement):
+        Suppress tooltips by setting the tooltipHandledSeprately flag with no custom handler.
+
+        * UserInterface/Views/TabBarItem.js:
+        (WI.TabBarItem.prototype.get title):
+        (WI.TabBarItem.prototype.set title):
+        (WI.TabBarItem.prototype.titleDidChange):
+        (WI.TabBarItem):
+        Add title property management with an overridable titleDidChange handler for
+        setting tooltips when needed.
+
+        * UserInterface/Views/TimelineTreeElement.js:
+        (WI.TimelineTreeElement):
+        Suppress tooltips by setting the tooltipHandledSeprately flag with no custom handler.
+
+        * UserInterface/Views/ToggleButtonNavigationItem.js:
+        (WI.ToggleButtonNavigationItem.prototype.set defaultToolTip):
+        Added a setter for manging the default tooltip of a toggle button.
+
+        * UserInterface/Views/XHRBreakpointTreeElement.js:
+        (WI.XHRBreakpointTreeElement):
+        Suppress tooltips by setting the tooltipHandledSeprately flag with no custom handler.
+
+2018-03-09  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Sources: Open all resources in Sources tab instead of Resources/Debugger
+        https://bugs.webkit.org/show_bug.cgi?id=183317
+        <rdar://problem/38108455>
+
+        Reviewed by Matt Baker.
+
+        * Localizations/en.lproj/localizedStrings.js:
+        * UserInterface/Base/Main.js:
+        * UserInterface/Views/ContextMenuUtilities.js:
+        (WI.appendContextMenuItemsForURL):
+        Introduce preferredTabType option instead of listing ignoreResourcesTab, ignoreDebuggerTab, ignoreSearchTab, and ignoreNetworkTab.
+        The only correct outcome of selecting "Reveal in Sources Tab" context menu is to open Sources tab, not any other tab.
+
+        * UserInterface/Views/SourceCodeTextEditor.js:
+        (WI.SourceCodeTextEditor.prototype.textEditorGutterContextMenu):
+        * UserInterface/Views/TabBrowser.js:
+        (WI.TabBrowser.prototype.bestTabContentViewForRepresentedObject):
+
+2018-03-08  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Sources: add SourcesTabContentView and SourceSidebarPanel classes
+        https://bugs.webkit.org/show_bug.cgi?id=183316
+        <rdar://problem/38107639>
+
+        Reviewed by Matt Baker.
+
+        Add Sources tab and sidebar panel, which are copies of the corresponding Resources classes.
+        The Sources tab is shown when it's enabled in the experimental settings. This patch doesn't
+        remove existing Resources and Debugger tabs.
+
+        * UserInterface/Base/Main.js:
+        (WI.contentLoaded):
+        * UserInterface/Main.html:
+        * UserInterface/Views/SourcesSidebarPanel.css: Added.
+        (.sidebar > .panel.navigation.sources > .content):
+        (.sidebar > .panel.navigation.sources > .navigation-bar):
+        * UserInterface/Views/SourcesSidebarPanel.js: Added.
+        (WI.SourcesSidebarPanel):
+        (WI.SourcesSidebarPanel.shouldPlaceResourcesAtTopLevel):
+        (WI.SourcesSidebarPanel.prototype.get minimumWidth):
+        (WI.SourcesSidebarPanel.prototype.closed):
+        (WI.SourcesSidebarPanel.prototype.showDefaultContentView):
+        (WI.SourcesSidebarPanel.prototype.treeElementForRepresentedObject.isAncestor):
+        (WI.SourcesSidebarPanel.prototype.treeElementForRepresentedObject.getParent):
+        (WI.SourcesSidebarPanel.prototype.treeElementForRepresentedObject):
+        (WI.SourcesSidebarPanel.prototype.initialLayout):
+        (WI.SourcesSidebarPanel.prototype.hasCustomFilters):
+        (WI.SourcesSidebarPanel.prototype.matchTreeElementAgainstCustomFilters.match):
+        (WI.SourcesSidebarPanel.prototype.matchTreeElementAgainstCustomFilters):
+        (WI.SourcesSidebarPanel.prototype._mainResourceDidChange):
+        (WI.SourcesSidebarPanel.prototype._mainFrameDidChange):
+        (WI.SourcesSidebarPanel.prototype._mainFrameMainResourceDidChange.delayedWork):
+        (WI.SourcesSidebarPanel.prototype._mainFrameMainResourceDidChange):
+        (WI.SourcesSidebarPanel.prototype._scriptWasAdded):
+        (WI.SourcesSidebarPanel.prototype._addScript):
+        (WI.SourcesSidebarPanel.prototype._scriptWasRemoved):
+        (WI.SourcesSidebarPanel.prototype._scriptsCleared):
+        (WI.SourcesSidebarPanel.prototype._styleSheetAdded):
+        (WI.SourcesSidebarPanel.prototype._addTargetWithMainResource):
+        (WI.SourcesSidebarPanel.prototype._targetRemoved):
+        (WI.SourcesSidebarPanel.prototype._treeSelectionDidChange):
+        (WI.SourcesSidebarPanel.prototype._compareTreeElements):
+        (WI.SourcesSidebarPanel.prototype._extraDomainsActivated):
+        (WI.SourcesSidebarPanel.prototype._scopeBarSelectionDidChange):
+        * UserInterface/Views/SourcesTabContentView.js: Added.
+        (WI.SourcesTabContentView):
+        (WI.SourcesTabContentView.tabInfo):
+        (WI.SourcesTabContentView.isTabAllowed):
+        (WI.SourcesTabContentView.prototype.get type):
+        (WI.SourcesTabContentView.prototype.get supportsSplitContentBrowser):
+        (WI.SourcesTabContentView.prototype.canShowRepresentedObject):
+
+2018-03-07  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: Canvas tab: ensure that the Recording TreeOutline has a specified height for virtualization
+        https://bugs.webkit.org/show_bug.cgi?id=183015
+
+        Reviewed by Matt Baker.
+
+        * UserInterface/Views/CanvasSidebarPanel.js:
+        (WI.CanvasSidebarPanel):
+
+        * UserInterface/Views/CanvasSidebarPanel.css:
+        (.sidebar > .panel.navigation.canvas > .content):
+        (.sidebar > .panel.navigation.canvas > .content > .navigation-bar):
+        (.sidebar > .panel.navigation.canvas.has-recordings > .content > .recording-content):
+        (.sidebar > .panel.navigation.canvas:not(.has-recordings) > .filter-bar,):
+        (.sidebar > .panel.navigation.canvas > .content > .recording-content > .navigation-bar): Deleted.
+        (.sidebar > .panel.navigation.canvas.has-recordings > .content > .tree-outline.canvas): Deleted.
+
+        * UserInterface/Views/TreeElement.js:
+        (WI.TreeElement.prototype._detach):
+
+2018-02-26  Devin Rousso  <webkit@devinrousso.com>
+
+        Web Inspector: Canvas Tab: Scroll into view / Inspect element if Canvas has DOM node
+        https://bugs.webkit.org/show_bug.cgi?id=181769
+
+        Reviewed by Matt Baker.
+
+        * Localizations/en.lproj/localizedStrings.js:
+
+        * UserInterface/Images/Markup.svg: Added.
+
+        * UserInterface/Views/CanvasContentView.js:
+        (WI.CanvasContentView):
+        (WI.CanvasContentView.prototype.initialLayout):
+        (WI.CanvasContentView.prototype._canvasElementButtonClicked):
+
+2018-02-19  Matt Baker  <mattbaker@apple.com>
+
+        Web Inspector: Canvas tab: hide navigation sidebar when viewing the overview
+        https://bugs.webkit.org/show_bug.cgi?id=182597
+        <rdar://problem/37341564>
+
+        Reviewed by Devin Rousso.
+
+        Support showing/hiding the navigation sidebar panel based on the current
+        represented object. Individual TabContentViews can opt-in to this behavior,
+        by overriding TabContentView.prototype.managesNavigationSidebarPanel.
+
+        * UserInterface/Views/CanvasSidebarPanel.js:
+        (WI.CanvasSidebarPanel.prototype.canShowRepresentedObject):
+        * UserInterface/Views/CanvasTabContentView.js:
+        (WI.CanvasTabContentView.prototype.get managesNavigationSidebarPanel):
+        Hide the Canvas navigation sidebar when viewing the overview.
+
+        * UserInterface/Views/ContentBrowserTabContentView.js:
+        (WI.ContentBrowserTabContentView):
+        (WI.ContentBrowserTabContentView.prototype.showNavigationSidebarPanel):
+        (WI.ContentBrowserTabContentView.prototype._navigationSidebarCollapsedStateDidChange):
+        (WI.ContentBrowserTabContentView.prototype._contentBrowserCurrentRepresentedObjectsDidChange):
+
+        * UserInterface/Views/NavigationSidebarPanel.js:
+        (WI.NavigationSidebarPanel.prototype.canShowRepresentedObject):
+        Provide default implementation that just defers to the TabContentView.
+        This exists so that a NavigationSidebarPanel that implements canShowRepresentedObject
+        will have a meaningful default to fall back on.
+
+        * UserInterface/Views/TabBrowser.js:
+        (WI.TabBrowser.prototype._sidebarCollapsedStateDidChange):
+        (WI.TabBrowser.prototype._showNavigationSidebarPanelForTabContentView):
+
+        * UserInterface/Views/TabContentView.js:
+        (WI.TabContentView.prototype.get managesNavigationSidebarPanel):
+
+2018-02-16  Matt Baker  <mattbaker@apple.com>
+
+        Web Inspector: TabBar redesign: remove top-level search field and pin the Search tab
+        https://bugs.webkit.org/show_bug.cgi?id=182353
+        <rdar://problem/37088644>
+
+        Reviewed by Devin Rousso.
+
+        * Localizations/en.lproj/localizedStrings.js:
+
+        * UserInterface/Base/Main.js:
+        (WI.contentLoaded):
+        Create Search UI based on experimental setting. When the new TabBar is
+        enabled, the Search tab is a pinned tab. Since it is also saveable, it
+        needs to be added to the TabBrowser (the browser adds the item to the bar).
+
+        When restoring saved tabs, make an additional check to prevent a tab
+        from being added twice. This can occur now that the Search tab is pinned.
+
+        * UserInterface/Images/Search.svg:
+        Update art to better match Safari/macOS. Slightly increase the radius of
+        the lens, and shorten the length of the handle.
+
+        * UserInterface/Views/GoToLineDialog.css:
+        (.go-to-line-dialog > div::before):
+        Update styles for new Search icon.
+
+        * UserInterface/Views/LegacyTabBar.js:
+        (WI.LegacyTabBar.prototype.get saveableTabCount):
+        Backported new TabBar method which is called by TabBrowser.
+
+        * UserInterface/Views/OpenResourceDialog.css:
+        (.open-resource-dialog > .field::before):
+        Update styles for new Search icon.
+
+        * UserInterface/Views/PinnedTabBarItem.js:
+        (WI.PinnedTabBarItem.prototype.fromTabInfo):
+        Match GeneralTabBarItem.fromTabInfo.
+
+        * UserInterface/Views/SearchTabContentView.js:
+        (WI.SearchTabContentView):
+        (WI.SearchTabContentView.tabInfo):
+        New image (magnifying glass without border) when new TabBar is enabled.
+
+        * UserInterface/Views/SettingsTabContentView.js:
+        (WI.SettingsTabContentView):
+
+        * UserInterface/Views/TabBar.js:
+        (WI.TabBar):
+        Move creation of the Settings item out of TabBar. The TabBar should
+        only be concerned with managing tabs.
+
+        (WI.TabBar.prototype.get saveableTabCount):
+        (WI.TabBar.prototype._handleContextMenu):
+        (WI.TabBar.prototype.get normalNonEphemeralTabCount): Deleted.
+        Now that the Search tab is pinned, there aren't any normal tabs that
+        are also ephemeral. For the LegacyTabBar, both the Search and New Tab
+        tabs are still in this category.
+
+        * UserInterface/Views/TabBrowser.js:
+        (WI.TabBrowser.prototype.addTabForContentView):
+        (WI.TabBrowser.prototype.closeTabForContentView):
+        (WI.TabBrowser.prototype._tabBarItemSelected):
+        (WI.TabBrowser._tabBarItemRemoved):
+        Recent tab list should be validated against the list of saveable tabs,
+        since the Search tab is no longer a normal tab (a GeneralTabBarItem),
+        but is still persisted across Inspector sessions.
+
+2018-02-16  Matt Baker  <mattbaker@apple.com>
+
+        Web Inspector: TabBar redesign: TabBarItem close button is incorrectly positioned
+        https://bugs.webkit.org/show_bug.cgi?id=182844
+        <rdar://problem/37586749>
+
+        Reviewed by Timothy Hatcher.
+
+        * UserInterface/Views/GeneralTabBarItem.js:
+        (WI.GeneralTabBarItem.prototype.set title):
+        Insert the title before the last flexible space item.
+
+        * UserInterface/Views/TabBar.css:
+        (.tab-bar > .item):
+        (.tab-bar > .item > .close):
+        (.tab-bar > .item > .flex-space):
+        (.tab-bar > .item.ephemeral > .flex-space:last-child):
+        (.tab-bar.collapsed > .item):
+        (.tab-bar.collapsed > .item > .flex-space):
+        (.tab-bar.collapsed > .item > .close):
+        (.tab-bar.collapsed > .item:hover > .close):
+        (.tab-bar.collapsed > .item.ephemeral:hover > .icon):
+        (.tab-bar > .item:hover > .close): Deleted.
+        (.tab-bar:not(.collapsed) > .item.ephemeral:hover > .icon): Deleted.
+
+        * UserInterface/Views/TabBarItem.js:
+        (WI.TabBarItem):
+        Restore flexible space items before and after the icon.
+
+2018-02-14  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: Styles: completion popover doesn't hide when switching panels
+        https://bugs.webkit.org/show_bug.cgi?id=182464
+        <rdar://problem/37202763>
+
+        Reviewed by Timothy Hatcher.
+
+        Save the position of the anchor, an element the popover is shown for, and hide the completion popover
+        when the position changes.
+
+        * UserInterface/Views/CompletionSuggestionsView.js:
+        (WI.CompletionSuggestionsView.prototype.showUntilAnchorMoves):
+        When the popover is visible, check every 200ms if the anchor moved.
+
+        (WI.CompletionSuggestionsView.prototype.hide):
+        * UserInterface/Views/SpreadsheetTextField.js:
+        (WI.SpreadsheetTextField.prototype._updateCompletions):
+        (WI.SpreadsheetTextField.prototype._getCaretRect):
+        getBoundingClientRect returns {x: 0, y: 0} when it can't determine node's position.
+        This happens when a node isn't attached to DOM, attached to DOM but not visible, and
+        a number of odd cases.
+
+2018-02-14  Matt Baker  <mattbaker@apple.com>
+
+        Web Inspector: TabBar redesign: only show allowed tabs in the available tabs context menu
+        https://bugs.webkit.org/show_bug.cgi?id=182721
+        <rdar://problem/37479019>
+
+        Reviewed by Timothy Hatcher.
+
+        In addition to only including allowed tabs in the TabBar context menu,
+        perform a sanity check when setting the selected tab item, since the
+        serialized selection index could refer to a tab that is no longer allowed.
+
+        * UserInterface/Views/LegacyTabBar.js:
+        (WI.LegacyTabBar.prototype.set selectedTabBarItem):
+        (WI.LegacyTabBar.prototype._handleContextMenu):
+
+        * UserInterface/Views/TabBar.js:
+        (WI.TabBar.prototype.set selectedTabBarItem):
+        (WI.TabBar.prototype._handleContextMenu):
+
 2018-02-09  Matt Baker  <mattbaker@apple.com>
 
         Web Inspector: Canvas tab: tree selection abruptly changes when selecting a recording frame

@@ -29,6 +29,7 @@
 #include "JSWrappable.h"
 #include "TestOptions.h"
 #include "UIScriptContext.h"
+#include "WhatToDump.h"
 #include <WebKit/WKRetainPtr.h>
 #include <string>
 #include <wtf/Noncopyable.h>
@@ -36,7 +37,7 @@
 
 namespace WTR {
 
-class TestInvocation : public UIScriptContextDelegate {
+class TestInvocation final : public UIScriptContextDelegate {
     WTF_MAKE_NONCOPYABLE(TestInvocation);
 public:
     explicit TestInvocation(WKURLRef, const TestOptions&);
@@ -60,7 +61,6 @@ public:
     void didReceiveMessageFromInjectedBundle(WKStringRef messageName, WKTypeRef messageBody);
     WKRetainPtr<WKTypeRef> didReceiveSynchronousMessageFromInjectedBundle(WKStringRef messageName, WKTypeRef messageBody);
 
-    void dumpWebProcessUnresponsiveness();
     static void dumpWebProcessUnresponsiveness(const char* errorMessage);
     void outputText(const WTF::String&);
 
@@ -78,6 +78,8 @@ public:
     void didRemoveAllSessionCredentials();
     
 private:
+    WKRetainPtr<WKMutableDictionaryRef> createTestSettingsDictionary();
+
     void dumpResults();
     static void dump(const char* textToStdout, const char* textToStderr = 0, bool seenError = false);
     enum class SnapshotResultType { WebView, WebContents };
@@ -94,7 +96,6 @@ private:
     };
     static void runUISideScriptAfterUpdateCallback(WKErrorRef, void* context);
 
-    bool shouldLogFrameLoadDelegates() const;
     bool shouldLogHistoryClientCallbacks() const;
 
     void runUISideScript(WKStringRef, unsigned callbackID);
@@ -112,20 +113,22 @@ private:
     bool m_dumpJSConsoleLogInStdErr { false };
 
     // Invocation state
+    bool m_startedTesting { false };
     bool m_gotInitialResponse { false };
     bool m_gotFinalMessage { false };
     bool m_gotRepaint { false };
     bool m_error { false };
 
+    bool m_waitUntilDone { false };
+    bool m_dumpFrameLoadCallbacks { false };
     bool m_dumpPixels { false };
     bool m_pixelResultIsPending { false };
-    bool m_webProcessIsUnresponsive { false };
+    WhatToDump m_whatToDump { WhatToDump::RenderTree };
 
     StringBuilder m_textOutput;
     WKRetainPtr<WKDataRef> m_audioResult;
     WKRetainPtr<WKImageRef> m_pixelResult;
     WKRetainPtr<WKArrayRef> m_repaintRects;
-    std::string m_errorMessage;
     
     std::unique_ptr<UIScriptContext> m_UIScriptContext;
     UIScriptInvocationData* m_pendingUIScriptInvocationData { nullptr };

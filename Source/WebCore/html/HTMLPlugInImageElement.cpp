@@ -26,6 +26,7 @@
 #include "CommonVM.h"
 #include "ContentSecurityPolicy.h"
 #include "EventNames.h"
+#include "Frame.h"
 #include "FrameLoaderClient.h"
 #include "HTMLImageLoader.h"
 #include "JSDOMConvertBoolean.h"
@@ -34,7 +35,6 @@
 #include "JSShadowRoot.h"
 #include "LocalizedStrings.h"
 #include "Logging.h"
-#include "MainFrame.h"
 #include "MouseEvent.h"
 #include "Page.h"
 #include "PlatformMouseEvent.h"
@@ -53,8 +53,11 @@
 #include "TypedElementDescendantIterator.h"
 #include "UserGestureIndicator.h"
 #include <JavaScriptCore/CatchScope.h>
+#include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLPlugInImageElement);
 
 static const int sizingTinyDimensionThreshold = 40;
 static const float sizingFullPageAreaRatioThreshold = 0.96;
@@ -225,6 +228,13 @@ void HTMLPlugInImageElement::didAttachRenderers()
 {
     m_needsWidgetUpdate = true;
     scheduleUpdateForAfterStyleResolution();
+
+    // Update the RenderImageResource of the associated RenderImage.
+    if (m_imageLoader && is<RenderImage>(renderer())) {
+        auto& renderImageResource = downcast<RenderImage>(*renderer()).imageResource();
+        if (!renderImageResource.cachedImage())
+            renderImageResource.setCachedImage(m_imageLoader->image());
+    }
 
     HTMLPlugInElement::didAttachRenderers();
 }

@@ -34,6 +34,7 @@
 #import "InteractionInformationAtPosition.h"
 #import "Logging.h"
 #import "NativeWebKeyboardEvent.h"
+#import "NavigationState.h"
 #import "PageClient.h"
 #import "PrintInfo.h"
 #import "RemoteLayerTreeDrawingAreaProxy.h"
@@ -192,6 +193,28 @@ void WebPageProxy::selectionRectsCallback(const Vector<WebCore::SelectionRect>& 
     callback->performCallbackWithReturnValue(selectionRects);
 }
 
+void WebPageProxy::assistedNodeInformationCallback(const AssistedNodeInformation& info, CallbackID callbackID)
+{
+    auto callback = m_callbacks.take<AssistedNodeInformationCallback>(callbackID);
+    if (!callback) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
+
+    callback->performCallbackWithReturnValue(info);
+}
+
+void WebPageProxy::requestAssistedNodeInformation(Function<void(const AssistedNodeInformation&, CallbackBase::Error)>&& callback)
+{
+    if (!isValid()) {
+        callback({ }, CallbackBase::Error::OwnerWasInvalidated);
+        return;
+    }
+
+    auto callbackID = m_callbacks.put(WTFMove(callback), m_process->throttler().backgroundActivityToken());
+    m_process->send(Messages::WebPage::RequestAssistedNodeInformation(callbackID), m_pageID);
+}
+
 void WebPageProxy::updateVisibleContentRects(const VisibleContentRectUpdateInfo& visibleContentRectUpdate)
 {
     if (!isValid())
@@ -252,10 +275,11 @@ WebCore::FloatRect WebPageProxy::computeCustomFixedPositionRect(const FloatRect&
     if (!visualViewportEnabled)
         return FrameView::rectForViewportConstrainedObjects(enclosingLayoutRect(constrainedUnobscuredRect), LayoutSize(documentRect.size()), displayedContentScale, false, StickToViewportBounds);
         
-    FloatSize constainedSize = isBelowMinimumScale ? constrainedUnobscuredRect.size() : unobscuredContentRect.size();
+    FloatSize constrainedSize = isBelowMinimumScale ? constrainedUnobscuredRect.size() : unobscuredContentRect.size();
     FloatRect unobscuredContentRectForViewport = isBelowMinimumScale ? constrainedUnobscuredRect : unobscuredContentRectRespectingInputViewBounds;
 
-    FloatRect layoutViewportRect = FrameView::computeUpdatedLayoutViewportRect(LayoutRect(currentCustomFixedPositionRect), LayoutRect(documentRect), LayoutSize(constainedSize), LayoutRect(unobscuredContentRectForViewport), m_baseLayoutViewportSize, m_minStableLayoutViewportOrigin, m_maxStableLayoutViewportOrigin, constraint);
+    auto layoutViewportSize = FrameView::expandedLayoutViewportSize(m_baseLayoutViewportSize, LayoutSize(documentRect.size()), m_preferences->layoutViewportHeightExpansionFactor());
+    FloatRect layoutViewportRect = FrameView::computeUpdatedLayoutViewportRect(LayoutRect(currentCustomFixedPositionRect), LayoutRect(documentRect), LayoutSize(constrainedSize), LayoutRect(unobscuredContentRectForViewport), layoutViewportSize, m_minStableLayoutViewportOrigin, m_maxStableLayoutViewportOrigin, constraint);
     
     if (layoutViewportRect != currentCustomFixedPositionRect)
         LOG_WITH_STREAM(VisibleRects, stream << "WebPageProxy::computeCustomFixedPositionRect: new layout viewport  " << layoutViewportRect);
@@ -282,7 +306,7 @@ void WebPageProxy::overflowScrollDidEndScroll()
     m_pageClient.overflowScrollDidEndScroll();
 }
 
-void WebPageProxy::dynamicViewportSizeUpdate(const FloatSize& minimumLayoutSize, const WebCore::FloatSize& maximumUnobscuredSize, const FloatRect& targetExposedContentRect, const FloatRect& targetUnobscuredRect, const FloatRect& targetUnobscuredRectInScrollViewCoordinates, const WebCore::FloatBoxExtent& unobscuredSafeAreaInsets, double targetScale, int32_t deviceOrientation)
+void WebPageProxy::dynamicViewportSizeUpdate(const FloatSize& viewLayoutSize, const WebCore::FloatSize& maximumUnobscuredSize, const FloatRect& targetExposedContentRect, const FloatRect& targetUnobscuredRect, const FloatRect& targetUnobscuredRectInScrollViewCoordinates, const WebCore::FloatBoxExtent& unobscuredSafeAreaInsets, double targetScale, int32_t deviceOrientation)
 {
     if (!isValid())
         return;
@@ -291,7 +315,7 @@ void WebPageProxy::dynamicViewportSizeUpdate(const FloatSize& minimumLayoutSize,
 
     m_dynamicViewportSizeUpdateWaitingForTarget = true;
     m_dynamicViewportSizeUpdateWaitingForLayerTreeCommit = true;
-    m_process->send(Messages::WebPage::DynamicViewportSizeUpdate(minimumLayoutSize, maximumUnobscuredSize, targetExposedContentRect, targetUnobscuredRect, targetUnobscuredRectInScrollViewCoordinates, unobscuredSafeAreaInsets, targetScale, deviceOrientation, ++m_currentDynamicViewportSizeUpdateID), m_pageID);
+    m_process->send(Messages::WebPage::DynamicViewportSizeUpdate(viewLayoutSize, maximumUnobscuredSize, targetExposedContentRect, targetUnobscuredRect, targetUnobscuredRectInScrollViewCoordinates, unobscuredSafeAreaInsets, targetScale, deviceOrientation, ++m_currentDynamicViewportSizeUpdateID), m_pageID);
 }
 
 void WebPageProxy::synchronizeDynamicViewportUpdate()
@@ -331,12 +355,12 @@ void WebPageProxy::synchronizeDynamicViewportUpdate()
     m_dynamicViewportSizeUpdateWaitingForLayerTreeCommit = false;
 }
 
-void WebPageProxy::setViewportConfigurationMinimumLayoutSize(const WebCore::FloatSize& size)
+void WebPageProxy::setViewportConfigurationViewLayoutSize(const WebCore::FloatSize& size)
 {
-    m_viewportConfigurationMinimumLayoutSize = size;
+    m_viewportConfigurationViewLayoutSize = size;
 
     if (isValid())
-        m_process->send(Messages::WebPage::SetViewportConfigurationMinimumLayoutSize(size), m_pageID);
+        m_process->send(Messages::WebPage::SetViewportConfigurationViewLayoutSize(size), m_pageID);
 }
 
 void WebPageProxy::setForceAlwaysUserScalable(bool userScalable)
@@ -397,10 +421,9 @@ void WebPageProxy::didCommitLayerTree(const WebKit::RemoteLayerTreeTransaction& 
         didReachLayoutMilestone(WebCore::ReachedSessionRestorationRenderTreeSizeThreshold);
     }
 
-    if (m_hasDeferredStartAssistingNode) {
+    if (m_deferredNodeAssistanceArguments) {
         m_pageClient.startAssistingNode(m_deferredNodeAssistanceArguments->m_nodeInformation, m_deferredNodeAssistanceArguments->m_userIsInteracting, m_deferredNodeAssistanceArguments->m_blurPreviousNode,
             m_deferredNodeAssistanceArguments->m_changingActivityState, m_deferredNodeAssistanceArguments->m_userData.get());
-        m_hasDeferredStartAssistingNode = false;
         m_deferredNodeAssistanceArguments = nullptr;
     }
 }
@@ -651,22 +674,15 @@ void WebPageProxy::saveImageToLibrary(const SharedMemory::Handle& imageHandle, u
     auto buffer = SharedBuffer::create(static_cast<unsigned char*>(sharedMemoryBuffer->data()), imageSize);
     m_pageClient.saveImageToLibrary(WTFMove(buffer));
 }
-    
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 120000
-void WebPageProxy::updateBlockSelectionWithTouch(const WebCore::IntPoint point, uint32_t touch, uint32_t handlePosition)
-{
-    m_process->send(Messages::WebPage::UpdateBlockSelectionWithTouch(point, touch, handlePosition), m_pageID);
-}
-    
-void WebPageProxy::didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold)
-{
-    m_pageClient.didUpdateBlockSelectionWithTouch(touch, flags, growThreshold, shrinkThreshold);
-}
-#endif
 
 void WebPageProxy::applicationDidEnterBackground()
 {
     bool isSuspendedUnderLock = [UIApp isSuspendedUnderLock];
+
+    // We normally delay process suspension when the app is backgrounded until the current page load completes. However,
+    // we do not want to do so when the screen is locked for power reasons.
+    if (isSuspendedUnderLock)
+        NavigationState::fromWebPage(*this).releaseNetworkActivityToken(NavigationState::NetworkActivityTokenReleaseReason::ScreenLocked);
     m_process->send(Messages::WebPage::ApplicationDidEnterBackground(isSuspendedUnderLock), m_pageID);
 }
 
@@ -734,9 +750,9 @@ void WebPageProxy::storeSelectionForAccessibility(bool shouldStore)
     m_process->send(Messages::WebPage::StoreSelectionForAccessibility(shouldStore), m_pageID);
 }
 
-void WebPageProxy::startAutoscrollAtPosition(const WebCore::FloatPoint& position)
+void WebPageProxy::startAutoscrollAtPosition(const WebCore::FloatPoint& positionInWindow)
 {
-    m_process->send(Messages::WebPage::StartAutoscrollAtPosition(position), m_pageID);
+    m_process->send(Messages::WebPage::StartAutoscrollAtPosition(positionInWindow), m_pageID);
 }
     
 void WebPageProxy::cancelAutoscroll()
@@ -777,6 +793,11 @@ void WebPageProxy::registerWebProcessAccessibilityToken(const IPC::DataReference
     m_pageClient.accessibilityWebProcessTokenReceived(data);
 }    
 
+void WebPageProxy::assistiveTechnologyMakeFirstResponder()
+{
+    notImplemented();
+}
+    
 void WebPageProxy::makeFirstResponder()
 {
     notImplemented();
@@ -872,7 +893,12 @@ FloatSize WebPageProxy::availableScreenSize()
 {
     return WebCore::availableScreenSize();
 }
-    
+
+FloatSize WebPageProxy::overrideScreenSize()
+{
+    return WebCore::overrideScreenSize();
+}
+
 float WebPageProxy::textAutosizingWidth()
 {
     return WebCore::screenSize().width();
@@ -915,7 +941,6 @@ void WebPageProxy::startAssistingNode(const AssistedNodeInformation& information
     API::Object* userDataObject = process().transformHandlesToObjects(userData.object()).get();
     if (m_editorState.isMissingPostLayoutData) {
         m_deferredNodeAssistanceArguments = std::make_unique<NodeAssistanceArguments>(NodeAssistanceArguments { information, userIsInteracting, blurPreviousNode, changingActivityState, userDataObject });
-        m_hasDeferredStartAssistingNode = true;
         return;
     }
 
@@ -924,10 +949,7 @@ void WebPageProxy::startAssistingNode(const AssistedNodeInformation& information
 
 void WebPageProxy::stopAssistingNode()
 {
-    if (m_hasDeferredStartAssistingNode) {
-        m_hasDeferredStartAssistingNode = false;
-        m_deferredNodeAssistanceArguments = nullptr;
-    }
+    m_deferredNodeAssistanceArguments = nullptr;
     m_pageClient.stopAssistingNode();
 }
 
@@ -1017,9 +1039,9 @@ void WebPageProxy::setAcceleratedCompositingRootLayer(LayerOrView* rootLayer)
     m_pageClient.setAcceleratedCompositingRootLayer(rootLayer);
 }
 
-void WebPageProxy::showPlaybackTargetPicker(bool hasVideo, const IntRect& elementRect)
+void WebPageProxy::showPlaybackTargetPicker(bool hasVideo, const IntRect& elementRect, WebCore::RouteSharingPolicy policy, const String& contextUID)
 {
-    m_pageClient.showPlaybackTargetPicker(hasVideo, elementRect);
+    m_pageClient.showPlaybackTargetPicker(hasVideo, elementRect, policy, contextUID);
 }
 
 void WebPageProxy::commitPotentialTapFailed()

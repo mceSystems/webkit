@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013 Apple Inc.  All rights reserved.
- * Copyright (C) 2017 Sony Interactive Entertainment Inc.
+ * Copyright (C) 2018 Sony Interactive Entertainment Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,12 +26,14 @@
 
 #pragma once
 
+#include "CurlProxySettings.h"
 #include "CurlSSLHandle.h"
 #include "URL.h"
 
 #include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/Seconds.h>
 #include <wtf/Threading.h>
 
 #if OS(WINDOWS)
@@ -43,14 +45,11 @@
 
 namespace WebCore {
 
-enum class CurlProxyType {
-    Invalid = -1,
-    HTTP = CURLPROXY_HTTP,
-    Socks4 = CURLPROXY_SOCKS4,
-    Socks4A = CURLPROXY_SOCKS4A,
-    Socks5 = CURLPROXY_SOCKS5,
-    Socks5Hostname = CURLPROXY_SOCKS5_HOSTNAME
-};
+// Values taken from http://www.browserscope.org/ following
+// the rule "Do What Every Other Modern Browser Is Doing".
+const long CurlDefaultMaxConnects { -1 }; // -1 : Does not set CURLMOPT_MAXCONNECTS
+const long CurlDefaultMaxTotalConnections { 17 };
+const long CurlDefaultMaxHostConnections { 6 };
 
 // CurlGlobal --------------------------------------------
 // to make the initialization of libcurl happen before other initialization of CurlContext
@@ -82,37 +81,31 @@ public:
 private:
     static void lockCallback(CURL*, curl_lock_data, curl_lock_access, void*);
     static void unlockCallback(CURL*, curl_lock_data, void*);
-    static StaticLock* mutexFor(curl_lock_data);
+    static Lock* mutexFor(curl_lock_data);
 
     CURLSH* m_shareHandle { nullptr };
 };
 
 // CurlContext --------------------------------------------
 
+class CurlRequestScheduler;
+
 class CurlContext : public CurlGlobal {
     WTF_MAKE_NONCOPYABLE(CurlContext);
     friend NeverDestroyed<CurlContext>;
 public:
-    struct ProxyInfo {
-        String host;
-        unsigned long port;
-        CurlProxyType type { CurlProxyType::Invalid };
-        String username;
-        String password;
-
-        const String url() const;
-    };
-
-    static CurlContext& singleton();
+    WEBCORE_EXPORT static CurlContext& singleton();
 
     virtual ~CurlContext();
 
     const CurlShareHandle& shareHandle() { return m_shareHandle; }
 
+    CurlRequestScheduler& scheduler() { return *m_scheduler; }
+
     // Proxy
-    const ProxyInfo& proxyInfo() const { return m_proxy; }
-    void setProxyInfo(const ProxyInfo& info) { m_proxy = info;  }
-    void setProxyInfo(const String& host = emptyString(), unsigned long port = 0, CurlProxyType = CurlProxyType::HTTP, const String& username = emptyString(), const String& password = emptyString());
+    const CurlProxySettings& proxySettings() const { return m_proxySettings; }
+    void setProxySettings(const CurlProxySettings& settings) { m_proxySettings = settings; }
+    void setProxyUserPass(const String& user, const String& password) { m_proxySettings.setUserPass(user, password); }
 
     // SSL
     CurlSSLHandle& sslHandle() { return m_sslHandle; }
@@ -120,18 +113,26 @@ public:
     // HTTP/2
     bool isHttp2Enabled() const;
 
+    // Timeout
+    Seconds dnsCacheTimeout() const { return m_dnsCacheTimeout; }
+    Seconds connectTimeout() const { return m_connectTimeout; }
+
 #ifndef NDEBUG
     FILE* getLogFile() const { return m_logFile; }
     bool isVerbose() const { return m_verbose; }
 #endif
 
 private:
-    ProxyInfo m_proxy;
-    CurlShareHandle m_shareHandle;
-    CurlSSLHandle m_sslHandle;
-
     CurlContext();
     void initShareHandle();
+
+    CurlProxySettings m_proxySettings;
+    CurlShareHandle m_shareHandle;
+    CurlSSLHandle m_sslHandle;
+    std::unique_ptr<CurlRequestScheduler> m_scheduler;
+
+    Seconds m_dnsCacheTimeout { Seconds::fromMinutes(5) };
+    Seconds m_connectTimeout { 30.0 };
 
 #ifndef NDEBUG
     FILE* m_logFile { nullptr };
@@ -147,6 +148,10 @@ class CurlMultiHandle {
 public:
     CurlMultiHandle();
     ~CurlMultiHandle();
+
+    void setMaxConnects(long);
+    void setMaxTotalConnections(long);
+    void setMaxHostConnections(long);
 
     CURLMcode addHandle(CURL*);
     CURLMcode removeHandle(CURL*);
@@ -250,8 +255,9 @@ public:
 
     void enableProxyIfExists();
 
-    void enableTimeout();
-    void setTimeout(long timeoutMilliseconds);
+    void setDnsCacheTimeout(Seconds);
+    void setConnectTimeout(Seconds);
+    void setTimeout(Seconds);
 
     // Callback function
     void setHeaderCallbackFunction(curl_write_callback, void*);

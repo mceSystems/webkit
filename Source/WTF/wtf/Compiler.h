@@ -66,7 +66,6 @@
 #define WTF_COMPILER_CLANG 1
 #define WTF_COMPILER_SUPPORTS_BLOCKS COMPILER_HAS_CLANG_FEATURE(blocks)
 #define WTF_COMPILER_SUPPORTS_C_STATIC_ASSERT COMPILER_HAS_CLANG_FEATURE(c_static_assert)
-#define WTF_COMPILER_SUPPORTS_CXX_REFERENCE_QUALIFIED_FUNCTIONS COMPILER_HAS_CLANG_FEATURE(cxx_reference_qualified_functions)
 #define WTF_COMPILER_SUPPORTS_CXX_EXCEPTIONS COMPILER_HAS_CLANG_FEATURE(cxx_exceptions)
 #define WTF_COMPILER_SUPPORTS_BUILTIN_IS_TRIVIALLY_COPYABLE COMPILER_HAS_CLANG_FEATURE(is_trivially_copyable)
 
@@ -89,14 +88,9 @@
 /* Note: This section must come after the Clang section since we check !COMPILER(CLANG) here. */
 #if COMPILER(GCC_OR_CLANG) && !COMPILER(CLANG)
 #define WTF_COMPILER_GCC 1
-#define WTF_COMPILER_SUPPORTS_CXX_REFERENCE_QUALIFIED_FUNCTIONS 1
 
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #define GCC_VERSION_AT_LEAST(major, minor, patch) (GCC_VERSION >= (major * 10000 + minor * 100 + patch))
-
-#if !GCC_VERSION_AT_LEAST(5, 0, 0)
-#error "Please use a newer version of GCC. WebKit requires GCC 5.0.0 or newer to compile."
-#endif
 
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #define WTF_COMPILER_SUPPORTS_C_STATIC_ASSERT 1
@@ -128,7 +122,6 @@
 #if defined(_MSC_VER)
 
 #define WTF_COMPILER_MSVC 1
-#define WTF_COMPILER_SUPPORTS_CXX_REFERENCE_QUALIFIED_FUNCTIONS 1
 
 #if _MSC_VER < 1910
 #error "Please use a newer version of Visual Studio. WebKit requires VS2017 or newer to compile."
@@ -148,11 +141,7 @@
 #define WTF_COMPILER_SUPPORTS_EABI 1
 #endif
 
-/* Non-static data member initializer (NSDMI) for aggregates */
-
-#if defined(__cpp_aggregate_nsdmi) && __cpp_aggregate_nsdmi >= 201304
-#define WTF_COMPILER_SUPPORTS_NSDMI_FOR_AGGREGATES 1
-#endif
+/* ASAN_ENABLED and SUPPRESS_ASAN */
 
 #define ASAN_ENABLED COMPILER_HAS_CLANG_FEATURE(address_sanitizer)
 
@@ -176,6 +165,12 @@
 
 #if !defined(ALWAYS_INLINE)
 #define ALWAYS_INLINE inline
+#endif
+
+#if COMPILER(MSVC)
+#define ALWAYS_INLINE_EXCEPT_MSVC inline
+#else
+#define ALWAYS_INLINE_EXCEPT_MSVC ALWAYS_INLINE
 #endif
 
 /* WTF_EXTERN_C_{BEGIN, END} */

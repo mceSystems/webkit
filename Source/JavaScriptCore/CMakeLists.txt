@@ -72,14 +72,16 @@ set(JavaScriptCore_OBJECT_LUT_SOURCES
     runtime/IntlDateTimeFormatPrototype.cpp
     runtime/IntlNumberFormatConstructor.cpp
     runtime/IntlNumberFormatPrototype.cpp
+    runtime/IntlPluralRulesConstructor.cpp
+    runtime/IntlPluralRulesPrototype.cpp
     runtime/JSDataViewPrototype.cpp
     runtime/JSGlobalObject.cpp
     runtime/JSInternalPromiseConstructor.cpp
+    runtime/JSModuleLoader.cpp
     runtime/JSONObject.cpp
     runtime/JSPromiseConstructor.cpp
     runtime/JSPromisePrototype.cpp
     runtime/MapPrototype.cpp
-    runtime/ModuleLoaderPrototype.cpp
     runtime/NumberConstructor.cpp
     runtime/NumberPrototype.cpp
     runtime/ObjectConstructor.cpp
@@ -115,6 +117,16 @@ set(JavaScriptCore_LIBRARIES
     ${ICU_I18N_LIBRARIES}
     ${LLVM_LIBRARIES}
 )
+
+# Since r228149, on MIPS we need to link with -latomic, because
+# __atomic_fetch_add_8 is not available as a compiler intrinsic. It is
+# available on other platforms (including 32-bit Arm), so the link with
+# libatomic is only neede on MIPS.
+if (WTF_CPU_MIPS)
+    list(APPEND JavaScriptCore_LIBRARIES
+        -latomic
+    )
+endif ()
 
 set(JavaScriptCore_SCRIPTS_SOURCES_DIR "${JAVASCRIPTCORE_DIR}/Scripts")
 
@@ -243,6 +255,7 @@ add_executable(LLIntOffsetsExtractor
     ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/LLIntDesiredOffsets.h ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/Bytecodes.h ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/BytecodeStructs.h
 )
 target_link_libraries(LLIntOffsetsExtractor WTF)
+add_dependencies(LLIntOffsetsExtractor JavaScriptCoreForwardingHeaders)
 
 # The build system will execute asm.rb every time LLIntOffsetsExtractor's mtime is newer than
 # LLIntAssembly.h's mtime. The problem we have here is: asm.rb has some built-in optimization
@@ -329,28 +342,51 @@ foreach (_file ${JavaScriptCore_OBJECT_LUT_SOURCES})
     GENERATE_HASH_LUT(${CMAKE_CURRENT_SOURCE_DIR}/${_file} ${DERIVED_SOURCES_JAVASCRIPTCORE_DIR}/${_name}.lut.h)
 endforeach ()
 
-set(JavaScriptCore_FORWARDING_HEADERS
-    API/APICast.h
+set(JavaScriptCore_PUBLIC_FRAMEWORK_HEADERS
     API/JSBase.h
-    API/JSCTestRunnerUtils.h
-    API/JSClassRef.h
     API/JSContextRef.h
-    API/JSContextRefPrivate.h
-    API/JSHeapFinalizerPrivate.h
     API/JSObjectRef.h
-    API/JSObjectRefPrivate.h
-    API/JSRetainPtr.h
     API/JSStringRef.h
-    API/JSStringRefBSTR.h
-    API/JSStringRefCF.h
-    API/JSStringRefPrivate.h
     API/JSTypedArray.h
     API/JSValueRef.h
-    API/JSWeakObjectMapRefInternal.h
     API/JavaScript.h
-    API/JavaScriptCore.h
-    API/OpaqueJSString.h
     API/WebKitAvailability.h
+)
+
+set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS
+    API/APICallbackFunction.h
+    API/APICast.h
+    API/APIUtils.h
+    API/JSAPIWrapperObject.h
+    API/JSBasePrivate.h
+    API/JSCTestRunnerUtils.h
+    API/JSCallbackConstructor.h
+    API/JSCallbackFunction.h
+    API/JSCallbackObject.h
+    API/JSCallbackObjectFunctions.h
+    API/JSClassRef.h
+    API/JSContextInternal.h
+    API/JSContextPrivate.h
+    API/JSContextRefInspectorSupport.h
+    API/JSContextRefInternal.h
+    API/JSContextRefPrivate.h
+    API/JSHeapFinalizerPrivate.h
+    API/JSManagedValueInternal.h
+    API/JSMarkingConstraintPrivate.h
+    API/JSObjectRefPrivate.h
+    API/JSRemoteInspector.h
+    API/JSRetainPtr.h
+    API/JSScriptRefPrivate.h
+    API/JSStringRefPrivate.h
+    API/JSValueInternal.h
+    API/JSVirtualMachineInternal.h
+    API/JSWeakObjectMapRefInternal.h
+    API/JSWeakObjectMapRefPrivate.h
+    API/JSWeakPrivate.h
+    API/JSWrapperMap.h
+    API/ObjCCallbackFunction.h
+    API/ObjcRuntimeExtras.h
+    API/OpaqueJSString.h
 
     assembler/ARM64Assembler.h
     assembler/ARMAssembler.h
@@ -412,7 +448,6 @@ set(JavaScriptCore_FORWARDING_HEADERS
     bytecode/InternalFunctionAllocationProfile.h
     bytecode/JumpTable.h
     bytecode/LLIntCallLinkInfo.h
-    bytecode/LLIntPrototypeLoadAdaptiveStructureWatchpoint.h
     bytecode/LazyOperandValueProfile.h
     bytecode/ObjectAllocationProfile.h
     bytecode/ObjectPropertyCondition.h
@@ -497,6 +532,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     heap/IncrementalSweeper.h
     heap/IsoCellSet.h
     heap/IsoSubspace.h
+    heap/IsoSubspacePerVM.h
     heap/LargeAllocation.h
     heap/ListableHandler.h
     heap/LocalAllocator.h
@@ -511,7 +547,6 @@ set(JavaScriptCore_FORWARDING_HEADERS
     heap/MutatorState.h
     heap/RegisterState.h
     heap/RunningScope.h
-    heap/SecurityOriginToken.h
     heap/SimpleMarkingConstraint.h
     heap/SlotVisitor.h
     heap/SlotVisitorInlines.h
@@ -583,13 +618,13 @@ set(JavaScriptCore_FORWARDING_HEADERS
 
     jit/AssemblyHelpers.h
     jit/CCallHelpers.h
-    jit/CompactJITCodeMap.h
     jit/ExecutableAllocator.h
     jit/FPRInfo.h
     jit/GCAwareJITStubRoutine.h
     jit/GPRInfo.h
     jit/JITAllocator.h
     jit/JITCode.h
+    jit/JITCodeMap.h
     jit/JITCompilationEffort.h
     jit/JITMathICForwards.h
     jit/JITOperations.h
@@ -742,7 +777,9 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/JSCJSValue.h
     runtime/JSCJSValueInlines.h
     runtime/JSCPoison.h
+    runtime/JSCPtrTag.h
     runtime/JSCallee.h
+    runtime/JSCast.h
     runtime/JSCell.h
     runtime/JSCellInlines.h
     runtime/JSDataView.h
@@ -804,6 +841,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/ModuleProgramExecutable.h
     runtime/NativeErrorPrototype.h
     runtime/NativeExecutable.h
+    runtime/NativeFunction.h
     runtime/NullGetterFunction.h
     runtime/NullSetterFunction.h
     runtime/NumberObject.h
@@ -863,9 +901,7 @@ set(JavaScriptCore_FORWARDING_HEADERS
     runtime/SymbolObject.h
     runtime/SymbolPrototype.h
     runtime/SymbolTable.h
-    runtime/TemplateRegistry.h
-    runtime/TemplateRegistryKey.h
-    runtime/TemplateRegistryKeyTable.h
+    runtime/TemplateObjectDescriptor.h
     runtime/TestRunnerUtils.h
     runtime/ThrowScope.h
     runtime/ToNativeFromValue.h
@@ -908,6 +944,8 @@ set(JavaScriptCore_FORWARDING_HEADERS
     wasm/WasmTierUpCount.h
 
     wasm/js/JSWebAssemblyModule.h
+    wasm/js/WebAssemblyPrototype.h
+
 
     yarr/RegularExpression.h
     yarr/Yarr.h
@@ -1084,7 +1122,7 @@ set(JavaScriptCore_BUILTINS_SOURCES
     ${JAVASCRIPTCORE_DIR}/builtins/IteratorPrototype.js
     ${JAVASCRIPTCORE_DIR}/builtins/MapIteratorPrototype.js
     ${JAVASCRIPTCORE_DIR}/builtins/MapPrototype.js
-    ${JAVASCRIPTCORE_DIR}/builtins/ModuleLoaderPrototype.js
+    ${JAVASCRIPTCORE_DIR}/builtins/ModuleLoader.js
     ${JAVASCRIPTCORE_DIR}/builtins/NumberConstructor.js
     ${JAVASCRIPTCORE_DIR}/builtins/NumberPrototype.js
     ${JAVASCRIPTCORE_DIR}/builtins/ObjectConstructor.js
@@ -1100,6 +1138,7 @@ set(JavaScriptCore_BUILTINS_SOURCES
     ${JAVASCRIPTCORE_DIR}/builtins/StringPrototype.js
     ${JAVASCRIPTCORE_DIR}/builtins/TypedArrayConstructor.js
     ${JAVASCRIPTCORE_DIR}/builtins/TypedArrayPrototype.js
+    ${JAVASCRIPTCORE_DIR}/builtins/WebAssemblyPrototype.js
 )
 
 add_custom_command(
@@ -1155,8 +1194,20 @@ endif ()
 WEBKIT_FRAMEWORK_DECLARE(JavaScriptCore)
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 
+if (COMPILER_IS_GCC_OR_CLANG)
+    # Avoid using fused multiply-add instructions since this could give different results
+    # for e.g. parseInt depending on the platform and compilation flags.
+    WEBKIT_ADD_TARGET_CXX_FLAGS(JavaScriptCore -ffp-contract=off)
+endif ()
+
 WEBKIT_MAKE_FORWARDING_HEADERS(JavaScriptCore
-    FILES ${JavaScriptCore_FORWARDING_HEADERS}
+    FILES ${JavaScriptCore_PUBLIC_FRAMEWORK_HEADERS}
+    FLATTENED
+)
+
+WEBKIT_MAKE_FORWARDING_HEADERS(JavaScriptCore
+    TARGET_NAME JavaScriptCorePrivateForwardingHeaders
+    FILES ${JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS}
     DERIVED_SOURCE_DIRECTORIES ${DERIVED_SOURCES_DIR}/JavaScriptCore ${DERIVED_SOURCES_DIR}/JavaScriptCore/inspector
     FLATTENED
 )
@@ -1184,7 +1235,7 @@ endif ()
 # Force staging of shared scripts, even if they aren't directly used to build JavaScriptCore.
 
 add_custom_target(stageSharedScripts DEPENDS ${JavaScriptCore_SCRIPTS})
-add_dependencies(JavaScriptCore stageSharedScripts)
+add_dependencies(JavaScriptCore stageSharedScripts ${JavaScriptCore_EXTRA_DEPENDENCIES})
 
 if (MSVC)
     add_custom_command(

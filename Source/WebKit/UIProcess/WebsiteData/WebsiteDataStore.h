@@ -126,7 +126,8 @@ public:
     void updatePrevalentDomainsToPartitionOrBlockCookies(const Vector<String>& domainsToPartition, const Vector<String>& domainsToBlock, const Vector<String>& domainsToNeitherPartitionNorBlock, ShouldClearFirst);
     void hasStorageAccessForFrameHandler(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool hasAccess)>&& callback);
     void getAllStorageAccessEntries(CompletionHandler<void(Vector<String>&& domains)>&&);
-    void grantStorageAccessForFrameHandler(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool wasGranted)>&& callback);
+    void grantStorageAccessHandler(const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, WTF::CompletionHandler<void(bool wasGranted)>&& callback);
+    void removeAllStorageAccessHandler();
     void removePrevalentDomains(const Vector<String>& domains);
     void hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback);
     void requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback);
@@ -162,6 +163,11 @@ public:
     void setAllowsCellularAccess(AllowsCellularAccess allows) { m_allowsCellularAccess = allows; }
     AllowsCellularAccess allowsCellularAccess() { return m_allowsCellularAccess; }
 
+#if PLATFORM(COCOA)
+    void setProxyConfiguration(CFDictionaryRef configuration) { m_proxyConfiguration = configuration; }
+    CFDictionaryRef proxyConfiguration() { return m_proxyConfiguration.get(); }
+#endif
+    
     static void allowWebsiteDataRecordsForAllOrigins();
 
 private:
@@ -172,7 +178,7 @@ private:
 
     // WebProcessLifetimeObserver.
     void webPageWasAdded(WebPageProxy&) override;
-    void webPageWasRemoved(WebPageProxy&) override;
+    void webPageWasInvalidated(WebPageProxy&) override;
     void webProcessWillOpenConnection(WebProcessProxy&, IPC::Connection&) override;
     void webPageWillOpenConnection(WebPageProxy&, IPC::Connection&) override;
     void webPageDidCloseConnection(WebPageProxy&, IPC::Connection&) override;
@@ -209,6 +215,7 @@ private:
 #if PLATFORM(COCOA)
     Vector<uint8_t> m_uiProcessCookieStorageIdentifier;
     RetainPtr<CFHTTPCookieStorageRef> m_cfCookieStorage;
+    RetainPtr<CFDictionaryRef> m_proxyConfiguration;
 #endif
     HashSet<WebCore::Cookie> m_pendingCookies;
     

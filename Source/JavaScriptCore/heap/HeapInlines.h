@@ -30,7 +30,7 @@
 #include "HeapCellInlines.h"
 #include "IndexingHeader.h"
 #include "JSCallee.h"
-#include "JSCell.h"
+#include "JSCast.h"
 #include "Structure.h"
 #include <type_traits>
 #include <wtf/Assertions.h>
@@ -162,6 +162,13 @@ template<typename Functor> inline void Heap::forEachProtectedCell(const Functor&
 #if USE(FOUNDATION)
 template <typename T>
 inline void Heap::releaseSoon(RetainPtr<T>&& object)
+{
+    m_delayedReleaseObjects.append(WTFMove(object));
+}
+#endif
+
+#if USE(GLIB)
+inline void Heap::releaseSoon(std::unique_ptr<JSCGLibWrapperObject>&& object)
 {
     m_delayedReleaseObjects.append(WTFMove(object));
 }

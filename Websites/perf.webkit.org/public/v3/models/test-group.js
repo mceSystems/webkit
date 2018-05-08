@@ -14,7 +14,7 @@ class TestGroup extends LabeledObject {
             return buildRequests.sort((a, b) => a.order() - b.order());
         });
         this._repositories = null;
-        this._computeRequestedCommitSetsLazily = new LazilyEvaluatedFunction(this._computeRequestedCommitSets.bind(this));
+        this._computeRequestedCommitSetsLazily = new LazilyEvaluatedFunction(TestGroup._computeRequestedCommitSets);
         this._requestedCommitSets = null;
         this._commitSetToLabel = new Map;
         console.assert(!object.platform || object.platform instanceof Platform);
@@ -80,7 +80,7 @@ class TestGroup extends LabeledObject {
         return this._computeRequestedCommitSetsLazily.evaluate(...this._orderedBuildRequests());
     }
 
-    _computeRequestedCommitSets(...orderedBuildRequests)
+    static _computeRequestedCommitSets(...orderedBuildRequests)
     {
         const requestedCommitSets = [];
         const commitSetLabelMap = new Map;
@@ -144,15 +144,12 @@ class TestGroup extends LabeledObject {
         }
 
         if (beforeValues.length && afterValues.length) {
-            var diff = afterMean - beforeMean;
-            var smallerIsBetter = metric.isSmallerBetter();
-            var changeType = diff < 0 == smallerIsBetter ? 'better' : 'worse';
-            var changeLabel = Math.abs(diff / beforeMean * 100).toFixed(2) + '% ' + changeType;
+            const summary = metric.labelForDifference(beforeMean, afterMean, 'better', 'worse');
+            result.changeType = summary.changeType;
+            result.label = summary.changeLabel;
             var isSignificant = Statistics.testWelchsT(beforeValues, afterValues);
             var significanceLabel = isSignificant ? 'significant' : 'insignificant';
 
-            result.changeType = changeType;
-            result.label = changeLabel;
             if (hasCompleted)
                 result.status = isSignificant ? result.changeType : 'unchanged';
             result.fullLabel = `${result.label} (statistically ${significanceLabel})`;
@@ -191,10 +188,10 @@ class TestGroup extends LabeledObject {
     static createWithTask(taskName, platform, test, groupName, repetitionCount, commitSets)
     {
         console.assert(commitSets.length == 2);
-        const revisionSets = this._revisionSetsFromCommitSets(commitSets);
+        const revisionSets = CommitSet.revisionSetsFromCommitSets(commitSets);
         const params = {taskName, name: groupName, platform: platform.id(), test: test.id(), repetitionCount, revisionSets};
         return PrivilegedAPI.sendRequest('create-test-group', params).then((data) => {
-            return AnalysisTask.fetchById(data['taskId']);
+            return AnalysisTask.fetchById(data['taskId'], true);
         }).then((task) => {
             return this.fetchForTask(task.id()).then(() => task);
         });
@@ -203,7 +200,7 @@ class TestGroup extends LabeledObject {
     static createWithCustomConfiguration(task, platform, test, groupName, repetitionCount, commitSets)
     {
         console.assert(commitSets.length == 2);
-        const revisionSets = this._revisionSetsFromCommitSets(commitSets);
+        const revisionSets = CommitSet.revisionSetsFromCommitSets(commitSets);
         const params = {task: task.id(), name: groupName, platform: platform.id(), test: test.id(), repetitionCount, revisionSets};
         return PrivilegedAPI.sendRequest('create-test-group', params).then((data) => {
             return this.fetchForTask(data['taskId'], true);
@@ -213,33 +210,13 @@ class TestGroup extends LabeledObject {
     static createAndRefetchTestGroups(task, name, repetitionCount, commitSets)
     {
         console.assert(commitSets.length == 2);
-        const revisionSets = this._revisionSetsFromCommitSets(commitSets);
+        const revisionSets = CommitSet.revisionSetsFromCommitSets(commitSets);
         return PrivilegedAPI.sendRequest('create-test-group', {
             task: task.id(),
             name: name,
             repetitionCount: repetitionCount,
             revisionSets: revisionSets,
         }).then((data) => this.fetchForTask(data['taskId'], true));
-    }
-
-    static _revisionSetsFromCommitSets(commitSets)
-    {
-        return commitSets.map((commitSet) => {
-            console.assert(commitSet instanceof CustomCommitSet || commitSet instanceof CommitSet);
-            const revisionSet = {};
-            for (let repository of commitSet.repositories()) {
-                const patchFile = commitSet.patchForRepository(repository);
-                revisionSet[repository.id()] = {
-                    revision: commitSet.revisionForRepository(repository),
-                    ownerRevision: commitSet.ownerRevisionForRepository(repository),
-                    patch: patchFile ? patchFile.id() : null,
-                };
-            }
-            const customRoots = commitSet.customRoots();
-            if (customRoots && customRoots.length)
-                revisionSet['customRoots'] = customRoots.map((uploadedFile) => uploadedFile.id());
-            return revisionSet;
-        });
     }
 
     static findAllByTask(taskId)

@@ -31,6 +31,7 @@
 #include <WebCore/RefPtrCairo.h>
 #include <WebCore/WlUniquePtr.h>
 #include <gtk/gtk.h>
+#include <wayland-server.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Noncopyable.h>
@@ -113,6 +114,7 @@ public:
     void bindSurfaceToWebPage(Surface*, uint64_t pageID);
     void registerWebPage(WebPageProxy&);
     void unregisterWebPage(WebPageProxy&);
+    void willDestroySurface(Surface*);
 
     bool getTexture(WebPageProxy&, unsigned&, WebCore::IntSize&);
 
@@ -122,7 +124,12 @@ private:
     bool initializeEGL();
 
     String m_displayName;
-    WebCore::WlUniquePtr<struct wl_display> m_display;
+
+    struct DisplayDeleter {
+        void operator() (struct wl_display* display) { wl_display_destroy(display); }
+    };
+    std::unique_ptr<struct wl_display, DisplayDeleter> m_display;
+
     WebCore::WlUniquePtr<struct wl_global> m_compositorGlobal;
     WebCore::WlUniquePtr<struct wl_global> m_webkitgtkGlobal;
     GRefPtr<GSource> m_eventSource;

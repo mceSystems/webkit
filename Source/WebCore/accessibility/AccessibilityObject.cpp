@@ -33,11 +33,13 @@
 #include "AccessibilityRenderObject.h"
 #include "AccessibilityScrollView.h"
 #include "AccessibilityTable.h"
-#include "AccessibleNode.h"
+#include "AccessibleSetValueEvent.h"
 #include "DOMTokenList.h"
 #include "Editing.h"
 #include "Editor.h"
 #include "ElementIterator.h"
+#include "Event.h"
+#include "EventDispatcher.h"
 #include "EventHandler.h"
 #include "FloatRect.h"
 #include "FocusController.h"
@@ -52,7 +54,6 @@
 #include "HTMLParserIdioms.h"
 #include "HitTestResult.h"
 #include "LocalizedStrings.h"
-#include "MainFrame.h"
 #include "MathMLNames.h"
 #include "NodeList.h"
 #include "NodeTraversal.h"
@@ -68,6 +69,7 @@
 #include "RenderView.h"
 #include "RenderWidget.h"
 #include "RenderedPosition.h"
+#include "RuntimeEnabledFeatures.h"
 #include "Settings.h"
 #include "TextCheckerClient.h"
 #include "TextCheckingHelper.h"
@@ -992,6 +994,14 @@ bool AccessibilityObject::press()
     if (hitTestElement && hitTestElement->isDescendantOf(*pressElement))
         pressElement = hitTestElement;
     
+    // dispatch accessibleclick event
+    if (auto* cache = axObjectCache()) {
+        if (auto* pressObject = cache->getOrCreate(pressElement)) {
+            if (pressObject->dispatchAccessibilityEventWithType(AccessibilityEventType::Click))
+                return true;
+        }
+    }
+    
     UserGestureIndicator gestureIndicator(ProcessingUserGesture, document);
     
     bool dispatchedTouchEvent = false;
@@ -1023,7 +1033,7 @@ Frame* AccessibilityObject::frame() const
     return node->document().frame();
 }
 
-MainFrame* AccessibilityObject::mainFrame() const
+Frame* AccessibilityObject::mainFrame() const
 {
     Document* document = topDocument();
     if (!document)
@@ -1439,7 +1449,7 @@ VisiblePosition AccessibilityObject::visiblePositionForBounds(const IntRect& rec
     if (rect.isEmpty())
         return VisiblePosition();
     
-    MainFrame* mainFrame = this->mainFrame();
+    auto* mainFrame = this->mainFrame();
     if (!mainFrame)
         return VisiblePosition();
     
@@ -1658,20 +1668,20 @@ bool AccessibilityObject::supportsReadOnly() const
 
 String AccessibilityObject::readOnlyValue() const
 {
-    if (!hasProperty(AXPropertyName::ReadOnly))
+    if (!hasAttribute(aria_readonlyAttr))
         return ariaRoleAttribute() != AccessibilityRole::Unknown && supportsReadOnly() ? "false" : String();
 
-    return boolValueForProperty(AXPropertyName::ReadOnly).value() ? "true" : "false";
+    return getAttribute(aria_readonlyAttr).string().convertToASCIILowercase();
 }
 
 bool AccessibilityObject::supportsAutoComplete() const
 {
-    return (isComboBox() || isARIATextControl()) && hasProperty(AXPropertyName::Autocomplete);
+    return (isComboBox() || isARIATextControl()) && hasAttribute(aria_autocompleteAttr);
 }
 
 String AccessibilityObject::autoCompleteValue() const
 {
-    const AtomicString& autoComplete = stringValueForProperty(AXPropertyName::Autocomplete);
+    const AtomicString& autoComplete = getAttribute(aria_autocompleteAttr);
     if (equalLettersIgnoringASCIICase(autoComplete, "inline")
         || equalLettersIgnoringASCIICase(autoComplete, "list")
         || equalLettersIgnoringASCIICase(autoComplete, "both"))
@@ -1766,6 +1776,9 @@ unsigned AccessibilityObject::doAXLineForIndex(unsigned index)
 #if HAVE(ACCESSIBILITY)
 void AccessibilityObject::updateBackingStore()
 {
+    if (!axObjectCache())
+        return;
+    
     // Updating the layout may delete this object.
     RefPtr<AccessibilityObject> protectedThis(this);
     if (auto* document = this->document()) {
@@ -1985,7 +1998,7 @@ const String& AccessibilityObject::actionVerb() const
 
 bool AccessibilityObject::ariaIsMultiline() const
 {
-    return boolValueForProperty(AXPropertyName::Multiline).value();
+    return equalLettersIgnoringASCIICase(getAttribute(aria_multilineAttr), "true");
 }
 
 String AccessibilityObject::invalidStatus() const
@@ -1997,7 +2010,7 @@ String AccessibilityObject::invalidStatus() const
     String undefinedValue = ASCIILiteral("undefined");
 
     // aria-invalid can return false (default), grammar, spelling, or true.
-    String ariaInvalid = stripLeadingAndTrailingHTMLSpaces(stringValueForProperty(AXPropertyName::Invalid));
+    String ariaInvalid = stripLeadingAndTrailingHTMLSpaces(getAttribute(aria_invalidAttr));
     
     if (ariaInvalid.isEmpty()) {
         // We should expose invalid status for input types.
@@ -2025,13 +2038,13 @@ String AccessibilityObject::invalidStatus() const
 
 bool AccessibilityObject::supportsCurrent() const
 {
-    return hasProperty(AXPropertyName::Current);
+    return hasAttribute(aria_currentAttr);
 }
  
 AccessibilityCurrentState AccessibilityObject::currentState() const
 {
     // aria-current can return false (default), true, page, step, location, date or time.
-    String currentStateValue = stripLeadingAndTrailingHTMLSpaces(stringValueForProperty(AXPropertyName::Current));
+    String currentStateValue = stripLeadingAndTrailingHTMLSpaces(getAttribute(aria_currentAttr));
     
     // If "false", empty, or missing, return false state.
     if (currentStateValue.isEmpty() || currentStateValue == "false")
@@ -2142,58 +2155,79 @@ const AtomicString& AccessibilityObject::getAttribute(const QualifiedName& attri
     return nullAtom();
 }
 
-bool AccessibilityObject::hasProperty(AXPropertyName propertyKey) const
+bool AccessibilityObject::shouldDispatchAccessibilityEvent() const
 {
-    if (auto* element = this->element())
-        return AccessibleNode::hasProperty(*element, propertyKey);
-    return false;
+    bool shouldDispatch = RuntimeEnabledFeatures::sharedFeatures().accessibilityObjectModelEnabled();
+#if ENABLE(ACCESSIBILITY_EVENTS)
+    return shouldDispatch &= this->page()->settings().accessibilityEventsEnabled();
+#endif
+    return shouldDispatch;
 }
 
-const String AccessibilityObject::stringValueForProperty(AXPropertyName propertyKey) const
+bool AccessibilityObject::dispatchAccessibilityEvent(Event& event) const
 {
-    if (auto* element = this->element())
-        return AccessibleNode::effectiveStringValueForElement(*element, propertyKey);
-    return nullAtom();
-}
-
-std::optional<bool> AccessibilityObject::boolValueForProperty(AXPropertyName propertyKey) const
-{
-    if (auto* element = this->element())
-        return AccessibleNode::effectiveBoolValueForElement(*element, propertyKey);
-    return std::nullopt;
-}
-
-int AccessibilityObject::intValueForProperty(AXPropertyName propertyKey) const
-{
-    if (auto* element = this->element())
-        return AccessibleNode::effectiveIntValueForElement(*element, propertyKey);
-    return 0;
-}
-
-unsigned AccessibilityObject::unsignedValueForProperty(AXPropertyName propertyKey) const
-{
-    if (auto* element = this->element())
-        return AccessibleNode::effectiveUnsignedValueForElement(*element, propertyKey);
-    return 0;
-}
-
-double AccessibilityObject::doubleValueForProperty(AXPropertyName propertyKey) const
-{
-    if (auto* element = this->element())
-        return AccessibleNode::effectiveDoubleValueForElement(*element, propertyKey);
-    return 0.0;
-}
-
-Element* AccessibilityObject::elementValueForProperty(AXPropertyName propertyKey) const
-{
-    if (auto* element = this->element()) {
-        auto elements = AccessibleNode::effectiveElementsValueForElement(*element, propertyKey);
-        size_t size = elements.size();
-        ASSERT(!size || size == 1);
-        if (size)
-            return elements.first().get();
+    if (!shouldDispatchAccessibilityEvent())
+        return false;
+    
+    Vector<Element*> eventPath;
+    for (auto* parentObject = this; parentObject; parentObject = parentObject->parentObject()) {
+        if (parentObject->isWebArea())
+            break;
+        if (auto* parentElement = parentObject->element())
+            eventPath.append(parentElement);
     }
-    return nullptr;
+    
+    if (!eventPath.size())
+        return false;
+    
+    EventDispatcher::dispatchEvent(eventPath, event);
+    
+    // return true if preventDefault() was called, so that we don't execute the fallback behavior.
+    return event.defaultPrevented();
+}
+
+bool AccessibilityObject::dispatchAccessibilityEventWithType(AccessibilityEventType type) const
+{
+    AtomicString eventName;
+    switch (type) {
+    case AccessibilityEventType::ContextMenu:
+        eventName = eventNames().accessiblecontextmenuEvent;
+        break;
+    case AccessibilityEventType::Click:
+        eventName = eventNames().accessibleclickEvent;
+        break;
+    case AccessibilityEventType::Decrement:
+        eventName = eventNames().accessibledecrementEvent;
+        break;
+    case AccessibilityEventType::Dismiss:
+        eventName = eventNames().accessibledismissEvent;
+        break;
+    case AccessibilityEventType::Focus:
+        eventName = eventNames().accessiblefocusEvent;
+        break;
+    case AccessibilityEventType::Increment:
+        eventName = eventNames().accessibleincrementEvent;
+        break;
+    case AccessibilityEventType::ScrollIntoView:
+        eventName = eventNames().accessiblescrollintoviewEvent;
+        break;
+    case AccessibilityEventType::Select:
+        eventName = eventNames().accessibleselectEvent;
+        break;
+    default:
+        return false;
+    }
+    
+    auto event = Event::create(eventName, true, true);
+    return dispatchAccessibilityEvent(event);
+}
+
+bool AccessibilityObject::dispatchAccessibleSetValueEvent(const String& value) const
+{
+    if (!canSetValueAttribute())
+        return false;
+    auto event = AccessibleSetValueEvent::create(eventNames().accessiblesetvalueEvent, value);
+    return dispatchAccessibilityEvent(event);
 }
 
 // Lacking concrete evidence of orientation, horizontal means width > height. vertical is height > width;
@@ -2447,7 +2481,7 @@ bool AccessibilityObject::hasHighlighting() const
 
 String AccessibilityObject::roleDescription() const
 {
-    return stripLeadingAndTrailingHTMLSpaces(stringValueForProperty(AXPropertyName::RoleDescription));
+    return stripLeadingAndTrailingHTMLSpaces(getAttribute(aria_roledescriptionAttr));
 }
     
 bool nodeHasPresentationRole(Node* node)
@@ -2497,7 +2531,7 @@ const AtomicString& AccessibilityObject::datetimeAttributeValue() const
     
 const String AccessibilityObject::keyShortcutsValue() const
 {
-    return stringValueForProperty(AXPropertyName::KeyShortcuts);
+    return getAttribute(aria_keyshortcutsAttr);
 }
 
 Element* AccessibilityObject::element() const
@@ -2546,7 +2580,7 @@ const String AccessibilityObject::placeholderValue() const
     if (!placeholder.isEmpty())
         return placeholder;
     
-    const AtomicString& ariaPlaceholder = stringValueForProperty(AXPropertyName::Placeholder);
+    const AtomicString& ariaPlaceholder = getAttribute(aria_placeholderAttr);
     if (!ariaPlaceholder.isEmpty())
         return ariaPlaceholder;
     
@@ -2572,20 +2606,20 @@ bool AccessibilityObject::supportsARIAAttributes() const
         || supportsARIADragging()
         || supportsARIADropping()
         || supportsARIAOwns()
-        || hasProperty(AXPropertyName::Atomic)
-        || hasProperty(AXPropertyName::Busy)
+        || hasAttribute(aria_atomicAttr)
+        || hasAttribute(aria_busyAttr)
         || hasAttribute(aria_controlsAttr)
-        || hasProperty(AXPropertyName::Current)
+        || hasAttribute(aria_currentAttr)
         || hasAttribute(aria_describedbyAttr)
-        || hasProperty(AXPropertyName::Details)
-        || hasProperty(AXPropertyName::Disabled)
-        || hasProperty(AXPropertyName::ErrorMessage)
+        || hasAttribute(aria_detailsAttr)
+        || hasAttribute(aria_disabledAttr)
+        || hasAttribute(aria_errormessageAttr)
         || hasAttribute(aria_flowtoAttr)
-        || hasProperty(AXPropertyName::HasPopUp)
-        || hasProperty(AXPropertyName::Invalid)
-        || hasProperty(AXPropertyName::Label)
+        || hasAttribute(aria_haspopupAttr)
+        || hasAttribute(aria_invalidAttr)
+        || hasAttribute(aria_labelAttr)
         || hasAttribute(aria_labelledbyAttr)
-        || hasProperty(AXPropertyName::Relevant);
+        || hasAttribute(aria_relevantAttr);
 }
     
 bool AccessibilityObject::liveRegionStatusIsEnabled(const AtomicString& liveRegionStatus)
@@ -2647,7 +2681,7 @@ AccessibilitySortDirection AccessibilityObject::sortDirection() const
     if (role != AccessibilityRole::RowHeader && role != AccessibilityRole::ColumnHeader)
         return AccessibilitySortDirection::Invalid;
 
-    const AtomicString& sortAttribute = stringValueForProperty(AXPropertyName::Sort);
+    const AtomicString& sortAttribute = getAttribute(aria_sortAttr);
     if (equalLettersIgnoringASCIICase(sortAttribute, "ascending"))
         return AccessibilitySortDirection::Ascending;
     if (equalLettersIgnoringASCIICase(sortAttribute, "descending"))
@@ -2670,12 +2704,12 @@ bool AccessibilityObject::supportsRangeValue() const
     
 bool AccessibilityObject::supportsHasPopup() const
 {
-    return hasProperty(AXPropertyName::HasPopUp) || isComboBox();
+    return hasAttribute(aria_haspopupAttr) || isComboBox();
 }
 
 String AccessibilityObject::hasPopupValue() const
 {
-    const AtomicString& hasPopup = stringValueForProperty(AXPropertyName::HasPopUp);
+    const AtomicString& hasPopup = getAttribute(aria_haspopupAttr);
     if (equalLettersIgnoringASCIICase(hasPopup, "true")
         || equalLettersIgnoringASCIICase(hasPopup, "dialog")
         || equalLettersIgnoringASCIICase(hasPopup, "grid")
@@ -2696,22 +2730,22 @@ String AccessibilityObject::hasPopupValue() const
 
 bool AccessibilityObject::supportsSetSize() const
 {
-    return hasProperty(AXPropertyName::SetSize);
+    return hasAttribute(aria_setsizeAttr);
 }
 
 bool AccessibilityObject::supportsPosInSet() const
 {
-    return hasProperty(AXPropertyName::PosInSet);
+    return hasAttribute(aria_posinsetAttr);
 }
     
 int AccessibilityObject::setSize() const
 {
-    return intValueForProperty(AXPropertyName::SetSize);
+    return getAttribute(aria_setsizeAttr).toInt();
 }
 
 int AccessibilityObject::posInSet() const
 {
-    return unsignedValueForProperty(AXPropertyName::PosInSet);
+    return getAttribute(aria_posinsetAttr).toInt();
 }
     
 const AtomicString& AccessibilityObject::identifierAttribute() const
@@ -2734,14 +2768,15 @@ void AccessibilityObject::classList(Vector<String>& classList) const
 
 bool AccessibilityObject::supportsPressed() const
 {
-    const AtomicString& expanded = stringValueForProperty(AXPropertyName::Pressed);
+    const AtomicString& expanded = getAttribute(aria_pressedAttr);
     return equalLettersIgnoringASCIICase(expanded, "true") || equalLettersIgnoringASCIICase(expanded, "false");
 }
     
 bool AccessibilityObject::supportsExpanded() const
 {
     // Undefined values should not result in this attribute being exposed to ATs according to ARIA.
-    if (boolValueForProperty(AXPropertyName::Expanded))
+    const AtomicString& expanded = getAttribute(aria_expandedAttr);
+    if (equalLettersIgnoringASCIICase(expanded, "true") || equalLettersIgnoringASCIICase(expanded, "false"))
         return true;
     switch (roleValue()) {
     case AccessibilityRole::ComboBox:
@@ -2755,7 +2790,7 @@ bool AccessibilityObject::supportsExpanded() const
     
 bool AccessibilityObject::isExpanded() const
 {
-    if (boolValueForProperty(AXPropertyName::Expanded).value())
+    if (equalLettersIgnoringASCIICase(getAttribute(aria_expandedAttr), "true"))
         return true;
     
     if (is<HTMLDetailsElement>(node()))
@@ -2793,7 +2828,7 @@ AccessibilityButtonState AccessibilityObject::checkboxOrRadioValue() const
     // If it's a toggle button, the aria-pressed attribute is consulted.
 
     if (isToggleButton()) {
-        const AtomicString& ariaPressed = stringValueForProperty(AXPropertyName::Pressed);
+        const AtomicString& ariaPressed = getAttribute(aria_pressedAttr);
         if (equalLettersIgnoringASCIICase(ariaPressed, "true"))
             return AccessibilityButtonState::On;
         if (equalLettersIgnoringASCIICase(ariaPressed, "mixed"))
@@ -2801,7 +2836,7 @@ AccessibilityButtonState AccessibilityObject::checkboxOrRadioValue() const
         return AccessibilityButtonState::Off;
     }
     
-    const AtomicString& result = stringValueForProperty(AXPropertyName::Checked);
+    const AtomicString& result = getAttribute(aria_checkedAttr);
     if (equalLettersIgnoringASCIICase(result, "true"))
         return AccessibilityButtonState::On;
     if (equalLettersIgnoringASCIICase(result, "mixed")) {
@@ -2944,6 +2979,8 @@ bool AccessibilityObject::isOnscreen() const
 
 void AccessibilityObject::scrollToMakeVisible() const
 {
+    if (dispatchAccessibilityEventWithType(AccessibilityEventType::ScrollIntoView))
+        return;
     IntRect objectRect = snappedIntRect(boundingBoxRect());
     objectRect.setLocation(IntPoint());
     scrollToMakeVisibleWithSubFocus(objectRect);
@@ -3177,7 +3214,7 @@ void AccessibilityObject::notifyIfIgnoredValueChanged()
 
 bool AccessibilityObject::pressedIsPresent() const
 {
-    return !stringValueForProperty(AXPropertyName::Pressed).isEmpty();
+    return !getAttribute(aria_pressedAttr).isEmpty();
 }
 
 TextIteratorBehavior AccessibilityObject::textIteratorBehaviorForTextRange() const
@@ -3224,7 +3261,7 @@ bool AccessibilityObject::accessibilityIsIgnoredByDefault() const
 bool AccessibilityObject::isAXHidden() const
 {
     return AccessibilityObject::matchedParent(*this, true, [] (const AccessibilityObject& object) {
-        return object.boolValueForProperty(AXPropertyName::Hidden).value();
+        return equalLettersIgnoringASCIICase(object.getAttribute(aria_hiddenAttr), "true");
     }) != nullptr;
 }
 
@@ -3464,57 +3501,6 @@ void AccessibilityObject::ariaElementsReferencedByAttribute(AccessibilityChildre
     }
 }
 
-void AccessibilityObject::elementsFromProperty(AccessibilityChildrenVector& children, AXPropertyName property) const
-{
-    auto* element = this->element();
-    if (!element)
-        return;
-    
-    auto* cache = axObjectCache();
-    if (!cache)
-        return;
-
-    auto elements = AccessibleNode::effectiveElementsValueForElement(*element, property);
-    for (const auto& element : elements) {
-        if (AccessibilityObject* axObject = cache->getOrCreate(element.get()))
-            children.append(axObject);
-    }
-}
-
-void AccessibilityObject::elementsReferencedByProperty(AccessibilityChildrenVector& elements, AXPropertyName property) const
-{
-    auto* thisElement = this->element();
-    if (!thisElement)
-        return;
-    
-    auto id = identifierAttribute();
-    bool idIsEmpty = id.isEmpty();
-    auto* accessibleNode = thisElement->existingAccessibleNode();
-    if (idIsEmpty && !accessibleNode)
-        return;
-
-    auto* cache = axObjectCache();
-    if (!cache)
-        return;
-
-    for (auto& element : descendantsOfType<Element>(node()->treeScope().rootNode())) {
-        bool shouldStore = false;
-        auto referencedAccessibleNodes = AccessibleNode::relationsValueForProperty(element, property);
-        if (referencedAccessibleNodes.size())
-            shouldStore = referencedAccessibleNodes.contains(accessibleNode);
-        if (!shouldStore && !idIsEmpty) {
-            const AtomicString& idList = element.attributeWithoutSynchronization(AccessibleNode::attributeFromAXPropertyName(property));
-            if (SpaceSplitString(idList, false).contains(id))
-                shouldStore = true;
-        }
-
-        if (!shouldStore)
-            continue;
-        if (AccessibilityObject* axObject = cache->getOrCreate(&element))
-            elements.append(axObject);
-    }
-}
-
 bool AccessibilityObject::isActiveDescendantOfFocusedContainer() const
 {
     AccessibilityChildrenVector containers;
@@ -3529,7 +3515,7 @@ bool AccessibilityObject::isActiveDescendantOfFocusedContainer() const
 
 void AccessibilityObject::ariaActiveDescendantReferencingElements(AccessibilityChildrenVector& containers) const
 {
-    elementsReferencedByProperty(containers, AXPropertyName::ActiveDescendant);
+    ariaElementsReferencedByAttribute(containers, aria_activedescendantAttr);
 }
 
 void AccessibilityObject::ariaControlsElements(AccessibilityChildrenVector& ariaControls) const
@@ -3554,22 +3540,22 @@ void AccessibilityObject::ariaDescribedByReferencingElements(AccessibilityChildr
 
 void AccessibilityObject::ariaDetailsElements(AccessibilityChildrenVector& ariaDetails) const
 {
-    elementsFromProperty(ariaDetails, AXPropertyName::Details);
+    ariaElementsFromAttribute(ariaDetails, aria_detailsAttr);
 }
 
 void AccessibilityObject::ariaDetailsReferencingElements(AccessibilityChildrenVector& detailsFor) const
 {
-    elementsReferencedByProperty(detailsFor, AXPropertyName::Details);
+    ariaElementsReferencedByAttribute(detailsFor, aria_detailsAttr);
 }
 
 void AccessibilityObject::ariaErrorMessageElements(AccessibilityChildrenVector& ariaErrorMessage) const
 {
-    elementsFromProperty(ariaErrorMessage, AXPropertyName::ErrorMessage);
+    ariaElementsFromAttribute(ariaErrorMessage, aria_errormessageAttr);
 }
 
 void AccessibilityObject::ariaErrorMessageReferencingElements(AccessibilityChildrenVector& errorMessageFor) const
 {
-    elementsReferencedByProperty(errorMessageFor, AXPropertyName::ErrorMessage);
+    ariaElementsReferencedByAttribute(errorMessageFor, aria_errormessageAttr);
 }
 
 void AccessibilityObject::ariaFlowToElements(AccessibilityChildrenVector& flowTo) const
@@ -3618,7 +3604,7 @@ void AccessibilityObject::setIsIgnoredFromParentDataForChild(AccessibilityObject
     
     AccessibilityIsIgnoredFromParentData result = AccessibilityIsIgnoredFromParentData(this);
     if (!m_isIgnoredFromParentData.isNull()) {
-        result.isAXHidden = m_isIgnoredFromParentData.isAXHidden || child->boolValueForProperty(AXPropertyName::Hidden).value();
+        result.isAXHidden = m_isIgnoredFromParentData.isAXHidden || equalLettersIgnoringASCIICase(child->getAttribute(aria_hiddenAttr), "true");
         result.isPresentationalChildOfAriaRole = m_isIgnoredFromParentData.isPresentationalChildOfAriaRole || ariaRoleHasPresentationalChildren();
         result.isDescendantOfBarrenParent = m_isIgnoredFromParentData.isDescendantOfBarrenParent || !canHaveChildren();
     } else {

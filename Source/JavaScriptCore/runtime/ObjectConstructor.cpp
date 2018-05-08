@@ -83,7 +83,7 @@ const ClassInfo ObjectConstructor::s_info = { "Function", &InternalFunction::s_i
   isSealed                  objectConstructorIsSealed                   DontEnum|Function 1
   isFrozen                  objectConstructorIsFrozen                   DontEnum|Function 1
   isExtensible              objectConstructorIsExtensible               DontEnum|Function 1
-  is                        objectConstructorIs                         DontEnum|Function 2
+  is                        objectConstructorIs                         DontEnum|Function 2 ObjectIsIntrinsic
   assign                    objectConstructorAssign                     DontEnum|Function 2
   values                    objectConstructorValues                     DontEnum|Function 1
   entries                   JSBuiltin                                   DontEnum|Function 1
@@ -706,21 +706,21 @@ bool testIntegrityLevel(ExecState* exec, VM& vm, JSObject* object)
 
 JSObject * objectConstructorSeal(ExecState* exec, JSObject* object)
 {
-	VM& vm = exec->vm();
-	auto scope = DECLARE_THROW_SCOPE(vm);
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
 
-	if (isJSFinalObject(object) && !hasIndexedProperties(object->indexingType())) {
-		object->seal(vm);
-		return object;
-	}
+    if (jsDynamicCast<JSFinalObject*>(vm, object) && !hasIndexedProperties(object->indexingType())) {
+        object->seal(vm);
+        return object;
+    }
 
-	bool success = setIntegrityLevel<IntegrityLevel::Sealed>(exec, vm, object);
-	RETURN_IF_EXCEPTION(scope, nullptr);
-	if (UNLIKELY(!success)) {
-		return throwTypeError(exec, scope, ASCIILiteral("Unable to prevent extension in Object.seal"));
-	}
+    bool success = setIntegrityLevel<IntegrityLevel::Sealed>(exec, vm, object);
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    if (UNLIKELY(!success)) {
+        return throwTypeError(exec, scope, ASCIILiteral("Unable to prevent extension in Object.seal"));
+    }
 
-	return object;
+    return object;
 }
 
 EncodedJSValue JSC_HOST_CALL objectConstructorSeal(ExecState* exec)
@@ -732,9 +732,9 @@ EncodedJSValue JSC_HOST_CALL objectConstructorSeal(ExecState* exec)
     JSValue obj = exec->argument(0);
     if (!obj.isObject())
         return JSValue::encode(obj);
-	JSObject* result = objectConstructorSeal(exec, asObject(obj));
-	RETURN_IF_EXCEPTION(scope, encodedJSValue());
-	return JSValue::encode(result);
+    JSObject* result = objectConstructorSeal(exec, asObject(obj));
+    RETURN_IF_EXCEPTION(scope, encodedJSValue());
+    return JSValue::encode(result);
 }
 
 JSObject* objectConstructorFreeze(ExecState* exec, JSObject* object)
@@ -742,7 +742,7 @@ JSObject* objectConstructorFreeze(ExecState* exec, JSObject* object)
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (isJSFinalObject(object) && !hasIndexedProperties(object->indexingType())) {
+    if (jsDynamicCast<JSFinalObject*>(vm, object) && !hasIndexedProperties(object->indexingType())) {
         object->freeze(vm);
         return object;
     }
@@ -789,7 +789,7 @@ EncodedJSValue JSC_HOST_CALL objectConstructorIsSealed(ExecState* exec)
     JSObject* object = asObject(obj);
 
     // Quick check for final objects.
-    if (isJSFinalObject(object) && !hasIndexedProperties(object->indexingType()))
+    if (jsDynamicCast<JSFinalObject*>(vm, object) && !hasIndexedProperties(object->indexingType()))
         return JSValue::encode(jsBoolean(object->isSealed(vm)));
 
     // 2. Return ? TestIntegrityLevel(O, "sealed").
@@ -807,7 +807,7 @@ EncodedJSValue JSC_HOST_CALL objectConstructorIsFrozen(ExecState* exec)
     JSObject* object = asObject(obj);
 
     // Quick check for final objects.
-    if (isJSFinalObject(object) && !hasIndexedProperties(object->indexingType()))
+    if (jsDynamicCast<JSFinalObject*>(vm, object) && !hasIndexedProperties(object->indexingType()))
         return JSValue::encode(jsBoolean(object->isFrozen(vm)));
 
     // 2. Return ? TestIntegrityLevel(O, "frozen").

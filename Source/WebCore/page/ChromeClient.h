@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple, Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple, Inc. All rights reserved.
  * Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies).
  * Copyright (C) 2012 Samsung Electronics. All rights reserved.
  *
@@ -101,6 +101,8 @@ struct GraphicsDeviceAdapter;
 struct ViewportArguments;
 struct WindowFeatures;
 
+enum class RouteSharingPolicy;
+
 class WEBCORE_EXPORT ChromeClient {
 public:
     virtual void chromeDestroyed() = 0;
@@ -164,11 +166,6 @@ public:
     virtual void invalidateContentsForSlowScroll(const IntRect&) = 0;
     virtual void scroll(const IntSize&, const IntRect&, const IntRect&) = 0;
 
-#if USE(COORDINATED_GRAPHICS)
-    virtual void delegatedScrollRequested(const IntPoint&) = 0;
-    virtual void resetUpdateAtlasForTesting() = 0;
-#endif
-
     virtual IntPoint screenToRootView(const IntPoint&) const = 0;
     virtual IntRect rootViewToScreen(const IntRect&) const = 0;
 
@@ -186,6 +183,7 @@ public:
 
     virtual FloatSize screenSize() const { return const_cast<ChromeClient&>(*this).windowRect().size(); }
     virtual FloatSize availableScreenSize() const { return const_cast<ChromeClient&>(*this).windowRect().size(); }
+    virtual FloatSize overrideScreenSize() const { return const_cast<ChromeClient&>(*this).windowRect().size(); }
 
     virtual void dispatchViewportPropertiesDidChange(const ViewportArguments&) const { }
 
@@ -264,7 +262,7 @@ public:
     virtual void removeScrollingLayer(Node*, PlatformLayer* scrollingLayer, PlatformLayer* contentsLayer) = 0;
 
     virtual void webAppOrientationsUpdated() = 0;
-    virtual void showPlaybackTargetPicker(bool hasVideo) = 0;
+    virtual void showPlaybackTargetPicker(bool hasVideo, RouteSharingPolicy, const String&) = 0;
 #endif
 
 #if ENABLE(ORIENTATION_EVENTS)
@@ -362,6 +360,7 @@ public:
     virtual void makeFirstResponder(NSResponder *) { }
     // Focuses on the containing view associated with this page.
     virtual void makeFirstResponder() { }
+    virtual void assistiveTechnologyMakeFirstResponder() { }
 #endif
 
 #if PLATFORM(IOS)
@@ -446,6 +445,8 @@ public:
 
     virtual void handleAutoFillButtonClick(HTMLInputElement&) { }
 
+    virtual void inputElementDidResignStrongPasswordAppearance(HTMLInputElement&) { };
+
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     virtual void addPlaybackTargetPickerClient(uint64_t /*contextId*/) { }
     virtual void removePlaybackTargetPickerClient(uint64_t /*contextId*/) { }
@@ -475,6 +476,8 @@ public:
     virtual void didRemoveMenuItemElement(HTMLMenuItemElement&) { }
 
     virtual void testIncomingSyncIPCMessageWhileWaitingForSyncReply() { }
+
+    virtual String signedPublicKeyAndChallengeString(unsigned, const String&, const URL&) const { return emptyString(); }
 
 protected:
     virtual ~ChromeClient() = default;

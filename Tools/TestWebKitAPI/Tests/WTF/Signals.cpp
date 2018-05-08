@@ -54,10 +54,10 @@ TEST(Signals, SignalsWorkOnExit)
 
     bool signalFired;
     {
-        std::unique_lock<std::mutex> locker(static_cast<ReflectedThread&>(receiverThread.get()).m_mutex);
+        std::unique_lock<WordLock> locker(static_cast<ReflectedThread&>(receiverThread.get()).m_mutex);
         receiverShouldKeepRunning.store(false);
         EXPECT_FALSE(static_cast<ReflectedThread&>(receiverThread.get()).hasExited());
-        sleep(1);
+        sleep(1_s);
         signalFired = !pthread_kill(static_cast<ReflectedThread&>(receiverThread.get()).m_handle, std::get<0>(toSystemSignal(Signal::Usr)));
     }
 

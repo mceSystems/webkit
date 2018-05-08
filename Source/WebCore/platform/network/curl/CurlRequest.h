@@ -56,29 +56,32 @@ public:
         Yes = true
     };
 
-    static Ref<CurlRequest> create(const ResourceRequest& request, CurlRequestClient* client, ShouldSuspend shouldSuspend = ShouldSuspend::No, EnableMultipart enableMultipart = EnableMultipart::No)
+    static Ref<CurlRequest> create(const ResourceRequest& request, CurlRequestClient& client, ShouldSuspend shouldSuspend = ShouldSuspend::No, EnableMultipart enableMultipart = EnableMultipart::No)
     {
-        return adoptRef(*new CurlRequest(request, client, shouldSuspend == ShouldSuspend::Yes, enableMultipart == EnableMultipart::Yes));
+        return adoptRef(*new CurlRequest(request, &client, shouldSuspend == ShouldSuspend::Yes, enableMultipart == EnableMultipart::Yes));
     }
 
     virtual ~CurlRequest() = default;
 
-    void setClient(CurlRequestClient* client) { m_client = client;  }
-    void setUserPass(const String&, const String&);
+    void invalidateClient() { m_client = nullptr;  }
+    WEBCORE_EXPORT void setUserPass(const String&, const String&);
 
     void start(bool isSyncRequest = false);
     void cancel();
-    void suspend();
-    void resume();
+    WEBCORE_EXPORT void suspend();
+    WEBCORE_EXPORT void resume();
 
+    const ResourceRequest& resourceRequest() const { return m_request; }
     bool isSyncRequest() const { return m_isSyncRequest; }
     bool isCompleted() const { return !m_curlHandle; }
     bool isCancelled() const { return m_cancelled; }
     bool isCompletedOrCancelled() const { return isCompleted() || isCancelled(); }
 
+    const String& user() const { return m_user; }
+    const String& password() const { return m_password; }
 
     // Processing for DidReceiveResponse
-    void completeDidReceiveResponse();
+    WEBCORE_EXPORT void completeDidReceiveResponse();
 
     // Download
     void enableDownloadToFile();
@@ -102,7 +105,7 @@ private:
 
     void startWithJobManager();
 
-    void callClient(WTF::Function<void(CurlRequestClient&)>);
+    void callClient(WTF::Function<void(CurlRequest&, CurlRequestClient&)>);
 
     // Transfer processing of Request body, Response header/body
     // Called by worker thread in case of async, main thread in case of sync.
@@ -117,13 +120,14 @@ private:
     void didCancelTransfer() override;
     void finalizeTransfer();
 
-    // For POST and PUT method 
+    // For setup 
+    void appendAcceptLanguageHeader(HTTPHeaderMap&);
     void setupPOST(ResourceRequest&);
     void setupPUT(ResourceRequest&);
     void setupSendData(bool forPutMethod);
 
     // Processing for DidReceiveResponse
-    bool needToInvokeDidReceiveResponse() const { return !m_didNotifyResponse || !m_didReturnFromNotify; }
+    bool needToInvokeDidReceiveResponse() const { return m_didReceiveResponse && (!m_didNotifyResponse || !m_didReturnFromNotify); }
     bool needToInvokeDidCancelTransfer() const { return m_didNotifyResponse && !m_didReturnFromNotify && m_actionAfterInvoke == Action::FinishTransfer; }
     void invokeDidReceiveResponseForFile(URL&);
     void invokeDidReceiveResponse(const CurlResponse&, Action);

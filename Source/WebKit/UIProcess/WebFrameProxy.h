@@ -51,6 +51,8 @@ namespace WebKit {
 class WebCertificateInfo;
 class WebFramePolicyListenerProxy;
 class WebPageProxy;
+class WebsiteDataStore;
+enum class PolicyListenerType;
 struct WebsitePoliciesData;
 
 typedef GenericCallback<API::Data*> DataCallback;
@@ -115,7 +117,11 @@ public:
 
     // Policy operations.
     void receivedPolicyDecision(WebCore::PolicyAction, uint64_t listenerID, API::Navigation*, std::optional<WebsitePoliciesData>&&);
-    WebFramePolicyListenerProxy& setUpPolicyListenerProxy(uint64_t listenerID);
+
+    WebFramePolicyListenerProxy& setUpPolicyListenerProxy(uint64_t listenerID, PolicyListenerType);
+    WebFramePolicyListenerProxy* activePolicyListenerProxy();
+
+    void changeWebsiteDataStore(WebsiteDataStore&);
 
 #if ENABLE(CONTENT_FILTERING)
     void contentFilterDidBlockLoad(WebCore::ContentFilterUnblockHandler contentFilterUnblockHandler) { m_contentFilterUnblockHandler = WTFMove(contentFilterUnblockHandler); }

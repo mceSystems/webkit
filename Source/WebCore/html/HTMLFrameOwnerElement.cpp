@@ -28,9 +28,12 @@
 #include "ShadowRoot.h"
 #include "SVGDocument.h"
 #include "StyleTreeResolver.h"
+#include <wtf/IsoMallocInlines.h>
 #include <wtf/Ref.h>
 
 namespace WebCore {
+
+WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLFrameOwnerElement);
 
 HTMLFrameOwnerElement::HTMLFrameOwnerElement(const QualifiedName& tagName, Document& document)
     : HTMLElement(tagName, document)
@@ -96,9 +99,9 @@ Document* HTMLFrameOwnerElement::contentDocument() const
     return m_contentFrame ? m_contentFrame->document() : nullptr;
 }
 
-DOMWindow* HTMLFrameOwnerElement::contentWindow() const
+WindowProxy* HTMLFrameOwnerElement::contentWindow() const
 {
-    return m_contentFrame ? m_contentFrame->document()->domWindow() : nullptr;
+    return m_contentFrame ? &m_contentFrame->windowProxy() : nullptr;
 }
 
 void HTMLFrameOwnerElement::setSandboxFlags(SandboxFlags flags)

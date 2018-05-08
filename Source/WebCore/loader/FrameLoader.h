@@ -47,6 +47,7 @@
 #include <wtf/HashSet.h>
 #include <wtf/OptionSet.h>
 #include <wtf/Optional.h>
+#include <wtf/WallTime.h>
 
 namespace WebCore {
 
@@ -78,6 +79,9 @@ class SerializedScriptValue;
 class SharedBuffer;
 class SubframeLoader;
 class SubstituteData;
+
+enum class NavigationPolicyCheck;
+enum class ShouldContinue;
 
 struct WindowFeatures;
 
@@ -114,7 +118,7 @@ public:
 #if ENABLE(WEB_ARCHIVE) || ENABLE(MHTML)
     WEBCORE_EXPORT void loadArchive(Ref<Archive>&&);
 #endif
-    unsigned long loadResourceSynchronously(const ResourceRequest&, StoredCredentialsPolicy, ClientCredentialPolicy, ResourceError&, ResourceResponse&, RefPtr<SharedBuffer>& data);
+    unsigned long loadResourceSynchronously(const ResourceRequest&, ClientCredentialPolicy, const FetchOptions&, const HTTPHeaderMap&, ResourceError&, ResourceResponse&, RefPtr<SharedBuffer>& data);
 
     void changeLocation(FrameLoadRequest&&);
     WEBCORE_EXPORT void urlSelected(const URL&, const String& target, Event*, LockHistory, LockBackForwardList, ShouldSendReferrer, ShouldOpenExternalURLsPolicy, std::optional<NewFrameOpenerPolicy> = std::nullopt, const AtomicString& downloadAttribute = nullAtom());
@@ -124,7 +128,7 @@ public:
     WEBCORE_EXPORT void reloadWithOverrideEncoding(const String& overrideEncoding);
 
     void open(CachedFrameBase&);
-    void loadItem(HistoryItem&, FrameLoadType);
+    void loadItem(HistoryItem&, FrameLoadType, NavigationPolicyCheck);
     HistoryItem* requestedHistoryItem() const { return m_requestedHistoryItem.get(); }
 
     void retryAfterFailedCacheOnlyMainResourceLoad();
@@ -140,6 +144,7 @@ public:
     void stopLoading(UnloadEventPolicy);
     bool closeURL();
     void cancelAndClear();
+    void clearProvisionalLoadForPolicyCheck();
     // FIXME: clear() is trying to do too many things. We should break it down into smaller functions (ideally with fewer raw Boolean parameters).
     void clear(Document* newDocument, bool clearWindowProperties = true, bool clearScriptObjects = true, bool clearFrameView = true);
 
@@ -209,6 +214,7 @@ public:
     
     static void addHTTPOriginIfNeeded(ResourceRequest&, const String& origin);
     static void addHTTPUpgradeInsecureRequestsIfNeeded(ResourceRequest&);
+    static void addSameSiteInfoToRequestIfNeeded(ResourceRequest&, const Document* initiator = nullptr);
 
     FrameLoaderClient& client() const { return m_client; }
 
@@ -268,7 +274,7 @@ public:
 
     void completed();
     bool allAncestorsAreComplete() const; // including this
-    void clientRedirected(const URL&, double delay, double fireDate, LockBackForwardList);
+    void clientRedirected(const URL&, double delay, WallTime fireDate, LockBackForwardList);
     void clientRedirectCancelledOrFinished(bool cancelWithLoadInProgress);
 
     WEBCORE_EXPORT void setOriginalURLForDownloadRequest(ResourceRequest&);
@@ -315,7 +321,7 @@ private:
     void checkTimerFired();
 
     void loadSameDocumentItem(HistoryItem&);
-    void loadDifferentDocumentItem(HistoryItem&, FrameLoadType, FormSubmissionCacheLoadPolicy);
+    void loadDifferentDocumentItem(HistoryItem&, FrameLoadType, FormSubmissionCacheLoadPolicy, NavigationPolicyCheck);
 
     void loadProvisionalItemFromCachedPage();
 
@@ -334,8 +340,8 @@ private:
     bool dispatchBeforeUnloadEvent(Chrome&, FrameLoader* frameLoaderBeingNavigated);
     void dispatchUnloadEvents(UnloadEventPolicy);
 
-    void continueLoadAfterNavigationPolicy(const ResourceRequest&, FormState*, bool shouldContinue, AllowNavigationToInvalidURL);
-    void continueLoadAfterNewWindowPolicy(const ResourceRequest&, FormState*, const String& frameName, const NavigationAction&, bool shouldContinue, AllowNavigationToInvalidURL, NewFrameOpenerPolicy);
+    void continueLoadAfterNavigationPolicy(const ResourceRequest&, FormState*, ShouldContinue, AllowNavigationToInvalidURL);
+    void continueLoadAfterNewWindowPolicy(const ResourceRequest&, FormState*, const String& frameName, const NavigationAction&, ShouldContinue, AllowNavigationToInvalidURL, NewFrameOpenerPolicy);
     void continueFragmentScrollAfterNavigationPolicy(const ResourceRequest&, bool shouldContinue);
 
     bool shouldPerformFragmentNavigation(bool isFormSubmission, const String& httpMethod, FrameLoadType, const URL&);
@@ -358,13 +364,13 @@ private:
 
     void urlSelected(FrameLoadRequest&&, Event*);
 
-    void loadWithDocumentLoader(DocumentLoader*, FrameLoadType, FormState*, AllowNavigationToInvalidURL); // Calls continueLoadAfterNavigationPolicy
+    void loadWithDocumentLoader(DocumentLoader*, FrameLoadType, FormState*, AllowNavigationToInvalidURL, NavigationPolicyCheck, CompletionHandler<void()>&&); // Calls continueLoadAfterNavigationPolicy
     void load(DocumentLoader*); // Calls loadWithDocumentLoader
 
-    void loadWithNavigationAction(const ResourceRequest&, const NavigationAction&, LockHistory, FrameLoadType, FormState*, AllowNavigationToInvalidURL); // Calls loadWithDocumentLoader
+    void loadWithNavigationAction(const ResourceRequest&, const NavigationAction&, LockHistory, FrameLoadType, FormState*, AllowNavigationToInvalidURL, CompletionHandler<void()>&&); // Calls loadWithDocumentLoader
 
-    void loadPostRequest(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, FormState*);
-    void loadURL(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, FormState*);
+    void loadPostRequest(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, FormState*, CompletionHandler<void()>&&);
+    void loadURL(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, FormState*, CompletionHandler<void()>&&);
 
     bool shouldReload(const URL& currentURL, const URL& destinationURL);
 
@@ -459,6 +465,7 @@ private:
     std::optional<ResourceRequestCachePolicy> m_overrideCachePolicyForTesting;
     std::optional<ResourceLoadPriority> m_overrideResourceLoadPriorityForTesting;
     bool m_isStrictRawResourceValidationPolicyDisabledForTesting { false };
+    bool m_currentLoadShouldCheckNavigationPolicy { true };
 
     URL m_previousURL;
     RefPtr<HistoryItem> m_requestedHistoryItem;

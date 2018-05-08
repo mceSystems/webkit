@@ -62,14 +62,16 @@ enum JSType : uint8_t {
     ErrorInstanceType,
     PureForwardingProxyType,
     ImpureProxyType,
-    WithScopeType,
     DirectArgumentsType,
     ScopedArgumentsType,
     ClonedArgumentsType,
 
+    // Start JSArray types.
     ArrayType,
     DerivedArrayType,
+    // End JSArray types.
 
+    // Start JSArrayBufferView types.
     Int8ArrayType,
     Uint8ArrayType,
     Uint8ClampedArrayType,
@@ -80,16 +82,25 @@ enum JSType : uint8_t {
     Float32ArrayType,
     Float64ArrayType,
     DataViewType,
+    // End JSArrayBufferView types.
 
     GetterSetterType,
 
+    // JSScope <- JSWithScope
+    //         <- StrictEvalActivation
+    //         <- JSSymbolTableObject  <- JSLexicalEnvironment      <- JSModuleEnvironment
+    //                                 <- JSSegmentedVariableObject <- JSGlobalLexicalEnvironment
+    //                                                              <- JSGlobalObject
+    // Start JSScope types.
     // Start environment record types.
     GlobalObjectType,
-    LexicalEnvironmentType,
     GlobalLexicalEnvironmentType,
+    LexicalEnvironmentType,
     ModuleEnvironmentType,
     StrictEvalActivationType,
     // End environment record types.
+    WithScopeType,
+    // End JSScope types.
 
     RegExpObjectType,
     ProxyObjectType,
@@ -98,15 +109,19 @@ enum JSType : uint8_t {
     JSWeakMapType,
     JSWeakSetType,
 
-    WebAssemblyFunctionType,
     WebAssemblyToJSCalleeType,
 
-    LastJSCObjectType = WebAssemblyToJSCalleeType,
+    LastJSCObjectType = WebAssemblyToJSCalleeType, // This is the last "JSC" Object type. After this, we have embedder's (e.g., WebCore) extended object types.
     MaxJSType = 0b11111111,
 };
 
 static const uint32_t FirstTypedArrayType = Int8ArrayType;
 static const uint32_t LastTypedArrayType = DataViewType;
+
+// LastObjectType should be MaxJSType (not LastJSCObjectType) since embedders can add their extended object types after the enums listed in JSType.
+static const uint32_t FirstObjectType = ObjectType;
+static const uint32_t LastObjectType = MaxJSType;
+
 static constexpr uint32_t NumberOfTypedArrayTypes = LastTypedArrayType - FirstTypedArrayType + 1;
 static constexpr uint32_t NumberOfTypedArrayTypesExcludingDataView = NumberOfTypedArrayTypes - 1;
 

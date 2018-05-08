@@ -1,7 +1,9 @@
+CONSOLE MESSAGE: Blocked by Content Security Policy
+CONSOLE MESSAGE: XMLHttpRequest cannot load about: due to access control checks.
 CONSOLE MESSAGE: line 1: PASS: XMLHttpRequest allowed
 
 
 --------
-Frame: '<!--framePath //<!--frame0-->-->'
+Frame: '<!--frame1-->'
 --------
 Run test

@@ -49,6 +49,7 @@
 #include "PaintInfo.h"
 #include "RenderFragmentedFlow.h"
 #include "RenderImageResourceStyleImage.h"
+#include "RenderTheme.h"
 #include "RenderView.h"
 #include "SVGImage.h"
 #include <wtf/IsoMallocInlines.h>
@@ -149,10 +150,10 @@ RenderImage::~RenderImage()
     // Do not add any code here. Add it to willBeDestroyed() instead.
 }
 
-void RenderImage::willBeDestroyed(RenderTreeBuilder& builder)
+void RenderImage::willBeDestroyed()
 {
     imageResource().shutdown();
-    RenderReplaced::willBeDestroyed(builder);
+    RenderReplaced::willBeDestroyed();
 }
 
 // If we'll be displaying either alt text or an image, add some padding.
@@ -438,7 +439,7 @@ void RenderImage::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paintOf
 
             if (!m_altText.isEmpty()) {
                 String text = document().displayStringModifiedByEncoding(m_altText);
-                context.setFillColor(style().visitedDependentColor(CSSPropertyColor));
+                context.setFillColor(style().visitedDependentColorWithColorFilter(CSSPropertyColor));
                 const FontCascade& font = style().fontCascade();
                 const FontMetrics& fontMetrics = font.fontMetrics();
                 LayoutUnit ascent = fontMetrics.ascent();
@@ -543,11 +544,11 @@ void RenderImage::paintAreaElementFocusRing(PaintInfo& paintInfo, const LayoutPo
 
 #if PLATFORM(MAC)
     bool needsRepaint;
-    paintInfo.context().drawFocusRing(path, page().focusController().timeSinceFocusWasSet(), needsRepaint);
+    paintInfo.context().drawFocusRing(path, page().focusController().timeSinceFocusWasSet().seconds(), needsRepaint);
     if (needsRepaint)
         page().focusController().setFocusedElementNeedsRepaint();
 #else
-    paintInfo.context().drawFocusRing(path, outlineWidth, areaElementStyle->outlineOffset(), areaElementStyle->visitedDependentColor(CSSPropertyOutlineColor));
+    paintInfo.context().drawFocusRing(path, outlineWidth, areaElementStyle->outlineOffset(), areaElementStyle->visitedDependentColorWithColorFilter(CSSPropertyOutlineColor));
 #endif
 #endif
 }
@@ -591,6 +592,12 @@ ImageDrawResult RenderImage::paintIntoRect(PaintInfo& paintInfo, const FloatRect
     auto drawResult = paintInfo.context().drawImage(*img, rect, ImagePaintingOptions(compositeOperator, BlendModeNormal, decodingMode, orientationDescription, interpolation));
     if (drawResult == ImageDrawResult::DidRequestDecoding)
         imageResource().cachedImage()->addPendingImageDrawingClient(*this);
+
+#if USE(SYSTEM_PREVIEW)
+    if (imageElement && imageElement->isSystemPreviewImage())
+        theme().paintSystemPreviewBadge(*img, paintInfo, rect);
+#endif
+
     return drawResult;
 }
 
@@ -649,8 +656,10 @@ LayoutUnit RenderImage::minimumReplacedHeight() const
 
 HTMLMapElement* RenderImage::imageMap() const
 {
-    HTMLImageElement* image = is<HTMLImageElement>(element()) ? downcast<HTMLImageElement>(element()) : nullptr;
-    return image ? image->treeScope().getImageMap(image->attributeWithoutSynchronization(usemapAttr)) : nullptr;
+    auto* imageElement = element();
+    if (!imageElement || !is<HTMLImageElement>(imageElement))
+        return nullptr;
+    return downcast<HTMLImageElement>(imageElement)->associatedMapElement();
 }
 
 bool RenderImage::nodeAtPoint(const HitTestRequest& request, HitTestResult& result, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction hitTestAction)
@@ -699,6 +708,12 @@ bool RenderImage::canHaveChildren() const
 
 void RenderImage::layout()
 {
+    // Recomputing overflow is required only when child content is present. 
+    if (needsSimplifiedNormalFlowLayout() && !m_hasShadowControls) {
+        clearNeedsLayout();
+        return;
+    }
+
     StackStats::LayoutCheckPoint layoutCheckPoint;
 
     LayoutSize oldSize = contentBoxRect().size();

@@ -48,7 +48,6 @@
 #import "HitTestRequest.h"
 #import "HitTestResult.h"
 #import "Logging.h"
-#import "MainFrame.h"
 #import "NodeRenderStyle.h"
 #import "NodeTraversal.h"
 #import "Page.h"
@@ -751,4 +750,5 @@ void Frame::resetAllGeolocationPermission()
 }
 
 } // namespace WebCore
+
 #endif // PLATFORM(IOS)

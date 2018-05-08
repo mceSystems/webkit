@@ -86,6 +86,7 @@ private:
     void resetSecureInputState() override;
     void notifyInputContextAboutDiscardedComposition() override;
     void makeFirstResponder() override;
+    void assistiveTechnologyMakeFirstResponder() override;
     WebCore::FloatRect convertToDeviceSpace(const WebCore::FloatRect&) override;
     WebCore::FloatRect convertToUserSpace(const WebCore::FloatRect&) override;
     WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) override;
@@ -131,10 +132,7 @@ private:
     bool interpretKeyEvent(const NativeWebKeyboardEvent&, bool isCharEvent) override;
     void positionInformationDidChange(const InteractionInformationAtPosition&) override;
     void saveImageToLibrary(Ref<WebCore::SharedBuffer>&&) override;
-#if __IPHONE_OS_VERSION_MAX_ALLOWED < 120000
-    void didUpdateBlockSelectionWithTouch(uint32_t touch, uint32_t flags, float growThreshold, float shrinkThreshold) override;
-#endif
-    void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect) override;
+    void showPlaybackTargetPicker(bool hasVideo, const WebCore::IntRect& elementRect, WebCore::RouteSharingPolicy, const String&) override;
 
     bool handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, API::OpenPanelParameters*, WebOpenPanelResultListenerProxy*) override;
     void disableDoubleTapGesturesDuringTapIfNecessary(uint64_t requestID) override;
@@ -189,6 +187,7 @@ private:
     void didCompleteSyntheticClick() override;
 
     void didChangeBackgroundColor() override;
+    void videoControlsManagerDidChange() override;
 
     void refView() override;
     void derefView() override;

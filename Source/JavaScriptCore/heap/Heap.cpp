@@ -81,7 +81,6 @@
 #if PLATFORM(IOS)
 #include <bmalloc/bmalloc.h>
 #endif
-#include <wtf/CurrentTime.h>
 #include <wtf/ListDump.h>
 #include <wtf/MainThread.h>
 #include <wtf/ParallelVectorIterator.h>
@@ -99,7 +98,9 @@ extern "C" void objc_autoreleasePoolPop(void *context);
 #endif
 #endif // USE(FOUNDATION)
 
-using namespace std;
+#if USE(GLIB)
+#include "JSCGLibWrapperObject.h"
+#endif
 
 namespace JSC {
 
@@ -117,7 +118,7 @@ double maxPauseMS(double thisPauseMS)
 size_t minHeapSize(HeapType heapType, size_t ramSize)
 {
     if (heapType == LargeHeap) {
-        double result = min(
+        double result = std::min(
             static_cast<double>(Options::largeHeapSize()),
             ramSize * Options::smallHeapRAMFraction());
         return static_cast<size_t>(result);
@@ -196,7 +197,7 @@ public:
         , m_name(name)
     {
         if (measurePhaseTiming())
-            m_before = monotonicallyIncreasingTimeMS();
+            m_before = MonotonicTime::now();
     }
     
     TimingScope(Heap& heap, const char* name)
@@ -217,16 +218,16 @@ public:
     ~TimingScope()
     {
         if (measurePhaseTiming()) {
-            double after = monotonicallyIncreasingTimeMS();
-            double timing = after - m_before;
+            MonotonicTime after = MonotonicTime::now();
+            Seconds timing = after - m_before;
             SimpleStats& stats = timingStats(m_name, *m_scope);
-            stats.add(timing);
-            dataLog("[GC:", *m_scope, "] ", m_name, " took: ", timing, "ms (average ", stats.mean(), "ms).\n");
+            stats.add(timing.milliseconds());
+            dataLog("[GC:", *m_scope, "] ", m_name, " took: ", timing.milliseconds(), "ms (average ", stats.mean(), "ms).\n");
         }
     }
 private:
     std::optional<CollectionScope> m_scope;
-    double m_before;
+    MonotonicTime m_before;
     const char* m_name;
 };
 
@@ -362,7 +363,7 @@ Heap::~Heap()
         WeakBlock::destroy(*this, block);
 }
 
-bool Heap::isPagedOut(double deadline)
+bool Heap::isPagedOut(MonotonicTime deadline)
 {
     return m_objectSpace.isPagedOut(deadline);
 }
@@ -462,7 +463,7 @@ void Heap::lastChanceToFinalize()
 
 void Heap::releaseDelayedReleasedObjects()
 {
-#if USE(FOUNDATION)
+#if USE(FOUNDATION) || USE(GLIB)
     // We need to guard against the case that releasing an object can create more objects due to the
     // release calling into JS. When those JS call(s) exit and all locks are being dropped we end up
     // back here and could try to recursively release objects. We guard that with a recursive entry
@@ -474,15 +475,19 @@ void Heap::releaseDelayedReleasedObjects()
         while (!m_delayedReleaseObjects.isEmpty()) {
             ASSERT(m_vm->currentThreadIsHoldingAPILock());
 
-            Vector<RetainPtr<CFTypeRef>> objectsToRelease = WTFMove(m_delayedReleaseObjects);
+            auto objectsToRelease = WTFMove(m_delayedReleaseObjects);
 
             {
                 // We need to drop locks before calling out to arbitrary code.
                 JSLock::DropAllLocks dropAllLocks(m_vm);
 
+#if USE(FOUNDATION)
                 void* context = objc_autoreleasePoolPush();
+#endif
                 objectsToRelease.clear();
+#if USE(FOUNDATION)
                 objc_autoreleasePoolPop(context);
+#endif
             }
         }
     }
@@ -579,8 +584,6 @@ void Heap::finalizeMarkedUnconditionalFinalizers(CellSet& cellSet)
 
 void Heap::finalizeUnconditionalFinalizers()
 {
-    finalizeMarkedUnconditionalFinalizers<ErrorInstance>(vm()->errorInstancesWithFinalizers);
-    finalizeMarkedUnconditionalFinalizers<Exception>(vm()->exceptionsWithFinalizers);
     finalizeMarkedUnconditionalFinalizers<InferredType>(vm()->inferredTypesWithFinalizers);
     finalizeMarkedUnconditionalFinalizers<InferredValue>(vm()->inferredValuesWithFinalizers);
     vm()->forEachCodeBlockSpace(
@@ -946,6 +949,7 @@ void Heap::clearUnmarkedExecutables()
 void Heap::deleteUnmarkedCompiledCode()
 {
     clearUnmarkedExecutables();
+    vm()->forEachCodeBlockSpace([] (auto& space) { space.space.sweep(); }); // Sweeping must occur before deleting stubs, otherwise the stubs might still think they're alive as they get deleted.
     m_jitStubRoutines->deleteUnmarkedJettisonedStubRoutines();
 }
 
@@ -1006,16 +1010,16 @@ void Heap::addToRememberedSet(const JSCell* constCell)
 
 void Heap::sweepSynchronously()
 {
-    double before = 0;
+    MonotonicTime before { };
     if (Options::logGC()) {
         dataLog("Full sweep: ", capacity() / 1024, "kb ");
-        before = currentTimeMS();
+        before = MonotonicTime::now();
     }
     m_objectSpace.sweep();
     m_objectSpace.shrink();
     if (Options::logGC()) {
-        double after = currentTimeMS();
-        dataLog("=> ", capacity() / 1024, "kb, ", after - before, "ms");
+        MonotonicTime after = MonotonicTime::now();
+        dataLog("=> ", capacity() / 1024, "kb, ", (after - before).milliseconds(), "ms");
     }
 }
 
@@ -1506,6 +1510,7 @@ NEVER_INLINE bool Heap::runEndPhase(GCConductor conn)
 
     m_lastGCStartTime = m_currentGCStartTime;
     m_lastGCEndTime = MonotonicTime::now();
+    m_totalGCTime += m_lastGCEndTime - m_lastGCStartTime;
         
     return changePhase(conn, CollectorPhase::NotRunning);
 }
@@ -2083,7 +2088,6 @@ void Heap::waitForCollection(Ticket ticket)
 void Heap::sweepInFinalize()
 {
     m_objectSpace.sweepLargeAllocations();
-    vm()->forEachCodeBlockSpace([] (auto& space) { space.space.sweep(); });
     vm()->eagerlySweptDestructibleObjectSpace.sweep();
 }
 
@@ -2225,7 +2229,7 @@ void Heap::updateAllocationLimits()
         // To avoid pathological GC churn in very small and very large heaps, we set
         // the new allocation limit based on the current size of the heap, with a
         // fixed minimum.
-        m_maxHeapSize = max(minHeapSize(m_heapType, m_ramSize), proportionalHeapSize(currentHeapSize, m_ramSize));
+        m_maxHeapSize = std::max(minHeapSize(m_heapType, m_ramSize), proportionalHeapSize(currentHeapSize, m_ramSize));
         if (verbose)
             dataLog("Full: maxHeapSize = ", m_maxHeapSize, "\n");
         m_maxEdenSize = m_maxHeapSize - currentHeapSize;
