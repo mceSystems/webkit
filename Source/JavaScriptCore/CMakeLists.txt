@@ -451,6 +451,7 @@ set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS
     bytecode/LazyOperandValueProfile.h
     bytecode/ObjectAllocationProfile.h
     bytecode/ObjectPropertyCondition.h
+    bytecode/Opcode.h
     bytecode/PropertyCondition.h
     bytecode/PutByIdFlags.h
     bytecode/SpecialPointer.h
@@ -644,6 +645,8 @@ set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS
     jit/TempRegisterSet.h
     jit/ThunkGenerator.h
     jit/UnusedPointer.h
+
+    llint/LLIntOpcode.h
 
     parser/ParserError.h
     parser/ParserModes.h
