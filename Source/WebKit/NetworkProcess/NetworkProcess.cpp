@@ -232,10 +232,6 @@ void NetworkProcess::initializeNetworkProcess(NetworkProcessCreationParameters&&
     m_loadThrottleLatency = parameters.loadThrottleLatency;
     if (!m_suppressMemoryPressureHandler) {
         auto& memoryPressureHandler = MemoryPressureHandler::singleton();
-#if OS(LINUX)
-        if (parameters.memoryPressureMonitorHandle.fileDescriptor() != -1)
-            memoryPressureHandler.setMemoryPressureMonitorHandle(parameters.memoryPressureMonitorHandle.releaseFileDescriptor());
-#endif
         memoryPressureHandler.setLowMemoryHandler([this] (Critical critical, Synchronous) {
             lowMemoryHandler(critical);
         });
@@ -292,7 +288,7 @@ void NetworkProcess::initializeNetworkProcess(NetworkProcessCreationParameters&&
     for (auto& scheme : parameters.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest)
         registerURLSchemeAsCanDisplayOnlyIfCanRequest(scheme);
 
-    m_trackNetworkActivity = parameters.trackNetworkActivity;
+    m_tracksResourceLoadMilestones = parameters.tracksResourceLoadMilestones;
 
     RELEASE_LOG(Process, "%p - NetworkProcess::initializeNetworkProcess: Presenting process = %d", this, WebCore::presentingApplicationPID());
 }
@@ -481,7 +477,7 @@ static void fetchDiskCacheEntries(PAL::SessionID sessionID, OptionSet<WebsiteDat
             }
 
             auto url = traversalEntry->entry.response().url();
-            auto result = originsAndSizes.add({url.protocol().toString(), url.host(), url.port()}, 0);
+            auto result = originsAndSizes.add({url.protocol().toString(), url.host().toString(), url.port()}, 0);
 
             if (fetchOptions.contains(WebsiteDataFetchOption::ComputeSizes))
                 result.iterator->value += traversalEntry->entry.sourceStorageRecord().header.size() + traversalEntry->recordInfo.bodySize;
@@ -728,12 +724,8 @@ void NetworkProcess::setCacheModel(uint32_t cm)
     if (m_diskCacheSizeOverride >= 0)
         urlCacheDiskCapacity = m_diskCacheSizeOverride;
 
-    if (m_cache) {
+    if (m_cache)
         m_cache->setCapacity(urlCacheDiskCapacity);
-        return;
-    }
-
-    platformSetURLCacheSize(urlCacheMemoryCapacity, urlCacheDiskCapacity);
 }
 
 void NetworkProcess::setCanHandleHTTPSServerTrustEvaluation(bool value)
@@ -803,6 +795,7 @@ private:
 
 void NetworkProcess::actualPrepareToSuspend(ShouldAcknowledgeWhenReadyToSuspend shouldAcknowledgeWhenReadyToSuspend)
 {
+    platformPrepareToSuspend();
     lowMemoryHandler(Critical::Yes);
 
     RefPtr<TaskCounter> delayedTaskCounter;
@@ -844,6 +837,7 @@ void NetworkProcess::cancelPrepareToSuspend()
 void NetworkProcess::processDidResume()
 {
     RELEASE_LOG(ProcessSuspension, "%p - NetworkProcess::processDidResume()", this);
+    platformProcessDidResume();
     for (auto& connection : m_webProcessConnections)
         connection->endSuspension();
 }
@@ -922,6 +916,11 @@ void NetworkProcess::registerURLSchemeAsCORSEnabled(const String& scheme) const
 void NetworkProcess::registerURLSchemeAsCanDisplayOnlyIfCanRequest(const String& scheme) const
 {
     SchemeRegistry::registerAsCanDisplayOnlyIfCanRequest(scheme);
+}
+
+void NetworkProcess::didSyncAllCookies()
+{
+    parentProcessConnection()->send(Messages::NetworkProcessProxy::DidSyncAllCookies(), 0);
 }
 
 #if !PLATFORM(COCOA)

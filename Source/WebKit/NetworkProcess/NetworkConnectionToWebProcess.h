@@ -112,7 +112,7 @@ public:
         m_networkLoadInformationByID.remove(identifier);
     }
 
-    std::optional<NetworkActivityTracker> startTrackingResourceLoad(uint64_t pageID, ResourceLoadIdentifier resourceID, bool isMainResource);
+    std::optional<NetworkActivityTracker> startTrackingResourceLoad(uint64_t pageID, ResourceLoadIdentifier resourceID, bool isMainResource, const PAL::SessionID&);
     void stopTrackingResourceLoad(ResourceLoadIdentifier resourceID, NetworkActivityTracker::CompletionCode);
 
 private:
@@ -131,7 +131,7 @@ private:
     void didReceiveSyncNetworkConnectionToWebProcessMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
     void scheduleResourceLoad(NetworkResourceLoadParameters&&);
-    void performSynchronousLoad(NetworkResourceLoadParameters&&, Ref<Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::DelayedReply>&&);
+    void performSynchronousLoad(NetworkResourceLoadParameters&&, Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::DelayedReply&&);
     void loadPing(NetworkResourceLoadParameters&&);
     void prefetchDNS(const String&);
     void preconnectTo(uint64_t preconnectionIdentifier, NetworkResourceLoadParameters&&);

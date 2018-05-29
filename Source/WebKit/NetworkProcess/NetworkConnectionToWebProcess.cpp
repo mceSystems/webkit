@@ -29,7 +29,6 @@
 #include "BlobDataFileReferenceWithSandboxExtension.h"
 #include "CacheStorageEngineConnectionMessages.h"
 #include "DataReference.h"
-#include "Logging.h"
 #include "NetworkBlobRegistry.h"
 #include "NetworkCache.h"
 #include "NetworkConnectionToWebProcessMessages.h"
@@ -61,9 +60,6 @@
 #include <pal/SessionID.h>
 
 using namespace WebCore;
-
-#define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(true, Network, "%p - NetworkConnectionToWebProcess::" fmt, this, ##__VA_ARGS__)
-#define RELEASE_LOG_ERROR_IF_ALLOWED(fmt, ...) RELEASE_LOG_ERROR_IF(true, Network, "%p - NetworkConnectionToWebProcess::" fmt, this, ##__VA_ARGS__)
 
 namespace WebKit {
 
@@ -249,7 +245,7 @@ void NetworkConnectionToWebProcess::scheduleResourceLoad(NetworkResourceLoadPara
     loader->start();
 }
 
-void NetworkConnectionToWebProcess::performSynchronousLoad(NetworkResourceLoadParameters&& loadParameters, Ref<Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::DelayedReply>&& reply)
+void NetworkConnectionToWebProcess::performSynchronousLoad(NetworkResourceLoadParameters&& loadParameters, Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::DelayedReply&& reply)
 {
     auto identifier = loadParameters.identifier;
     ASSERT(!m_networkResourceLoaders.contains(identifier));
@@ -266,7 +262,7 @@ void NetworkConnectionToWebProcess::loadPing(NetworkResourceLoadParameters&& loa
     };
 
     // PingLoad manages its own lifetime, deleting itself when its purpose has been fulfilled.
-    new PingLoad(WTFMove(loadParameters), WTFMove(completionHandler));
+    new PingLoad(WTFMove(loadParameters), *this, WTFMove(completionHandler));
 }
 
 void NetworkConnectionToWebProcess::didFinishPingLoad(uint64_t pingLoadIdentifier, const ResourceError& error, const ResourceResponse& response)
@@ -548,11 +544,14 @@ void NetworkConnectionToWebProcess::resetOriginAccessWhitelists()
 
 static bool networkActivityTrackingEnabled()
 {
-    return NetworkProcess::singleton().trackNetworkActivity();
+    return NetworkProcess::singleton().tracksResourceLoadMilestones();
 }
 
-std::optional<NetworkActivityTracker> NetworkConnectionToWebProcess::startTrackingResourceLoad(uint64_t pageID, ResourceLoadIdentifier resourceID, bool isMainResource)
+std::optional<NetworkActivityTracker> NetworkConnectionToWebProcess::startTrackingResourceLoad(uint64_t pageID, ResourceLoadIdentifier resourceID, bool isMainResource, const PAL::SessionID& sessionID)
 {
+    if (sessionID.isEphemeral())
+        return std::nullopt;
+
     if (!networkActivityTrackingEnabled())
         return std::nullopt;
 
@@ -608,10 +607,8 @@ void NetworkConnectionToWebProcess::stopTrackingResourceLoad(ResourceLoadIdentif
         return;
 
     auto itemIndex = findNetworkActivityTracker(resourceID);
-    if (itemIndex == notFound) {
-        RELEASE_LOG_ERROR(Network, "stopTrackingResourceLoad: Unable to find network activity for resource: %d", static_cast<int>(resourceID));
+    if (itemIndex == notFound)
         return;
-    }
 
     m_networkActivityTrackers[itemIndex].networkActivity.complete(code);
     m_networkActivityTrackers.remove(itemIndex);

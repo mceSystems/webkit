@@ -50,6 +50,7 @@ class SecurityOrigin;
 
 namespace WebKit {
 
+class SecKeyProxyStore;
 class StorageManager;
 class WebPageProxy;
 class WebProcessPool;
@@ -59,6 +60,11 @@ enum class WebsiteDataType;
 struct StorageProcessCreationParameters;
 struct WebsiteDataRecord;
 struct WebsiteDataStoreParameters;
+
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+enum class StorageAccessStatus;
+enum class StorageAccessPromptStatus;
+#endif
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
 struct PluginModuleInfo;
@@ -130,7 +136,8 @@ public:
     void removeAllStorageAccessHandler();
     void removePrevalentDomains(const Vector<String>& domains);
     void hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback);
-    void requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback);
+    void requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, bool promptEnabled, CompletionHandler<void(StorageAccessStatus)>&&);
+    void grantStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, bool userWasPrompted, CompletionHandler<void(bool)>&&);
 #endif
     void networkProcessDidCrash();
     void resolveDirectoriesIfNecessary();
@@ -154,6 +161,7 @@ public:
     Vector<WebCore::Cookie> pendingCookies() const;
     void addPendingCookie(const WebCore::Cookie&);
     void removePendingCookie(const WebCore::Cookie&);
+    void clearPendingCookies();
 
     void enableResourceLoadStatisticsAndSetTestingCallback(Function<void (const String&)>&& callback);
 
@@ -169,6 +177,10 @@ public:
 #endif
     
     static void allowWebsiteDataRecordsForAllOrigins();
+
+#if HAVE(SEC_KEY_PROXY)
+    void addSecKeyProxyStore(Ref<SecKeyProxyStore>&&);
+#endif
 
 private:
     explicit WebsiteDataStore(PAL::SessionID);
@@ -221,6 +233,10 @@ private:
     
     String m_boundInterfaceIdentifier;
     AllowsCellularAccess m_allowsCellularAccess { AllowsCellularAccess::Yes };
+
+#if HAVE(SEC_KEY_PROXY)
+    Vector<Ref<SecKeyProxyStore>> m_secKeyProxyStores;
+#endif
 };
 
 }

@@ -72,27 +72,27 @@ bool Box::establishesBlockFormattingContext() const
 
 bool Box::isRelativelyPositioned() const
 {
-    return m_style.position() == RelativePosition;
+    return m_style.position() == PositionType::Relative;
 }
 
 bool Box::isStickyPositioned() const
 {
-    return m_style.position() == StickyPosition;
+    return m_style.position() == PositionType::Sticky;
 }
 
 bool Box::isAbsolutelyPositioned() const
 {
-    return m_style.position() == AbsolutePosition;
+    return m_style.position() == PositionType::Absolute;
 }
 
 bool Box::isFixedPositioned() const
 {
-    return m_style.position() == FixedPosition;
+    return m_style.position() == PositionType::Fixed;
 }
 
 bool Box::isFloatingPositioned() const
 {
-    return m_style.floating() != NoFloat;
+    return m_style.floating() != Float::No;
 }
 
 const Container* Box::containingBlock() const
@@ -142,36 +142,38 @@ const Container& Box::formattingContextRoot() const
 }
 
 bool Box::isDescendantOf(Container& container) const
-{
-    auto* ancestor = parent();
-    for (; ancestor && ancestor != &container; ancestor = ancestor->parent()) { }
-    return ancestor;
+{ 
+    for (auto* ancestor = containingBlock(); ancestor; ancestor = ancestor->containingBlock()) {
+        if (ancestor == &container)
+            return true;
+    }
+    return false;
 }
 
 bool Box::isInlineBlockBox() const
 {
-    return m_style.display() == INLINE_BLOCK;
+    return m_style.display() == DisplayType::InlineBlock;
 }
 
 bool Box::isBlockLevelBox() const
 {
     // Block level elements generate block level boxes.
     auto display = m_style.display();
-    return display == BLOCK || display == LIST_ITEM || display == TABLE;
+    return display == DisplayType::Block || display == DisplayType::ListItem || display == DisplayType::Table;
 }
 
 bool Box::isInlineLevelBox() const
 {
     // Inline level elements generate inline level boxes.
     auto display = m_style.display();
-    return display == INLINE || display == INLINE_BLOCK || display == INLINE_TABLE;
+    return display == DisplayType::Inline || display == DisplayType::InlineBlock || display == DisplayType::InlineTable;
 }
 
 bool Box::isBlockContainerBox() const
 {
     // Inline level elements generate inline level boxes.
     auto display = m_style.display();
-    return display == BLOCK || display == LIST_ITEM || display == INLINE_BLOCK || display == TABLE_CELL || display == TABLE_CAPTION; // TODO && !replaced element
+    return display == DisplayType::Block || display == DisplayType::ListItem || display == DisplayType::InlineBlock || display == DisplayType::TableCell || display == DisplayType::TableCaption; // TODO && !replaced element
 }
 
 bool Box::isInitialContainingBlock() const
@@ -221,7 +223,14 @@ const Box* Box::previousInFlowOrFloatingSibling() const
 
 bool Box::isOverflowVisible() const
 {
-    return m_style.overflowX() == OVISIBLE || m_style.overflowY() == OVISIBLE;
+    return m_style.overflowX() == Overflow::Visible || m_style.overflowY() == Overflow::Visible;
+}
+
+bool Box::isPaddingApplicable() const
+{
+    // 8.4 Padding properties:
+    // Applies to: all elements except table-row-group, table-header-group, table-footer-group, table-row, table-column-group and table-column
+    return true;
 }
 
 }

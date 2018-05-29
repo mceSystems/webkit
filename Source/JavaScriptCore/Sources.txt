@@ -222,8 +222,12 @@ bytecode/GetterSetterAccessCase.cpp
 bytecode/InlineAccess.cpp
 bytecode/InlineCallFrame.cpp
 bytecode/InlineCallFrameSet.cpp
+bytecode/InstanceOfAccessCase.cpp
+bytecode/InstanceOfStatus.cpp
+bytecode/InstanceOfVariant.cpp
 bytecode/IntrinsicGetterAccessCase.cpp
 bytecode/JumpTable.cpp
+bytecode/LLIntPrototypeLoadAdaptiveStructureWatchpoint.cpp
 bytecode/LazyOperandValueProfile.cpp
 bytecode/MethodOfGettingAValueProfile.cpp
 bytecode/ModuleNamespaceAccessCase.cpp
@@ -411,15 +415,12 @@ dfg/DFGWatchpointCollectionPhase.cpp
 dfg/DFGWorklist.cpp
 
 disassembler/ARM64Disassembler.cpp
-disassembler/ARMLLVMDisassembler.cpp
-disassembler/ARMv7Disassembler.cpp
+disassembler/CapstoneDisassembler.cpp
 disassembler/Disassembler.cpp
 disassembler/UDis86Disassembler.cpp
 disassembler/X86Disassembler.cpp
 
 disassembler/ARM64/A64DOpcode.cpp
-
-disassembler/ARMv7/ARMv7DOpcode.cpp
 
 disassembler/udis86/udis86.c
 disassembler/udis86/udis86_decode.c
@@ -523,8 +524,6 @@ heap/StopIfNecessaryTimer.cpp
 heap/Subspace.cpp
 heap/SynchronousStopTheWorldMutatorScheduler.cpp
 heap/Synchronousness.cpp
-heap/ThreadLocalCache.cpp
-heap/ThreadLocalCacheLayout.cpp
 heap/VisitRaceKey.cpp
 heap/Weak.cpp
 heap/WeakBlock.cpp
@@ -806,6 +805,7 @@ runtime/JSGlobalLexicalEnvironment.cpp
 runtime/JSGlobalObject.cpp
 runtime/JSGlobalObjectDebuggable.cpp
 runtime/JSGlobalObjectFunctions.cpp
+runtime/JSImmutableButterfly.cpp
 runtime/JSInternalPromise.cpp
 runtime/JSInternalPromiseConstructor.cpp
 runtime/JSInternalPromiseDeferred.cpp

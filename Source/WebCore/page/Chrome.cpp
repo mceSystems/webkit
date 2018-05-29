@@ -324,7 +324,7 @@ void Chrome::setStatusbarText(Frame& frame, const String& status)
 void Chrome::mouseDidMoveOverElement(const HitTestResult& result, unsigned modifierFlags)
 {
     if (result.innerNode() && result.innerNode()->document().isDNSPrefetchEnabled())
-        m_page.mainFrame().loader().client().prefetchDNS(result.absoluteLinkURL().host());
+        m_page.mainFrame().loader().client().prefetchDNS(result.absoluteLinkURL().host().toString());
     m_client.mouseDidMoveOverElement(result, modifierFlags);
 
     InspectorInstrumentation::mouseDidMoveOverElement(m_page, result, modifierFlags);
@@ -446,6 +446,11 @@ FloatSize Chrome::availableScreenSize() const
 FloatSize Chrome::overrideScreenSize() const
 {
     return m_client.overrideScreenSize();
+}
+
+void Chrome::dispatchDisabledAdaptationsDidChange(const OptionSet<DisabledAdaptations>& disabledAdaptations) const
+{
+    m_client.dispatchDisabledAdaptationsDidChange(disabledAdaptations);
 }
 
 void Chrome::dispatchViewportPropertiesDidChange(const ViewportArguments& arguments) const

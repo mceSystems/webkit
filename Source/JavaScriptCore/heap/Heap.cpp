@@ -68,7 +68,6 @@
 #include "StopIfNecessaryTimer.h"
 #include "SweepingScope.h"
 #include "SynchronousStopTheWorldMutatorScheduler.h"
-#include "ThreadLocalCacheLayout.h"
 #include "TypeProfiler.h"
 #include "TypeProfilerLog.h"
 #include "UnlinkedCodeBlock.h"
@@ -128,6 +127,9 @@ size_t minHeapSize(HeapType heapType, size_t ramSize)
 
 size_t proportionalHeapSize(size_t heapSize, size_t ramSize)
 {
+    if (VM::isInMiniMode())
+        return Options::miniVMHeapGrowthFactor() * heapSize;
+
 #if PLATFORM(IOS)
     size_t memoryFootprint = bmalloc::api::memoryFootprint();
     if (memoryFootprint < ramSize * Options::smallHeapRAMFraction())
@@ -314,7 +316,6 @@ Heap::Heap(VM* vm, HeapType heapType)
     , m_helperClient(&heapHelperPool())
     , m_threadLock(Box<Lock>::create())
     , m_threadCondition(AutomaticThreadCondition::create())
-    , m_threadLocalCacheLayout(std::make_unique<ThreadLocalCacheLayout>())
 {
     m_worldState.store(0);
 
@@ -593,11 +594,10 @@ void Heap::finalizeUnconditionalFinalizers()
     finalizeMarkedUnconditionalFinalizers<ExecutableToCodeBlockEdge>(vm()->executableToCodeBlockEdgesWithFinalizers);
     finalizeMarkedUnconditionalFinalizers<JSWeakSet>(vm()->weakSetSpace);
     finalizeMarkedUnconditionalFinalizers<JSWeakMap>(vm()->weakMapSpace);
-    
-    while (m_unconditionalFinalizers.hasNext()) {
-        UnconditionalFinalizer* finalizer = m_unconditionalFinalizers.removeNext();
-        finalizer->finalizeUnconditionally();
-    }
+
+#if ENABLE(WEBASSEMBLY)
+    finalizeMarkedUnconditionalFinalizers<JSWebAssemblyCodeBlock>(vm()->webAssemblyCodeBlockSpace);
+#endif
 }
 
 void Heap::willStartIterating()
@@ -1052,7 +1052,7 @@ void Heap::collectNow(Synchronousness synchronousness, GCRequest request)
         if (UNLIKELY(Options::useImmortalObjects()))
             sweeper().stopSweeping();
         
-        bool alreadySweptInCollectSync = Options::sweepSynchronously();
+        bool alreadySweptInCollectSync = shouldSweepSynchronously();
         if (!alreadySweptInCollectSync) {
             if (Options::logGC())
                 dataLog("[GC<", RawPointer(this), ">: ");
@@ -1457,6 +1457,9 @@ NEVER_INLINE bool Heap::runEndPhase(GCConductor conn)
         
     if (vm()->typeProfiler())
         vm()->typeProfiler()->invalidateTypeSetCache();
+
+    if (ValueProfile* profile = vm()->noJITValueProfileSingleton.get())
+        *profile = ValueProfile(0);
         
     reapWeakHandles();
     pruneStaleEntriesFromWeakGCMaps();
@@ -2043,7 +2046,7 @@ void Heap::finalize()
     for (const HeapFinalizerCallback& callback : m_heapFinalizerCallbacks)
         callback.run(*vm());
     
-    if (Options::sweepSynchronously())
+    if (shouldSweepSynchronously())
         sweepSynchronously();
 
     if (Options::logGC()) {
@@ -2396,9 +2399,19 @@ void Heap::collectNowFullIfNotDoneRecently(Synchronousness synchronousness)
     collectNow(synchronousness, CollectionScope::Full);
 }
 
+bool Heap::useGenerationalGC()
+{
+    return Options::useGenerationalGC() && !VM::isInMiniMode();
+}
+
+bool Heap::shouldSweepSynchronously()
+{
+    return Options::sweepSynchronously() || VM::isInMiniMode();
+}
+
 bool Heap::shouldDoFullCollection()
 {
-    if (!Options::useGenerationalGC())
+    if (!useGenerationalGC())
         return true;
 
     if (!m_currentRequest.scope)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,11 +60,13 @@
 #include "InspectorInstrumentation.h"
 #include "LinkIconCollector.h"
 #include "LinkIconType.h"
+#include "LoaderStrategy.h"
 #include "Logging.h"
 #include "MemoryCache.h"
 #include "NetworkLoadMetrics.h"
 #include "Page.h"
 #include "PingLoader.h"
+#include "PlatformStrategies.h"
 #include "PolicyChecker.h"
 #include "ProgressTracker.h"
 #include "ResourceHandle.h"
@@ -73,7 +75,6 @@
 #include "SchemeRegistry.h"
 #include "ScriptableDocumentParser.h"
 #include "SecurityPolicy.h"
-#include "SecurityPolicyViolationEvent.h"
 #include "ServiceWorker.h"
 #include "ServiceWorkerProvider.h"
 #include "Settings.h"
@@ -639,7 +640,7 @@ void DocumentLoader::willSendRequest(ResourceRequest&& newRequest, const Resourc
     if (!didReceiveRedirectResponse && shouldContinue != ShouldContinue::ForSuspension)
         return completionHandler(WTFMove(newRequest));
 
-    auto navigationPolicyCompletionHandler = [this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)] (ResourceRequest&& request, FormState*, ShouldContinue shouldContinue) mutable {
+    auto navigationPolicyCompletionHandler = [this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)] (ResourceRequest&& request, WeakPtr<FormState>&&, ShouldContinue shouldContinue) mutable {
         m_waitingForNavigationPolicy = false;
         switch (shouldContinue) {
         case ShouldContinue::ForSuspension:
@@ -664,7 +665,7 @@ void DocumentLoader::willSendRequest(ResourceRequest&& newRequest, const Resourc
         return;
     }
 
-    frameLoader()->policyChecker().checkNavigationPolicy(ResourceRequest(newRequest), didReceiveRedirectResponse, WTFMove(navigationPolicyCompletionHandler));
+    frameLoader()->policyChecker().checkNavigationPolicy(WTFMove(newRequest), didReceiveRedirectResponse, WTFMove(navigationPolicyCompletionHandler));
 }
 
 bool DocumentLoader::tryLoadingRequestFromApplicationCache()
@@ -727,6 +728,7 @@ void DocumentLoader::restartLoadingDueToServiceWorkerRegistrationChange(Resource
 
 void DocumentLoader::stopLoadingAfterXFrameOptionsOrContentSecurityPolicyDenied(unsigned long identifier, const ResourceResponse& response)
 {
+    Ref<DocumentLoader> protectedThis { *this };
     InspectorInstrumentation::continueAfterXFrameOptionsDenied(*m_frame, identifier, *this, response);
     m_frame->document()->enforceSandboxFlags(SandboxOrigin);
     if (HTMLFrameOwnerElement* ownerElement = m_frame->ownerElement())
@@ -767,7 +769,7 @@ void DocumentLoader::responseReceived(const ResourceResponse& response, Completi
     unsigned long identifier = m_identifierForLoadWithoutResourceLoader ? m_identifierForLoadWithoutResourceLoader : m_mainResource->identifier();
     ASSERT(identifier);
 
-    if (!m_frame->settings().networkProcessCSPFrameAncestorsCheckingEnabled() || !RuntimeEnabledFeatures::sharedFeatures().restrictedHTTPResponseAccess()) {
+    if (m_substituteData.isValid() || !platformStrategies()->loaderStrategy()->havePerformedSecurityChecks(response)) {
         auto url = response.url();
         ContentSecurityPolicy contentSecurityPolicy(URL { url }, this);
         contentSecurityPolicy.didReceiveHeaders(ContentSecurityPolicyResponseHeaders { response }, m_request.httpReferrer());
@@ -2022,9 +2024,9 @@ void DocumentLoader::sendCSPViolationReport(URL&& reportURL, Ref<FormData>&& rep
     PingLoader::sendViolationReport(*m_frame, WTFMove(reportURL), WTFMove(report), ViolationReportType::ContentSecurityPolicy);
 }
 
-void DocumentLoader::dispatchSecurityPolicyViolationEvent(Ref<SecurityPolicyViolationEvent>&& violationEvent)
+void DocumentLoader::enqueueSecurityPolicyViolationEvent(SecurityPolicyViolationEvent::Init&& eventInit)
 {
-    m_frame->document()->enqueueDocumentEvent(WTFMove(violationEvent));
+    m_frame->document()->enqueueSecurityPolicyViolationEvent(WTFMove(eventInit));
 }
 
 } // namespace WebCore

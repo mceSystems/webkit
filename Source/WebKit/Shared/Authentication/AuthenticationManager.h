@@ -33,6 +33,7 @@
 #include <wtf/CompletionHandler.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
+#include <wtf/WeakPtr.h>
 
 namespace IPC {
 class MessageSender;
@@ -40,7 +41,6 @@ class MessageSender;
 
 namespace WebCore {
 class AuthenticationChallenge;
-class CertificateInfo;
 class Credential;
 }
 
@@ -72,7 +72,7 @@ public:
     void continueCanAuthenticateAgainstProtectionSpace(DownloadID, bool canAuthenticate);
 #endif
 
-    void useCredentialForChallenge(uint64_t challengeID, const WebCore::Credential&, const WebCore::CertificateInfo&);
+    void useCredentialForChallenge(uint64_t challengeID, const WebCore::Credential&);
     void continueWithoutCredentialForChallenge(uint64_t challengeID);
     void cancelChallenge(uint64_t challengeID);
     void performDefaultHandling(uint64_t challengeID);
@@ -92,16 +92,19 @@ private:
         WebCore::AuthenticationChallenge challenge;
         ChallengeCompletionHandler completionHandler;
     };
+
+#if HAVE(SEC_KEY_PROXY)
+    // NetworkProcessSupplement
+    void initializeConnection(IPC::Connection*) final;
+#endif
     
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
 
-    bool tryUseCertificateInfoForChallenge(const WebCore::AuthenticationChallenge&, const WebCore::CertificateInfo&, ChallengeCompletionHandler&);
-
     uint64_t addChallengeToChallengeMap(Challenge&&);
     bool shouldCoalesceChallenge(uint64_t pageID, uint64_t challengeID, const WebCore::AuthenticationChallenge&) const;
 
-    void useCredentialForSingleChallenge(uint64_t challengeID, const WebCore::Credential&, const WebCore::CertificateInfo&);
+    void useCredentialForSingleChallenge(uint64_t challengeID, const WebCore::Credential&);
     void continueWithoutCredentialForSingleChallenge(uint64_t challengeID);
     void cancelSingleChallenge(uint64_t challengeID);
     void performDefaultHandlingForSingleChallenge(uint64_t challengeID);
@@ -112,6 +115,8 @@ private:
     ChildProcess& m_process;
 
     HashMap<uint64_t, Challenge> m_challenges;
+
+    WeakPtrFactory<AuthenticationManager> m_weakPtrFactory;
 };
 
 } // namespace WebKit

@@ -198,7 +198,7 @@ public:
     
     bool inActiveDocument() const { return m_inActiveDocument; }
 
-    const Document* hostingDocument() const override { return &document(); }
+    Document* hostingDocument() const final { return &document(); }
 
 // DOM API
 // error state
@@ -265,7 +265,8 @@ public:
 
     WEBCORE_EXPORT void play() override;
     WEBCORE_EXPORT void pause() override;
-    void setShouldBufferData(bool) override;
+    void setShouldBufferData(bool);
+    WEBCORE_EXPORT bool shouldBufferData() const { return m_shouldBufferData; }
     WEBCORE_EXPORT void fastSeek(double);
     double minFastReverseRate() const;
     double maxFastForwardRate() const;
@@ -277,7 +278,7 @@ public:
     WEBCORE_EXPORT bool webkitClosedCaptionsVisible() const;
     WEBCORE_EXPORT void setWebkitClosedCaptionsVisible(bool);
 
-    bool elementIsHidden() const override { return m_elementIsHidden; }
+    bool elementIsHidden() const { return m_elementIsHidden; }
 
 #if ENABLE(MEDIA_STATISTICS)
 // Statistics
@@ -414,6 +415,7 @@ public:
     using HTMLElement::scriptExecutionContext;
 
     bool hasSingleSecurityOrigin() const { return !m_player || m_player->hasSingleSecurityOrigin(); }
+    bool didPassCORSAccessCheck() const { return m_player && m_player->didPassCORSAccessCheck(); }
     
     WEBCORE_EXPORT bool isFullscreen() const override;
     bool isStandardFullscreen() const;
@@ -858,6 +860,7 @@ private:
     void suspendPlayback() override;
     void resumeAutoplaying() override;
     void mayResumePlayback(bool shouldResume) override;
+    uint64_t mediaSessionUniqueIdentifier() const final;
     String mediaSessionTitle() const override;
     double mediaSessionDuration() const override { return duration(); }
     double mediaSessionCurrentTime() const override { return currentTime(); }
@@ -910,6 +913,8 @@ private:
 
     void applicationWillResignActive() final;
     void applicationDidBecomeActive() final;
+
+    void setInActiveDocument(bool);
 
 #if !RELEASE_LOG_DISABLED
     const char* logClassName() const final { return "HTMLMediaElement"; }
@@ -1063,7 +1068,9 @@ private:
     bool m_completelyLoaded : 1;
     bool m_havePreparedToPlay : 1;
     bool m_parsingInProgress : 1;
+    bool m_shouldBufferData : 1;
     bool m_elementIsHidden : 1;
+    bool m_elementWasRemovedFromDOM : 1;
     bool m_creatingControls : 1;
     bool m_receivedLayoutSizeChanged : 1;
     bool m_hasEverNotifiedAboutPlaying : 1;

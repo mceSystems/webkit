@@ -271,7 +271,7 @@ protected:
     DecodingMode decodingModeForImageDraw(const Image&, const PaintInfo&) const;
 
 public:
-    // For RenderBlocks and RenderInlines with m_style->styleType() == FIRST_LETTER, this tracks their remaining text fragments
+    // For RenderBlocks and RenderInlines with m_style->styleType() == PseudoId::FirstLetter, this tracks their remaining text fragments
     RenderTextFragment* firstLetterRemainingText() const;
     void setFirstLetterRemainingText(RenderTextFragment&);
     void clearFirstLetterRemainingText();
@@ -323,7 +323,7 @@ private:
         bool includeLogicalLeftEdge, bool includeLogicalRightEdge, bool antialias = false, const Color* overrideColor = nullptr);
     void drawBoxSideFromPath(GraphicsContext&, const LayoutRect&, const Path&, const BorderEdge[],
         float thickness, float drawThickness, BoxSide, const RenderStyle&,
-        Color, EBorderStyle, BackgroundBleedAvoidance, bool includeLogicalLeftEdge, bool includeLogicalRightEdge);
+        Color, BorderStyle, BackgroundBleedAvoidance, bool includeLogicalLeftEdge, bool includeLogicalRightEdge);
     void paintMaskForTextFillBox(ImageBuffer*, const IntRect&, InlineFlowBox*, const LayoutRect&);
 };
 

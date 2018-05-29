@@ -88,7 +88,6 @@ typedef void (^CFCachedURLResponseCallBackBlock)(CFCachedURLResponseRef);
 #if defined(__OBJC__)
 
 @interface NSURLCache ()
--(instancetype)_initWithMemoryCapacity:(NSUInteger)memoryCapacity diskCapacity:(NSUInteger)diskCapacity relativePath:(NSString *)path;
 - (CFURLCacheRef)_CFURLCache;
 @end
 
@@ -323,6 +322,7 @@ WTF_EXTERN_C_END
 - (id)_initWithCFHTTPCookieStorage:(CFHTTPCookieStorageRef)cfStorage;
 - (CFHTTPCookieStorageRef)_cookieStorage;
 - (void)_saveCookies;
+- (void)_saveCookies:(dispatch_block_t) completionHandler;
 @end
 #endif
 

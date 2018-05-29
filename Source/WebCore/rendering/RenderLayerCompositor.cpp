@@ -512,8 +512,8 @@ static bool scrollbarHasDisplayNone(Scrollbar* scrollbar)
     if (!scrollbar || !scrollbar->isCustomScrollbar())
         return false;
 
-    std::unique_ptr<RenderStyle> scrollbarStyle = static_cast<RenderScrollbar*>(scrollbar)->getScrollbarPseudoStyle(ScrollbarBGPart, SCROLLBAR);
-    return scrollbarStyle && scrollbarStyle->display() == NONE;
+    std::unique_ptr<RenderStyle> scrollbarStyle = static_cast<RenderScrollbar*>(scrollbar)->getScrollbarPseudoStyle(ScrollbarBGPart, PseudoId::Scrollbar);
+    return scrollbarStyle && scrollbarStyle->display() == DisplayType::None;
 }
 
 // FIXME: Can we make |layer| const RenderLayer&?
@@ -881,9 +881,9 @@ static bool checkIfDescendantClippingContextNeedsUpdate(const RenderLayer& layer
 }
 
 #if ENABLE(ACCELERATED_OVERFLOW_SCROLLING)
-static bool isScrollableOverflow(EOverflow overflow)
+static bool isScrollableOverflow(Overflow overflow)
 {
-    return overflow == OSCROLL || overflow == OAUTO || overflow == OOVERLAY;
+    return overflow == Overflow::Scroll || overflow == Overflow::Auto || overflow == Overflow::Overlay;
 }
 
 static bool styleHasTouchScrolling(const RenderStyle& style)
@@ -919,8 +919,8 @@ static bool styleChangeRequiresLayerRebuild(const RenderLayer& layer, const Rend
 
     // Compositing layers keep track of whether they are clipped by any of the ancestors.
     // When the current layer's clipping behaviour changes, we need to propagate it to the descendants.
-    bool wasClipping = oldStyle.hasClip() || oldStyle.overflowX() != OVISIBLE || oldStyle.overflowY() != OVISIBLE;
-    bool isClipping = newStyle.hasClip() || newStyle.overflowX() != OVISIBLE || newStyle.overflowY() != OVISIBLE;
+    bool wasClipping = oldStyle.hasClip() || oldStyle.overflowX() != Overflow::Visible || oldStyle.overflowY() != Overflow::Visible;
+    bool isClipping = newStyle.hasClip() || newStyle.overflowX() != Overflow::Visible || newStyle.overflowY() != Overflow::Visible;
     if (isClipping != wasClipping) {
         if (checkIfDescendantClippingContextNeedsUpdate(layer, isClipping))
             return true;
@@ -931,7 +931,7 @@ static bool styleChangeRequiresLayerRebuild(const RenderLayer& layer, const Rend
 
 void RenderLayerCompositor::layerStyleChanged(StyleDifference diff, RenderLayer& layer, const RenderStyle* oldStyle)
 {
-    if (diff == StyleDifferenceEqual)
+    if (diff == StyleDifference::Equal)
         return;
 
     const RenderStyle& newStyle = layer.renderer().style();
@@ -2129,7 +2129,7 @@ OptionSet<CompositingReason> RenderLayerCompositor::reasonsForCompositing(const 
     else if (requiresCompositingForFrame(renderer))
         reasons |= CompositingReason::IFrame;
 
-    if ((canRender3DTransforms() && renderer.style().backfaceVisibility() == BackfaceVisibilityHidden))
+    if ((canRender3DTransforms() && renderer.style().backfaceVisibility() == BackfaceVisibility::Hidden))
         reasons |= CompositingReason::BackfaceVisibilityHidden;
 
     if (clipsCompositingDescendants(*renderer.layer()))
@@ -2210,81 +2210,81 @@ const char* RenderLayerCompositor::logReasonsForCompositing(const RenderLayer& l
 {
     OptionSet<CompositingReason> reasons = reasonsForCompositing(layer);
 
-    if (reasons.contains(CompositingReason::Transform3D))
+    if (reasons & CompositingReason::Transform3D)
         return "3D transform";
 
-    if (reasons.contains(CompositingReason::Video))
+    if (reasons & CompositingReason::Video)
         return "video";
 
-    if (reasons.contains(CompositingReason::Canvas))
+    if (reasons & CompositingReason::Canvas)
         return "canvas";
 
-    if (reasons.contains(CompositingReason::Plugin))
+    if (reasons & CompositingReason::Plugin)
         return "plugin";
 
-    if (reasons.contains(CompositingReason::IFrame))
+    if (reasons & CompositingReason::IFrame)
         return "iframe";
 
-    if (reasons.contains(CompositingReason::BackfaceVisibilityHidden))
+    if (reasons & CompositingReason::BackfaceVisibilityHidden)
         return "backface-visibility: hidden";
 
-    if (reasons.contains(CompositingReason::ClipsCompositingDescendants))
+    if (reasons & CompositingReason::ClipsCompositingDescendants)
         return "clips compositing descendants";
 
-    if (reasons.contains(CompositingReason::Animation))
+    if (reasons & CompositingReason::Animation)
         return "animation";
 
-    if (reasons.contains(CompositingReason::Filters))
+    if (reasons & CompositingReason::Filters)
         return "filters";
 
-    if (reasons.contains(CompositingReason::PositionFixed))
+    if (reasons & CompositingReason::PositionFixed)
         return "position: fixed";
 
-    if (reasons.contains(CompositingReason::PositionSticky))
+    if (reasons & CompositingReason::PositionSticky)
         return "position: sticky";
 
-    if (reasons.contains(CompositingReason::OverflowScrollingTouch))
+    if (reasons & CompositingReason::OverflowScrollingTouch)
         return "-webkit-overflow-scrolling: touch";
 
-    if (reasons.contains(CompositingReason::Stacking))
+    if (reasons & CompositingReason::Stacking)
         return "stacking";
 
-    if (reasons.contains(CompositingReason::Overlap))
+    if (reasons & CompositingReason::Overlap)
         return "overlap";
 
-    if (reasons.contains(CompositingReason::NegativeZIndexChildren))
+    if (reasons & CompositingReason::NegativeZIndexChildren)
         return "negative z-index children";
 
-    if (reasons.contains(CompositingReason::TransformWithCompositedDescendants))
+    if (reasons & CompositingReason::TransformWithCompositedDescendants)
         return "transform with composited descendants";
 
-    if (reasons.contains(CompositingReason::OpacityWithCompositedDescendants))
+    if (reasons & CompositingReason::OpacityWithCompositedDescendants)
         return "opacity with composited descendants";
 
-    if (reasons.contains(CompositingReason::MaskWithCompositedDescendants))
+    if (reasons & CompositingReason::MaskWithCompositedDescendants)
         return "mask with composited descendants";
 
-    if (reasons.contains(CompositingReason::ReflectionWithCompositedDescendants))
+    if (reasons & CompositingReason::ReflectionWithCompositedDescendants)
         return "reflection with composited descendants";
 
-    if (reasons.contains(CompositingReason::FilterWithCompositedDescendants))
+    if (reasons & CompositingReason::FilterWithCompositedDescendants)
         return "filter with composited descendants";
 
 #if ENABLE(CSS_COMPOSITING)
-    if (reasons.contains(CompositingReason::BlendingWithCompositedDescendants))
+    if (reasons & CompositingReason::BlendingWithCompositedDescendants)
         return "blending with composited descendants";
 
-    if (reasons.contains(CompositingReason::IsolatesCompositedBlendingDescendants))
+    if (reasons & CompositingReason::IsolatesCompositedBlendingDescendants)
         return "isolates composited blending descendants";
 #endif
 
-    if (reasons.contains(CompositingReason::Perspective))
+    if (reasons & CompositingReason::Perspective)
         return "perspective";
 
-    if (reasons.contains(CompositingReason::Preserve3D))
+    if (reasons & CompositingReason::Preserve3D)
         return "preserve-3d";
 
-    if (reasons.contains(CompositingReason::Root))
+    if (reasons & CompositingReason::Root)
         return "root";
 
     return "";
@@ -2371,15 +2371,15 @@ bool RenderLayerCompositor::requiresCompositingForBackfaceVisibility(RenderLayer
     if (!(m_compositingTriggers & ChromeClient::ThreeDTransformTrigger))
         return false;
 
-    if (renderer.style().backfaceVisibility() != BackfaceVisibilityHidden)
+    if (renderer.style().backfaceVisibility() != BackfaceVisibility::Hidden)
         return false;
-        
+
     if (renderer.layer()->has3DTransformedAncestor())
         return true;
     
     // FIXME: workaround for webkit.org/b/132801
     auto* stackingContext = renderer.layer()->stackingContainer();
-    if (stackingContext && stackingContext->renderer().style().transformStyle3D() == TransformStyle3DPreserve3D)
+    if (stackingContext && stackingContext->renderer().style().transformStyle3D() == TransformStyle3D::Preserve3D)
         return true;
 
     return false;
@@ -2432,7 +2432,7 @@ bool RenderLayerCompositor::requiresCompositingForPlugin(RenderLayerModelObject&
     m_reevaluateCompositingAfterLayout = true;
     
     auto& pluginRenderer = downcast<RenderWidget>(renderer);
-    if (pluginRenderer.style().visibility() != VISIBLE)
+    if (pluginRenderer.style().visibility() != Visibility::Visible)
         return false;
 
     // If we can't reliably know the size of the plugin yet, don't change compositing state.
@@ -2450,7 +2450,7 @@ bool RenderLayerCompositor::requiresCompositingForFrame(RenderLayerModelObject& 
         return false;
 
     auto& frameRenderer = downcast<RenderWidget>(renderer);
-    if (frameRenderer.style().visibility() != VISIBLE)
+    if (frameRenderer.style().visibility() != Visibility::Visible)
         return false;
 
     if (!frameRenderer.requiresAcceleratedCompositing())
@@ -2478,7 +2478,7 @@ bool RenderLayerCompositor::requiresCompositingForAnimation(RenderLayerModelObje
         }
     }
 
-    if (RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled())
+    if (RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled())
         return false;
 
     const AnimationBase::RunningState activeAnimationState = AnimationBase::Running | AnimationBase::Paused;
@@ -2506,7 +2506,7 @@ bool RenderLayerCompositor::requiresCompositingForIndirectReason(RenderLayerMode
     // A layer with preserve-3d or perspective only needs to be composited if there are descendant layers that
     // will be affected by the preserve-3d or perspective.
     if (has3DTransformedDescendants) {
-        if (renderer.style().transformStyle3D() == TransformStyle3DPreserve3D) {
+        if (renderer.style().transformStyle3D() == TransformStyle3D::Preserve3D) {
             reason = RenderLayer::IndirectCompositingReason::Preserve3D;
             return true;
         }
@@ -2600,7 +2600,7 @@ bool RenderLayerCompositor::isViewportConstrainedFixedOrStickyLayer(const Render
     if (layer.renderer().isStickilyPositioned())
         return isAsyncScrollableStickyLayer(layer);
 
-    if (layer.renderer().style().position() != FixedPosition)
+    if (layer.renderer().style().position() != PositionType::Fixed)
         return false;
 
     // FIXME: Handle fixed inside of a transform, which should not behave as fixed.
@@ -2628,12 +2628,12 @@ bool RenderLayerCompositor::requiresCompositingForPosition(RenderLayerModelObjec
     if (!renderer.isPositioned())
         return false;
     
-    EPosition position = renderer.style().position();
-    bool isFixed = renderer.isOutOfFlowPositioned() && position == FixedPosition;
+    auto position = renderer.style().position();
+    bool isFixed = renderer.isOutOfFlowPositioned() && position == PositionType::Fixed;
     if (isFixed && !layer.isStackingContainer())
         return false;
     
-    bool isSticky = renderer.isInFlowPositioned() && position == StickyPosition;
+    bool isSticky = renderer.isInFlowPositioned() && position == PositionType::Sticky;
     if (!isFixed && !isSticky)
         return false;
 
@@ -2719,7 +2719,7 @@ bool RenderLayerCompositor::isRunningTransformAnimation(RenderLayerModelObject& 
     if (!(m_compositingTriggers & ChromeClient::AnimationTrigger))
         return false;
 
-    if (RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled()) {
+    if (RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
         if (auto* element = renderer.element()) {
             if (auto* timeline = element->document().existingTimeline())
                 return timeline->isRunningAnimationOnRenderer(renderer, CSSPropertyTransform);
@@ -3084,11 +3084,13 @@ bool RenderLayerCompositor::viewHasTransparentBackground(Color* backgroundColor)
 
     Color documentBackgroundColor = m_renderView.frameView().documentBackgroundColor();
     if (!documentBackgroundColor.isValid())
-        documentBackgroundColor = Color::white;
+        documentBackgroundColor = m_renderView.frameView().baseBackgroundColor();
+
+    ASSERT(documentBackgroundColor.isValid());
 
     if (backgroundColor)
         *backgroundColor = documentBackgroundColor;
-        
+
     return !documentBackgroundColor.isOpaque();
 }
 
@@ -3120,7 +3122,7 @@ void RenderLayerCompositor::rootBackgroundTransparencyChanged()
 
     bool isTransparent = viewHasTransparentBackground();
 
-    LOG(Compositing, "RenderLayerCompositor %p rootBackgroundTransparencyChanged. isTransparent=%d, changed=%d", this, isTransparent, m_viewBackgroundIsTransparent == isTransparent);
+    LOG(Compositing, "RenderLayerCompositor %p rootBackgroundTransparencyChanged. isTransparent=%d, changed=%d", this, isTransparent, m_viewBackgroundIsTransparent != isTransparent);
     if (m_viewBackgroundIsTransparent == isTransparent)
         return;
 
@@ -3491,7 +3493,7 @@ bool RenderLayerCompositor::layerHas3DContent(const RenderLayer& layer) const
 {
     const RenderStyle& style = layer.renderer().style();
 
-    if (style.transformStyle3D() == TransformStyle3DPreserve3D || style.hasPerspective() || style.transform().has3DOperation())
+    if (style.transformStyle3D() == TransformStyle3D::Preserve3D || style.hasPerspective() || style.transform().has3DOperation())
         return true;
 
     const_cast<RenderLayer&>(layer).updateLayerListsIfNeeded();
@@ -3787,7 +3789,7 @@ void RenderLayerCompositor::updateScrollCoordinatedLayer(RenderLayer& layer, Lay
         ScrollingNodeType nodeType = MainFrameScrollingNode;
         if (layer.renderer().isFixedPositioned())
             nodeType = FixedNode;
-        else if (layer.renderer().style().position() == StickyPosition)
+        else if (layer.renderer().style().position() == PositionType::Sticky)
             nodeType = StickyNode;
         else
             ASSERT_NOT_REACHED();
@@ -3798,10 +3800,10 @@ void RenderLayerCompositor::updateScrollCoordinatedLayer(RenderLayer& layer, Lay
             
         LOG_WITH_STREAM(Compositing, stream << "Registering ViewportConstrained " << nodeType << " node " << nodeID << " (layer " << backing->graphicsLayer()->primaryLayerID() << ") as child of " << parentNodeID);
 
-        if (changes.contains(ScrollingNodeChangeFlags::Layer))
+        if (changes & ScrollingNodeChangeFlags::Layer)
             scrollingCoordinator->updateNodeLayer(nodeID, backing->graphicsLayer());
 
-        if (changes.contains(ScrollingNodeChangeFlags::LayerGeometry)) {
+        if (changes & ScrollingNodeChangeFlags::LayerGeometry) {
             switch (nodeType) {
             case FixedNode:
                 scrollingCoordinator->updateNodeViewportConstraints(nodeID, computeFixedViewportConstraints(layer));

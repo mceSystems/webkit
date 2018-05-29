@@ -466,33 +466,28 @@ void JSGlobalObject::init(VM& vm)
     m_throwTypeErrorGetterSetter.initLater(
         [] (const Initializer<GetterSetter>& init) {
             JSFunction* thrower = init.owner->throwTypeErrorFunction();
-            GetterSetter* getterSetter = GetterSetter::create(init.vm, init.owner);
-            getterSetter->setGetter(init.vm, init.owner, thrower);
-            getterSetter->setSetter(init.vm, init.owner, thrower);
+            GetterSetter* getterSetter = GetterSetter::create(init.vm, init.owner, thrower, thrower);
             init.set(getterSetter);
         });
 
     m_nullGetterFunction.set(vm, this, NullGetterFunction::create(vm, NullGetterFunction::createStructure(vm, this, m_functionPrototype.get())));
     m_nullSetterFunction.set(vm, this, NullSetterFunction::create(vm, NullSetterFunction::createStructure(vm, this, m_functionPrototype.get())));
     m_objectPrototype.set(vm, this, ObjectPrototype::create(vm, this, ObjectPrototype::createStructure(vm, this, jsNull())));
-    GetterSetter* protoAccessor = GetterSetter::create(vm, this);
-    protoAccessor->setGetter(vm, this, JSFunction::create(vm, this, 0, makeString("get ", vm.propertyNames->underscoreProto.string()), globalFuncProtoGetter, UnderscoreProtoIntrinsic));
-    protoAccessor->setSetter(vm, this, JSFunction::create(vm, this, 0, makeString("set ", vm.propertyNames->underscoreProto.string()), globalFuncProtoSetter));
+    GetterSetter* protoAccessor = GetterSetter::create(vm, this,
+        JSFunction::create(vm, this, 0, makeString("get ", vm.propertyNames->underscoreProto.string()), globalFuncProtoGetter, UnderscoreProtoIntrinsic),
+        JSFunction::create(vm, this, 0, makeString("set ", vm.propertyNames->underscoreProto.string()), globalFuncProtoSetter));
     m_objectPrototype->putDirectNonIndexAccessor(vm, vm.propertyNames->underscoreProto, protoAccessor, PropertyAttribute::Accessor | PropertyAttribute::DontEnum);
     m_functionPrototype->structure()->setPrototypeWithoutTransition(vm, m_objectPrototype.get());
     m_objectStructureForObjectConstructor.set(vm, this, vm.structureCache.emptyObjectStructureForPrototype(this, m_objectPrototype.get(), JSFinalObject::defaultInlineCapacity()));
     m_objectProtoValueOfFunction.set(vm, this, jsCast<JSFunction*>(objectPrototype()->getDirect(vm, vm.propertyNames->valueOf)));
     
     JSFunction* thrower = JSFunction::create(vm, this, 0, String(), globalFuncThrowTypeErrorArgumentsCalleeAndCaller);
-    GetterSetter* getterSetter = GetterSetter::create(vm, this);
-    getterSetter->setGetter(vm, this, thrower);
-    getterSetter->setSetter(vm, this, thrower);
+    GetterSetter* getterSetter = GetterSetter::create(vm, this, thrower, thrower);
     m_throwTypeErrorArgumentsCalleeAndCallerGetterSetter.set(vm, this, getterSetter);
     
     m_functionPrototype->initRestrictedProperties(exec, this);
 
-    m_speciesGetterSetter.set(vm, this, GetterSetter::create(vm, this));
-    m_speciesGetterSetter->setGetter(vm, this, JSFunction::create(vm, globalOperationsSpeciesGetterCodeGenerator(vm), this));
+    m_speciesGetterSetter.set(vm, this, GetterSetter::create(vm, this, JSFunction::create(vm, globalOperationsSpeciesGetterCodeGenerator(vm), this), nullptr));
 
     m_typedArrayProto.initLater(
         [] (const Initializer<JSTypedArrayViewPrototype>& init) {
@@ -585,13 +580,16 @@ void JSGlobalObject::init(VM& vm)
 #endif
     m_arrayPrototype.set(vm, this, ArrayPrototype::create(vm, this, ArrayPrototype::createStructure(vm, this, m_objectPrototype.get())));
     
-    m_originalArrayStructureForIndexingShape[UndecidedShape >> IndexingShapeShift].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithUndecided));
-    m_originalArrayStructureForIndexingShape[Int32Shape >> IndexingShapeShift].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithInt32));
-    m_originalArrayStructureForIndexingShape[DoubleShape >> IndexingShapeShift].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithDouble));
-    m_originalArrayStructureForIndexingShape[ContiguousShape >> IndexingShapeShift].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithContiguous));
-    m_originalArrayStructureForIndexingShape[ArrayStorageShape >> IndexingShapeShift].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithArrayStorage));
-    m_originalArrayStructureForIndexingShape[SlowPutArrayStorageShape >> IndexingShapeShift].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithSlowPutArrayStorage));
-    for (unsigned i = 0; i < NumberOfIndexingShapes; ++i)
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(UndecidedShape)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithUndecided));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(Int32Shape)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithInt32));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(DoubleShape)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithDouble));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(ContiguousShape)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithContiguous));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(ArrayStorageShape)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithArrayStorage));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(SlowPutArrayStorageShape)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), ArrayWithSlowPutArrayStorage));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(CopyOnWriteArrayWithInt32)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), CopyOnWriteArrayWithInt32));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(CopyOnWriteArrayWithDouble)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), CopyOnWriteArrayWithDouble));
+    m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(CopyOnWriteArrayWithContiguous)].set(vm, this, JSArray::createStructure(vm, this, m_arrayPrototype.get(), CopyOnWriteArrayWithContiguous));
+    for (unsigned i = 0; i < NumberOfArrayIndexingModes; ++i)
         m_arrayStructureForIndexingShapeDuringAllocation[i] = m_originalArrayStructureForIndexingShape[i];
 
     m_regExpPrototype.set(vm, this, RegExpPrototype::create(vm, this, RegExpPrototype::createStructure(vm, this, m_objectPrototype.get())));
@@ -627,9 +625,10 @@ void JSGlobalObject::init(VM& vm)
     m_generatorPrototype.set(vm, this, GeneratorPrototype::create(vm, this, GeneratorPrototype::createStructure(vm, this, m_iteratorPrototype.get())));
     m_asyncGeneratorPrototype.set(vm, this, AsyncGeneratorPrototype::create(vm, this, AsyncGeneratorPrototype::createStructure(vm, this, m_asyncIteratorPrototype.get())));
 
-#define CREATE_PROTOTYPE_FOR_SIMPLE_TYPE(capitalName, lowerName, properName, instanceType, jsName, prototypeBase) \
-m_ ## lowerName ## Prototype.set(vm, this, capitalName##Prototype::create(vm, this, capitalName##Prototype::createStructure(vm, this, m_ ## prototypeBase ## Prototype.get()))); \
-m_ ## properName ## Structure.set(vm, this, instanceType::createStructure(vm, this, m_ ## lowerName ## Prototype.get()));
+#define CREATE_PROTOTYPE_FOR_SIMPLE_TYPE(capitalName, lowerName, properName, instanceType, jsName, prototypeBase) do { \
+        m_ ## lowerName ## Prototype.set(vm, this, capitalName##Prototype::create(vm, this, capitalName##Prototype::createStructure(vm, this, m_ ## prototypeBase ## Prototype.get()))); \
+        m_ ## properName ## Structure.set(vm, this, instanceType::createStructure(vm, this, m_ ## lowerName ## Prototype.get())); \
+    } while (0);
     
     FOR_EACH_SIMPLE_BUILTIN_TYPE(CREATE_PROTOTYPE_FOR_SIMPLE_TYPE)
 
@@ -960,17 +959,8 @@ putDirectWithoutTransition(vm, vm.propertyNames-> jsName, lowerName ## Construct
 
     m_linkTimeConstants[static_cast<unsigned>(LinkTimeConstant::ThrowTypeErrorFunction)] = m_throwTypeErrorFunction.get();
 
-    if (UNLIKELY(Options::useDollarVM())) {
-        m_dollarVMStructure.set(vm, this, JSDollarVM::createStructure(vm, this, m_objectPrototype.get()));
-        JSDollarVM* dollarVM = JSDollarVM::create(vm, m_dollarVMStructure.get());
-
-        GlobalPropertyInfo extraStaticGlobals[] = {
-            GlobalPropertyInfo(vm.propertyNames->builtinNames().dollarVMPrivateName(), dollarVM, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly),
-        };
-        addStaticGlobals(extraStaticGlobals, WTF_ARRAY_LENGTH(extraStaticGlobals));
-
-        putDirectWithoutTransition(vm, Identifier::fromString(exec, "$vm"), dollarVM, static_cast<unsigned>(PropertyAttribute::DontEnum));
-    }
+    if (UNLIKELY(Options::useDollarVM()))
+        exposeDollarVM();
 
 #if ENABLE(WEBASSEMBLY)
     if (Options::useWebAssembly()) {
@@ -1279,7 +1269,7 @@ void JSGlobalObject::haveABadTime(VM& vm)
     
     // Make sure that all JSArray allocations that load the appropriate structure from
     // this object now load a structure that uses SlowPut.
-    for (unsigned i = 0; i < NumberOfIndexingShapes; ++i)
+    for (unsigned i = 0; i < NumberOfArrayIndexingModes; ++i)
         m_arrayStructureForIndexingShapeDuringAllocation[i].set(vm, this, originalArrayStructureForIndexingType(ArrayWithSlowPutArrayStorage));
 
     // Same for any special array structures.
@@ -1389,9 +1379,9 @@ void JSGlobalObject::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_scopedArgumentsStructure);
     visitor.append(thisObject->m_clonedArgumentsStructure);
     visitor.append(thisObject->m_objectStructureForObjectConstructor);
-    for (unsigned i = 0; i < NumberOfIndexingShapes; ++i)
+    for (unsigned i = 0; i < NumberOfArrayIndexingModes; ++i)
         visitor.append(thisObject->m_originalArrayStructureForIndexingShape[i]);
-    for (unsigned i = 0; i < NumberOfIndexingShapes; ++i)
+    for (unsigned i = 0; i < NumberOfArrayIndexingModes; ++i)
         visitor.append(thisObject->m_arrayStructureForIndexingShapeDuringAllocation[i]);
     thisObject->m_callbackConstructorStructure.visit(visitor);
     thisObject->m_callbackFunctionStructure.visit(visitor);
@@ -1425,7 +1415,6 @@ void JSGlobalObject::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_regExpMatchesArrayWithGroupsStructure);
     visitor.append(thisObject->m_moduleRecordStructure);
     visitor.append(thisObject->m_moduleNamespaceObjectStructure);
-    visitor.append(thisObject->m_dollarVMStructure);
     visitor.append(thisObject->m_proxyObjectStructure);
     visitor.append(thisObject->m_callableProxyObjectStructure);
     visitor.append(thisObject->m_proxyRevokeStructure);
@@ -1437,9 +1426,10 @@ void JSGlobalObject::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_sharedArrayBufferStructure);
 #endif
 
-#define VISIT_SIMPLE_TYPE(CapitalName, lowerName, properName, instanceType, jsName, prototypeBase) \
-    visitor.append(thisObject->m_ ## lowerName ## Prototype); \
-    visitor.append(thisObject->m_ ## properName ## Structure); \
+#define VISIT_SIMPLE_TYPE(CapitalName, lowerName, properName, instanceType, jsName, prototypeBase) do { \
+        visitor.append(thisObject->m_ ## lowerName ## Prototype); \
+        visitor.append(thisObject->m_ ## properName ## Structure); \
+    } while (0);
 
     FOR_EACH_SIMPLE_BUILTIN_TYPE(VISIT_SIMPLE_TYPE)
     if (UNLIKELY(Options::useBigInt()))
@@ -1475,6 +1465,23 @@ void JSGlobalObject::visitChildren(JSCell* cell, SlotVisitor& visitor)
 ExecState* JSGlobalObject::globalExec()
 {
     return CallFrame::create(m_globalCallFrame);
+}
+
+void JSGlobalObject::exposeDollarVM()
+{
+    VM& vm = this->vm();
+
+    if (hasOwnProperty(globalExec(), vm.propertyNames->builtinNames().dollarVMPrivateName()))
+        return;
+
+    JSDollarVM* dollarVM = JSDollarVM::create(vm, JSDollarVM::createStructure(vm, this, m_objectPrototype.get()));
+
+    GlobalPropertyInfo extraStaticGlobals[] = {
+        GlobalPropertyInfo(vm.propertyNames->builtinNames().dollarVMPrivateName(), dollarVM, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly),
+    };
+    addStaticGlobals(extraStaticGlobals, WTF_ARRAY_LENGTH(extraStaticGlobals));
+
+    putDirect(vm, Identifier::fromString(globalExec(), "$vm"), dollarVM, static_cast<unsigned>(PropertyAttribute::DontEnum));
 }
 
 void JSGlobalObject::addStaticGlobals(GlobalPropertyInfo* globals, int count)

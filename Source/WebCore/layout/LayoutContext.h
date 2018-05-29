@@ -35,6 +35,10 @@
 
 namespace WebCore {
 
+#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
+class RenderView;
+#endif
+
 namespace Display {
 class Box;
 }
@@ -54,13 +58,10 @@ class Container;
 class LayoutContext {
     WTF_MAKE_ISO_ALLOCATED(LayoutContext);
 public:
-    LayoutContext(const Box& root);
+    LayoutContext();
 
+    void initializeRoot(const Container&, const LayoutSize&);
     void updateLayout();
-
-    Display::Box& createDisplayBox(const Box&);
-    Display::Box* displayBoxForLayoutBox(const Box& layoutBox) const { return m_layoutToDisplayBox.get(&layoutBox); }
-
     void styleChanged(const Box&, StyleDiff);
 
     enum class UpdateType {
@@ -76,8 +77,14 @@ public:
     FormattingState& establishedFormattingState(const Box& formattingContextRoot, const FormattingContext&);
     std::unique_ptr<FormattingContext> formattingContext(const Box& formattingContextRoot);
 
+    // For testing purposes only
+    void verifyAndOutputMismatchingLayoutTree(const RenderView&) const;
+
+    Display::Box& createDisplayBox(const Box&);
+    Display::Box* displayBoxForLayoutBox(const Box& layoutBox) const { return m_layoutToDisplayBox.get(&layoutBox); }
+
 private:
-    WeakPtr<Box> m_root;
+    WeakPtr<Container> m_root;
     HashSet<const Container*> m_formattingContextRootListForLayout;
     HashMap<const Box*, std::unique_ptr<FormattingState>> m_formattingStates;
     HashMap<const Box*, std::unique_ptr<Display::Box>> m_layoutToDisplayBox;

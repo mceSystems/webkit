@@ -133,10 +133,6 @@ void NetworkProcess::platformInitializeNetworkProcess(const NetworkProcessCreati
     setIgnoreTLSErrors(parameters.ignoreTLSErrors);
 }
 
-void NetworkProcess::platformSetURLCacheSize(unsigned, uint64_t)
-{
-}
-
 void NetworkProcess::setIgnoreTLSErrors(bool ignoreTLSErrors)
 {
     SoupNetworkSession::setShouldIgnoreTLSErrors(ignoreTLSErrors);
@@ -175,5 +171,16 @@ void NetworkProcess::setNetworkProxySettings(const SoupNetworkProxySettings& set
             soupSession->setupProxy();
     });
 }
+
+void NetworkProcess::platformPrepareToSuspend()
+{
+    notImplemented();
+}
+
+void NetworkProcess::platformProcessDidResume()
+{
+    notImplemented();
+}
+
 
 } // namespace WebKit

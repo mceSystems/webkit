@@ -134,9 +134,9 @@ void RenderTreeBuilder::Block::insertChildToContinuation(RenderBlock& parent, Re
         return;
     }
 
-    bool childIsNormal = child->isInline() || !child->style().columnSpan();
-    bool bcpIsNormal = beforeChildParent->isInline() || !beforeChildParent->style().columnSpan();
-    bool flowIsNormal = flow->isInline() || !flow->style().columnSpan();
+    bool childIsNormal = child->isInline() || child->style().columnSpan() == ColumnSpan::None;
+    bool bcpIsNormal = beforeChildParent->isInline() || beforeChildParent->style().columnSpan() == ColumnSpan::None;
+    bool flowIsNormal = flow->isInline() || flow->style().columnSpan() == ColumnSpan::None;
 
     if (flow == beforeChildParent) {
         m_builder.attachIgnoringContinuation(*flow, WTFMove(child), beforeChild);
@@ -303,7 +303,7 @@ RenderPtr<RenderObject> RenderTreeBuilder::Block::detach(RenderBlock& parent, Re
             // column span flag if it is set.
             ASSERT(!inlineChildrenBlock.continuation());
             // Cache this value as it might get changed in setStyle() call.
-            inlineChildrenBlock.setStyle(RenderStyle::createAnonymousStyleWithDisplay(parent.style(), BLOCK));
+            inlineChildrenBlock.setStyle(RenderStyle::createAnonymousStyleWithDisplay(parent.style(), DisplayType::Block));
             auto blockToMove = m_builder.detachFromRenderElement(parent, inlineChildrenBlock);
 
             // Now just put the inlineChildrenBlock inside the blockChildrenBlock.

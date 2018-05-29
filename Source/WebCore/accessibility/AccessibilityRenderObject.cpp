@@ -31,6 +31,7 @@
 
 #include "AXObjectCache.h"
 #include "AccessibilityImageMapLink.h"
+#include "AccessibilityLabel.h"
 #include "AccessibilityListBox.h"
 #include "AccessibilitySVGRoot.h"
 #include "AccessibilitySpinButton.h"
@@ -944,7 +945,7 @@ AccessibilityObject* AccessibilityRenderObject::internalLinkElement() const
     return firstAccessibleObjectFromNode(linkedNode);
 }
 
-ESpeakAs AccessibilityRenderObject::speakAsProperty() const
+OptionSet<SpeakAs> AccessibilityRenderObject::speakAsProperty() const
 {
     if (!m_renderer)
         return AccessibilityObject::speakAsProperty();
@@ -1064,6 +1065,11 @@ bool AccessibilityRenderObject::exposesTitleUIElement() const
             if (AccessibilityObject* labelObject = axObjectCache()->getOrCreate(label)) {
                 if (!labelObject->ariaLabeledByAttribute().isEmpty())
                     return false;
+                // To simplify instances where the labeling element includes widget descendants
+                // which it does not label.
+                if (is<AccessibilityLabel>(*labelObject)
+                    && downcast<AccessibilityLabel>(*labelObject).containsUnrelatedControls())
+                    return false;
             }
         }
     }
@@ -1138,7 +1144,7 @@ AccessibilityObjectInclusion AccessibilityRenderObject::defaultObjectInclusion()
     if (!m_renderer)
         return AccessibilityObjectInclusion::IgnoreObject;
 
-    if (m_renderer->style().visibility() != VISIBLE) {
+    if (m_renderer->style().visibility() != Visibility::Visible) {
         // aria-hidden is meant to override visibility as the determinant in AX hierarchy inclusion.
         if (equalLettersIgnoringASCIICase(getAttribute(aria_hiddenAttr), "false"))
             return AccessibilityObjectInclusion::DefaultBehavior;
@@ -1204,12 +1210,6 @@ bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
     if (m_renderer && ancestorsOfType<RenderMenuList>(*m_renderer).first())
         return true;
 
-    // find out if this element is inside of a label element.
-    // if so, it may be ignored because it's the label for a checkbox or radio button
-    AccessibilityObject* controlObject = correspondingControlForLabelElement();
-    if (controlObject && !controlObject->exposesTitleUIElement() && controlObject->isCheckboxOrRadio())
-        return true;
-    
     // https://webkit.org/b/161276 Getting the controlObject might cause the m_renderer to be nullptr.
     if (!m_renderer)
         return true;
@@ -1416,6 +1416,12 @@ bool AccessibilityRenderObject::computeAccessibilityIsIgnored() const
     if (m_renderer->isRubyRun() || m_renderer->isRubyBlock() || m_renderer->isRubyInline())
         return false;
 
+    // Find out if this element is inside of a label element.
+    // If so, it may be ignored because it's the label for a checkbox or radio button.
+    AccessibilityObject* controlObject = correspondingControlForLabelElement();
+    if (controlObject && !controlObject->exposesTitleUIElement() && controlObject->isCheckboxOrRadio())
+        return true;
+
     // By default, objects should be ignored so that the AX hierarchy is not
     // filled with unnecessary items.
     return true;
@@ -1590,7 +1596,7 @@ bool AccessibilityRenderObject::isUnvisited() const
         return true;
 
     // FIXME: Is it a privacy violation to expose unvisited information to accessibility APIs?
-    return m_renderer->style().isLink() && m_renderer->style().insideLink() == InsideUnvisitedLink;
+    return m_renderer->style().isLink() && m_renderer->style().insideLink() == InsideLink::InsideUnvisited;
 }
 
 bool AccessibilityRenderObject::isVisited() const
@@ -1599,7 +1605,7 @@ bool AccessibilityRenderObject::isVisited() const
         return false;
 
     // FIXME: Is it a privacy violation to expose visited information to accessibility APIs?
-    return m_renderer->style().isLink() && m_renderer->style().insideLink() == InsideVisitedLink;
+    return m_renderer->style().isLink() && m_renderer->style().insideLink() == InsideLink::InsideVisited;
 }
 
 void AccessibilityRenderObject::setElementAttributeValue(const QualifiedName& attributeName, bool value)
@@ -1771,8 +1777,17 @@ void AccessibilityRenderObject::setValue(const String& string)
         downcast<HTMLInputElement>(element).setValue(string);
     else if (renderer.isTextArea() && is<HTMLTextAreaElement>(element))
         downcast<HTMLTextAreaElement>(element).setValue(string);
-    else if (is<HTMLElement>(element) && contentEditableAttributeIsEnabled(&element))
+    else if (is<HTMLElement>(element) && contentEditableAttributeIsEnabled(&element)) {
+        // Set the style to the element so the child Text node won't collapse spaces
+        if (is<RenderElement>(renderer)) {
+            RenderElement& renderElement = downcast<RenderElement>(renderer);
+            auto style = RenderStyle::create();
+            style.inheritFrom(renderElement.style());
+            style.setWhiteSpace(WhiteSpace::Pre);
+            renderElement.setStyleInternal(WTFMove(style));
+        }
         downcast<HTMLElement>(element).setInnerText(string);
+    }
 }
 
 bool AccessibilityRenderObject::supportsARIAOwns() const
@@ -3585,7 +3600,7 @@ bool AccessibilityRenderObject::hasPlainText() const
     const RenderStyle& style = m_renderer->style();
     return style.fontDescription().weight() == normalWeightValue()
         && style.fontDescription().italic() == normalItalicValue()
-        && style.textDecorationsInEffect() == TextDecorationNone;
+        && style.textDecorationsInEffect().isEmpty();
 }
 
 bool AccessibilityRenderObject::hasSameFont(RenderObject* renderer) const
@@ -3617,7 +3632,7 @@ bool AccessibilityRenderObject::hasUnderline() const
     if (!m_renderer)
         return false;
     
-    return m_renderer->style().textDecorationsInEffect() & TextDecorationUnderline;
+    return m_renderer->style().textDecorationsInEffect().contains(TextDecoration::Underline);
 }
 
 String AccessibilityRenderObject::nameForMSAA() const

@@ -245,7 +245,7 @@ bool CookieJarDB::searchCookies(const String& requestUrl, const std::optional<bo
         return false;
 
     URL requestUrlObj(ParsedURLString, requestUrl);
-    String requestHost(requestUrlObj.host().convertToASCIILowercase());
+    String requestHost(requestUrlObj.host().toString().convertToASCIILowercase());
     String requestPath(requestUrlObj.path().convertToASCIILowercase());
 
     if (requestHost.isEmpty())
@@ -316,20 +316,16 @@ bool CookieJarDB::searchCookies(const String& requestUrl, const std::optional<bo
         if (!isPathMatched)
             continue;
 
-        Cookie result(cookieName,
-            cookieValue,
-            cookieDomain,
-            cookiePath,
-            0,
-            cookieExpires,
-            cookieHttpOnly,
-            cookieSecure,
-            cookieSession,
-            String(),
-            URL(),
-            Vector<uint16_t>());
-
-        results.append(result);
+        Cookie cookie;
+        cookie.name = cookieName;
+        cookie.value = cookieValue;
+        cookie.domain = cookieDomain;
+        cookie.path = cookiePath;
+        cookie.expires = cookieExpires;
+        cookie.httpOnly = cookieHttpOnly;
+        cookie.secure = cookieSecure;
+        cookie.session = cookieSession;
+        results.append(WTFMove(cookie));
     }
     pstmt->finalize();
 
@@ -386,7 +382,7 @@ int CookieJarDB::setCookie(const String& url, const String& cookie, bool fromJav
         return -1;
 
     URL urlObj(ParsedURLString, url);
-    String host(urlObj.host());
+    String host(urlObj.host().toString());
     String path(urlObj.path());
 
     Cookie cookieObj;
@@ -421,7 +417,7 @@ int CookieJarDB::deleteCookie(const String& url, const String& name)
 
     URL urlObj(ParsedURLString, urlCopied);
     if (urlObj.isValid()) {
-        String hostStr(urlObj.host());
+        String hostStr(urlObj.host().toString());
         String pathStr(urlObj.path());
         int ret = deleteCookieInternal(name, hostStr, pathStr);
         ASSERT(checkSQLiteReturnCode(ret, SQLITE_DONE));

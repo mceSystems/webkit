@@ -3015,7 +3015,7 @@ bool GraphicsLayerCA::createAnimationFromKeyframes(const KeyframeValueList& valu
     if (!valuesOK)
         return false;
 
-    m_uncomittedAnimations.append(LayerPropertyAnimation(caAnimation.releaseNonNull(), animationName, valueList.property(), animationIndex, 0, timeOffset));
+    appendToUncommittedAnimations(LayerPropertyAnimation(caAnimation.releaseNonNull(), animationName, valueList.property(), animationIndex, 0, timeOffset));
 
     return true;
 }
@@ -3042,7 +3042,7 @@ bool GraphicsLayerCA::appendToUncommittedAnimations(const KeyframeValueList& val
     if (!validMatrices)
         return false;
 
-    m_uncomittedAnimations.append(LayerPropertyAnimation(caAnimation.releaseNonNull(), animationName, valueList.property(), animationIndex, 0, timeOffset));
+    appendToUncommittedAnimations(LayerPropertyAnimation(caAnimation.releaseNonNull(), animationName, valueList.property(), animationIndex, 0, timeOffset));
     return true;
 }
 
@@ -3104,10 +3104,19 @@ bool GraphicsLayerCA::appendToUncommittedAnimations(const KeyframeValueList& val
         
         ASSERT(valuesOK);
 
-        m_uncomittedAnimations.append(LayerPropertyAnimation(caAnimation.releaseNonNull(), animationName, valueList.property(), animationIndex, internalFilterPropertyIndex, timeOffset));
+        appendToUncommittedAnimations(LayerPropertyAnimation(caAnimation.releaseNonNull(), animationName, valueList.property(), animationIndex, internalFilterPropertyIndex, timeOffset));
     }
 
     return true;
+}
+
+void GraphicsLayerCA::appendToUncommittedAnimations(LayerPropertyAnimation&& animation)
+{
+    // Since we're adding a new animation, make sure we clear any pending AnimationProcessingAction for this animation
+    // as these are applied after we've committed new animations.
+    m_animationsToProcess.remove(animation.m_name);
+
+    m_uncomittedAnimations.append(WTFMove(animation));
 }
 
 bool GraphicsLayerCA::createFilterAnimationsFromKeyframes(const KeyframeValueList& valueList, const Animation* animation, const String& animationName, Seconds timeOffset)
@@ -3178,16 +3187,16 @@ void GraphicsLayerCA::setupAnimation(PlatformCAAnimation* propertyAnim, const An
 
     PlatformCAAnimation::FillModeType fillMode = PlatformCAAnimation::NoFillMode;
     switch (anim->fillMode()) {
-    case AnimationFillModeNone:
+    case AnimationFillMode::None:
         fillMode = PlatformCAAnimation::Forwards; // Use "forwards" rather than "removed" because the style system will remove the animation when it is finished. This avoids a flash.
         break;
-    case AnimationFillModeBackwards:
+    case AnimationFillMode::Backwards:
         fillMode = PlatformCAAnimation::Both; // Use "both" rather than "backwards" because the style system will remove the animation when it is finished. This avoids a flash.
         break;
-    case AnimationFillModeForwards:
+    case AnimationFillMode::Forwards:
         fillMode = PlatformCAAnimation::Forwards;
         break;
-    case AnimationFillModeBoth:
+    case AnimationFillMode::Both:
         fillMode = PlatformCAAnimation::Both;
         break;
     }

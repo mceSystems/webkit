@@ -55,6 +55,10 @@
 #include "PluginProcessManager.h"
 #endif
 
+#if HAVE(SEC_KEY_PROXY)
+#include "SecKeyProxyStore.h"
+#endif
+
 namespace WebKit {
 
 static bool allowsWebsiteDataRecordsForAllOrigins;
@@ -443,12 +447,11 @@ void WebsiteDataStore::fetchDataAndApply(OptionSet<WebsiteDataType> dataTypes, O
 
             WebsiteData websiteData;
 
-            HashSet<RefPtr<WebCore::SecurityOrigin>> origins;
             // FIXME: getOriginsWithCache should return a collection of SecurityOriginDatas.
-            storage->getOriginsWithCache(origins);
+            auto origins = storage->originsWithCache();
 
             for (auto& origin : origins) {
-                uint64_t size = fetchOptions.contains(WebsiteDataFetchOption::ComputeSizes) ? storage->diskUsageForOrigin(*origin) : 0;
+                uint64_t size = fetchOptions.contains(WebsiteDataFetchOption::ComputeSizes) ? storage->diskUsageForOrigin(origin) : 0;
                 WebsiteData::Entry entry { origin->data(), WebsiteDataType::OfflineWebApplicationCache, size };
 
                 websiteData.entries.append(WTFMove(entry));
@@ -1240,14 +1243,24 @@ void WebsiteDataStore::hasStorageAccess(String&& subFrameHost, String&& topFrame
     m_resourceLoadStatistics->hasStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, pageID, WTFMove(callback));
 }
 
-void WebsiteDataStore::requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback)
+void WebsiteDataStore::requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, bool promptEnabled, CompletionHandler<void(StorageAccessStatus)>&& callback)
+{
+    if (!resourceLoadStatisticsEnabled()) {
+        callback(StorageAccessStatus::CannotRequestAccess);
+        return;
+    }
+    
+    m_resourceLoadStatistics->requestStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, pageID, promptEnabled, WTFMove(callback));
+}
+
+void WebsiteDataStore::grantStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, bool userWasPrompted, CompletionHandler<void(bool)>&& callback)
 {
     if (!resourceLoadStatisticsEnabled()) {
         callback(false);
         return;
     }
     
-    m_resourceLoadStatistics->requestStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, pageID, WTFMove(callback));
+    m_resourceLoadStatistics->grantStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, pageID, userWasPrompted, WTFMove(callback));
 }
 #endif
 
@@ -1464,7 +1477,7 @@ void WebsiteDataStore::enableResourceLoadStatisticsAndSetTestingCallback(Functio
     m_resourceLoadStatistics = WebResourceLoadStatisticsStore::create(m_configuration.resourceLoadStatisticsDirectory, WTFMove(callback), m_sessionID.isEphemeral());
 #endif
 
-    for (auto& processPool : processPools())
+    for (auto& processPool : processPools(std::numeric_limits<size_t>::max(), false))
         processPool->setResourceLoadStatisticsEnabled(true);
 }
 
@@ -1513,6 +1526,11 @@ void WebsiteDataStore::removePendingCookie(const WebCore::Cookie& cookie)
 {
     m_pendingCookies.remove(cookie);
 }
+    
+void WebsiteDataStore::clearPendingCookies()
+{
+    m_pendingCookies.clear();
+}
 
 #if !PLATFORM(COCOA)
 WebsiteDataStoreParameters WebsiteDataStore::parameters()
@@ -1521,6 +1539,13 @@ WebsiteDataStoreParameters WebsiteDataStore::parameters()
     WebsiteDataStoreParameters parameters;
     parameters.networkSessionParameters.sessionID = m_sessionID;
     return parameters;
+}
+#endif
+
+#if HAVE(SEC_KEY_PROXY)
+void WebsiteDataStore::addSecKeyProxyStore(Ref<SecKeyProxyStore>&& store)
+{
+    m_secKeyProxyStores.append(WTFMove(store));
 }
 #endif
 

@@ -28,6 +28,7 @@
 
 #if ENABLE(LAYOUT_FORMATTING_CONTEXT)
 
+#include "RenderStyle.h"
 #include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
@@ -35,7 +36,8 @@ namespace Display {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(Box);
 
-Box::Box()
+Box::Box(const RenderStyle& style)
+    : m_style(style)
 {
 }
 
@@ -43,44 +45,65 @@ Box::~Box()
 {
 }
 
-LayoutRect Box::marginBox() const
+Box::Style::Style(const RenderStyle& style)
+    : boxSizing(style.boxSizing())
+{
+
+}
+
+Box::Rect Box::marginBox() const
 {
     ASSERT(m_hasValidMargin);
-    auto marginBox = rect();
-    auto topLeftMargin = LayoutSize(m_marginLeft, m_marginTop);
-    marginBox.inflate(topLeftMargin);
+    auto marginBox = borderBox();
 
-    auto bottomRightMargin = LayoutSize(m_marginRight, m_marginBottom);
-    marginBox.expand(bottomRightMargin);
+    marginBox.shiftLeftTo(marginBox.left() + m_margin.left);
+    marginBox.shiftBottomTo(marginBox.top() + m_margin.top);
+    marginBox.shiftRightTo(marginBox.right() - m_margin.right);
+    marginBox.shiftBottomTo(marginBox.bottom() - m_margin.bottom);
+
     return marginBox;
 }
 
-LayoutRect Box::borderBox() const
+Box::Rect Box::borderBox() const
 {
-    return LayoutRect(LayoutPoint(0, 0), size());
+    if (m_style.boxSizing == BoxSizing::BorderBox)
+        return Box::Rect( { }, size());
+
+    // Width is content box.
+    ASSERT(m_hasValidBorder);
+    ASSERT(m_hasValidPadding);
+    auto borderBoxSize = size();
+    borderBoxSize.expand(borderLeft() + paddingLeft() + paddingRight() + borderRight(), borderTop() + paddingTop() + paddingBottom() + borderBottom());
+    return Box::Rect( { }, borderBoxSize);
 }
 
-LayoutRect Box::paddingBox() const
+Box::Rect Box::paddingBox() const
 {
     ASSERT(m_hasValidBorder);
     auto paddingBox = borderBox();
-    auto topLeftBorder = LayoutSize(m_borderLeft, m_borderTop);
-    paddingBox.inflate(-topLeftBorder);
 
-    auto bottomRightBorder = LayoutSize(m_borderRight, m_borderBottom);
-    paddingBox.expand(-bottomRightBorder);
+    paddingBox.shiftLeftTo(paddingBox.left() + m_border.left);
+    paddingBox.shiftTopTo(paddingBox.top() + m_border.top);
+    paddingBox.shiftRightTo(paddingBox.left() - m_border.right);
+    paddingBox.shiftBottomTo(paddingBox.bottom() - m_border.bottom);
+
     return paddingBox;
 }
 
-LayoutRect Box::contentBox() const
+Box::Rect Box::contentBox() const
 {
+    if (m_style.boxSizing == BoxSizing::ContentBox)
+        return Box::Rect(LayoutPoint(0, 0), size());
+
+    // Width is border box.
     ASSERT(m_hasValidPadding);
     auto contentBox = paddingBox();
-    auto topLeftPadding = LayoutSize(m_paddingLeft, m_paddingTop);
-    contentBox.inflate(-topLeftPadding);
-    
-    auto bottomRightPadding = LayoutSize(m_paddingRight, m_paddingBottom);
-    contentBox.expand(-bottomRightPadding);
+
+    contentBox.shiftLeftTo(contentBox.left() + m_padding.left);
+    contentBox.shiftTopTo(contentBox.top() + m_padding.top);
+    contentBox.shiftBottomTo(contentBox.bottom() - m_padding.bottom);
+    contentBox.shiftRightTo(contentBox.right() - m_padding.right);
+
     return contentBox;
 }
 

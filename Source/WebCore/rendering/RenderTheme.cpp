@@ -79,13 +79,13 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
 {
     // Force inline and table display styles to be inline-block (except for table- which is block)
     ControlPart part = style.appearance();
-    if (style.display() == INLINE || style.display() == INLINE_TABLE || style.display() == TABLE_ROW_GROUP
-        || style.display() == TABLE_HEADER_GROUP || style.display() == TABLE_FOOTER_GROUP
-        || style.display() == TABLE_ROW || style.display() == TABLE_COLUMN_GROUP || style.display() == TABLE_COLUMN
-        || style.display() == TABLE_CELL || style.display() == TABLE_CAPTION)
-        style.setDisplay(INLINE_BLOCK);
-    else if (style.display() == COMPACT || style.display() == LIST_ITEM || style.display() == TABLE)
-        style.setDisplay(BLOCK);
+    if (style.display() == DisplayType::Inline || style.display() == DisplayType::InlineTable || style.display() == DisplayType::TableRowGroup
+        || style.display() == DisplayType::TableHeaderGroup || style.display() == DisplayType::TableFooterGroup
+        || style.display() == DisplayType::TableRow || style.display() == DisplayType::TableColumnGroup || style.display() == DisplayType::TableColumn
+        || style.display() == DisplayType::TableCell || style.display() == DisplayType::TableCaption)
+        style.setDisplay(DisplayType::InlineBlock);
+    else if (style.display() == DisplayType::Compact || style.display() == DisplayType::ListItem || style.display() == DisplayType::Table)
+        style.setDisplay(DisplayType::Block);
 
     if (UAHasAppearance && isControlStyled(style, border, background, backgroundColor)) {
         switch (part) {
@@ -154,7 +154,7 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
 
         // Whitespace
         if (Theme::singleton().controlRequiresPreWhiteSpace(part))
-            style.setWhiteSpace(PRE);
+            style.setWhiteSpace(WhiteSpace::Pre);
 
         // Width / Height
         // The width and height here are affected by the zoom.
@@ -176,7 +176,7 @@ void RenderTheme::adjustStyle(StyleResolver& styleResolver, RenderStyle& style, 
         if (auto themeFont = Theme::singleton().controlFont(part, style.fontCascade(), style.effectiveZoom())) {
             // If overriding the specified font with the theme font, also override the line height with the standard line height.
             style.setLineHeight(RenderStyle::initialLineHeight());
-            if (style.setFontDescription(themeFont.value()))
+            if (style.setFontDescription(WTFMove(themeFont.value())))
                 style.fontCascade().update(nullptr);
         }
 
@@ -303,7 +303,7 @@ bool RenderTheme::paint(const RenderBox& box, ControlStates& controlStates, cons
     case ButtonPart:
     case InnerSpinButtonPart:
         updateControlStatesForRenderer(box, controlStates);
-        Theme::singleton().paint(part, controlStates, paintInfo.context(), devicePixelSnappedRect, box.style().effectiveZoom(), &box.view().frameView(), deviceScaleFactor, pageScaleFactor, box.page().useSystemAppearance());
+        Theme::singleton().paint(part, controlStates, paintInfo.context(), devicePixelSnappedRect, box.style().effectiveZoom(), &box.view().frameView(), deviceScaleFactor, pageScaleFactor, box.page().useSystemAppearance(), box.page().defaultAppearance());
         return false;
     default:
         break;
@@ -614,10 +614,10 @@ Color RenderTheme::activeListBoxSelectionBackgroundColor() const
     return m_activeListBoxSelectionBackgroundColor;
 }
 
-Color RenderTheme::inactiveListBoxSelectionBackgroundColor(bool useSystemAppearance) const
+Color RenderTheme::inactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options> options) const
 {
     if (!m_inactiveListBoxSelectionBackgroundColor.isValid())
-        m_inactiveListBoxSelectionBackgroundColor = platformInactiveListBoxSelectionBackgroundColor(useSystemAppearance);
+        m_inactiveListBoxSelectionBackgroundColor = platformInactiveListBoxSelectionBackgroundColor(options);
     return m_inactiveListBoxSelectionBackgroundColor;
 }
 
@@ -670,7 +670,7 @@ Color RenderTheme::platformActiveListBoxSelectionForegroundColor() const
     return platformActiveSelectionForegroundColor();
 }
 
-Color RenderTheme::platformInactiveListBoxSelectionBackgroundColor(bool) const
+Color RenderTheme::platformInactiveListBoxSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
     return platformInactiveSelectionBackgroundColor();
 }
@@ -775,7 +775,7 @@ ControlStates::States RenderTheme::extractControlStatesForRenderer(const RenderO
         if (isSpinUpButtonPartPressed(o))
             states |= ControlStates::SpinUpState;
     }
-    if (isFocused(o) && o.style().outlineStyleIsAuto())
+    if (isFocused(o) && o.style().outlineStyleIsAuto() == OutlineIsAuto::On)
         states |= ControlStates::FocusState;
     if (isEnabled(o))
         states |= ControlStates::EnabledState;

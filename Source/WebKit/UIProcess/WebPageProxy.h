@@ -391,7 +391,9 @@ public:
     void setAllowsMediaDocumentInlinePlayback(bool);
 #endif
 
+#if USE(SYSTEM_PREVIEW)
     SystemPreviewController* systemPreviewController() { return m_systemPreviewController.get(); }
+#endif
 
 #if ENABLE(CONTEXT_MENUS)
     API::ContextMenuClient& contextMenuClient() { return *m_contextMenuClient; }
@@ -1026,6 +1028,9 @@ public:
     void openPDFFromTemporaryFolderWithNativeApplication(const String& pdfUUID);
 #endif
 
+#if ENABLE(PDFKIT_PLUGIN)
+    void showPDFContextMenu(const WebKit::PDFContextMenu&, int32_t& selectedIndex);
+#endif
     WebCore::IntRect visibleScrollerThumbRect() const { return m_visibleScrollerThumbRect; }
 
     uint64_t renderTreeSize() const { return m_renderTreeSize; }
@@ -1235,7 +1240,7 @@ public:
 
     void setFocus(bool focused);
     void setWindowFrame(const WebCore::FloatRect&);
-    void getWindowFrame(Ref<Messages::WebPageProxy::GetWindowFrame::DelayedReply>&&);
+    void getWindowFrame(Messages::WebPageProxy::GetWindowFrame::DelayedReply&&);
     void getWindowFrameWithCallback(Function<void(WebCore::FloatRect)>&&);
 
     bool isResourceCachingDisabled() const { return m_isResourceCachingDisabled; }
@@ -1303,6 +1308,14 @@ public:
     SuspendedPageProxy* maybeCreateSuspendedPage(WebProcessProxy&, API::Navigation&);
     SuspendedPageProxy* suspendedPage() const { return m_suspendedPage.get(); }
     void suspendedPageClosed(SuspendedPageProxy&);
+
+    void setDefersLoadingForTesting(bool);
+
+    WebCore::IntRect syncRootViewToScreen(const WebCore::IntRect& viewRect);
+
+#if PLATFORM(COCOA)
+    Vector<String> mediaMIMETypes();
+#endif
 
 private:
     WebPageProxy(PageClient&, WebProcessProxy&, uint64_t pageID, Ref<API::PageConfiguration>&&);
@@ -1384,7 +1397,7 @@ private:
     void didDestroyNavigation(uint64_t navigationID);
 
     void decidePolicyForNavigationAction(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, NavigationActionData&&, const FrameInfoData&, uint64_t originatingPageID, const WebCore::ResourceRequest& originalRequest, WebCore::ResourceRequest&&, uint64_t listenerID, const UserData&);
-    void decidePolicyForNavigationActionSync(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, NavigationActionData&&, const FrameInfoData&, uint64_t originatingPageID, const WebCore::ResourceRequest& originalRequest, WebCore::ResourceRequest&&, uint64_t listenerID, const UserData&, Ref<Messages::WebPageProxy::DecidePolicyForNavigationActionSync::DelayedReply>&&);
+    void decidePolicyForNavigationActionSync(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, NavigationActionData&&, const FrameInfoData&, uint64_t originatingPageID, const WebCore::ResourceRequest& originalRequest, WebCore::ResourceRequest&&, uint64_t listenerID, const UserData&, Messages::WebPageProxy::DecidePolicyForNavigationActionSync::DelayedReply&&);
     void decidePolicyForNewWindowAction(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, NavigationActionData&&, WebCore::ResourceRequest&&, const String& frameName, uint64_t listenerID, const UserData&);
     void decidePolicyForResponse(uint64_t frameID, const WebCore::SecurityOriginData& frameSecurityOrigin, uint64_t navigationID, const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, bool canShowMIMEType, uint64_t listenerID, const UserData&);
     void unableToImplementPolicy(uint64_t frameID, const WebCore::ResourceError&, const UserData&);
@@ -1400,11 +1413,11 @@ private:
     void didUpdateHistoryTitle(const String& title, const String& url, uint64_t frameID);
 
     // UI client
-    void createNewPage(const FrameInfoData&, uint64_t originatingPageID, WebCore::ResourceRequest&&, WebCore::WindowFeatures&&, NavigationActionData&&, Ref<Messages::WebPageProxy::CreateNewPage::DelayedReply>&&);
+    void createNewPage(const FrameInfoData&, uint64_t originatingPageID, WebCore::ResourceRequest&&, WebCore::WindowFeatures&&, NavigationActionData&&, Messages::WebPageProxy::CreateNewPage::DelayedReply&&);
     void showPage();
-    void runJavaScriptAlert(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, Ref<Messages::WebPageProxy::RunJavaScriptAlert::DelayedReply>&&);
-    void runJavaScriptConfirm(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, Ref<Messages::WebPageProxy::RunJavaScriptConfirm::DelayedReply>&&);
-    void runJavaScriptPrompt(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, const String&, Ref<Messages::WebPageProxy::RunJavaScriptPrompt::DelayedReply>&&);
+    void runJavaScriptAlert(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, Messages::WebPageProxy::RunJavaScriptAlert::DelayedReply&&);
+    void runJavaScriptConfirm(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, Messages::WebPageProxy::RunJavaScriptConfirm::DelayedReply&&);
+    void runJavaScriptPrompt(uint64_t frameID, const WebCore::SecurityOriginData&, const String&, const String&, Messages::WebPageProxy::RunJavaScriptPrompt::DelayedReply&&);
     void setStatusText(const String&);
     void mouseDidMoveOverElement(WebHitTestResultData&&, uint32_t modifiers, UserData&&);
 
@@ -1412,29 +1425,29 @@ private:
     void unavailablePluginButtonClicked(uint32_t opaquePluginUnavailabilityReason, const String& mimeType, const String& pluginURLString, const String& pluginsPageURLString, const String& frameURLString, const String& pageURLString);
 #endif // ENABLE(NETSCAPE_PLUGIN_API)
 #if ENABLE(WEBGL)
-    void webGLPolicyForURL(WebCore::URL&&, Ref<Messages::WebPageProxy::WebGLPolicyForURL::DelayedReply>&&);
-    void resolveWebGLPolicyForURL(WebCore::URL&&, Ref<Messages::WebPageProxy::ResolveWebGLPolicyForURL::DelayedReply>&&);
+    void webGLPolicyForURL(WebCore::URL&&, Messages::WebPageProxy::WebGLPolicyForURL::DelayedReply&&);
+    void resolveWebGLPolicyForURL(WebCore::URL&&, Messages::WebPageProxy::ResolveWebGLPolicyForURL::DelayedReply&&);
 #endif // ENABLE(WEBGL)
     void setToolbarsAreVisible(bool toolbarsAreVisible);
-    void getToolbarsAreVisible(Ref<Messages::WebPageProxy::GetToolbarsAreVisible::DelayedReply>&&);
+    void getToolbarsAreVisible(Messages::WebPageProxy::GetToolbarsAreVisible::DelayedReply&&);
     void setMenuBarIsVisible(bool menuBarIsVisible);
-    void getMenuBarIsVisible(Ref<Messages::WebPageProxy::GetMenuBarIsVisible::DelayedReply>&&);
+    void getMenuBarIsVisible(Messages::WebPageProxy::GetMenuBarIsVisible::DelayedReply&&);
     void setStatusBarIsVisible(bool statusBarIsVisible);
-    void getStatusBarIsVisible(Ref<Messages::WebPageProxy::GetStatusBarIsVisible::DelayedReply>&&);
+    void getStatusBarIsVisible(Messages::WebPageProxy::GetStatusBarIsVisible::DelayedReply&&);
     void setIsResizable(bool isResizable);
-    void screenToRootView(const WebCore::IntPoint& screenPoint, Ref<Messages::WebPageProxy::ScreenToRootView::DelayedReply>&&);
-    void rootViewToScreen(const WebCore::IntRect& viewRect, Ref<Messages::WebPageProxy::RootViewToScreen::DelayedReply>&&);
+    void screenToRootView(const WebCore::IntPoint& screenPoint, Messages::WebPageProxy::ScreenToRootView::DelayedReply&&);
+    void rootViewToScreen(const WebCore::IntRect& viewRect, Messages::WebPageProxy::RootViewToScreen::DelayedReply&&);
 #if PLATFORM(IOS)
     void accessibilityScreenToRootView(const WebCore::IntPoint& screenPoint, WebCore::IntPoint& windowPoint);
     void rootViewToAccessibilityScreen(const WebCore::IntRect& viewRect, WebCore::IntRect& result);
 #endif
-    void runBeforeUnloadConfirmPanel(uint64_t frameID, const WebCore::SecurityOriginData&, const String& message, RefPtr<Messages::WebPageProxy::RunBeforeUnloadConfirmPanel::DelayedReply>);
+    void runBeforeUnloadConfirmPanel(uint64_t frameID, const WebCore::SecurityOriginData&, const String& message, Messages::WebPageProxy::RunBeforeUnloadConfirmPanel::DelayedReply&&);
     void didChangeViewportProperties(const WebCore::ViewportAttributes&);
     void pageDidScroll();
     void runOpenPanel(uint64_t frameID, const WebCore::SecurityOriginData&, const WebCore::FileChooserSettings&);
     void printFrame(uint64_t frameID);
-    void exceededDatabaseQuota(uint64_t frameID, const String& originIdentifier, const String& databaseName, const String& displayName, uint64_t currentQuota, uint64_t currentOriginUsage, uint64_t currentDatabaseUsage, uint64_t expectedUsage, Ref<Messages::WebPageProxy::ExceededDatabaseQuota::DelayedReply>&&);
-    void reachedApplicationCacheOriginQuota(const String& originIdentifier, uint64_t currentQuota, uint64_t totalBytesNeeded, Ref<Messages::WebPageProxy::ReachedApplicationCacheOriginQuota::DelayedReply>&&);
+    void exceededDatabaseQuota(uint64_t frameID, const String& originIdentifier, const String& databaseName, const String& displayName, uint64_t currentQuota, uint64_t currentOriginUsage, uint64_t currentDatabaseUsage, uint64_t expectedUsage, Messages::WebPageProxy::ExceededDatabaseQuota::DelayedReply&&);
+    void reachedApplicationCacheOriginQuota(const String& originIdentifier, uint64_t currentQuota, uint64_t totalBytesNeeded, Messages::WebPageProxy::ReachedApplicationCacheOriginQuota::DelayedReply&&);
     void requestGeolocationPermissionForFrame(uint64_t geolocationID, uint64_t frameID, String originIdentifier);
 
 #if ENABLE(MEDIA_STREAM)
@@ -1849,7 +1862,9 @@ private:
     std::unique_ptr<WebPaymentCoordinatorProxy> m_paymentCoordinator;
 #endif
 
+#if USE(SYSTEM_PREVIEW)
     std::unique_ptr<SystemPreviewController> m_systemPreviewController;
+#endif
 
 #if ENABLE(WEB_AUTHN)
     std::unique_ptr<WebCredentialsMessengerProxy> m_credentialsMessenger;
@@ -1952,7 +1967,7 @@ private:
     bool m_isPerformingDOMPrintOperation { false };
 
     // Synchronous navigation policy decision.
-    RefPtr<Messages::WebPageProxy::DecidePolicyForNavigationActionSync::DelayedReply> m_syncNavigationActionPolicyReply;
+    Messages::WebPageProxy::DecidePolicyForNavigationActionSync::DelayedReply m_syncNavigationActionPolicyReply;
 
     WebCore::ResourceRequest m_decidePolicyForResponseRequest;
     bool m_shouldSuppressAppLinksInNextNavigationPolicyDecision { false };
@@ -2062,7 +2077,7 @@ private:
     bool m_enableVerticalRubberBanding { true };
     bool m_enableHorizontalRubberBanding { true };
 
-    bool m_backgroundExtendsBeyondPage { false };
+    bool m_backgroundExtendsBeyondPage { true };
 
     bool m_shouldRecordNavigationSnapshots { false };
     bool m_isShowingNavigationGestureSnapshot { false };

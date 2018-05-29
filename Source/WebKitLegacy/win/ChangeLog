@@ -1,3 +1,70 @@
+2018-05-27  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        REGRESSION(r232198) [WinCairo] cannot convert from 'WTF::StringView' to 'const WTF::String'
+        https://bugs.webkit.org/show_bug.cgi?id=186027
+
+        Unreviewed build fix
+
+        * WebMutableURLRequest.cpp:
+        (WebMutableURLRequest::setAllowsAnyHTTPSCertificate):
+        (WebMutableURLRequest::setClientCertificate):
+
+2018-05-25  Chris Dumez  <cdumez@apple.com>
+
+        Minor ApplicationCacheStorage clean up
+        https://bugs.webkit.org/show_bug.cgi?id=185984
+
+        Reviewed by Youenn Fablet.
+
+        * WebApplicationCache.cpp:
+        (WebApplicationCache::originsWithCache):
+
+2018-05-24  Chris Dumez  <cdumez@apple.com>
+
+        Reduce copying of FontCascadeDescription objects by moving them around
+        https://bugs.webkit.org/show_bug.cgi?id=185963
+
+        Reviewed by Simon Fraser.
+
+        Reduce copying of FontCascadeDescription objects by moving them around when possible.
+
+        * FullscreenVideoController.cpp:
+        (FullscreenVideoController::draw):
+
+2018-05-15  Antoine Quint  <graouts@apple.com>
+
+        [Web Animations] Expose Web Animations CSS integration as an experimental feature
+        https://bugs.webkit.org/show_bug.cgi?id=185647
+
+        Reviewed by Dean Jackson.
+
+        Rename the Web Animations CSS integration flag.
+
+        * Interfaces/IWebPreferencesPrivate.idl:
+        * WebPreferenceKeysPrivate.h:
+        * WebPreferences.cpp:
+        (WebPreferences::initializeDefaultSettings):
+        (WebPreferences::webAnimationsCSSIntegrationEnabled):
+        (WebPreferences::setWebAnimationsCSSIntegrationEnabled):
+        (WebPreferences::cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled): Deleted.
+        (WebPreferences::setCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled): Deleted.
+        * WebPreferences.h:
+        * WebView.cpp:
+        (WebView::notifyPreferencesChanged):
+
+2018-05-10  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        REGRESSION(r231622) [Win] Crashes for null dereference of prefsPrivate in WebView::notifyPreferencesChanged
+        https://bugs.webkit.org/show_bug.cgi?id=185505
+
+        Unreviewed serious crash fix
+
+        Windows port crashes soon since Bug 184996.
+
+        * WebPreferences.cpp:
+        (WebPreferences::QueryInterface): Added IID_IWebPreferencesPrivate7.
+        * WebPreferences.h: Inherit IWebPreferencesPrivate7 instead of IWebPreferencesPrivate6.
+
 2018-05-07  Daniel Bates  <dabates@apple.com>
 
         Substitute CrossOriginPreflightResultCache::clear() for CrossOriginPreflightResultCache::empty()

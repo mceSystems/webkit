@@ -49,6 +49,7 @@
 #include "NetworkProcessMessages.h"
 #include "NetworkProcessProxy.h"
 #include "PerActivityStateCPUUsageSampler.h"
+#include "PluginProcessManager.h"
 #include "SandboxExtension.h"
 #include "ServiceWorkerProcessProxy.h"
 #include "StatisticsData.h"
@@ -59,6 +60,8 @@
 #include "UIGamepadProvider.h"
 #include "WKContextPrivate.h"
 #include "WebAutomationSession.h"
+#include "WebBackForwardList.h"
+#include "WebBackForwardListItem.h"
 #include "WebCertificateInfo.h"
 #include "WebContextSupplement.h"
 #include "WebCookieManagerProxy.h"
@@ -90,6 +93,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/ProcessPrivilege.h>
 #include <wtf/RunLoop.h>
+#include <wtf/Scope.h>
 #include <wtf/WallTime.h>
 #include <wtf/text/StringBuilder.h>
 
@@ -267,6 +271,10 @@ WebProcessPool::WebProcessPool(API::ProcessPoolConfiguration& configuration)
 
     platformInitialize();
 
+#if OS(LINUX)
+    MemoryPressureMonitor::singleton().start();
+#endif
+
     addMessageReceiver(Messages::WebProcessPool::messageReceiverName(), *this);
 
     // NOTE: These sub-objects must be initialized after m_messageReceiverMap..
@@ -411,16 +419,38 @@ void WebProcessPool::fullKeyboardAccessModeChanged(bool fullKeyboardAccessEnable
     sendToAllProcesses(Messages::WebProcess::FullKeyboardAccessModeChanged(fullKeyboardAccessEnabled));
 }
 
+#if OS(LINUX)
+void WebProcessPool::sendMemoryPressureEvent(bool isCritical)
+{
+    sendToAllProcesses(Messages::ChildProcess::DidReceiveMemoryPressureEvent(isCritical));
+    sendToNetworkingProcess(Messages::ChildProcess::DidReceiveMemoryPressureEvent(isCritical));
+    sendToStorageProcess(Messages::ChildProcess::DidReceiveMemoryPressureEvent(isCritical));
+#if ENABLE(NETSCAPE_PLUGIN_API)
+    PluginProcessManager::singleton().sendMemoryPressureEvent(isCritical);
+#endif
+}
+#endif
+
 void WebProcessPool::textCheckerStateChanged()
 {
     sendToAllProcesses(Messages::WebProcess::SetTextCheckerState(TextChecker::state()));
 }
 
+void WebProcessPool::screenPropertiesStateChanged()
+{
+#if PLATFORM(MAC)
+    auto screenProperties = WebCore::getScreenProperties();
+    sendToAllProcesses(Messages::WebProcess::SetScreenProperties(screenProperties.first, screenProperties.second));
+#endif
+}
+
 NetworkProcessProxy& WebProcessPool::ensureNetworkProcess(WebsiteDataStore* withWebsiteDataStore)
 {
     if (m_networkProcess) {
-        if (withWebsiteDataStore)
+        if (withWebsiteDataStore) {
             m_networkProcess->send(Messages::NetworkProcess::AddWebsiteDataStore(withWebsiteDataStore->parameters()), 0);
+            withWebsiteDataStore->clearPendingCookies();
+        }
         return *m_networkProcess;
     }
 
@@ -478,11 +508,6 @@ NetworkProcessProxy& WebProcessPool::ensureNetworkProcess(WebsiteDataStore* with
         SandboxExtension::createHandle(parentBundleDirectory, SandboxExtension::Type::ReadOnly, parameters.parentBundleDirectoryExtensionHandle);
 #endif
 
-#if OS(LINUX)
-    if (MemoryPressureMonitor::isEnabled())
-        parameters.memoryPressureMonitorHandle = MemoryPressureMonitor::singleton().createHandle();
-#endif
-
     parameters.shouldUseTestingNetworkSession = m_shouldUseTestingNetworkSession;
     parameters.presentingApplicationPID = m_configuration->presentingApplicationPID();
 
@@ -494,7 +519,7 @@ NetworkProcessProxy& WebProcessPool::ensureNetworkProcess(WebsiteDataStore* with
     parameters.urlSchemesRegisteredAsCORSEnabled = copyToVector(m_schemesToRegisterAsCORSEnabled);
     parameters.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest = copyToVector(m_schemesToRegisterAsCanDisplayOnlyIfCanRequest);
 
-    parameters.trackNetworkActivity = m_configuration->trackNetworkActivity();
+    parameters.tracksResourceLoadMilestones = m_configuration->tracksResourceLoadMilestones();
 
     // Add any platform specific parameters
     platformInitializeNetworkProcess(parameters);
@@ -513,13 +538,20 @@ NetworkProcessProxy& WebProcessPool::ensureNetworkProcess(WebsiteDataStore* with
             m_websiteDataStore->websiteDataStore().networkProcessDidCrash();
     }
 
-    if (withWebsiteDataStore)
+    if (m_websiteDataStore) {
+        m_networkProcess->send(Messages::NetworkProcess::AddWebsiteDataStore(m_websiteDataStore->websiteDataStore().parameters()), 0);
+        m_websiteDataStore->websiteDataStore().clearPendingCookies();
+    }
+    
+    if (withWebsiteDataStore) {
         m_networkProcess->send(Messages::NetworkProcess::AddWebsiteDataStore(withWebsiteDataStore->parameters()), 0);
+        withWebsiteDataStore->clearPendingCookies();
+    }
 
     return *m_networkProcess;
 }
 
-void WebProcessPool::networkProcessCrashed(NetworkProcessProxy& networkProcessProxy, Vector<Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>>&& pendingReplies)
+void WebProcessPool::networkProcessCrashed(NetworkProcessProxy& networkProcessProxy, Vector<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&& pendingReplies)
 {
     networkProcessFailedToLaunch(networkProcessProxy);
     ASSERT(!m_networkProcess);
@@ -541,11 +573,14 @@ void WebProcessPool::networkProcessFailedToLaunch(NetworkProcessProxy& networkPr
 
     m_client.networkProcessDidCrash(this);
 
+    if (m_automationSession)
+        m_automationSession->terminate();
+
     // Leave the process proxy around during client call, so that the client could query the process identifier.
     m_networkProcess = nullptr;
 }
 
-void WebProcessPool::getNetworkProcessConnection(Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&& reply)
+void WebProcessPool::getNetworkProcessConnection(Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply&& reply)
 {
     ensureNetworkProcess();
     ASSERT(m_networkProcess);
@@ -592,7 +627,7 @@ void WebProcessPool::ensureStorageProcessAndWebsiteDataStore(WebsiteDataStore* r
     m_storageProcess->send(Messages::StorageProcess::InitializeWebsiteDataStore(relevantDataStore->storageProcessParameters()), 0);
 }
 
-void WebProcessPool::getStorageProcessConnection(WebProcessProxy& webProcessProxy, PAL::SessionID initialSessionID, Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&& reply)
+void WebProcessPool::getStorageProcessConnection(WebProcessProxy& webProcessProxy, PAL::SessionID initialSessionID, Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply&& reply)
 {
     ensureStorageProcessAndWebsiteDataStore(WebsiteDataStore::existingNonDefaultDataStoreForSessionID(initialSessionID));
 
@@ -608,6 +643,10 @@ void WebProcessPool::storageProcessCrashed(StorageProcessProxy* storageProcessPr
         supplement->processDidClose(storageProcessProxy);
 
     m_client.storageProcessDidCrash(this);
+
+    if (m_automationSession)
+        m_automationSession->terminate();
+
     m_storageProcess = nullptr;
 }
 
@@ -794,6 +833,14 @@ static void registerDisplayConfigurationCallback()
 
 void WebProcessPool::initializeNewWebProcess(WebProcessProxy& process, WebsiteDataStore& websiteDataStore)
 {
+    auto initializationActivityToken = process.throttler().backgroundActivityToken();
+    auto scopeExit = makeScopeExit([&process, initializationActivityToken] {
+        // Round-trip to the Web Content process before releasing the
+        // initialization activity token, so that we're sure that all
+        // messages sent from this function have been handled.
+        process.isResponsive([initializationActivityToken] (bool) { });
+    });
+
     ensureNetworkProcess();
 
     WebProcessCreationParameters parameters;
@@ -897,8 +944,6 @@ void WebProcessPool::initializeNewWebProcess(WebProcessProxy& process, WebsiteDa
 
 #if OS(LINUX)
     parameters.shouldEnableMemoryPressureReliefLogging = true;
-    if (MemoryPressureMonitor::isEnabled())
-        parameters.memoryPressureMonitorHandle = MemoryPressureMonitor::singleton().createHandle();
 #endif
 
 #if PLATFORM(WAYLAND) && USE(EGL)
@@ -906,12 +951,16 @@ void WebProcessPool::initializeNewWebProcess(WebProcessProxy& process, WebsiteDa
         parameters.waylandCompositorDisplayName = WaylandCompositor::singleton().displayName();
 #endif
 
-    parameters.resourceLoadStatisticsEnabled = resourceLoadStatisticsEnabled();
+    parameters.resourceLoadStatisticsEnabled = websiteDataStore.resourceLoadStatisticsEnabled();
 #if ENABLE(MEDIA_STREAM)
     parameters.shouldCaptureAudioInUIProcess = m_configuration->shouldCaptureAudioInUIProcess();
 #endif
 
     parameters.presentingApplicationPID = m_configuration->presentingApplicationPID();
+
+#if PLATFORM(COCOA)
+    parameters.mediaMIMETypes = process.mediaMIMETypes();
+#endif
 
     // Add any platform specific parameters
     platformInitializeWebProcess(parameters);
@@ -1158,9 +1207,11 @@ void WebProcessPool::pageBeginUsingWebsiteDataStore(WebPageProxy& page)
         ASSERT(page.websiteDataStore().parameters().networkSessionParameters.sessionID == sessionID);
         sendToNetworkingProcess(Messages::NetworkProcess::AddWebsiteDataStore(page.websiteDataStore().parameters()));
         page.process().send(Messages::WebProcess::AddWebsiteDataStore(WebsiteDataStoreParameters::privateSessionParameters(sessionID)), 0);
+        page.websiteDataStore().clearPendingCookies();
     } else if (sessionID != PAL::SessionID::defaultSessionID()) {
         sendToNetworkingProcess(Messages::NetworkProcess::AddWebsiteDataStore(page.websiteDataStore().parameters()));
         page.process().send(Messages::WebProcess::AddWebsiteDataStore(page.websiteDataStore().parameters()), 0);
+        page.websiteDataStore().clearPendingCookies();
 
 #if ENABLE(INDEXED_DATABASE)
         if (!page.websiteDataStore().resolvedIndexedDatabaseDirectory().isEmpty())
@@ -1326,7 +1377,6 @@ void WebProcessPool::setShouldUseFontSmoothing(bool useFontSmoothing)
 
 void WebProcessPool::setResourceLoadStatisticsEnabled(bool enabled)
 {
-    m_resourceLoadStatisticsEnabled = enabled;
     sendToAllProcesses(Messages::WebProcess::SetResourceLoadStatisticsEnabled(enabled));
 }
 
@@ -1599,7 +1649,7 @@ void WebProcessPool::terminateServiceWorkerProcesses()
 
 void WebProcessPool::syncNetworkProcessCookies()
 {
-    sendSyncToNetworkingProcess(Messages::NetworkProcess::SyncAllCookies(), Messages::NetworkProcess::SyncAllCookies::Reply());
+    ensureNetworkProcess().syncAllCookies();
 }
 
 void WebProcessPool::allowSpecificHTTPSCertificateForHost(const WebCertificateInfo* certificate, const String& host)
@@ -2077,6 +2127,9 @@ Ref<WebProcessProxy> WebProcessPool::processForNavigationInternal(WebPageProxy& 
     if (page.inspectorFrontendCount() > 0)
         return page.process();
 
+    if (m_automationSession)
+        return page.process();
+
     if (!page.process().hasCommittedAnyProvisionalLoads())
         return page.process();
 
@@ -2097,6 +2150,13 @@ Ref<WebProcessProxy> WebProcessPool::processForNavigationInternal(WebPageProxy& 
             ASSERT(suspendedPage->process());
             action = PolicyAction::Suspend;
             return *suspendedPage->process();
+        }
+
+        // If the target back/forward item and the current back/forward item originated
+        // in the same WebProcess then we should reuse the current WebProcess.
+        if (auto* currentItem = page.backForwardList().currentItem()) {
+            if (currentItem->itemID().processIdentifier == backForwardListItem->itemID().processIdentifier)
+                return page.process();
         }
     }
 

@@ -221,6 +221,11 @@ public:
     bool isInPrewarmedPool() const { return m_isInPrewarmedPool; }
     void setIsInPrewarmedPool(bool isInPrewarmedPool) { m_isInPrewarmedPool = isInPrewarmedPool; }
 
+#if PLATFORM(COCOA)
+    Vector<String> mediaMIMETypes();
+    void cacheMediaMIMETypes(const Vector<String>&);
+#endif
+
 protected:
     static uint64_t generatePageID();
     WebProcessProxy(WebProcessPool&, WebsiteDataStore&, IsInPrewarmedPool);
@@ -229,6 +234,13 @@ protected:
     void getLaunchOptions(ProcessLauncher::LaunchOptions&) override;
     void connectionWillOpen(IPC::Connection&) override;
     void processWillShutDown(IPC::Connection&) override;
+
+    // ProcessLauncher::Client
+    void didFinishLaunching(ProcessLauncher*, IPC::Connection::Identifier) override;
+
+#if PLATFORM(COCOA)
+    void cacheMediaMIMETypesInternal(const Vector<String>&);
+#endif
 
 private:
     // Called when the web process has crashed or we know that it will terminate soon.
@@ -258,10 +270,10 @@ private:
     void getPlugins(bool refresh, Vector<WebCore::PluginInfo>& plugins, Vector<WebCore::PluginInfo>& applicationPlugins, std::optional<Vector<WebCore::SupportedPluginName>>&);
 #endif // ENABLE(NETSCAPE_PLUGIN_API)
 #if ENABLE(NETSCAPE_PLUGIN_API)
-    void getPluginProcessConnection(uint64_t pluginProcessToken, Ref<Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply>&&);
+    void getPluginProcessConnection(uint64_t pluginProcessToken, Messages::WebProcessProxy::GetPluginProcessConnection::DelayedReply&&);
 #endif
-    void getNetworkProcessConnection(Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&&);
-    void getStorageProcessConnection(PAL::SessionID initialSessionID, Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
+    void getNetworkProcessConnection(Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply&&);
+    void getStorageProcessConnection(PAL::SessionID initialSessionID, Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply&&);
 
     bool platformIsBeingDebugged() const;
     bool shouldAllowNonValidInjectedCode() const;
@@ -292,9 +304,6 @@ private:
     void sendCancelPrepareToSuspend() override;
     void sendProcessDidResume() override;
     void didSetAssertionState(AssertionState) override;
-
-    // ProcessLauncher::Client
-    void didFinishLaunching(ProcessLauncher*, IPC::Connection::Identifier) override;
 
     // Implemented in generated WebProcessProxyMessageReceiver.cpp
     void didReceiveWebProcessProxyMessage(IPC::Connection&, IPC::Decoder&);

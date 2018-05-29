@@ -304,7 +304,7 @@ void HTMLTextFormControlElement::setSelectionRange(int start, int end, TextField
         auto* rendererTextControl = renderer();
 
         if (innerText && rendererTextControl) {
-            if (rendererTextControl->style().visibility() == HIDDEN || !innerText->renderBox() || !innerText->renderBox()->height()) {
+            if (rendererTextControl->style().visibility() == Visibility::Hidden || !innerText->renderBox() || !innerText->renderBox()->height()) {
                 cacheSelection(start, end, direction);
                 return;
             }
@@ -816,24 +816,24 @@ void HTMLTextFormControlElement::adjustInnerTextStyle(const RenderStyle& parentS
     if (isDisabledFormControl())
         textBlockStyle.setColor(RenderTheme::singleton().disabledTextColor(textBlockStyle.visitedDependentColorWithColorFilter(CSSPropertyColor), parentStyle.visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor)));
 #if PLATFORM(IOS)
-    if (textBlockStyle.textSecurity() != TSNONE && !textBlockStyle.isLeftToRightDirection()) {
+    if (textBlockStyle.textSecurity() != TextSecurity::None && !textBlockStyle.isLeftToRightDirection()) {
         // Preserve the alignment but force the direction to LTR so that the last-typed, unmasked character
         // (which cannot have RTL directionality) will appear to the right of the masked characters. See <rdar://problem/7024375>.
         
         switch (textBlockStyle.textAlign()) {
-        case TASTART:
-        case JUSTIFY:
-            textBlockStyle.setTextAlign(RIGHT);
+        case TextAlignMode::Start:
+        case TextAlignMode::Justify:
+            textBlockStyle.setTextAlign(TextAlignMode::Right);
             break;
-        case TAEND:
-            textBlockStyle.setTextAlign(LEFT);
+        case TextAlignMode::End:
+            textBlockStyle.setTextAlign(TextAlignMode::Left);
             break;
-        case LEFT:
-        case RIGHT:
-        case CENTER:
-        case WEBKIT_LEFT:
-        case WEBKIT_RIGHT:
-        case WEBKIT_CENTER:
+        case TextAlignMode::Left:
+        case TextAlignMode::Right:
+        case TextAlignMode::Center:
+        case TextAlignMode::WebKitLeft:
+        case TextAlignMode::WebKitRight:
+        case TextAlignMode::WebKitCenter:
             break;
         }
 

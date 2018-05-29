@@ -53,7 +53,6 @@
 #include "StructureCache.h"
 #include "VMEntryRecord.h"
 #include "VMTraps.h"
-#include "ThreadLocalCache.h"
 #include "WasmContext.h"
 #include "Watchpoint.h"
 #include <wtf/BumpPointerAllocator.h>
@@ -171,6 +170,7 @@ class Signature;
 
 struct HashTable;
 struct Instruction;
+struct ValueProfile;
 
 struct LocalTimeOffsetCache {
     LocalTimeOffsetCache()
@@ -464,6 +464,7 @@ public:
     Strong<Structure> symbolStructure;
     Strong<Structure> symbolTableStructure;
     Strong<Structure> fixedArrayStructure;
+    Strong<Structure> immutableButterflyStructures[NumberOfCopyOnWriteIndexingModes];
     Strong<Structure> sourceCodeStructure;
     Strong<Structure> scriptFetcherStructure;
     Strong<Structure> scriptFetchParametersStructure;
@@ -558,6 +559,7 @@ public:
     static JS_EXPORT_PRIVATE bool canUseAssembler();
     static JS_EXPORT_PRIVATE bool canUseJIT();
     static JS_EXPORT_PRIVATE bool canUseRegExpJIT();
+    static JS_EXPORT_PRIVATE bool isInMiniMode();
 
     SourceProviderCache* addSourceProviderCache(SourceProvider*);
     void clearSourceProviderCaches();
@@ -687,11 +689,6 @@ public:
     JSObject* stringRecursionCheckFirstObject { nullptr };
     HashSet<JSObject*> stringRecursionCheckVisitedObjects;
     
-#if !USE(FAST_TLS_FOR_TLC)
-    ThreadLocalCache::Data* threadLocalCacheData { nullptr };
-#endif
-    RefPtr<ThreadLocalCache> defaultThreadLocalCache;
-
     LocalTimeOffsetCache localTimeOffsetCache;
 
     String cachedDateString;
@@ -722,6 +719,8 @@ public:
     RTTraceList* m_rtTraceList;
 #endif
 
+    std::unique_ptr<ValueProfile> noJITValueProfileSingleton;
+
     JS_EXPORT_PRIVATE void resetDateCache();
 
     RegExpCache* regExpCache() { return m_regExpCache; }
@@ -746,6 +745,8 @@ public:
 
     JS_EXPORT_PRIVATE void deleteAllCode(DeleteAllCodeEffort);
     JS_EXPORT_PRIVATE void deleteAllLinkedCode(DeleteAllCodeEffort);
+
+    void shrinkFootprint();
 
     WatchpointSet* ensureWatchpointSetForImpureProperty(const Identifier&);
     void registerWatchpointForImpureProperty(const Identifier&, Watchpoint*);
@@ -951,7 +952,7 @@ inline Heap* WeakSet::heap() const
 extern "C" void sanitizeStackForVMImpl(VM*);
 #endif
 
-void sanitizeStackForVM(VM*);
+JS_EXPORT_PRIVATE void sanitizeStackForVM(VM*);
 void logSanitizeStack(VM*);
 
 } // namespace JSC

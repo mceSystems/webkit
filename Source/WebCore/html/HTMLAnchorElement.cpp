@@ -244,7 +244,7 @@ void HTMLAnchorElement::parseAttribute(const QualifiedName& name, const AtomicSt
             String parsedURL = stripLeadingAndTrailingHTMLSpaces(value);
             if (document().isDNSPrefetchEnabled() && document().frame()) {
                 if (protocolIsInHTTPFamily(parsedURL) || parsedURL.startsWith("//"))
-                    document().frame()->loader().client().prefetchDNS(document().completeURL(parsedURL).host());
+                    document().frame()->loader().client().prefetchDNS(document().completeURL(parsedURL).host().toString());
             }
         }
         invalidateCachedVisitedLinkHash();
@@ -313,7 +313,16 @@ DOMTokenList& HTMLAnchorElement::relList() const
 {
     if (!m_relList) {
         m_relList = std::make_unique<DOMTokenList>(const_cast<HTMLAnchorElement&>(*this), HTMLNames::relAttr, [](Document&, StringView token) {
+#if USE(SYSTEM_PREVIEW)
+#if USE(APPLE_INTERNAL_SDK)
+            auto systemPreviewRelValue = getSystemPreviewRelValue();
+#else
+            auto systemPreviewRelValue = ASCIILiteral("system-preview");
+#endif
+            return equalIgnoringASCIICase(token, "noreferrer") || equalIgnoringASCIICase(token, "noopener") || equalIgnoringASCIICase(token, systemPreviewRelValue);
+#else
             return equalIgnoringASCIICase(token, "noreferrer") || equalIgnoringASCIICase(token, "noopener");
+#endif
         });
     }
     return *m_relList;
@@ -417,9 +426,19 @@ void HTMLAnchorElement::handleClick(Event& event)
     }
 #endif
 
+    SystemPreviewInfo systemPreviewInfo;
+#if USE(SYSTEM_PREVIEW)
+    systemPreviewInfo.isSystemPreview = isSystemPreviewLink();
+
+    if (systemPreviewInfo.isSystemPreview) {
+        if (auto* child = firstElementChild())
+            systemPreviewInfo.systemPreviewRect = child->boundsInRootViewSpace();
+    }
+#endif
+
     ShouldSendReferrer shouldSendReferrer = hasRel(Relation::NoReferrer) ? NeverSendReferrer : MaybeSendReferrer;
     auto newFrameOpenerPolicy = hasRel(Relation::NoOpener) ? std::make_optional(NewFrameOpenerPolicy::Suppress) : std::nullopt;
-    frame->loader().urlSelected(completedURL, target(), &event, LockHistory::No, LockBackForwardList::No, shouldSendReferrer, document().shouldOpenExternalURLsPolicyToPropagate(), newFrameOpenerPolicy, downloadAttribute);
+    frame->loader().urlSelected(completedURL, target(), &event, LockHistory::No, LockBackForwardList::No, shouldSendReferrer, document().shouldOpenExternalURLsPolicyToPropagate(), newFrameOpenerPolicy, downloadAttribute, systemPreviewInfo);
 
     sendPings(completedURL);
 }

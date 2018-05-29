@@ -165,6 +165,7 @@ public:
     template<typename T> void sendToNetworkingProcessRelaunchingIfNecessary(T&& message);
 
     // Sends the message to WebProcess or StorageProcess as approporiate for current process model.
+    template<typename T> void sendToStorageProcess(T&& message);
     template<typename T> void sendToStorageProcessRelaunchingIfNecessary(T&& message);
 
     void processDidFinishLaunching(WebProcessProxy*);
@@ -261,8 +262,6 @@ public:
     };
     static Statistics& statistics();    
 
-    void setCookieStorageDirectory(const String& dir) { m_overrideCookieStorageDirectory = dir; }
-
     void useTestingNetworkSession();
     bool isUsingTestingNetworkSession() const { return m_shouldUseTestingNetworkSession; }
 
@@ -315,7 +314,9 @@ public:
 #endif
 
     void fullKeyboardAccessModeChanged(bool fullKeyboardAccessEnabled);
-
+#if OS(LINUX)
+    void sendMemoryPressureEvent(bool isCritical);
+#endif
     void textCheckerStateChanged();
 
     Ref<API::Dictionary> plugInAutoStartOriginHashes() const;
@@ -326,14 +327,14 @@ public:
     // Network Process Management
     NetworkProcessProxy& ensureNetworkProcess(WebsiteDataStore* withWebsiteDataStore = nullptr);
     NetworkProcessProxy* networkProcess() { return m_networkProcess.get(); }
-    void networkProcessCrashed(NetworkProcessProxy&, Vector<Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>>&&);
+    void networkProcessCrashed(NetworkProcessProxy&, Vector<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&&);
     void networkProcessFailedToLaunch(NetworkProcessProxy&);
 
-    void getNetworkProcessConnection(Ref<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&&);
+    void getNetworkProcessConnection(Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply&&);
 
     void ensureStorageProcessAndWebsiteDataStore(WebsiteDataStore* relevantDataStore);
     StorageProcessProxy* storageProcess() { return m_storageProcess.get(); }
-    void getStorageProcessConnection(WebProcessProxy&, PAL::SessionID initialSessionID, Ref<Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply>&&);
+    void getStorageProcessConnection(WebProcessProxy&, PAL::SessionID initialSessionID, Messages::WebProcessProxy::GetStorageProcessConnection::DelayedReply&&);
     void storageProcessCrashed(StorageProcessProxy*);
 #if ENABLE(SERVICE_WORKER)
     void establishWorkerContextConnectionToStorageProcess(StorageProcessProxy&, WebCore::SecurityOriginData&&, std::optional<PAL::SessionID>);
@@ -412,9 +413,7 @@ public:
     static String legacyPlatformDefaultApplicationCacheDirectory();
     static String legacyPlatformDefaultNetworkCacheDirectory();
     static String legacyPlatformDefaultJavaScriptConfigurationDirectory();
-    static bool isNetworkCacheEnabled();
 
-    bool resourceLoadStatisticsEnabled() { return m_resourceLoadStatisticsEnabled; }
     void setResourceLoadStatisticsEnabled(bool);
     void clearResourceLoadStatistics();
 
@@ -452,6 +451,8 @@ public:
     void registerSuspendedPageProxy(SuspendedPageProxy&);
     void unregisterSuspendedPageProxy(SuspendedPageProxy&);
     void didReachGoodTimeToPrewarm();
+
+    void screenPropertiesStateChanged();
 
 private:
     void platformInitialize();
@@ -603,6 +604,7 @@ private:
     RetainPtr<NSObject> m_automaticSpellingCorrectionNotificationObserver;
     RetainPtr<NSObject> m_automaticQuoteSubstitutionNotificationObserver;
     RetainPtr<NSObject> m_automaticDashSubstitutionNotificationObserver;
+    RetainPtr<NSObject> m_accessibilityDisplayOptionsNotificationObserver;
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
     RetainPtr<NSObject> m_scrollerStyleNotificationObserver;
 #endif
@@ -610,8 +612,6 @@ private:
     std::unique_ptr<HighPerformanceGraphicsUsageSampler> m_highPerformanceGraphicsUsageSampler;
     std::unique_ptr<PerActivityStateCPUUsageSampler> m_perActivityStateCPUUsageSampler;
 #endif
-
-    String m_overrideCookieStorageDirectory;
 
     bool m_shouldUseTestingNetworkSession { false };
 
@@ -630,7 +630,6 @@ private:
 #endif
 
     bool m_memoryCacheDisabled { false };
-    bool m_resourceLoadStatisticsEnabled { false };
     bool m_javaScriptConfigurationFileEnabled { false };
     bool m_alwaysRunsAtBackgroundPriority;
     bool m_shouldTakeUIBackgroundAssertion;
@@ -712,6 +711,13 @@ void WebProcessPool::sendToNetworkingProcessRelaunchingIfNecessary(T&& message)
 {
     ensureNetworkProcess();
     m_networkProcess->send(std::forward<T>(message), 0);
+}
+
+template<typename T>
+void WebProcessPool::sendToStorageProcess(T&& message)
+{
+    if (m_storageProcess && m_storageProcess->canSendMessage())
+        m_storageProcess->send(std::forward<T>(message), 0);
 }
 
 template<typename T>

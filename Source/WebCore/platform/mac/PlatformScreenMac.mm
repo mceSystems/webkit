@@ -48,7 +48,7 @@ namespace WebCore {
 
 static PlatformDisplayID displayID(NSScreen *screen)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return [[[screen deviceDescription] objectForKey:@"NSScreenNumber"] intValue];
 }
 
@@ -71,7 +71,7 @@ static PlatformDisplayID displayID(Widget* widget)
 // Screen containing the menubar.
 static NSScreen *firstScreen()
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     NSArray *screens = [NSScreen screens];
     if (![screens count])
         return nil;
@@ -80,7 +80,7 @@ static NSScreen *firstScreen()
 
 static NSWindow *window(Widget* widget)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     if (!widget)
         return nil;
     return widget->platformWidget().window;
@@ -88,7 +88,7 @@ static NSWindow *window(Widget* widget)
 
 static NSScreen *screen(Widget* widget)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     // If the widget is in a window, use that, otherwise use the display ID from the host window.
     // First case is for when the NSWindow is in the same process, second case for when it's not.
     if (auto screenFromWindow = window(widget).screen)
@@ -110,7 +110,7 @@ static PlatformDisplayID& primaryScreenDisplayID()
 
 std::pair<PlatformDisplayID, HashMap<PlatformDisplayID, ScreenProperties>> getScreenProperties()
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
 
     HashMap<PlatformDisplayID, ScreenProperties> screenProperties;
     std::optional<PlatformDisplayID> firstScreen;
@@ -171,7 +171,7 @@ bool screenIsMonochrome(Widget* widget)
         return getScreenProperties(widget).screenIsMonochrome;
 
     // This is a system-wide accessibility setting, same on all screens.
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return CGDisplayUsesForceToGray();
 }
 
@@ -181,7 +181,7 @@ bool screenHasInvertedColors()
         return screenProperties(primaryScreenDisplayID()).screenHasInvertedColors;
 
     // This is a system-wide accessibility setting, same on all screens.
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return CGDisplayUsesInvertedPolarity();
 }
 
@@ -193,7 +193,7 @@ int screenDepth(Widget* widget)
         return screenDepth;
     }
 
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return NSBitsPerPixelFromDepth(screen(widget).depth);
 }
 
@@ -205,7 +205,7 @@ int screenDepthPerComponent(Widget* widget)
         return depthPerComponent;
     }
 
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return NSBitsPerSampleFromDepth(screen(widget).depth);
 }
 
@@ -217,8 +217,13 @@ FloatRect screenRectForDisplay(PlatformDisplayID displayID)
         return screenRect;
     }
 
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return screen(displayID).frame;
+}
+
+FloatRect screenRectForPrimaryScreen()
+{
+    return screenRectForDisplay(primaryScreenDisplayID());
 }
 
 FloatRect screenRect(Widget* widget)
@@ -226,7 +231,7 @@ FloatRect screenRect(Widget* widget)
     if (!screenProperties().isEmpty())
         return getScreenProperties(widget).screenRect;
 
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return toUserSpace([screen(widget) frame], window(widget));
 }
 
@@ -235,19 +240,19 @@ FloatRect screenAvailableRect(Widget* widget)
     if (!screenProperties().isEmpty())
         return getScreenProperties(widget).screenAvailableRect;
 
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return toUserSpace([screen(widget) visibleFrame], window(widget));
 }
 
 NSScreen *screen(NSWindow *window)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return [window screen] ?: firstScreen();
 }
 
 NSScreen *screen(PlatformDisplayID displayID)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     for (NSScreen *screen in [NSScreen screens]) {
         if (WebCore::displayID(screen) == displayID)
             return screen;
@@ -260,7 +265,7 @@ CGColorSpaceRef screenColorSpace(Widget* widget)
     if (!screenProperties().isEmpty())
         return getScreenProperties(widget).colorSpace.get();
 
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return screen(widget).colorSpace.CGColorSpace;
 }
 
@@ -269,7 +274,7 @@ bool screenSupportsExtendedColor(Widget* widget)
     if (!screenProperties().isEmpty())
         return getScreenProperties(widget).screenSupportsExtendedColor;
 
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return [screen(widget) canRepresentDisplayGamut:NSDisplayGamutP3];
 }
 

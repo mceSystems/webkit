@@ -536,6 +536,8 @@ void TextIterator::advance()
                         return;
                     }
                     next = nextSibling(m_behavior, *m_node);
+                    if (next && m_node->renderer())
+                        exitNode(m_node);
                 }
             }
             m_fullyClippedStack.pop();            
@@ -558,11 +560,11 @@ void TextIterator::advance()
 
 static bool hasVisibleTextNode(RenderText& renderer)
 {
-    if (renderer.style().visibility() == VISIBLE)
+    if (renderer.style().visibility() == Visibility::Visible)
         return true;
     if (is<RenderTextFragment>(renderer)) {
         if (auto firstLetter = downcast<RenderTextFragment>(renderer).firstLetter()) {
-            if (firstLetter->style().visibility() == VISIBLE)
+            if (firstLetter->style().visibility() == Visibility::Visible)
                 return true;
         }
     }
@@ -616,7 +618,7 @@ bool TextIterator::handleTextNode()
                 return false;
             }
         }
-        if (renderer.style().visibility() != VISIBLE && !(m_behavior & TextIteratorIgnoresStyleVisibility))
+        if (renderer.style().visibility() != Visibility::Visible && !(m_behavior & TextIteratorIgnoresStyleVisibility))
             return false;
         int rendererTextLength = rendererText.length();
         int end = (&textNode == m_endContainer) ? m_endOffset : INT_MAX;
@@ -630,7 +632,7 @@ bool TextIterator::handleTextNode()
     }
 
     if (const auto* layout = renderer.simpleLineLayout()) {
-        if (renderer.style().visibility() != VISIBLE && !(m_behavior & TextIteratorIgnoresStyleVisibility))
+        if (renderer.style().visibility() != Visibility::Visible && !(m_behavior & TextIteratorIgnoresStyleVisibility))
             return true;
         ASSERT(renderer.parent());
         ASSERT(is<RenderBlockFlow>(*renderer.parent()));
@@ -725,7 +727,7 @@ bool TextIterator::handleTextNode()
         handleTextNodeFirstLetter(downcast<RenderTextFragment>(renderer));
 
     if (!renderer.firstTextBox() && rendererText.length() && !shouldHandleFirstLetter) {
-        if (renderer.style().visibility() != VISIBLE && !(m_behavior & TextIteratorIgnoresStyleVisibility))
+        if (renderer.style().visibility() != Visibility::Visible && !(m_behavior & TextIteratorIgnoresStyleVisibility))
             return false;
         m_lastTextNodeEndedWithCollapsedSpace = true; // entire block is collapsed space
         return true;
@@ -751,7 +753,7 @@ void TextIterator::handleTextBox()
     Text& textNode = downcast<Text>(*m_node);
 
     auto& renderer = m_firstLetterText ? *m_firstLetterText : *textNode.renderer();
-    if (renderer.style().visibility() != VISIBLE && !(m_behavior & TextIteratorIgnoresStyleVisibility)) {
+    if (renderer.style().visibility() != Visibility::Visible && !(m_behavior & TextIteratorIgnoresStyleVisibility)) {
         m_textBox = nullptr;
         return;
     }
@@ -846,7 +848,7 @@ static inline RenderText* firstRenderTextInFirstLetter(RenderBoxModelObject* fir
 void TextIterator::handleTextNodeFirstLetter(RenderTextFragment& renderer)
 {
     if (auto* firstLetter = renderer.firstLetter()) {
-        if (firstLetter->style().visibility() != VISIBLE && !(m_behavior & TextIteratorIgnoresStyleVisibility))
+        if (firstLetter->style().visibility() != Visibility::Visible && !(m_behavior & TextIteratorIgnoresStyleVisibility))
             return;
         if (auto* firstLetterText = firstRenderTextInFirstLetter(firstLetter)) {
             m_handledFirstLetter = true;
@@ -865,7 +867,7 @@ bool TextIterator::handleReplacedElement()
         return false;
 
     auto& renderer = *m_node->renderer();
-    if (renderer.style().visibility() != VISIBLE && !(m_behavior & TextIteratorIgnoresStyleVisibility))
+    if (renderer.style().visibility() != Visibility::Visible && !(m_behavior & TextIteratorIgnoresStyleVisibility))
         return false;
 
     if (m_lastTextNodeEndedWithCollapsedSpace) {
@@ -998,13 +1000,15 @@ static bool shouldEmitNewlinesBeforeAndAfterNode(Node& node)
         && !renderer->isRubyText();
 }
 
-static bool shouldEmitNewlineAfterNode(Node& node)
+static bool shouldEmitNewlineAfterNode(Node& node, bool emitsCharactersBetweenAllVisiblePositions = false)
 {
     // FIXME: It should be better but slower to create a VisiblePosition here.
     if (!shouldEmitNewlinesBeforeAndAfterNode(node))
         return false;
-    // Check if this is the very last renderer in the document.
-    // If so, then we should not emit a newline.
+
+    // Don't emit a new line at the end of the document unless we're matching the behavior of VisiblePosition.
+    if (emitsCharactersBetweenAllVisiblePositions)
+        return true;
     Node* subsequentNode = &node;
     while ((subsequentNode = NodeTraversal::nextSkippingChildren(*subsequentNode))) {
         if (subsequentNode->renderer())
@@ -1037,8 +1041,12 @@ static bool shouldEmitExtraNewlineForNode(Node& node)
     if (!hasHeaderTag(element) && !is<HTMLParagraphElement>(element))
         return false;
 
-    int bottomMargin = downcast<RenderBox>(*renderer).collapsedMarginAfter();
-    int fontSize = downcast<RenderBox>(*renderer).style().fontDescription().computedPixelSize();
+    auto& renderBox = downcast<RenderBox>(*renderer);
+    if (!renderBox.height())
+        return false;
+
+    int bottomMargin = renderBox.collapsedMarginAfter();
+    int fontSize = renderBox.style().fontDescription().computedPixelSize();
     return bottomMargin * 2 >= fontSize;
 }
 
@@ -1107,7 +1115,7 @@ bool TextIterator::shouldRepresentNodeOffsetZero()
     // If this node is unrendered or invisible the VisiblePosition checks below won't have much meaning.
     // Additionally, if the range we are iterating over contains huge sections of unrendered content, 
     // we would create VisiblePositions on every call to this function without this check.
-    if (!m_node->renderer() || m_node->renderer()->style().visibility() != VISIBLE
+    if (!m_node->renderer() || m_node->renderer()->style().visibility() != Visibility::Visible
         || (is<RenderBlockFlow>(*m_node->renderer()) && !downcast<RenderBlockFlow>(*m_node->renderer()).height() && !is<HTMLBodyElement>(*m_node)))
         return false;
 
@@ -1174,7 +1182,7 @@ void TextIterator::exitNode(Node* exitedNode)
     // the logic in _web_attributedStringFromRange match. We'll get that for free when we switch to use
     // TextIterator in _web_attributedStringFromRange.
     // See <rdar://problem/5428427> for an example of how this mismatch will cause problems.
-    if (m_lastTextNode && shouldEmitNewlineAfterNode(*m_node)) {
+    if (m_lastTextNode && shouldEmitNewlineAfterNode(*m_node, m_behavior & TextIteratorEmitsCharactersBetweenAllVisiblePositions)) {
         // use extra newline to represent margin bottom, as needed
         bool addNewline = shouldEmitExtraNewlineForNode(*m_node);
         
@@ -1323,10 +1331,10 @@ void SimplifiedBackwardsTextIterator::advance()
         if (!m_handledNode && !(m_node == m_endContainer && !m_endOffset)) {
             auto* renderer = m_node->renderer();
             if (renderer && renderer->isText() && m_node->isTextNode()) {
-                if (renderer->style().visibility() == VISIBLE && m_offset > 0)
+                if (renderer->style().visibility() == Visibility::Visible && m_offset > 0)
                     m_handledNode = handleTextNode();
             } else if (renderer && (renderer->isImage() || renderer->isWidget())) {
-                if (renderer->style().visibility() == VISIBLE && m_offset > 0)
+                if (renderer->style().visibility() == Visibility::Visible && m_offset > 0)
                     m_handledNode = handleReplacedElement();
             } else
                 m_handledNode = handleNonTextNode();
@@ -1999,11 +2007,11 @@ static inline bool containsKanaLetters(const String& pattern)
     return false;
 }
 
-#if COMPILER(CLANG)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#if COMPILER(GCC_OR_CLANG)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
-// NOTE: ICU's unorm_normalize function is deprecated in some SDKs.
+// NOTE: ICU's unorm_normalize function is deprecated.
 
 static void normalizeCharacters(const UChar* characters, unsigned length, Vector<UChar>& buffer)
 {
@@ -2026,8 +2034,8 @@ static void normalizeCharacters(const UChar* characters, unsigned length, Vector
     ASSERT(status == U_STRING_NOT_TERMINATED_WARNING);
 }
 
-#if COMPILER(CLANG)
-#pragma clang diagnostic pop
+#if COMPILER(GCC_OR_CLANG)
+#pragma GCC diagnostic pop
 #endif
 
 static bool isNonLatin1Separator(UChar32 character)

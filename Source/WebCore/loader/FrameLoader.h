@@ -111,7 +111,7 @@ public:
 
     // FIXME: These are all functions which start loads. We have too many.
     WEBCORE_EXPORT void loadURLIntoChildFrame(const URL&, const String& referer, Frame*);
-    WEBCORE_EXPORT void loadFrameRequest(FrameLoadRequest&&, Event*, FormState*); // Called by submitForm, calls loadPostRequest and loadURL.
+    WEBCORE_EXPORT void loadFrameRequest(FrameLoadRequest&&, Event*, RefPtr<FormState>&&); // Called by submitForm, calls loadPostRequest and loadURL.
 
     WEBCORE_EXPORT void load(FrameLoadRequest&&);
 
@@ -121,7 +121,7 @@ public:
     unsigned long loadResourceSynchronously(const ResourceRequest&, ClientCredentialPolicy, const FetchOptions&, const HTTPHeaderMap&, ResourceError&, ResourceResponse&, RefPtr<SharedBuffer>& data);
 
     void changeLocation(FrameLoadRequest&&);
-    WEBCORE_EXPORT void urlSelected(const URL&, const String& target, Event*, LockHistory, LockBackForwardList, ShouldSendReferrer, ShouldOpenExternalURLsPolicy, std::optional<NewFrameOpenerPolicy> = std::nullopt, const AtomicString& downloadAttribute = nullAtom());
+    WEBCORE_EXPORT void urlSelected(const URL&, const String& target, Event*, LockHistory, LockBackForwardList, ShouldSendReferrer, ShouldOpenExternalURLsPolicy, std::optional<NewFrameOpenerPolicy> = std::nullopt, const AtomicString& downloadAttribute = nullAtom(), const SystemPreviewInfo& = { });
     void submitForm(Ref<FormSubmission>&&);
 
     WEBCORE_EXPORT void reload(OptionSet<ReloadOption> = { });
@@ -364,13 +364,13 @@ private:
 
     void urlSelected(FrameLoadRequest&&, Event*);
 
-    void loadWithDocumentLoader(DocumentLoader*, FrameLoadType, FormState*, AllowNavigationToInvalidURL, NavigationPolicyCheck, CompletionHandler<void()>&&); // Calls continueLoadAfterNavigationPolicy
+    void loadWithDocumentLoader(DocumentLoader*, FrameLoadType, RefPtr<FormState>&&, AllowNavigationToInvalidURL, NavigationPolicyCheck, CompletionHandler<void()>&&); // Calls continueLoadAfterNavigationPolicy
     void load(DocumentLoader*); // Calls loadWithDocumentLoader
 
-    void loadWithNavigationAction(const ResourceRequest&, const NavigationAction&, LockHistory, FrameLoadType, FormState*, AllowNavigationToInvalidURL, CompletionHandler<void()>&&); // Calls loadWithDocumentLoader
+    void loadWithNavigationAction(const ResourceRequest&, const NavigationAction&, LockHistory, FrameLoadType, RefPtr<FormState>&&, AllowNavigationToInvalidURL, CompletionHandler<void()>&&); // Calls loadWithDocumentLoader
 
-    void loadPostRequest(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, FormState*, CompletionHandler<void()>&&);
-    void loadURL(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, FormState*, CompletionHandler<void()>&&);
+    void loadPostRequest(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, RefPtr<FormState>&&, CompletionHandler<void()>&&);
+    void loadURL(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, RefPtr<FormState>&&, CompletionHandler<void()>&&);
 
     bool shouldReload(const URL& currentURL, const URL& destinationURL);
 

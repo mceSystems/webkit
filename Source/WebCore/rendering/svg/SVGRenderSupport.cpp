@@ -59,7 +59,7 @@ FloatRect SVGRenderSupport::repaintRectForRendererInLocalCoordinatesExcludingSVG
 LayoutRect SVGRenderSupport::clippedOverflowRectForRepaint(const RenderElement& renderer, const RenderLayerModelObject* repaintContainer)
 {
     // Return early for any cases where we don't actually paint
-    if (renderer.style().visibility() != VISIBLE && !renderer.enclosingLayer()->hasVisibleContent())
+    if (renderer.style().visibility() != Visibility::Visible && !renderer.enclosingLayer()->hasVisibleContent())
         return LayoutRect();
 
     // Pass our local paint rect to computeRectForRepaint() which will
@@ -316,7 +316,7 @@ bool SVGRenderSupport::isOverflowHidden(const RenderElement& renderer)
     // RenderSVGRoot should never query for overflow state - it should always clip itself to the initial viewport size.
     ASSERT(!renderer.isDocumentElementRenderer());
 
-    return renderer.style().overflowX() == OHIDDEN || renderer.style().overflowX() == OSCROLL;
+    return renderer.style().overflowX() == Overflow::Hidden || renderer.style().overflowX() == Overflow::Scroll;
 }
 
 bool SVGRenderSupport::rendererHasSVGShadow(const RenderObject& renderer)

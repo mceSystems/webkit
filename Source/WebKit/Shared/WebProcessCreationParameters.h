@@ -79,7 +79,7 @@ struct WebProcessCreationParameters {
     SandboxExtension::Handle mediaCacheDirectoryExtensionHandle;
     String javaScriptConfigurationDirectory;
     SandboxExtension::Handle javaScriptConfigurationDirectoryExtensionHandle;
-#if PLATFORM(MAC)
+#if PLATFORM(COCOA)
     Vector<uint8_t> uiProcessCookieStorageIdentifier;
 #endif
 #if PLATFORM(IOS)
@@ -173,16 +173,16 @@ struct WebProcessCreationParameters {
     RetainPtr<CFDataRef> networkATSContext;
 #endif
 
-#if OS(LINUX)
-    IPC::Attachment memoryPressureMonitorHandle;
-#endif
-
 #if PLATFORM(WAYLAND)
     String waylandCompositorDisplayName;
 #endif
 
 #if USE(SOUP)
     WebCore::SoupNetworkProxySettings proxySettings;
+#endif
+
+#if PLATFORM(COCOA)
+    Vector<String> mediaMIMETypes;
 #endif
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED

@@ -322,10 +322,10 @@ public:
     WriteBarrier<Structure> m_objectStructureForObjectConstructor;
         
     // Lists the actual structures used for having these particular indexing shapes.
-    WriteBarrier<Structure> m_originalArrayStructureForIndexingShape[NumberOfIndexingShapes];
+    WriteBarrier<Structure> m_originalArrayStructureForIndexingShape[NumberOfArrayIndexingModes];
     // Lists the structures we should use during allocation for these particular indexing shapes.
     // These structures will differ from the originals list above when we are having a bad time.
-    WriteBarrier<Structure> m_arrayStructureForIndexingShapeDuringAllocation[NumberOfIndexingShapes];
+    WriteBarrier<Structure> m_arrayStructureForIndexingShapeDuringAllocation[NumberOfArrayIndexingModes];
 
     LazyProperty<JSGlobalObject, Structure> m_callbackConstructorStructure;
     LazyProperty<JSGlobalObject, Structure> m_callbackFunctionStructure;
@@ -355,7 +355,6 @@ public:
     WriteBarrier<Structure> m_asyncFunctionStructure;
     WriteBarrier<Structure> m_asyncGeneratorFunctionStructure;
     WriteBarrier<Structure> m_generatorFunctionStructure;
-    WriteBarrier<Structure> m_dollarVMStructure;
     WriteBarrier<Structure> m_iteratorResultObjectStructure;
     WriteBarrier<Structure> m_regExpMatchesArrayStructure;
     WriteBarrier<Structure> m_regExpMatchesArrayWithGroupsStructure;
@@ -620,12 +619,12 @@ public:
     Structure* originalArrayStructureForIndexingType(IndexingType indexingType) const
     {
         ASSERT(indexingType & IsArray);
-        return m_originalArrayStructureForIndexingShape[(indexingType & IndexingShapeMask) >> IndexingShapeShift].get();
+        return m_originalArrayStructureForIndexingShape[arrayIndexFromIndexingType(indexingType)].get();
     }
     Structure* arrayStructureForIndexingTypeDuringAllocation(IndexingType indexingType) const
     {
         ASSERT(indexingType & IsArray);
-        return m_arrayStructureForIndexingShapeDuringAllocation[(indexingType & IndexingShapeMask) >> IndexingShapeShift].get();
+        return m_arrayStructureForIndexingShapeDuringAllocation[arrayIndexFromIndexingType(indexingType)].get();
     }
     Structure* arrayStructureForIndexingTypeDuringAllocation(ExecState* exec, IndexingType indexingType, JSValue newTarget) const
     {
@@ -638,7 +637,7 @@ public:
         
     bool isOriginalArrayStructure(Structure* structure)
     {
-        return originalArrayStructureForIndexingType(structure->indexingType() | IsArray) == structure;
+        return originalArrayStructureForIndexingType(structure->indexingMode() | IsArray) == structure;
     }
         
     Structure* booleanObjectStructure() const { return m_booleanObjectStructure.get(); }
@@ -902,6 +901,7 @@ public:
     WeakRandom& weakRandom() { return m_weakRandom; }
 
     bool needsSiteSpecificQuirks() const { return m_needsSiteSpecificQuirks; }
+    JS_EXPORT_PRIVATE void exposeDollarVM();
 
 #if JSC_OBJC_API_ENABLED
     JSWrapperMap* wrapperMap() const { return m_wrapperMap.get(); }

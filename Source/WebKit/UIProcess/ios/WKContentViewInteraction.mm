@@ -60,7 +60,6 @@
 #import "WKWebViewConfigurationPrivate.h"
 #import "WKWebViewInternal.h"
 #import "WKWebViewPrivate.h"
-#import "WeakObjCPtr.h"
 #import "WebEvent.h"
 #import "WebIOSEventFactory.h"
 #import "WebPageMessages.h"
@@ -96,6 +95,7 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/SetForScope.h>
 #import <wtf/SoftLinking.h>
+#import <wtf/WeakObjCPtr.h>
 #import <wtf/text/TextStream.h>
 
 #if ENABLE(DRAG_SUPPORT)
@@ -265,7 +265,6 @@ const CGFloat minimumTapHighlightRadius = 2.0;
 // FIXME: this needs to be moved from the internal header to the private.
 - (id)initWithView:(UIResponder <UITextInput> *)view;
 - (void)selectWord;
-- (void)scheduleReanalysis;
 @end
 
 @interface UIView (UIViewInternalHack)
@@ -1176,6 +1175,9 @@ static NSValue *nsSizeForTapHighlightBorderRadius(WebCore::IntSize borderRadius,
     if (!_isTapHighlightIDValid || _latestTapID != requestID)
         return;
 
+    if (_potentialTapInProgress && hasAssistedNode(_assistedNodeInformation) && _positionInformation.nodeAtPositionIsAssistedNode)
+        return;
+
     _isTapHighlightIDValid = NO;
 
     _tapHighlightInformation.quads = highlightedQuads;
@@ -1321,6 +1323,11 @@ static NSValue *nsSizeForTapHighlightBorderRadius(WebCore::IntSize borderRadius,
 #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000
     isForcePressGesture = (preventingGestureRecognizer == _textSelectionAssistant.get().forcePressGesture);
 #endif
+#if ENABLE(MINIMAL_SIMULATOR)
+    if ((preventingGestureRecognizer == _textSelectionAssistant.get().loupeGesture) && (preventedGestureRecognizer == _highlightLongPressGestureRecognizer || preventedGestureRecognizer == _longPressGestureRecognizer || preventedGestureRecognizer == _textSelectionAssistant.get().forcePressGesture))
+        return YES;
+#endif
+    
     if ((preventingGestureRecognizer == _textSelectionAssistant.get().loupeGesture || isForcePressGesture || [_webSelectionAssistant isSelectionGestureRecognizer:preventingGestureRecognizer]) && (preventedGestureRecognizer == _highlightLongPressGestureRecognizer || preventedGestureRecognizer == _longPressGestureRecognizer))
         return NO;
 
@@ -1345,6 +1352,10 @@ static inline bool isSamePair(UIGestureRecognizer *a, UIGestureRecognizer *b, UI
     if (isSamePair(gestureRecognizer, otherGestureRecognizer, _highlightLongPressGestureRecognizer.get(), _webSelectionAssistant.get().selectionLongPressRecognizer))
         return YES;
 #if __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000
+#if ENABLE(MINIMAL_SIMULATOR)
+    if (isSamePair(gestureRecognizer, otherGestureRecognizer, _textSelectionAssistant.get().loupeGesture, _textSelectionAssistant.get().forcePressGesture))
+        return YES;
+#endif
     if (isSamePair(gestureRecognizer, otherGestureRecognizer, _highlightLongPressGestureRecognizer.get(), _textSelectionAssistant.get().forcePressGesture))
         return YES;
 #endif
@@ -1547,8 +1558,7 @@ static inline bool isSamePair(UIGestureRecognizer *a, UIGestureRecognizer *b, UI
     if (gestureRecognizer == _highlightLongPressGestureRecognizer
         || gestureRecognizer == _doubleTapGestureRecognizer
         || gestureRecognizer == _nonBlockingDoubleTapGestureRecognizer
-        || gestureRecognizer == _twoFingerDoubleTapGestureRecognizer
-        || gestureRecognizer == _singleTapGestureRecognizer) {
+        || gestureRecognizer == _twoFingerDoubleTapGestureRecognizer) {
 
         if (hasAssistedNode(_assistedNodeInformation)) {
             // Request information about the position with sync message.
@@ -1870,7 +1880,7 @@ static void cancelPotentialTapIfNecessary(WKContentView* contentView)
     // The selection could have been set by autofocusing on page load and not
     // reflected in the UI process since the user was not interacting with the page.
     if (!_page->editorState().isContentEditable)
-        [_webSelectionAssistant clearSelection];
+        _page->clearSelection();
 
     _lastInteractionLocation = gestureRecognizer.location;
 
@@ -2154,11 +2164,6 @@ FOR_EACH_WKCONTENTVIEW_ACTION(FORWARD_ACTION_TO_WKWEBVIEW)
     [_textSelectionAssistant scheduleChineseTransliterationForText:_page->editorState().postLayoutData().wordAtSelection];
 }
 
-- (void)_reanalyzeForWebView:(id)sender
-{
-    [_textSelectionAssistant scheduleReanalysis];
-}
-
 - (void)replaceForWebView:(id)sender
 {
     [[UIKeyboardImpl sharedInstance] replaceText:sender];
@@ -2215,8 +2220,6 @@ FOR_EACH_WKCONTENTVIEW_ACTION(FORWARD_ACTION_TO_WKWEBVIEW)
 
 - (BOOL)canPerformActionForWebView:(SEL)action withSender:(id)sender
 {
-    BOOL hasWebSelection = _webSelectionAssistant && !CGRectIsEmpty(_webSelectionAssistant.get().selectionFrame);
-
     if (action == @selector(_arrowKey:))
         return [self isFirstResponder];
         
@@ -2241,11 +2244,11 @@ FOR_EACH_WKCONTENTVIEW_ACTION(FORWARD_ACTION_TO_WKWEBVIEW)
     if (action == @selector(copy:)) {
         if (_page->editorState().isInPasswordField)
             return NO;
-        return hasWebSelection || _page->editorState().selectionIsRange;
+        return _page->editorState().selectionIsRange;
     }
 
     if (action == @selector(_define:)) {
-        if (_page->editorState().isInPasswordField || !(hasWebSelection || _page->editorState().selectionIsRange))
+        if (_page->editorState().isInPasswordField || !_page->editorState().selectionIsRange)
             return NO;
 
         NSUInteger textLength = _page->editorState().postLayoutData().selectedTextLength;
@@ -2272,18 +2275,18 @@ FOR_EACH_WKCONTENTVIEW_ACTION(FORWARD_ACTION_TO_WKWEBVIEW)
             return NO;
 #endif
 
-        return hasWebSelection || _page->editorState().selectionIsRange;
+        return _page->editorState().selectionIsRange;
     }
 
     if (action == @selector(_share:)) {
-        if (_page->editorState().isInPasswordField || !(hasWebSelection || _page->editorState().selectionIsRange))
+        if (_page->editorState().isInPasswordField || !_page->editorState().selectionIsRange)
             return NO;
 
         return _page->editorState().postLayoutData().selectedTextLength > 0;
     }
 
     if (action == @selector(_addShortcut:)) {
-        if (_page->editorState().isInPasswordField || !(hasWebSelection || _page->editorState().selectionIsRange))
+        if (_page->editorState().isInPasswordField || !_page->editorState().selectionIsRange)
             return NO;
 
         NSString *selectedText = [self selectedText];
@@ -2311,31 +2314,15 @@ FOR_EACH_WKCONTENTVIEW_ACTION(FORWARD_ACTION_TO_WKWEBVIEW)
         return UIKeyboardEnabledInputModesAllowChineseTransliterationForText([self selectedText]);
     }
 
-    if (action == @selector(_reanalyze:)) {
-        if (!_page->editorState().selectionIsRange || !_page->editorState().postLayoutData().isReplaceAllowed || ![[UIKeyboardImpl activeInstance] autocorrectSpellingEnabled])
-            return NO;
-        return UIKeyboardCurrentInputModeAllowsChineseOrJapaneseReanalysisForText([self selectedText]);
-    }
-
     if (action == @selector(select:)) {
         // Disable select in password fields so that you can't see word boundaries.
         return !_page->editorState().isInPasswordField && [self hasContent] && !_page->editorState().selectionIsNone && !_page->editorState().selectionIsRange;
     }
 
     if (action == @selector(selectAll:)) {
-        if (_page->editorState().selectionIsNone || ![self hasContent])
-            return NO;
-        if (!_page->editorState().selectionIsRange)
+        if (!_page->editorState().selectionIsNone && !_page->editorState().selectionIsRange)
             return YES;
-        // Enable selectAll for non-editable text, where the user can't access
-        // this command via long-press to get a caret.
-        if (_page->editorState().isContentEditable)
-            return NO;
-        // Don't attempt selectAll with general web content.
-        if (hasWebSelection)
-            return NO;
-        // FIXME: Only enable if the selection doesn't already span the entire document.
-        return YES;
+        return NO;
     }
 
     if (action == @selector(replace:))
@@ -3220,8 +3207,13 @@ static void selectionChangedWithTouch(WKContentView *view, const WebCore::IntPoi
 
 - (void)setSelectedTextRange:(UITextRange *)range
 {
-    if (_textSelectionAssistant && !range)
-        [self clearSelection];
+    if (range)
+        return;
+#if !ENABLE(MINIMAL_SIMULATOR)
+    if (!hasAssistedNode(_assistedNodeInformation))
+        return;
+#endif
+    [self clearSelection];
 }
 
 - (BOOL)hasMarkedText

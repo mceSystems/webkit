@@ -51,12 +51,11 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << cacheStorageDirectoryExtensionHandle;
     encoder << diskCacheDirectory;
     encoder << diskCacheDirectoryExtensionHandle;
-    encoder << shouldEnableNetworkCache;
     encoder << shouldEnableNetworkCacheEfficacyLogging;
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     encoder << shouldEnableNetworkCacheSpeculativeRevalidation;
 #endif
-#if PLATFORM(MAC)
+#if PLATFORM(COCOA)
     encoder << uiProcessCookieStorageIdentifier;
 #endif
 #if PLATFORM(IOS)
@@ -72,8 +71,6 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
 #if PLATFORM(COCOA)
     encoder << parentProcessName;
     encoder << uiProcessBundleIdentifier;
-    encoder << nsURLCacheMemoryCapacity;
-    encoder << nsURLCacheDiskCapacity;
     encoder << sourceApplicationBundleIdentifier;
     encoder << sourceApplicationSecondaryIdentifier;
 #if PLATFORM(IOS)
@@ -100,9 +97,6 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     encoder << logCookieInformation;
 #endif
-#if OS(LINUX)
-    encoder << memoryPressureMonitorHandle;
-#endif
 #if ENABLE(NETWORK_CAPTURE)
     encoder << recordReplayMode;
     encoder << recordReplayCacheLocation;
@@ -116,7 +110,11 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << urlSchemesRegisteredAsCORSEnabled;
     encoder << urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
 
-    encoder << trackNetworkActivity;
+    encoder << tracksResourceLoadMilestones;
+    
+#if ENABLE(WIFI_ASSERTIONS)
+    encoder << wirelessContextIdentifier;
+#endif
 }
 
 bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProcessCreationParameters& result)
@@ -155,15 +153,13 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
         return false;
     result.diskCacheDirectoryExtensionHandle = WTFMove(*diskCacheDirectoryExtensionHandle);
 
-    if (!decoder.decode(result.shouldEnableNetworkCache))
-        return false;
     if (!decoder.decode(result.shouldEnableNetworkCacheEfficacyLogging))
         return false;
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     if (!decoder.decode(result.shouldEnableNetworkCacheSpeculativeRevalidation))
         return false;
 #endif
-#if PLATFORM(MAC)
+#if PLATFORM(COCOA)
     if (!decoder.decode(result.uiProcessCookieStorageIdentifier))
         return false;
 #endif
@@ -200,10 +196,6 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
     if (!decoder.decode(result.parentProcessName))
         return false;
     if (!decoder.decode(result.uiProcessBundleIdentifier))
-        return false;
-    if (!decoder.decode(result.nsURLCacheMemoryCapacity))
-        return false;
-    if (!decoder.decode(result.nsURLCacheDiskCapacity))
         return false;
     if (!decoder.decode(result.sourceApplicationBundleIdentifier))
         return false;
@@ -250,11 +242,6 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
         return false;
 #endif
 
-#if OS(LINUX)
-    if (!decoder.decode(result.memoryPressureMonitorHandle))
-        return false;
-#endif
-
 #if ENABLE(NETWORK_CAPTURE)
     if (!decoder.decode(result.recordReplayMode))
         return false;
@@ -277,8 +264,13 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
     if (!decoder.decode(result.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest))
         return false;
 
-    if (!decoder.decode(result.trackNetworkActivity))
+    if (!decoder.decode(result.tracksResourceLoadMilestones))
         return false;
+
+#if ENABLE(WIFI_ASSERTIONS)
+    if (!decoder.decode(result.wirelessContextIdentifier))
+        return false;
+#endif
 
     return true;
 }

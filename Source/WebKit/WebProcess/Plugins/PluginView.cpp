@@ -1448,7 +1448,7 @@ NPObject* PluginView::windowScriptNPObject()
         return nullptr;
     }
 
-    return m_npRuntimeObjectMap.getOrCreateNPObject(pluginWorld().vm(), frame()->windowProxy().jsWindowProxy(pluginWorld()).window());
+    return m_npRuntimeObjectMap.getOrCreateNPObject(pluginWorld().vm(), frame()->windowProxy().jsWindowProxy(pluginWorld())->window());
 }
 
 NPObject* PluginView::pluginElementNPObject()
@@ -1831,8 +1831,8 @@ void PluginView::pluginDidReceiveUserInteraction()
     m_didReceiveUserInteraction = true;
 
     HTMLPlugInImageElement& plugInImageElement = downcast<HTMLPlugInImageElement>(*m_pluginElement);
-    String pageOrigin = plugInImageElement.document().page()->mainFrame().document()->baseURL().host();
-    String pluginOrigin = plugInImageElement.loadedUrl().host();
+    String pageOrigin = plugInImageElement.document().page()->mainFrame().document()->baseURL().host().toString();
+    String pluginOrigin = plugInImageElement.loadedUrl().host().toString();
     String mimeType = plugInImageElement.serviceType();
 
     WebProcess::singleton().plugInDidReceiveUserInteraction(pageOrigin, pluginOrigin, mimeType, plugInImageElement.document().page()->sessionID());

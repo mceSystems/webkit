@@ -57,7 +57,7 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << mediaCacheDirectoryExtensionHandle;
     encoder << javaScriptConfigurationDirectory;
     encoder << javaScriptConfigurationDirectoryExtensionHandle;
-#if PLATFORM(MAC)
+#if PLATFORM(COCOA)
     encoder << uiProcessCookieStorageIdentifier;
 #endif
 #if PLATFORM(IOS)
@@ -139,10 +139,6 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     IPC::encode(encoder, networkATSContext.get());
 #endif
 
-#if OS(LINUX)
-    encoder << memoryPressureMonitorHandle;
-#endif
-
 #if PLATFORM(WAYLAND)
     encoder << waylandCompositorDisplayName;
 #endif
@@ -153,6 +149,10 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     encoder << shouldLogUserInteraction;
+#endif
+
+#if PLATFORM(COCOA)
+    encoder << mediaMIMETypes;
 #endif
 }
 
@@ -209,7 +209,7 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     parameters.javaScriptConfigurationDirectoryExtensionHandle = WTFMove(*javaScriptConfigurationDirectoryExtensionHandle);
 
-#if PLATFORM(MAC)
+#if PLATFORM(COCOA)
     if (!decoder.decode(parameters.uiProcessCookieStorageIdentifier))
         return false;
 #endif
@@ -381,11 +381,6 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
 #endif
 
-#if OS(LINUX)
-    if (!decoder.decode(parameters.memoryPressureMonitorHandle))
-        return false;
-#endif
-
 #if PLATFORM(WAYLAND)
     if (!decoder.decode(parameters.waylandCompositorDisplayName))
         return false;
@@ -398,6 +393,11 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     if (!decoder.decode(parameters.shouldLogUserInteraction))
+        return false;
+#endif
+
+#if PLATFORM(COCOA)
+    if (!decoder.decode(parameters.mediaMIMETypes))
         return false;
 #endif
 

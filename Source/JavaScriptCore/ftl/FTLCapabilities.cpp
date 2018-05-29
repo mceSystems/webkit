@@ -86,6 +86,7 @@ inline CapabilityLevel canCompile(Node* node)
     case GetGlobalVar:
     case GetGlobalLexicalVariable:
     case PutGlobalVariable:
+    case ValueNegate:
     case ValueAdd:
     case StrCat:
     case ArithAdd:
@@ -205,7 +206,8 @@ inline CapabilityLevel canCompile(Node* node)
     case Throw:
     case ThrowStaticError:
     case Unreachable:
-    case In:
+    case InByVal:
+    case InById:
     case HasOwnProperty:
     case IsCellWithType:
     case MapHash:
@@ -349,6 +351,7 @@ inline CapabilityLevel canCompile(Node* node)
     case PutByValAlias:
     case PutByValDirect:
     case PutByValWithThis:
+    case MatchStructure:
         // These are OK.
         break;
 

@@ -156,7 +156,7 @@ static bool affectsRenderedSubtree(Element& element, const RenderStyle& newStyle
 {
     if (element.renderer())
         return true;
-    if (newStyle.display() != NONE)
+    if (newStyle.display() != DisplayType::None)
         return true;
     if (element.rendererIsNeeded(newStyle))
         return true;
@@ -239,15 +239,15 @@ ElementUpdates TreeResolver::resolveElement(Element& element)
         }
     }
 
-    auto beforeUpdate = resolvePseudoStyle(element, update, BEFORE);
-    auto afterUpdate = resolvePseudoStyle(element, update, AFTER);
+    auto beforeUpdate = resolvePseudoStyle(element, update, PseudoId::Before);
+    auto afterUpdate = resolvePseudoStyle(element, update, PseudoId::After);
 
     return { WTFMove(update), descendantsToResolve, WTFMove(beforeUpdate), WTFMove(afterUpdate) };
 }
 
 ElementUpdate TreeResolver::resolvePseudoStyle(Element& element, const ElementUpdate& elementUpdate, PseudoId pseudoId)
 {
-    if (elementUpdate.style->display() == NONE)
+    if (elementUpdate.style->display() == DisplayType::None)
         return { };
     if (!elementUpdate.style->hasPseudoStyle(pseudoId))
         return { };
@@ -256,11 +256,11 @@ ElementUpdate TreeResolver::resolvePseudoStyle(Element& element, const ElementUp
     if (!pseudoStyle)
         return { };
 
-    PseudoElement* pseudoElement = pseudoId == BEFORE ? element.beforePseudoElement() : element.afterPseudoElement();
+    PseudoElement* pseudoElement = pseudoId == PseudoId::Before ? element.beforePseudoElement() : element.afterPseudoElement();
     if (!pseudoElement) {
         auto newPseudoElement = PseudoElement::create(element, pseudoId);
         pseudoElement = newPseudoElement.ptr();
-        if (pseudoId == BEFORE)
+        if (pseudoId == PseudoId::Before)
             element.setBeforePseudoElement(WTFMove(newPseudoElement));
         else
             element.setAfterPseudoElement(WTFMove(newPseudoElement));
@@ -274,9 +274,9 @@ const RenderStyle* TreeResolver::parentBoxStyle() const
     // 'display: contents' doesn't generate boxes.
     for (unsigned i = m_parentStack.size(); i; --i) {
         auto& parent = m_parentStack[i - 1];
-        if (parent.style.display() == NONE)
+        if (parent.style.display() == DisplayType::None)
             return nullptr;
-        if (parent.style.display() != CONTENTS)
+        if (parent.style.display() != DisplayType::Contents)
             return &parent.style;
     }
     ASSERT_NOT_REACHED();
@@ -288,7 +288,7 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
     auto* oldStyle = renderOrDisplayContentsStyle(element);
 
     // New code path for CSS Animations and CSS Transitions.
-    if (RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled()) {
+    if (RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
         // First, we need to make sure that any new CSS animation occuring on this element has a matching WebAnimation
         // on the document timeline. Note that we get timeline() on the Document here because we need a timeline created
         // in case no Web Animations have been created through the JS API.
@@ -314,7 +314,7 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
     bool shouldRecompositeLayer = false;
 
     // Old code path for CSS Animations and CSS Transitions.
-    if (!RuntimeEnabledFeatures::sharedFeatures().cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled()) {
+    if (!RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
         auto& animationController = m_document.frame()->animation();
 
         auto animationUpdate = animationController.updateAnimations(element, *newStyle, oldStyle);
@@ -433,7 +433,7 @@ static bool hasLoadingStylesheet(const Style::Scope& styleScope, const Element& 
 
 static std::unique_ptr<RenderStyle> createInheritedDisplayContentsStyleIfNeeded(const RenderStyle& parentElementStyle, const RenderStyle* parentBoxStyle)
 {
-    if (parentElementStyle.display() != CONTENTS)
+    if (parentElementStyle.display() != DisplayType::Contents)
         return nullptr;
     if (parentBoxStyle && !parentBoxStyle->inheritedNotEqual(&parentElementStyle))
         return nullptr;
@@ -465,7 +465,7 @@ void TreeResolver::resolveComposedTree()
         if (is<Text>(node)) {
             auto& text = downcast<Text>(node);
             
-            if ((text.styleValidity() >= Validity::SubtreeAndRenderersInvalid && parent.change != Detach) || parent.style.display() == CONTENTS) {
+            if ((text.styleValidity() >= Validity::SubtreeAndRenderersInvalid && parent.change != Detach) || parent.style.display() == DisplayType::Contents) {
                 TextUpdate textUpdate;
                 textUpdate.inheritedDisplayContentsStyle = createInheritedDisplayContentsStyleIfNeeded(parent.style, parentBoxStyle());
 

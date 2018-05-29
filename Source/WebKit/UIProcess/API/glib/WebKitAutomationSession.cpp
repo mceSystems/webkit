@@ -82,6 +82,11 @@ private:
         return String::fromUTF8(m_session->priv->id.data());
     }
 
+    void didDisconnectFromRemote(WebAutomationSession&) override
+    {
+        webkitWebContextWillCloseAutomationSession(m_session->priv->webContext);
+    }
+
     void requestNewPageWithOptions(WebAutomationSession&, API::AutomationSessionBrowsingContextOptions, CompletionHandler<void(WebPageProxy*)>&& completionHandler) override
     {
         WebKitWebView* webView = nullptr;
@@ -90,6 +95,30 @@ private:
             completionHandler(nullptr);
         else
             completionHandler(&webkitWebViewGetPage(webView));
+    }
+
+    void requestMaximizeWindowOfPage(WebAutomationSession&, WebPageProxy& page, CompletionHandler<void()>&& completionHandler) override
+    {
+        if (auto* webView = webkitWebContextGetWebViewForPage(m_session->priv->webContext, &page))
+            webkitWebViewMaximizeWindow(webView, WTFMove(completionHandler));
+        else
+            completionHandler();
+    }
+
+    void requestHideWindowOfPage(WebAutomationSession&, WebPageProxy& page, CompletionHandler<void()>&& completionHandler) override
+    {
+        if (auto* webView = webkitWebContextGetWebViewForPage(m_session->priv->webContext, &page))
+            webkitWebViewMinimizeWindow(webView, WTFMove(completionHandler));
+        else
+            completionHandler();
+    }
+
+    void requestRestoreWindowOfPage(WebAutomationSession&, WebPageProxy& page, CompletionHandler<void()>&& completionHandler) override
+    {
+        if (auto* webView = webkitWebContextGetWebViewForPage(m_session->priv->webContext, &page))
+            webkitWebViewRestoreWindow(webView, WTFMove(completionHandler));
+        else
+            completionHandler();
     }
 
     bool isShowingJavaScriptDialogOnPage(WebAutomationSession&, WebPageProxy& page) override

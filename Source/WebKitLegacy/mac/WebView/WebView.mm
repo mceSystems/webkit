@@ -660,6 +660,18 @@ private:
 @synthesize contentImage=_contentImage;
 @synthesize estimatedBackgroundColor=_estimatedBackgroundColor;
 
+- (void)dealloc
+{
+    [_dataInteractionImage release];
+    [_textRectsInBoundingRectCoordinates release];
+    [_contentImageWithHighlight release];
+    [_contentImageWithoutSelection release];
+    [_contentImage release];
+    [_estimatedBackgroundColor release];
+
+    [super dealloc];
+}
+
 @end
 
 @implementation WebUITextIndicatorData (WebUITextIndicatorInternal)
@@ -705,18 +717,6 @@ private:
     _dataInteractionImage = [allocUIImageInstance() initWithCGImage:image scale:scale orientation:UIImageOrientationDownMirrored];
     
     return self;
-}
-
-- (void)dealloc
-{
-    [_dataInteractionImage release];
-    [_textRectsInBoundingRectCoordinates release];
-    [_contentImageWithHighlight release];
-    [_contentImageWithoutSelection release];
-    [_contentImage release];
-    [_estimatedBackgroundColor release];
-    
-    [super dealloc];
 }
 
 @end
@@ -2952,6 +2952,7 @@ static bool needsSelfRetainWhileLoadingQuirk()
 
     settings.setPlugInSnapshottingEnabled([preferences plugInSnapshottingEnabled]);
     settings.setHttpEquivEnabled([preferences httpEquivEnabled]);
+    settings.setColorFilterEnabled([preferences colorFilterEnabled]);
 
 #if PLATFORM(MAC)
     settings.setAcceleratedCompositingForFixedPositionEnabled(true);
@@ -2992,6 +2993,7 @@ static bool needsSelfRetainWhileLoadingQuirk()
 #endif // PLATFORM(IOS)
 
 #if PLATFORM(MAC)
+    // This parses the user stylesheet synchronously so anything that may affect it should be done first.
     if ([preferences userStyleSheetEnabled]) {
         NSString* location = [[preferences userStyleSheetLocation] _web_originalDataAsString];
         if ([location isEqualToString:@"apple-dashboard://stylesheet"])
@@ -3061,7 +3063,7 @@ static bool needsSelfRetainWhileLoadingQuirk()
 
     settings.setViewportFitEnabled([preferences viewportFitEnabled]);
     settings.setConstantPropertiesEnabled([preferences constantPropertiesEnabled]);
-    settings.setColorFilterEnabled([preferences colorFilterEnabled]);
+    settings.setCrossOriginOptionsSupportEnabled([preferences crossOriginOptionsSupportEnabled]);
 
 #if ENABLE(GAMEPAD)
     RuntimeEnabledFeatures::sharedFeatures().setGamepadsEnabled([preferences gamepadsEnabled]);
@@ -3078,7 +3080,7 @@ static bool needsSelfRetainWhileLoadingQuirk()
 
     RuntimeEnabledFeatures::sharedFeatures().setInteractiveFormValidationEnabled([self interactiveFormValidationEnabled]);
     RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled([preferences modernMediaControlsEnabled]);
-    RuntimeEnabledFeatures::sharedFeatures().setCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled([preferences cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled]);
+    RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsCSSIntegrationEnabled([preferences webAnimationsCSSIntegrationEnabled]);
 
     RuntimeEnabledFeatures::sharedFeatures().setCacheAPIEnabled([preferences cacheAPIEnabled]);
     RuntimeEnabledFeatures::sharedFeatures().setFetchAPIEnabled([preferences fetchAPIEnabled]);
@@ -3161,6 +3163,8 @@ static bool needsSelfRetainWhileLoadingQuirk()
 
     settings.setLargeImageAsyncDecodingEnabled([preferences largeImageAsyncDecodingEnabled]);
     settings.setAnimatedImageAsyncDecodingEnabled([preferences animatedImageAsyncDecodingEnabled]);
+
+    RuntimeEnabledFeatures::sharedFeatures().setServerTimingEnabled([preferences serverTimingEnabled]);
 }
 
 static inline IMP getMethod(id o, SEL s)
@@ -9795,25 +9799,25 @@ static NSTextAlignment nsTextAlignmentFromRenderStyle(const RenderStyle* style)
 {
     NSTextAlignment textAlignment;
     switch (style->textAlign()) {
-    case RIGHT:
-    case WEBKIT_RIGHT:
+    case TextAlignMode::Right:
+    case TextAlignMode::WebKitRight:
         textAlignment = NSTextAlignmentRight;
         break;
-    case LEFT:
-    case WEBKIT_LEFT:
+    case TextAlignMode::Left:
+    case TextAlignMode::WebKitLeft:
         textAlignment = NSTextAlignmentLeft;
         break;
-    case CENTER:
-    case WEBKIT_CENTER:
+    case TextAlignMode::Center:
+    case TextAlignMode::WebKitCenter:
         textAlignment = NSTextAlignmentCenter;
         break;
-    case JUSTIFY:
+    case TextAlignMode::Justify:
         textAlignment = NSTextAlignmentJustified;
         break;
-    case TASTART:
+    case TextAlignMode::Start:
         textAlignment = style->isLeftToRightDirection() ? NSTextAlignmentLeft : NSTextAlignmentRight;
         break;
-    case TAEND:
+    case TextAlignMode::End:
         textAlignment = style->isLeftToRightDirection() ? NSTextAlignmentRight : NSTextAlignmentLeft;
         break;
     default:
@@ -9916,7 +9920,7 @@ static NSTextAlignment nsTextAlignmentFromRenderStyle(const RenderStyle* style)
                     String value = typingStyle->style()->getPropertyValue(CSSPropertyWebkitTextDecorationsInEffect);
                     [_private->_textTouchBarItemController setTextIsUnderlined:value.contains("underline")];
                 } else
-                    [_private->_textTouchBarItemController setTextIsUnderlined:(style->textDecorationsInEffect() & TextDecorationUnderline)];
+                    [_private->_textTouchBarItemController setTextIsUnderlined:style->textDecorationsInEffect().contains(TextDecoration::Underline)];
 
                 Color textColor = style->visitedDependentColor(CSSPropertyColor);
                 if (textColor.isValid())

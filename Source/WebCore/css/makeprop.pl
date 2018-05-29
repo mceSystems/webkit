@@ -252,9 +252,11 @@ print GPERF << "EOF";
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored \"-Wunknown-pragmas\"
-#pragma clang diagnostic ignored \"-Wdeprecated-register\"
 #pragma clang diagnostic ignored \"-Wimplicit-fallthrough\"
 #endif
+
+// Older versions of gperf like to use the `register` keyword.
+#define register
 
 namespace WebCore {
 
@@ -574,8 +576,8 @@ sub getLayersAccessorFunction {
 sub getFillLayerType {
 my $name = shift;
 
-  return "BackgroundFillLayer" if $name =~ /background-/;
-  return "MaskFillLayer" if $name =~ /mask-/;
+  return "FillLayerType::Background" if $name =~ /background-/;
+  return "FillLayerType::Mask" if $name =~ /mask-/;
 }
 
 sub getFillLayerMapfunction {
@@ -851,7 +853,7 @@ sub generateInitialValueSetter {
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"font-property"}) {
     $setterContent .= $indent . "    auto fontDescription = styleResolver.fontDescription();\n";
     $setterContent .= $indent . "    fontDescription." . $setter . "(FontCascadeDescription::" . $initial . "());\n";
-    $setterContent .= $indent . "    styleResolver.setFontDescription(fontDescription);\n";
+    $setterContent .= $indent . "    styleResolver.setFontDescription(WTFMove(fontDescription));\n";
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"fill-layer-property"}) {
     $setterContent .= generateFillLayerPropertyInitialValueSetter($name, $indent . "    ");
   } else {
@@ -895,7 +897,7 @@ sub generateInheritValueSetter {
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"font-property"}) {
     $setterContent .= $indent . "    auto fontDescription = styleResolver.fontDescription();\n";
     $setterContent .= $indent . "    fontDescription." . $setter . "(styleResolver.parentFontDescription()." . $getter . "());\n";
-    $setterContent .= $indent . "    styleResolver.setFontDescription(fontDescription);\n";
+    $setterContent .= $indent . "    styleResolver.setFontDescription(WTFMove(fontDescription));\n";
     $didCallSetValue = 1;
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"fill-layer-property"}) {
     $setterContent .= generateFillLayerPropertyInheritValueSetter($name, $indent . "    ");
@@ -949,7 +951,7 @@ sub generateValueSetter {
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"font-property"}) {
     $setterContent .= $indent . "    auto fontDescription = styleResolver.fontDescription();\n";
     $setterContent .= $indent . "    fontDescription." . $setter . "(" . $convertedValue . ");\n";
-    $setterContent .= $indent . "    styleResolver.setFontDescription(fontDescription);\n";
+    $setterContent .= $indent . "    styleResolver.setFontDescription(WTFMove(fontDescription));\n";
     $didCallSetValue = 1;
   } elsif (exists $propertiesWithStyleBuilderOptions{$name}{"fill-layer-property"}) {
     $setterContent .= generateFillLayerPropertyValueSetter($name, $indent . "    ");

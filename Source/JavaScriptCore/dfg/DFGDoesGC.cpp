@@ -97,6 +97,7 @@ bool doesGC(Graph& graph, Node* node)
     case ArithFRound:
     case ArithUnary:
     case ValueAdd:
+    case ValueNegate:
     case TryGetById:
     case GetById:
     case GetByIdFlush:
@@ -193,7 +194,8 @@ bool doesGC(Graph& graph, Node* node)
     case CallStringConstructor:
     case NumberToStringWithRadix:
     case NumberToStringWithValidRadixConstant:
-    case In:
+    case InByVal:
+    case InById:
     case HasOwnProperty:
     case Jump:
     case Branch:
@@ -310,6 +312,7 @@ bool doesGC(Graph& graph, Node* node)
     case AtomicsSub:
     case AtomicsXor:
     case AtomicsIsLockFree:
+    case MatchStructure:
         return false;
 
     case PushWithScope:

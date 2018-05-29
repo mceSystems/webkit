@@ -294,17 +294,17 @@ bool LinkLoader::loadLink(const LinkRelAttribute& relAttribute, const URL& href,
         // FIXME: The href attribute of the link element can be in "//hostname" form, and we shouldn't attempt
         // to complete that as URL <https://bugs.webkit.org/show_bug.cgi?id=48857>.
         if (document.settings().dnsPrefetchingEnabled() && href.isValid() && !href.isEmpty() && document.frame())
-            document.frame()->loader().client().prefetchDNS(href.host());
+            document.frame()->loader().client().prefetchDNS(href.host().toString());
     }
 
     preconnectIfNeeded(relAttribute, href, document, crossOrigin);
 
     if (m_client.shouldLoadLink()) {
         auto resourceClient = preloadIfNeeded(relAttribute, href, document, as, media, mimeType, crossOrigin, this);
+        if (m_preloadResourceClient)
+            m_preloadResourceClient->clear();
         if (resourceClient)
             m_preloadResourceClient = WTFMove(resourceClient);
-        else if (m_preloadResourceClient)
-            m_preloadResourceClient->clear();
     }
 
     prefetchIfNeeded(relAttribute, href, document);

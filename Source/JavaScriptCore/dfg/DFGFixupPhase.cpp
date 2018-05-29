@@ -146,7 +146,45 @@ private:
             }
             break;
         }
+
+        case ValueNegate: {
+            if (node->child1()->shouldSpeculateInt32OrBoolean() && node->canSpeculateInt32(FixupPass)) {
+                node->setOp(ArithNegate);
+                fixIntOrBooleanEdge(node->child1());
+                if (bytecodeCanTruncateInteger(node->arithNodeFlags()))
+                    node->setArithMode(Arith::Unchecked);
+                else if (bytecodeCanIgnoreNegativeZero(node->arithNodeFlags()))
+                    node->setArithMode(Arith::CheckOverflow);
+                else
+                    node->setArithMode(Arith::CheckOverflowAndNegativeZero);
+                node->setResult(NodeResultInt32);
+                node->clearFlags(NodeMustGenerate);
+                break;
+            }
             
+            if (m_graph.unaryArithShouldSpeculateAnyInt(node, FixupPass)) {
+                node->setOp(ArithNegate);
+                fixEdge<Int52RepUse>(node->child1());
+                if (bytecodeCanIgnoreNegativeZero(node->arithNodeFlags()))
+                    node->setArithMode(Arith::CheckOverflow);
+                else
+                    node->setArithMode(Arith::CheckOverflowAndNegativeZero);
+                node->setResult(NodeResultInt52);
+                node->clearFlags(NodeMustGenerate);
+                break;
+            }
+            if (node->child1()->shouldSpeculateNotCell()) {
+                node->setOp(ArithNegate);
+                fixDoubleOrBooleanEdge(node->child1());
+                node->setResult(NodeResultDouble);
+                node->clearFlags(NodeMustGenerate);
+            } else {
+                fixEdge<UntypedUse>(node->child1());
+                node->setResult(NodeResultJS);
+            }
+            break;
+        }
+
         case ValueAdd: {
             if (attemptToMakeIntegerAdd(node)) {
                 node->setOp(ArithAdd);
@@ -257,12 +295,10 @@ private:
                 node->clearFlags(NodeMustGenerate);
                 break;
             }
-            if (node->child1()->shouldSpeculateNotCell()) {
-                fixDoubleOrBooleanEdge(node->child1());
-                node->setResult(NodeResultDouble);
-                node->clearFlags(NodeMustGenerate);
-            } else
-                fixEdge<UntypedUse>(node->child1());
+
+            fixDoubleOrBooleanEdge(node->child1());
+            node->setResult(NodeResultDouble);
+            node->clearFlags(NodeMustGenerate);
             break;
         }
             
@@ -606,7 +642,7 @@ private:
         case StringCharAt:
         case StringCharCodeAt: {
             // Currently we have no good way of refining these.
-            ASSERT(node->arrayMode() == ArrayMode(Array::String));
+            ASSERT(node->arrayMode() == ArrayMode(Array::String, Array::Read));
             blessArrayOperation(node->child1(), node->child2(), node->child3());
             fixEdge<KnownCellUse>(node->child1());
             fixEdge<Int32Use>(node->child2());
@@ -877,7 +913,7 @@ private:
             }
             
             if (badNews) {
-                node->setArrayMode(ArrayMode(Array::Generic));
+                node->setArrayMode(ArrayMode(Array::Generic, node->arrayMode().action()));
                 break;
             }
             
@@ -1454,10 +1490,21 @@ private:
             break;
         }
             
+        case MatchStructure: {
+            // FIXME: Introduce a variant of MatchStructure that doesn't do a cell check.
+            // https://bugs.webkit.org/show_bug.cgi?id=185784
+            fixEdge<CellUse>(node->child1());
+            break;
+        }
+            
         case InstanceOf: {
-            if (!(node->child1()->prediction() & ~SpecCell))
+            if (node->child1()->shouldSpeculateCell()
+                && node->child2()->shouldSpeculateCell()
+                && is64Bit()) {
                 fixEdge<CellUse>(node->child1());
-            fixEdge<CellUse>(node->child2());
+                fixEdge<CellUse>(node->child2());
+                break;
+            }
             break;
         }
 
@@ -1465,7 +1512,12 @@ private:
             fixEdge<CellUse>(node->child2());
             break;
 
-        case In: {
+        case InById: {
+            fixEdge<CellUse>(node->child1());
+            break;
+        }
+
+        case InByVal: {
             if (node->child2()->shouldSpeculateInt32()) {
                 convertToHasIndexedProperty(node);
                 break;
@@ -2168,13 +2220,13 @@ private:
     template<UseKind useKind>
     void attemptToForceStringArrayModeByToStringConversion(ArrayMode& arrayMode, Node* node)
     {
-        ASSERT(arrayMode == ArrayMode(Array::Generic));
+        ASSERT(arrayMode == ArrayMode(Array::Generic, Array::Read));
         
         if (!m_graph.canOptimizeStringObjectAccess(node->origin.semantic))
             return;
         
         createToString<useKind>(node, node->child1());
-        arrayMode = ArrayMode(Array::String);
+        arrayMode = ArrayMode(Array::String, Array::Read);
     }
     
     template<UseKind useKind>
@@ -3110,7 +3162,7 @@ private:
         CodeBlock* profiledBlock = m_graph.baselineCodeBlockFor(node->origin.semantic);
         ArrayProfile* arrayProfile = 
             profiledBlock->getArrayProfile(node->origin.semantic.bytecodeIndex);
-        ArrayMode arrayMode = ArrayMode(Array::SelectUsingPredictions);
+        ArrayMode arrayMode = ArrayMode(Array::SelectUsingPredictions, Array::Read);
         if (arrayProfile) {
             ConcurrentJSLocker locker(profiledBlock->m_lock);
             arrayProfile->computeUpdatedPrediction(locker, profiledBlock);
@@ -3123,7 +3175,7 @@ private:
                 // GetById. I.e. ForceExit = Generic. So, there is no harm - and only
                 // profit - from treating the Unprofiled case as
                 // SelectUsingPredictions.
-                arrayMode = ArrayMode(Array::SelectUsingPredictions);
+                arrayMode = ArrayMode(Array::SelectUsingPredictions, Array::Read);
             }
         }
             

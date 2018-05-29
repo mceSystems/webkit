@@ -286,7 +286,7 @@ bool AXObjectCache::isNodeVisible(Node* node) const
     if (!renderer)
         return false;
     const RenderStyle& style = renderer->style();
-    if (style.display() == NONE || style.visibility() != VISIBLE)
+    if (style.display() == DisplayType::None || style.visibility() != Visibility::Visible)
         return false;
     
     // We also need to consider aria hidden status.
@@ -1961,7 +1961,9 @@ CharacterOffset AXObjectCache::startOrEndCharacterOffsetForRange(RefPtr<Range> r
 
 void AXObjectCache::startOrEndTextMarkerDataForRange(TextMarkerData& textMarkerData, RefPtr<Range> range, bool isStart)
 {
-    memset(&textMarkerData, 0, sizeof(TextMarkerData));
+    // This memory must be zero'd so instances of TextMarkerData can be tested for byte-equivalence.
+    // Warning: This is risky and bad because TextMarkerData is a nontrivial type.
+    memset(static_cast<void*>(&textMarkerData), 0, sizeof(TextMarkerData));
     
     CharacterOffset characterOffset = startOrEndCharacterOffsetForRange(range, isStart);
     if (characterOffset.isNull())
@@ -2018,7 +2020,10 @@ CharacterOffset AXObjectCache::characterOffsetForNodeAndOffset(Node& node, int o
 
 void AXObjectCache::textMarkerDataForCharacterOffset(TextMarkerData& textMarkerData, const CharacterOffset& characterOffset)
 {
-    memset(&textMarkerData, 0, sizeof(TextMarkerData));
+    // This memory must be zero'd so instances of TextMarkerData can be tested for byte-equivalence.
+    // Warning: This is risky and bad because TextMarkerData is a nontrivial type.
+    memset(static_cast<void*>(&textMarkerData), 0, sizeof(TextMarkerData));
+
     setTextMarkerDataWithCharacterOffset(textMarkerData, characterOffset);
 }
 
@@ -2198,8 +2203,9 @@ std::optional<TextMarkerData> AXObjectCache::textMarkerDataForVisiblePosition(co
     RefPtr<AccessibilityObject> obj = cache->getOrCreate(domNode);
 
     // This memory must be zero'd so instances of TextMarkerData can be tested for byte-equivalence.
+    // Warning: This is risky and bad because TextMarkerData is a nontrivial type.
     TextMarkerData textMarkerData;
-    memset(&textMarkerData, 0, sizeof(TextMarkerData));
+    memset(static_cast<void*>(&textMarkerData), 0, sizeof(TextMarkerData));
     
     textMarkerData.axID = obj.get()->axObjectID();
     textMarkerData.node = domNode;
@@ -2226,8 +2232,9 @@ std::optional<TextMarkerData> AXObjectCache::textMarkerDataForFirstPositionInTex
         return std::nullopt;
 
     // This memory must be zero'd so instances of TextMarkerData can be tested for byte-equivalence.
+    // Warning: This is risky and bad because TextMarkerData is a nontrivial type.
     TextMarkerData textMarkerData;
-    memset(&textMarkerData, 0, sizeof(TextMarkerData));
+    memset(static_cast<void*>(&textMarkerData), 0, sizeof(TextMarkerData));
     
     textMarkerData.axID = obj.get()->axObjectID();
     textMarkerData.node = &textControl;

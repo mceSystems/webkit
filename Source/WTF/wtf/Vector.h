@@ -96,7 +96,7 @@ struct VectorInitializer<true, true, T>
 {
     static void initializeIfNonPOD(T* begin, T* end)
     {
-        memset(begin, 0, reinterpret_cast<char*>(end) - reinterpret_cast<char*>(begin));
+        memset(static_cast<void*>(begin), 0, reinterpret_cast<char*>(end) - reinterpret_cast<char*>(begin));
     }
 
     static void initialize(T* begin, T* end)
@@ -141,11 +141,11 @@ struct VectorMover<true, T>
 {
     static void move(const T* src, const T* srcEnd, T* dst) 
     {
-        memcpy(dst, src, reinterpret_cast<const char*>(srcEnd) - reinterpret_cast<const char*>(src));
+        memcpy(static_cast<void*>(dst), static_cast<void*>(const_cast<T*>(src)), reinterpret_cast<const char*>(srcEnd) - reinterpret_cast<const char*>(src));
     }
     static void moveOverlapping(const T* src, const T* srcEnd, T* dst) 
     {
-        memmove(dst, src, reinterpret_cast<const char*>(srcEnd) - reinterpret_cast<const char*>(src));
+        memmove(static_cast<void*>(dst), static_cast<void*>(const_cast<T*>(src)), reinterpret_cast<const char*>(srcEnd) - reinterpret_cast<const char*>(src));
     }
 };
 
@@ -171,7 +171,7 @@ struct VectorCopier<true, T>
 {
     static void uninitializedCopy(const T* src, const T* srcEnd, T* dst)
     {
-        memcpy(dst, src, reinterpret_cast<const char*>(srcEnd) - reinterpret_cast<const char*>(src));
+        memcpy(static_cast<void*>(dst), static_cast<void*>(const_cast<T*>(src)), reinterpret_cast<const char*>(srcEnd) - reinterpret_cast<const char*>(src));
     }
     template<typename U>
     static void uninitializedCopy(const T* src, const T* srcEnd, U* dst)
@@ -758,7 +758,7 @@ public:
 
     void clear() { shrinkCapacity(0); }
 
-    void append(ValueType&& value) { append<ValueType>(std::forward<ValueType>(value)); }
+    ALWAYS_INLINE void append(ValueType&& value) { append<ValueType>(std::forward<ValueType>(value)); }
     template<typename U> void append(U&&);
     template<typename... Args> void constructAndAppend(Args&&...);
     template<typename... Args> bool tryConstructAndAppend(Args&&...);
@@ -1032,7 +1032,7 @@ void Vector<T, inlineCapacity, OverflowHandler, minCapacity>::expandCapacity(siz
 }
 
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity>
-T* Vector<T, inlineCapacity, OverflowHandler, minCapacity>::expandCapacity(size_t newMinCapacity, T* ptr)
+NEVER_INLINE T* Vector<T, inlineCapacity, OverflowHandler, minCapacity>::expandCapacity(size_t newMinCapacity, T* ptr)
 {
     if (ptr < begin() || ptr >= end()) {
         expandCapacity(newMinCapacity);
@@ -1244,7 +1244,7 @@ void Vector<T, inlineCapacity, OverflowHandler, minCapacity>::shrinkCapacity(siz
 
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity>
 template<typename U>
-void Vector<T, inlineCapacity, OverflowHandler, minCapacity>::append(const U* data, size_t dataSize)
+ALWAYS_INLINE void Vector<T, inlineCapacity, OverflowHandler, minCapacity>::append(const U* data, size_t dataSize)
 {
     size_t newSize = m_size + dataSize;
     if (newSize > capacity()) {
@@ -1261,7 +1261,7 @@ void Vector<T, inlineCapacity, OverflowHandler, minCapacity>::append(const U* da
 
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity>
 template<typename U>
-bool Vector<T, inlineCapacity, OverflowHandler, minCapacity>::tryAppend(const U* data, size_t dataSize)
+ALWAYS_INLINE bool Vector<T, inlineCapacity, OverflowHandler, minCapacity>::tryAppend(const U* data, size_t dataSize)
 {
     size_t newSize = m_size + dataSize;
     if (newSize > capacity()) {

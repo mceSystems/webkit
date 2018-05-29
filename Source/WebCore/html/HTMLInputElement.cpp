@@ -488,6 +488,16 @@ void HTMLInputElement::setType(const AtomicString& type)
     setAttributeWithoutSynchronization(typeAttr, type);
 }
 
+void HTMLInputElement::resignStrongPasswordAppearance()
+{
+    if (!hasAutoFillStrongPasswordButton())
+        return;
+    setAutoFilled(false);
+    setShowAutoFillButton(AutoFillButtonType::None);
+    if (auto* page = document().page())
+        page->chrome().client().inputElementDidResignStrongPasswordAppearance(*this);
+}
+
 void HTMLInputElement::updateType()
 {
     ASSERT(m_inputType);
@@ -497,13 +507,7 @@ void HTMLInputElement::updateType()
         return;
 
     removeFromRadioButtonGroup();
-
-    if (hasAutoFillStrongPasswordButton()) {
-        setAutoFilled(false);
-        setShowAutoFillButton(AutoFillButtonType::None);
-        if (auto* page = document().page())
-            page->chrome().client().inputElementDidResignStrongPasswordAppearance(*this);
-    }
+    resignStrongPasswordAppearance();
 
     bool didStoreValue = m_inputType->storesValueSeparateFromAttribute();
     bool willStoreValue = newType->storesValueSeparateFromAttribute();
@@ -1064,6 +1068,10 @@ ExceptionOr<void> HTMLInputElement::setValue(const String& value, TextFieldEvent
     setLastChangeWasNotUserEdit();
     setFormControlValueMatchesRenderer(false);
     m_inputType->setValue(sanitizedValue, valueChanged, eventBehavior);
+
+    bool wasModifiedProgrammatically = eventBehavior == DispatchNoEvent;
+    if (wasModifiedProgrammatically)
+        resignStrongPasswordAppearance();
     return { };
 }
 
@@ -1966,7 +1974,7 @@ bool HTMLInputElement::shouldTruncateText(const RenderStyle& style) const
 {
     if (!isTextField())
         return false;
-    return document().focusedElement() != this && style.textOverflow() == TextOverflowEllipsis;
+    return document().focusedElement() != this && style.textOverflow() == TextOverflow::Ellipsis;
 }
 
 ExceptionOr<int> HTMLInputElement::selectionStartForBindings() const
@@ -2052,17 +2060,17 @@ RenderStyle HTMLInputElement::createInnerTextStyle(const RenderStyle& style)
     textBlockStyle.inheritFrom(style);
     adjustInnerTextStyle(style, textBlockStyle);
 
-    textBlockStyle.setWhiteSpace(PRE);
-    textBlockStyle.setOverflowWrap(NormalOverflowWrap);
-    textBlockStyle.setOverflowX(OHIDDEN);
-    textBlockStyle.setOverflowY(OHIDDEN);
-    textBlockStyle.setTextOverflow(shouldTruncateText(style) ? TextOverflowEllipsis : TextOverflowClip);
+    textBlockStyle.setWhiteSpace(WhiteSpace::Pre);
+    textBlockStyle.setOverflowWrap(OverflowWrap::Normal);
+    textBlockStyle.setOverflowX(Overflow::Hidden);
+    textBlockStyle.setOverflowY(Overflow::Hidden);
+    textBlockStyle.setTextOverflow(shouldTruncateText(style) ? TextOverflow::Ellipsis : TextOverflow::Clip);
 
-    textBlockStyle.setDisplay(BLOCK);
+    textBlockStyle.setDisplay(DisplayType::Block);
 
     if (hasAutoFillStrongPasswordButton()) {
         textBlockStyle.setColor({ 0.0f, 0.0f, 0.0f, 0.6f });
-        textBlockStyle.setTextOverflow(TextOverflowClip);
+        textBlockStyle.setTextOverflow(TextOverflow::Clip);
         textBlockStyle.setMaskImage(styleResolver().styleImage(autoFillStrongPasswordMaskImage()));
         // A stacking context is needed for the mask.
         if (textBlockStyle.hasAutoZIndex())

@@ -84,9 +84,9 @@ std::optional<ElementStyle> TextControlInnerContainer::resolveCustomStyle(const 
 {
     auto elementStyle = resolveStyle(&parentStyle);
     if (isStrongPasswordTextField(shadowHost())) {
-        elementStyle.renderStyle->setFlexWrap(FlexWrap);
-        elementStyle.renderStyle->setOverflowX(OHIDDEN);
-        elementStyle.renderStyle->setOverflowY(OHIDDEN);
+        elementStyle.renderStyle->setFlexWrap(FlexWrap::Wrap);
+        elementStyle.renderStyle->setOverflowX(Overflow::Hidden);
+        elementStyle.renderStyle->setOverflowY(Overflow::Hidden);
     }
     return WTFMove(elementStyle);
 }
@@ -108,16 +108,16 @@ std::optional<ElementStyle> TextControlInnerElement::resolveCustomStyle(const Re
     newStyle->inheritFrom(*shadowHostStyle);
     newStyle->setFlexGrow(1);
     newStyle->setMinWidth(Length { 0, Fixed }); // Needed for correct shrinking.
-    newStyle->setDisplay(BLOCK);
+    newStyle->setDisplay(DisplayType::Block);
     newStyle->setDirection(LTR);
     // We don't want the shadow DOM to be editable, so we set this block to read-only in case the input itself is editable.
-    newStyle->setUserModify(READ_ONLY);
+    newStyle->setUserModify(UserModify::ReadOnly);
 
     if (isStrongPasswordTextField(shadowHost())) {
         newStyle->setFlexShrink(0);
-        newStyle->setTextOverflow(TextOverflowClip);
-        newStyle->setOverflowX(OHIDDEN);
-        newStyle->setOverflowY(OHIDDEN);
+        newStyle->setTextOverflow(TextOverflow::Clip);
+        newStyle->setOverflowX(Overflow::Hidden);
+        newStyle->setOverflowY(Overflow::Hidden);
 
         // Set "flex-basis: 1em". Note that CSSPrimitiveValue::computeLengthInt() only needs the element's
         // style to calculate em lengths. Since the element might not be in a document, just pass nullptr
@@ -197,11 +197,11 @@ std::optional<ElementStyle> TextControlPlaceholderElement::resolveCustomStyle(co
     auto style = resolveStyle(&parentStyle);
 
     auto& controlElement = downcast<HTMLTextFormControlElement>(*containingShadowRoot()->host());
-    style.renderStyle->setDisplay(controlElement.isPlaceholderVisible() ? BLOCK : NONE);
+    style.renderStyle->setDisplay(controlElement.isPlaceholderVisible() ? DisplayType::Block : DisplayType::None);
 
     if (is<HTMLInputElement>(controlElement)) {
         auto& inputElement = downcast<HTMLInputElement>(controlElement);
-        style.renderStyle->setTextOverflow(inputElement.shouldTruncateText(*shadowHostStyle) ? TextOverflowEllipsis : TextOverflowClip);
+        style.renderStyle->setTextOverflow(inputElement.shouldTruncateText(*shadowHostStyle) ? TextOverflow::Ellipsis : TextOverflow::Clip);
     }
     return WTFMove(style);
 }

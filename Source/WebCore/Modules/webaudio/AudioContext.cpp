@@ -343,7 +343,7 @@ Document* AudioContext::document() const
     return downcast<Document>(m_scriptExecutionContext);
 }
 
-const Document* AudioContext::hostingDocument() const
+Document* AudioContext::hostingDocument() const
 {
     return downcast<Document>(m_scriptExecutionContext);
 }
@@ -385,6 +385,17 @@ void AudioContext::visibilityStateChanged()
             m_mediaSession->endInterruption(PlatformMediaSession::MayResumePlaying);
         }
     }
+}
+
+bool AudioContext::wouldTaintOrigin(const URL& url) const
+{
+    if (url.protocolIsData())
+        return false;
+
+    if (auto* document = this->document())
+        return !document->securityOrigin().canRequest(url);
+
+    return false;
 }
 
 ExceptionOr<Ref<AudioBuffer>> AudioContext::createBuffer(unsigned numberOfChannels, size_t numberOfFrames, float sampleRate)

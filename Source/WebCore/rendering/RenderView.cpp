@@ -100,7 +100,7 @@ RenderView::RenderView(Document& document, RenderStyle&& style)
 
     setPreferredLogicalWidthsDirty(true, MarkOnlyThis);
     
-    setPositionState(AbsolutePosition); // to 0,0 :)
+    setPositionState(PositionType::Absolute); // to 0,0 :)
 }
 
 RenderView::~RenderView()
@@ -394,7 +394,7 @@ RenderElement* RenderView::rendererForRootBackground() const
 static inline bool rendererObscuresBackground(const RenderElement& rootElement)
 {
     auto& style = rootElement.style();
-    if (style.visibility() != VISIBLE || style.opacity() != 1 || style.hasTransform())
+    if (style.visibility() != Visibility::Visible || style.opacity() != 1 || style.hasTransform())
         return false;
 
     if (style.hasBorderRadius())
@@ -407,7 +407,7 @@ static inline bool rendererObscuresBackground(const RenderElement& rootElement)
     if (!rendererForBackground)
         return false;
 
-    if (rendererForBackground->style().backgroundClip() == TextFillBox)
+    if (rendererForBackground->style().backgroundClip() == FillBox::Text)
         return false;
 
     return true;

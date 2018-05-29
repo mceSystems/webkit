@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2018 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Cameron Zwarich <cwzwarich@uwaterloo.ca>
  * Copyright (C) 2012 Igalia, S.L.
  *
@@ -45,6 +45,7 @@
 #include "JSFixedArray.h"
 #include "JSFunction.h"
 #include "JSGeneratorFunction.h"
+#include "JSImmutableButterfly.h"
 #include "JSLexicalEnvironment.h"
 #include "JSTemplateObjectDescriptor.h"
 #include "LowLevelInterpreter.h"
@@ -1282,9 +1283,9 @@ UnlinkedArrayProfile BytecodeGenerator::newArrayProfile()
     return m_codeBlock->addArrayProfile();
 }
 
-UnlinkedArrayAllocationProfile BytecodeGenerator::newArrayAllocationProfile()
+UnlinkedArrayAllocationProfile BytecodeGenerator::newArrayAllocationProfile(IndexingType recommendedIndexingType)
 {
-    return m_codeBlock->addArrayAllocationProfile();
+    return m_codeBlock->addArrayAllocationProfile(recommendedIndexingType);
 }
 
 UnlinkedObjectAllocationProfile BytecodeGenerator::newObjectAllocationProfile()
@@ -1294,8 +1295,10 @@ UnlinkedObjectAllocationProfile BytecodeGenerator::newObjectAllocationProfile()
 
 UnlinkedValueProfile BytecodeGenerator::emitProfiledOpcode(OpcodeID opcodeID)
 {
-    UnlinkedValueProfile result = m_codeBlock->addValueProfile();
     emitOpcode(opcodeID);
+    if (!m_vm->canUseJIT())
+        return static_cast<UnlinkedValueProfile>(-1);
+    UnlinkedValueProfile result = m_codeBlock->addValueProfile();
     return result;
 }
 
@@ -2665,14 +2668,23 @@ RegisterID* BytecodeGenerator::emitInstanceOfCustom(RegisterID* dst, RegisterID*
     return dst;
 }
 
-RegisterID* BytecodeGenerator::emitIn(RegisterID* dst, RegisterID* property, RegisterID* base)
+RegisterID* BytecodeGenerator::emitInByVal(RegisterID* dst, RegisterID* property, RegisterID* base)
 {
     UnlinkedArrayProfile arrayProfile = newArrayProfile();
-    emitOpcode(op_in);
+    emitOpcode(op_in_by_val);
     instructions().append(dst->index());
     instructions().append(base->index());
     instructions().append(property->index());
     instructions().append(arrayProfile);
+    return dst;
+}
+
+RegisterID* BytecodeGenerator::emitInById(RegisterID* dst, RegisterID* base, const Identifier& property)
+{
+    emitOpcode(op_in_by_id);
+    instructions().append(dst->index());
+    instructions().append(base->index());
+    instructions().append(addConstant(property));
     return dst;
 }
 
@@ -2701,6 +2713,7 @@ RegisterID* BytecodeGenerator::emitGetById(RegisterID* dst, RegisterID* base, co
     instructions().append(0);
     instructions().append(0);
     instructions().append(0);
+    instructions().append(Options::prototypeHitCountForLLIntCaching());
     instructions().append(profile);
     return dst;
 }
@@ -3126,6 +3139,16 @@ void BytecodeGenerator::getVariablesUnderTDZ(VariableEnvironment& result)
     }
 }
 
+void BytecodeGenerator::preserveTDZStack(BytecodeGenerator::PreservedTDZStack& preservedStack)
+{
+    preservedStack.m_preservedTDZStack = m_TDZStack;
+}
+
+void BytecodeGenerator::restoreTDZStack(const BytecodeGenerator::PreservedTDZStack& preservedStack)
+{
+    m_TDZStack = preservedStack.m_preservedTDZStack;
+}
+
 RegisterID* BytecodeGenerator::emitNewObject(RegisterID* dst)
 {
     size_t begin = instructions().size();
@@ -3138,11 +3161,12 @@ RegisterID* BytecodeGenerator::emitNewObject(RegisterID* dst)
     return dst;
 }
 
-JSValue BytecodeGenerator::addBigIntConstant(const Identifier& identifier, uint8_t radix)
+JSValue BytecodeGenerator::addBigIntConstant(const Identifier& identifier, uint8_t radix, bool sign)
 {
-    return m_bigIntMap.ensure(BigIntMapEntry(identifier.impl(), radix), [&] {
+    return m_bigIntMap.ensure(BigIntMapEntry(identifier.impl(), radix, sign), [&] {
         auto scope = DECLARE_CATCH_SCOPE(*vm());
-        JSBigInt* bigIntInMap = JSBigInt::parseInt(nullptr, *vm(), identifier.string(), radix);
+        auto parseIntSign = sign ? JSBigInt::ParseIntSign::Signed : JSBigInt::ParseIntSign::Unsigned;
+        JSBigInt* bigIntInMap = JSBigInt::parseInt(nullptr, *vm(), identifier.string(), radix, JSBigInt::ErrorParseMode::ThrowExceptions, parseIntSign);
         // FIXME: [ESNext] Enables a way to throw an error on ByteCodeGenerator step
         // https://bugs.webkit.org/show_bug.cgi?id=180139
         scope.assertNoException();
@@ -3174,16 +3198,16 @@ RegisterID* BytecodeGenerator::addTemplateObjectConstant(Ref<TemplateObjectDescr
     return &m_constantPoolRegisters[index];
 }
 
-RegisterID* BytecodeGenerator::emitNewArrayBuffer(RegisterID* dst, JSFixedArray* array)
+RegisterID* BytecodeGenerator::emitNewArrayBuffer(RegisterID* dst, JSImmutableButterfly* array, IndexingType recommendedIndexingType)
 {
     emitOpcode(op_new_array_buffer);
     instructions().append(dst->index());
     instructions().append(addConstantValue(array)->index());
-    instructions().append(newArrayAllocationProfile());
+    instructions().append(newArrayAllocationProfile(recommendedIndexingType));
     return dst;
 }
 
-RegisterID* BytecodeGenerator::emitNewArray(RegisterID* dst, ElementNode* elements, unsigned length)
+RegisterID* BytecodeGenerator::emitNewArray(RegisterID* dst, ElementNode* elements, unsigned length, IndexingType recommendedIndexingType)
 {
     Vector<RefPtr<RegisterID>, 16, UnsafeVectorOverflow> argv;
     for (ElementNode* n = elements; n; n = n->next()) {
@@ -3201,7 +3225,7 @@ RegisterID* BytecodeGenerator::emitNewArray(RegisterID* dst, ElementNode* elemen
     instructions().append(dst->index());
     instructions().append(argv.size() ? argv[0]->index() : 0); // argv
     instructions().append(argv.size()); // argc
-    instructions().append(newArrayAllocationProfile());
+    instructions().append(newArrayAllocationProfile(recommendedIndexingType));
     return dst;
 }
 
@@ -3253,7 +3277,7 @@ RegisterID* BytecodeGenerator::emitNewArrayWithSize(RegisterID* dst, RegisterID*
     emitOpcode(op_new_array_with_size);
     instructions().append(dst->index());
     instructions().append(length->index());
-    instructions().append(newArrayAllocationProfile());
+    instructions().append(newArrayAllocationProfile(ArrayWithUndecided));
 
     return dst;
 }
@@ -3447,7 +3471,7 @@ ExpectedFunction BytecodeGenerator::emitExpectedFunctionSnippet(RegisterID* dst,
                 instructions().append(dst->index());
                 instructions().append(0);
                 instructions().append(0);
-                instructions().append(newArrayAllocationProfile());
+                instructions().append(newArrayAllocationProfile(ArrayWithUndecided));
             }
         }
         break;

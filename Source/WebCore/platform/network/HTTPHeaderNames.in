@@ -50,13 +50,14 @@ Content-Type
 Content-Range
 Cookie
 Cookie2
+Cross-Origin-Options
+Cross-Origin-Resource-Policy
 Date
 DNT
 Default-Style
 ETag
 Expect
 Expires
-From-Origin
 Host
 If-Match
 If-Modified-Since
@@ -83,6 +84,7 @@ Sec-WebSocket-Extensions
 Sec-WebSocket-Key
 Sec-WebSocket-Protocol
 Sec-WebSocket-Version
+Server-Timing
 Service-Worker-Allowed
 Set-Cookie
 Set-Cookie2

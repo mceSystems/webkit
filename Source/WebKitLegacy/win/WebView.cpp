@@ -5150,7 +5150,7 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     settings.setShouldDisplayTextDescriptions(enabled);
 #endif
 
-    COMPtr<IWebPreferencesPrivate6> prefsPrivate { Query, preferences };
+    COMPtr<IWebPreferencesPrivate7> prefsPrivate { Query, preferences };
     if (prefsPrivate) {
         hr = prefsPrivate->localStorageDatabasePath(&str);
         if (FAILED(hr))
@@ -5229,10 +5229,10 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
         return hr;
     RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsEnabled(!!enabled);
 
-    hr = prefsPrivate->cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(&enabled);
+    hr = prefsPrivate->webAnimationsCSSIntegrationEnabled(&enabled);
     if (FAILED(hr))
         return hr;
-    RuntimeEnabledFeatures::sharedFeatures().setCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled(!!enabled);
+    RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsCSSIntegrationEnabled(!!enabled);
 
     hr = prefsPrivate->userTimingEnabled(&enabled);
     if (FAILED(hr))
@@ -5278,6 +5278,11 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     if (FAILED(hr))
         return hr;
     settings.setVisualViewportAPIEnabled(!!enabled);
+
+    hr = prefsPrivate->crossOriginOptionsSupportEnabled(&enabled);
+    if (FAILED(hr))
+        return hr;
+    settings.setCrossOriginOptionsSupportEnabled(!!enabled);
 
     hr = preferences->privateBrowsingEnabled(&enabled);
     if (FAILED(hr))
@@ -5572,6 +5577,11 @@ HRESULT WebView::notifyPreferencesChanged(IWebNotification* notification)
     if (FAILED(hr))
         return hr;
     settings.setJavaScriptRuntimeFlags(JSC::RuntimeFlags(javaScriptRuntimeFlags));
+
+    hr = prefsPrivate->serverTimingEnabled(&enabled);
+    if (FAILED(hr))
+        return hr;
+    RuntimeEnabledFeatures::sharedFeatures().setServerTimingEnabled(!!enabled);
 
     return S_OK;
 }

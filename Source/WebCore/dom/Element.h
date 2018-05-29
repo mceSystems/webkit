@@ -320,7 +320,7 @@ public:
     WEBCORE_EXPORT ExceptionOr<void> insertAdjacentHTML(const String& where, const String& html);
     WEBCORE_EXPORT ExceptionOr<void> insertAdjacentText(const String& where, const String& text);
 
-    const RenderStyle* computedStyle(PseudoId = NOPSEUDO) override;
+    const RenderStyle* computedStyle(PseudoId = PseudoId::None) override;
 
     bool needsStyleInvalidation() const;
 
@@ -539,7 +539,7 @@ public:
     // This should be called whenever an element changes in a manner that can affect its style.
     void invalidateStyle();
 
-    // As above but also call RenderElement::setStyle with StyleDifferenceRecompositeLayer flag for
+    // As above but also call RenderElement::setStyle with StyleDifference::RecompositeLayer flag for
     // the element even when the style doesn't change. This is mostly needed by the animation code.
     WEBCORE_EXPORT void invalidateStyleAndLayerComposition();
 

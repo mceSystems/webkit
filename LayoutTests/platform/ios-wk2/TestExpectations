@@ -304,7 +304,6 @@ webarchive/archive-empty-frame-source.html [ Failure ]
 webarchive/doctype.html [ Failure ]
 
 # HTTP tests that fail:
-http/tests/appcache/load-from-appcache-defer-resume-crash.html [ Failure ]
 http/tests/download/inherited-encoding-form-submission-result.html [ Failure ]
 http/tests/globalhistory/history-delegate-basic-refresh-redirect.html [ Failure ]
 http/tests/globalhistory/history-delegate-basic-visited-links.html [ Failure ]
@@ -1121,6 +1120,9 @@ webkit.org/b/153380 webarchive/loading/missing-data.html [ Pass Crash ]
 
 webkit.org/b/153503 http/tests/appcache/404-resource-with-slow-main-resource.php [ Pass Failure ]
 
+# Uses WK1 TestRunner.setUseDeferredFramLoading
+http/tests/appcache/load-from-appcache-defer-resume-crash.html [ Skip ]
+
 webkit.org/b/153050 http/tests/security/cross-frame-access-custom.html [ Pass Failure ]
 
 webkit.org/b/155201 storage/domstorage/events/basic-body-attribute.html [ Pass Failure ]
@@ -1155,6 +1157,7 @@ webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-file-blob-download-include
 webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-file-blob-download-includes-slashes.html [ Skip ]
 webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-file-blob-download-includes-unicode.html [ Skip ]
 webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-file-blob-download-no-extension.html [ Skip ]
+webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-file-blob-download-then-revoke.html [ Skip ]
 webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-nodownload-set.html [ Skip ]
 webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-nodownload.html [ Skip ]
 webkit.org/b/156067 fast/dom/HTMLAnchorElement/anchor-download-synthetic-click.html [ Skip ]
@@ -1345,7 +1348,7 @@ webkit.org/b/182849 imported/w3c/web-platform-tests/XMLHttpRequest/event-upload-
 
 webkit.org/b/183714 [ Debug ] http/tests/storageAccess/grant-storage-access-under-opener.html [ Skip ]
 
-webkit.org/b/183860 [ Release ] http/wpt/service-workers/third-party-registration.html [ Skip ]
+webkit.org/b/183860 [ Release ] http/wpt/service-workers/third-party-registration.html [ Pass Failure ]
 
 webkit.org/b/184245 http/tests/workers/service/service-worker-cache-api.https.html [ Pass Failure ]
 

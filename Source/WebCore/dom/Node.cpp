@@ -680,22 +680,22 @@ static Node::Editability computeEditabilityFromComputedStyle(const Node& startNo
         auto* style = node->isDocumentNode() ? node->renderStyle() : const_cast<Node*>(node)->computedStyle();
         if (!style)
             continue;
-        if (style->display() == NONE)
+        if (style->display() == DisplayType::None)
             continue;
 #if ENABLE(USERSELECT_ALL)
         // Elements with user-select: all style are considered atomic
         // therefore non editable.
-        if (treatment == Node::UserSelectAllIsAlwaysNonEditable && style->userSelect() == SELECT_ALL)
+        if (treatment == Node::UserSelectAllIsAlwaysNonEditable && style->userSelect() == UserSelect::All)
             return Node::Editability::ReadOnly;
 #else
         UNUSED_PARAM(treatment);
 #endif
         switch (style->userModify()) {
-        case READ_ONLY:
+        case UserModify::ReadOnly:
             return Node::Editability::ReadOnly;
-        case READ_WRITE:
+        case UserModify::ReadWrite:
             return Node::Editability::CanEditRichly;
-        case READ_WRITE_PLAINTEXT_ONLY:
+        case UserModify::ReadWritePlaintextOnly:
             return Node::Editability::CanEditPlainText;
         }
         ASSERT_NOT_REACHED();
@@ -1070,7 +1070,7 @@ bool Node::canStartSelection() const
         const RenderStyle& style = renderer()->style();
         // We allow selections to begin within an element that has -webkit-user-select: none set,
         // but if the element is draggable then dragging should take priority over selection.
-        if (style.userDrag() == DRAG_ELEMENT && style.userSelect() == SELECT_NONE)
+        if (style.userDrag() == UserDrag::Element && style.userSelect() == UserSelect::None)
             return false;
     }
     return parentOrShadowHostNode() ? parentOrShadowHostNode()->canStartSelection() : true;

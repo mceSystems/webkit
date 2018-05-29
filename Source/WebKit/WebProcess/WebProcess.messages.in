@@ -84,7 +84,6 @@ messages -> WebProcess LegacyReceiver {
     DeleteWebsiteDataForOrigins(PAL::SessionID sessionID, OptionSet<WebKit::WebsiteDataType> websiteDataTypes, Vector<WebCore::SecurityOriginData> origins) -> ()
 
     SetHiddenPageDOMTimerThrottlingIncreaseLimit(int milliseconds)
-    SetProcessSuppressionEnabled(bool flag)
 #if PLATFORM(COCOA)
     SetQOS(int latencyQOS, int throughputQOS)
 #endif
@@ -135,5 +134,9 @@ messages -> WebProcess LegacyReceiver {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
     ScrollerStylePreferenceChanged(bool useOvelayScrollbars)
 #endif
+#endif
+
+#if PLATFORM(COCOA)
+    SetMediaMIMETypes(Vector<String> types)
 #endif
 }

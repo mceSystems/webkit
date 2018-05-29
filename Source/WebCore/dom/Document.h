@@ -29,6 +29,7 @@
 
 #include "Color.h"
 #include "ContainerNode.h"
+#include "DisabledAdaptations.h"
 #include "DocumentEventQueue.h"
 #include "DocumentIdentifier.h"
 #include "DocumentTiming.h"
@@ -44,6 +45,7 @@
 #include "Region.h"
 #include "RenderPtr.h"
 #include "ScriptExecutionContext.h"
+#include "SecurityPolicyViolationEvent.h"
 #include "StringWithDirection.h"
 #include "StyleColor.h"
 #include "Supplementable.h"
@@ -388,6 +390,7 @@ public:
 
     void setViewportArguments(const ViewportArguments& viewportArguments) { m_viewportArguments = viewportArguments; }
     ViewportArguments viewportArguments() const { return m_viewportArguments; }
+    OptionSet<DisabledAdaptations> disabledAdaptations() const { return m_disabledAdaptations; }
 #ifndef NDEBUG
     bool didDispatchViewportPropertiesChanged() const { return m_didDispatchViewportPropertiesChanged; }
 #endif
@@ -545,6 +548,7 @@ public:
     float deviceScaleFactor() const;
 
     bool useSystemAppearance() const;
+    bool useDefaultAppearance() const;
     OptionSet<StyleColor::Options> styleColorOptions() const;
 
     WEBCORE_EXPORT Ref<Range> createRange();
@@ -575,7 +579,7 @@ public:
     };
     WEBCORE_EXPORT void updateLayoutIgnorePendingStylesheets(RunPostLayoutTasks = RunPostLayoutTasks::Asynchronously);
 
-    std::unique_ptr<RenderStyle> styleForElementIgnoringPendingStylesheets(Element&, const RenderStyle* parentStyle, PseudoId = NOPSEUDO);
+    std::unique_ptr<RenderStyle> styleForElementIgnoringPendingStylesheets(Element&, const RenderStyle* parentStyle, PseudoId = PseudoId::None);
 
     // Returns true if page box (margin boxes and page borders) is visible.
     WEBCORE_EXPORT bool isPageBoxVisible(int pageIndex);
@@ -672,7 +676,6 @@ public:
     SocketProvider* socketProvider() final;
 
     bool canNavigate(Frame* targetFrame);
-    Frame* findUnsafeParentScrollPropagationBoundary();
 
     bool usesStyleBasedEditability() const;
     void setHasElementUsingStyleBasedEditability();
@@ -723,10 +726,6 @@ public:
     VisitedLinkState& visitedLinkState() const { return *m_visitedLinkState; }
 
     MouseEventWithHitTestResults prepareMouseEvent(const HitTestRequest&, const LayoutPoint&, const PlatformMouseEvent&);
-
-    WEBCORE_EXPORT String preferredStylesheetSet() const;
-    WEBCORE_EXPORT String selectedStylesheetSet() const;
-    WEBCORE_EXPORT void setSelectedStylesheetSet(const String&);
 
     enum class FocusRemovalEventsMode { Dispatch, DoNotDispatch };
     WEBCORE_EXPORT bool setFocusedElement(Element*, FocusDirection = FocusDirectionNone,
@@ -861,6 +860,7 @@ public:
 #endif
     
     void processViewport(const String& features, ViewportArguments::Type origin);
+    void processDisabledAdaptations(const String& adaptations);
     void updateViewportArguments();
     void processReferrerPolicy(const String& policy);
 
@@ -1114,6 +1114,7 @@ public:
     void enqueueDocumentEvent(Ref<Event>&&);
     void enqueueOverflowEvent(Ref<Event>&&);
     void dispatchPageshowEvent(PageshowEventPersistence);
+    WEBCORE_EXPORT void enqueueSecurityPolicyViolationEvent(SecurityPolicyViolationEvent::Init&&);
     void enqueueHashchangeEvent(const String& oldURL, const String& newURL);
     void dispatchPopstateEvent(RefPtr<SerializedScriptValue>&& stateObject);
     DocumentEventQueue& eventQueue() const final { return m_eventQueue; }
@@ -1429,6 +1430,8 @@ public:
 
     String signedPublicKeyAndChallengeString(unsigned keySizeIndex, const String& challengeString, const URL&);
 
+    void consumeTemporaryTimeUserGesture();
+
 protected:
     enum ConstructionFlags { Synthesized = 1, NonRenderedPlaceholder = 1 << 1 };
     Document(Frame*, const URL&, unsigned = DefaultDocumentClass, unsigned constructionFlags = 0);
@@ -1504,6 +1507,8 @@ private:
     void addDocumentToFullScreenChangeEventQueue(Document*);
 #endif
 
+    void dispatchDisabledAdaptationsDidChangeForMainFrame();
+
 #if ENABLE(TELEPHONE_NUMBER_DETECTION)
     friend void setParserFeature(const String& key, const String& value, Document*, void* userData);
     void setIsTelephoneNumberParsingAllowed(bool);
@@ -1541,6 +1546,8 @@ private:
     void platformSuspendOrStopActiveDOMObjects();
 
     bool domainIsRegisterable(const String&) const;
+
+    void enableTemporaryTimeUserGesture();
 
     const Ref<Settings> m_settings;
 
@@ -1710,6 +1717,7 @@ private:
     Timer m_loadEventDelayTimer;
 
     ViewportArguments m_viewportArguments;
+    OptionSet<DisabledAdaptations> m_disabledAdaptations;
 
     DocumentTiming m_documentTiming;
 
@@ -1918,6 +1926,8 @@ private:
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
     String m_primaryDomainRequestedPageSpecificStorageAccessWithUserInteraction { };
 #endif
+    
+    std::unique_ptr<UserGestureIndicator> m_temporaryUserGesture;
 };
 
 Element* eventTargetElementForDocument(Document*);

@@ -830,10 +830,10 @@ static void AXAttributeStringSetStyle(NSMutableAttributedString* attrString, Ren
     AXAttributeStringSetColor(attrString, NSAccessibilityBackgroundColorTextAttribute, nsColor(style.visitedDependentColor(CSSPropertyBackgroundColor)), range);
     
     // set super/sub scripting
-    EVerticalAlign alignment = style.verticalAlign();
-    if (alignment == SUB)
+    VerticalAlign alignment = style.verticalAlign();
+    if (alignment == VerticalAlign::Sub)
         AXAttributeStringSetNumber(attrString, NSAccessibilitySuperscriptTextAttribute, [NSNumber numberWithInt:(-1)], range);
-    else if (alignment == SUPER)
+    else if (alignment == VerticalAlign::Super)
         AXAttributeStringSetNumber(attrString, NSAccessibilitySuperscriptTextAttribute, [NSNumber numberWithInt:1], range);
     else
         [attrString removeAttribute:NSAccessibilitySuperscriptTextAttribute range:range];
@@ -845,27 +845,27 @@ static void AXAttributeStringSetStyle(NSMutableAttributedString* attrString, Ren
         [attrString removeAttribute:NSAccessibilityShadowTextAttribute range:range];
     
     // set underline and strikethrough
-    int decor = style.textDecorationsInEffect();
-    if ((decor & TextDecorationUnderline) == 0) {
+    auto decor = style.textDecorationsInEffect();
+    if (!(decor & TextDecoration::Underline)) {
         [attrString removeAttribute:NSAccessibilityUnderlineTextAttribute range:range];
         [attrString removeAttribute:NSAccessibilityUnderlineColorTextAttribute range:range];
     }
     
-    if ((decor & TextDecorationLineThrough) == 0) {
+    if (!(decor & TextDecoration::LineThrough)) {
         [attrString removeAttribute:NSAccessibilityStrikethroughTextAttribute range:range];
         [attrString removeAttribute:NSAccessibilityStrikethroughColorTextAttribute range:range];
     }
-    
-    if ((decor & (TextDecorationUnderline | TextDecorationLineThrough)) != 0) {
+
+    if (decor & TextDecoration::Underline || decor & TextDecoration::LineThrough) {
         // FIXME: Should the underline style be reported here?
         auto decorationStyles = TextDecorationPainter::stylesForRenderer(*renderer, decor);
 
-        if ((decor & TextDecorationUnderline) != 0) {
+        if (decor & TextDecoration::Underline) {
             AXAttributeStringSetNumber(attrString, NSAccessibilityUnderlineTextAttribute, @YES, range);
             AXAttributeStringSetColor(attrString, NSAccessibilityUnderlineColorTextAttribute, nsColor(decorationStyles.underlineColor), range);
         }
         
-        if ((decor & TextDecorationLineThrough) != 0) {
+        if (decor & TextDecoration::LineThrough) {
             AXAttributeStringSetNumber(attrString, NSAccessibilityStrikethroughTextAttribute, @YES, range);
             AXAttributeStringSetColor(attrString, NSAccessibilityStrikethroughColorTextAttribute, nsColor(decorationStyles.linethroughColor), range);
         }
@@ -1656,6 +1656,9 @@ static id textMarkerRangeFromVisiblePositions(AXObjectCache* cache, const Visibl
     if (m_object->currentState() != AccessibilityCurrentState::False)
         objectAttributes = [objectAttributes arrayByAddingObjectsFromArray:@[ NSAccessibilityARIACurrentAttribute ]];
     
+    // AppKit needs to know the screen height in order to do the coordinate conversion.
+    objectAttributes = [objectAttributes arrayByAddingObjectsFromArray:@[ NSAccessibilityPrimaryScreenHeightAttribute ]];
+    
     return objectAttributes;
 }
 
@@ -1817,6 +1820,12 @@ static void WebTransformCGPathToNSBezierPath(void *info, const CGPathElement *el
     
     CGPathRef transformedPath = [self convertPathToScreenSpace:path];
     return [self bezierPathFromPath:transformedPath];
+}
+
+- (NSNumber *)primaryScreenHeight
+{
+    FloatRect screenRect = screenRectForPrimaryScreen();
+    return [NSNumber numberWithFloat:screenRect.height()];
 }
 
 - (NSValue *)position
@@ -2700,6 +2709,8 @@ static NSString* roleValueToNSString(AccessibilityRole value)
         return [NSValue valueWithSize: NSMakeSize(s.width(), s.height())];
     }
     
+    if ([attributeName isEqualToString: NSAccessibilityPrimaryScreenHeightAttribute])
+        return [self primaryScreenHeight];
     if ([attributeName isEqualToString: NSAccessibilityPositionAttribute])
         return [self position];
     if ([attributeName isEqualToString:NSAccessibilityPathAttribute])

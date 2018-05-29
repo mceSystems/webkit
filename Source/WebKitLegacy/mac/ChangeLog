@@ -1,3 +1,296 @@
+2018-05-27  Dan Bernstein  <mitz@apple.com>
+
+        Reverted the changes made for https://webkit.org/b/186016
+
+        They broke the USE(APPLE_INTERNAL_SDK) Sierra build.
+
+
+2018-05-27  David Kilzer  <ddkilzer@apple.com>
+
+        [iOS] Fix warnings about leaks found by clang static analyzer
+        <https://webkit.org/b/186009>
+        <rdar://problem/40574267>
+
+        Reviewed by Daniel Bates.
+
+        * WebView/WebHTMLView.mm:
+        (-[WebHTMLView doCommandBySelector:]): Fix use of an
+        uninitialized boolean variable (`eventWasHandled`) that only
+        happened on iOS.
+
+2018-05-27  Dan Bernstein  <mitz@apple.com>
+
+        [Cocoa] Avoid importing directly from subumbrella frameworks
+        https://bugs.webkit.org/show_bug.cgi?id=186016
+
+        Reviewed by Sam Weinig.
+
+        * Carbon/CarbonWindowAdapter.h: Import Carbon.h instead of HIToolbox headers.
+        * Carbon/CarbonWindowAdapter.mm: Ditto.
+        * Carbon/CarbonWindowFrame.m: Ditto.
+        * Carbon/HIViewAdapter.h: Ditto.
+        * Configurations/WebKitLegacy.xcconfig: Removed -iframework options from OTHER_CFLAGS and
+          OTHER_CPLUSPLUSFLAGS.
+        * Plugins/WebNetscapePluginEventHandlerCarbon.mm: Import Carbon.h instead of CarbonEvents.h.
+        * WebView/WebPDFDocumentExtras.mm: Import Quartz.h instead of a PDFKit header.
+        * WebView/WebPDFView.h: Ditto.
+
+2018-05-27  Sam Weinig  <sam@webkit.org>
+
+        Modernize RenderStyleConstants.h - Part 3
+        https://bugs.webkit.org/show_bug.cgi?id=186015
+
+        Reviewed by Yusuke Suzuki.
+
+        * WebView/WebView.mm:
+        (-[WebView updateTextTouchBar]):
+        Update for new enum name.
+
+2018-05-25  Chris Dumez  <cdumez@apple.com>
+
+        Minor ApplicationCacheStorage clean up
+        https://bugs.webkit.org/show_bug.cgi?id=185984
+
+        Reviewed by Youenn Fablet.
+
+        * WebCoreSupport/WebApplicationCache.mm:
+        (+[WebApplicationCache originsWithCache]):
+
+2018-05-25  David Kilzer  <ddkilzer@apple.com>
+
+        Fix issues with -dealloc methods found by clang static analyzer
+        <https://webkit.org/b/185887>
+
+        Reviewed by Joseph Pecoraro.
+
+        * WebView/WebView.mm:
+        (-[WebUITextIndicatorData dealloc]):
+        - Move method implementation from (WebUITextIndicatorInternal)
+          category to the main category since this is public API.  This
+          fixes the false positive warning about a missing -dealloc
+          method.
+
+2018-05-24  Sam Weinig  <sam@webkit.org>
+
+        Modernize RenderStyleConstants.h - Part 2
+        https://bugs.webkit.org/show_bug.cgi?id=185901
+
+        Reviewed by Simon Fraser.
+
+        * WebView/WebHTMLRepresentation.mm:
+        (searchForLabelsBeforeElement):
+        * WebView/WebView.mm:
+        (nsTextAlignmentFromRenderStyle):
+        Update for new enum names.
+
+2018-05-22  Chris Dumez  <cdumez@apple.com>
+
+        Regression(AsyncPolicyDelegates): Box.app login Window is blank
+        https://bugs.webkit.org/show_bug.cgi?id=185832
+        <rdar://problem/40307871>
+
+        Reviewed by Geoffrey Garen.
+
+        We used to have a bug where where we would fail to wait for the policy decision for
+        the navigation response from the client and the load would keep going, racing with
+        the client's policy decision. If the client did not respond in time, the behavior
+        would be the same as "Use" policy action.
+
+        Box.app fails to make any policy decision in its decidePolicyForMIMEType delegate
+        but the load happened to proceed anyway due to our bug. Now that we've fixed the
+        WebKit bug, however, the load would hang because the completion handler for the
+        decidePolicyForNavigationResponse would never get called.
+
+        To work around the issue, I made the policy listener weak on the WebFrameLoaderClient
+        instead of retaining it. If the policy listener object gets destroyed because getting
+        resolved, we now use "Use" policy action in its dealloc function to maintain previous
+        behavior.
+
+        * WebCoreSupport/WebFrameLoaderClient.h:
+        * WebCoreSupport/WebFrameLoaderClient.mm:
+        (WebFrameLoaderClient::cancelPolicyCheck):
+        (WebFrameLoaderClient::setUpPolicyListener):
+        (-[WebFramePolicyListener dealloc]):
+
+2018-05-22  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r232052.
+
+        Breaks internal builds.
+
+        Reverted changeset:
+
+        "Use more C++17"
+        https://bugs.webkit.org/show_bug.cgi?id=185176
+        https://trac.webkit.org/changeset/232052
+
+2018-05-21  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        Use more C++17
+        https://bugs.webkit.org/show_bug.cgi?id=185176
+
+        Reviewed by JF Bastien.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/WebKitLegacy.xcconfig:
+
+2018-05-21  Chris Nardi  <cnardi@chromium.org>
+
+        Remove dead exception in MediaList.appendMedium
+        https://bugs.webkit.org/show_bug.cgi?id=185278
+
+        Reviewed by Chris Dumez.
+
+        Remove code pertaining to an exception being thrown by appendMedium().
+
+        * DOM/DOMMediaList.mm:
+        (-[DOMMediaList appendMedium:]):
+
+2018-05-21  Jer Noble  <jer.noble@apple.com>
+
+        Complete fix for enabling modern EME by default
+        https://bugs.webkit.org/show_bug.cgi?id=185770
+        <rdar://problem/40368220>
+
+        Reviewed by Eric Carlson.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2018-05-21  Antti Koivisto  <antti@apple.com>
+
+        WebView._preferencesChanged should apply colorFilterEnabled preference before parsing user stylesheet
+        https://bugs.webkit.org/show_bug.cgi?id=185815
+        <rdar://problem/40310069>
+
+        Reviewed by Simon Fraser.
+
+        User stylesheet parsing may depend on the colorFilterEnabled preference.
+
+        * WebView/WebView.mm:
+        (-[WebView _preferencesChanged:]):
+
+2018-05-18  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, rolling out r231982.
+        https://bugs.webkit.org/show_bug.cgi?id=185793
+
+        Caused layout test failures (Requested by realdawei on
+        #webkit).
+
+        Reverted changeset:
+
+        "Complete fix for enabling modern EME by default"
+        https://bugs.webkit.org/show_bug.cgi?id=185770
+        https://trac.webkit.org/changeset/231982
+
+2018-05-18  Jer Noble  <jer.noble@apple.com>
+
+        Complete fix for enabling modern EME by default
+        https://bugs.webkit.org/show_bug.cgi?id=185770
+        <rdar://problem/40368220>
+
+        Reviewed by Eric Carlson.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2018-05-18  Chris Dumez  <cdumez@apple.com>
+
+        Avoid keeping the frame alive when ref'ing a WindowProxy
+        https://bugs.webkit.org/show_bug.cgi?id=185737
+        <rdar://problem/40004666>
+
+        Reviewed by Sam Weinig.
+
+        * Plugins/Hosted/NetscapePluginInstanceProxy.mm:
+        (WebKit::NetscapePluginInstanceProxy::getWindowNPObject):
+
+2018-05-16  Andy VanWagoner  <andy@vanwagoner.family>
+
+        Add support for Intl NumberFormat formatToParts
+        https://bugs.webkit.org/show_bug.cgi?id=185375
+
+        Reviewed by Yusuke Suzuki.
+
+        Add flag for NumberFormat formatToParts.
+
+        * Configurations/FeatureDefines.xcconfig:
+
+2018-05-16  Chris Nardi  <cnardi@chromium.org>
+
+        Fixup after r231849: Do not mark Mac API methods as deprecated
+        https://bugs.webkit.org/show_bug.cgi?id=185684
+
+        Reviewed by Darin Adler.
+
+        Do not mark API methods for Document#selectedStylesheetSet/preferredStylesheetSet as deprecated
+        as the entire class is already marked as deprecated, so it is unnecessary.
+
+        * DOM/DOMDocument.h:
+
+2018-05-16  Chris Nardi  <cnardi@chromium.org>
+
+        Remove Document#selectedStylesheetSet/preferredStylesheetSet
+        https://bugs.webkit.org/show_bug.cgi?id=185381
+
+        Reviewed by Darin Adler.
+
+        Mark API methods for Document#selectedStylesheetSet/preferredStylesheetSet as deprecated
+        and make them do nothing.
+
+        * DOM/DOMDocument.h:
+        * DOM/DOMDocument.mm:
+        (-[DOMDocument preferredStylesheetSet]):
+        (-[DOMDocument selectedStylesheetSet]):
+        (-[DOMDocument setSelectedStylesheetSet:]):
+
+2018-05-15  Antoine Quint  <graouts@apple.com>
+
+        [Web Animations] Expose Web Animations CSS integration as an experimental feature
+        https://bugs.webkit.org/show_bug.cgi?id=185647
+
+        Reviewed by Dean Jackson.
+
+        Rename the Web Animations CSS integration flag.
+
+        * WebView/WebPreferenceKeysPrivate.h:
+        * WebView/WebPreferences.mm:
+        (+[WebPreferences initialize]):
+        (-[WebPreferences webAnimationsCSSIntegrationEnabled]):
+        (-[WebPreferences setWebAnimationsCSSIntegrationEnabled:]):
+        (-[WebPreferences cssAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled]): Deleted.
+        (-[WebPreferences setCSSAnimationsAndCSSTransitionsBackedByWebAnimationsEnabled:]): Deleted.
+        * WebView/WebPreferencesPrivate.h:
+        * WebView/WebView.mm:
+        (-[WebView _preferencesChanged:]):
+
+2018-05-14  Daniel Bates  <dabates@apple.com>
+
+        Fix the Apple Internal build
+
+        See <rdar://problem/40237873> for more details.
+
+        * WebView/WebFullScreenController.mm:
+        (-[WebFullScreenController enterFullScreen:]):
+        (-[WebFullScreenController finishedEnterFullScreenAnimation:]):
+        (-[WebFullScreenController exitFullScreen]):
+        (-[WebFullScreenController finishedExitFullScreenAnimation:]):
+        (-[WebFullScreenController _startEnterFullScreenAnimationWithDuration:]):
+        (-[WebFullScreenController _startExitFullScreenAnimationWithDuration:]):
+
+2018-05-11  Timothy Hatcher  <timothy@apple.com>
+
+        WebHTMLView is not setting aside subviews when drawing.
+
+        https://bugs.webkit.org/show_bug.cgi?id=185561
+        rdar://problem/40172894
+
+        Reviewed by Simon Fraser.
+
+        Use the new method signature for _recursive:displayRectIgnoringOpacity:shouldChangeFontReferenceColor:.
+
+        * WebView/WebHTMLView.mm:
+        (-[WebHTMLView _recursive:displayRectIgnoringOpacity:inContext:shouldChangeFontReferenceColor:stopAtLayerBackedViews:]): Added.
+
 2018-05-07  Daniel Bates  <dabates@apple.com>
 
         Substitute CrossOriginPreflightResultCache::clear() for CrossOriginPreflightResultCache::empty()

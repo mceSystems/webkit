@@ -39,7 +39,6 @@
 #include "Options.h"
 #include "StructureIDTable.h"
 #include "Synchronousness.h"
-#include "UnconditionalFinalizer.h"
 #include "WeakHandleOwner.h"
 #include "WeakReferenceHarvester.h"
 #include <wtf/AutomaticThread.h>
@@ -84,7 +83,6 @@ class SlotVisitor;
 class SpaceTimeMutatorScheduler;
 class StopIfNecessaryTimer;
 class SweepingScope;
-class ThreadLocalCacheLayout;
 class VM;
 class WeakGCMapBase;
 struct CurrentThreadState;
@@ -381,8 +379,6 @@ public:
     template<typename Func>
     void forEachSlotVisitor(const Func&);
     
-    ThreadLocalCacheLayout& threadLocalCacheLayout() { return *m_threadLocalCacheLayout; }
-    
     Seconds totalGCTime() const { return m_totalGCTime; }
 
 private:
@@ -560,6 +556,9 @@ private:
     void assertMarkStacksEmpty();
 
     void setBonusVisitorTask(RefPtr<SharedTask<void(SlotVisitor&)>>);
+
+    static bool useGenerationalGC();
+    static bool shouldSweepSynchronously();
     
     const HeapType m_heapType;
     const size_t m_ramSize;
@@ -673,7 +672,6 @@ private:
     static const size_t s_blockFragmentLength = 32;
 
     ListableHandler<WeakReferenceHarvester>::List m_weakReferenceHarvesters;
-    ListableHandler<UnconditionalFinalizer>::List m_unconditionalFinalizers;
 
     ParallelHelperClient m_helperClient;
     RefPtr<SharedTask<void(SlotVisitor&)>> m_bonusVisitorTask;
@@ -731,8 +729,6 @@ private:
     
     CurrentThreadState* m_currentThreadState { nullptr };
     WTF::Thread* m_currentThread { nullptr }; // It's OK if this becomes a dangling pointer.
-    
-    std::unique_ptr<ThreadLocalCacheLayout> m_threadLocalCacheLayout;
 };
 
 } // namespace JSC

@@ -1,3 +1,4 @@
+
 /*
  * Copyright (C) 2016, 2017 Apple Inc. All rights reserved.
  *
@@ -77,9 +78,9 @@ WebAutomationSession::WebAutomationSession()
     , m_loadTimer(RunLoop::main(), this, &WebAutomationSession::loadTimerFired)
 {
     // Set up canonical input sources to be used for 'performInteractionSequence' and 'cancelInteractionSequence'.
-    m_inputSources.add(SimulatedInputSource::create(SimulatedInputSource::Type::Mouse));
-    m_inputSources.add(SimulatedInputSource::create(SimulatedInputSource::Type::Keyboard));
-    m_inputSources.add(SimulatedInputSource::create(SimulatedInputSource::Type::Null));
+    m_inputSources.add(SimulatedInputSource::create(SimulatedInputSourceType::Mouse));
+    m_inputSources.add(SimulatedInputSource::create(SimulatedInputSourceType::Keyboard));
+    m_inputSources.add(SimulatedInputSource::create(SimulatedInputSourceType::Null));
 }
 
 WebAutomationSession::~WebAutomationSession()
@@ -524,6 +525,22 @@ void WebAutomationSession::loadTimerFired()
     respondToPendingPageNavigationCallbacksWithTimeout(m_pendingEagerNavigationInBrowsingContextCallbacksPerPage);
 }
 
+void WebAutomationSession::maximizeWindowOfBrowsingContext(const String& browsingContextHandle, Ref<MaximizeWindowOfBrowsingContextCallback>&& callback)
+{
+    auto* page = webPageProxyForHandle(browsingContextHandle);
+    if (!page)
+        ASYNC_FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
+
+    exitFullscreenWindowForPage(*page, [this, protectedThis = makeRef(*this), callback = WTFMove(callback), page = makeRefPtr(page)]() mutable {
+        auto& webPage = *page;
+        restoreWindowForPage(webPage, [this, callback = WTFMove(callback), page = WTFMove(page)]() mutable {
+            maximizeWindowForPage(*page, [callback = WTFMove(callback)]() {
+                callback->sendSuccess();
+            });
+        });
+    });
+}
+
 void WebAutomationSession::hideWindowOfBrowsingContext(const String& browsingContextHandle, Ref<HideWindowOfBrowsingContextCallback>&& callback)
 {
     WebPageProxy* page = webPageProxyForHandle(browsingContextHandle);
@@ -565,6 +582,11 @@ void WebAutomationSession::exitFullscreenWindowForPage(WebPageProxy& page, WTF::
 void WebAutomationSession::restoreWindowForPage(WebPageProxy& page, WTF::CompletionHandler<void()>&& completionHandler)
 {
     m_client->requestRestoreWindowOfPage(*this, page, WTFMove(completionHandler));
+}
+
+void WebAutomationSession::maximizeWindowForPage(WebPageProxy& page, WTF::CompletionHandler<void()>&& completionHandler)
+{
+    m_client->requestMaximizeWindowOfPage(*this, page, WTFMove(completionHandler));
 }
 
 void WebAutomationSession::hideWindowForPage(WebPageProxy& page, WTF::CompletionHandler<void()>&& completionHandler)
@@ -977,7 +999,8 @@ void WebAutomationSession::computeElementLayout(const String& browsingContextHan
     if (!coordinateSystem)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "The parameter 'coordinateSystem' is invalid.");
 
-    uint64_t callbackID = m_nextComputeElementLayoutCallbackID++;
+    // Start at 2 and use only even numbers to not conflict with m_nextViewportInViewCenterPointOfElementCallbackID.
+    uint64_t callbackID = m_nextComputeElementLayoutCallbackID += 2;
     m_computeElementLayoutCallbacks.set(callbackID, WTFMove(callback));
 
     bool scrollIntoViewIfNeeded = optionalScrollIntoViewIfNeeded ? *optionalScrollIntoViewIfNeeded : false;
@@ -986,6 +1009,17 @@ void WebAutomationSession::computeElementLayout(const String& browsingContextHan
 
 void WebAutomationSession::didComputeElementLayout(uint64_t callbackID, WebCore::IntRect rect, std::optional<WebCore::IntPoint> inViewCenterPoint, bool isObscured, const String& errorType)
 {
+    if (callbackID % 2 == 1) {
+        ASSERT(inViewCenterPoint);
+        if (auto callback = m_viewportInViewCenterPointOfElementCallbacks.take(callbackID)) {
+            std::optional<AutomationCommandError> error;
+            if (!errorType.isEmpty())
+                error = AUTOMATION_COMMAND_ERROR_WITH_MESSAGE(errorType);
+            callback(inViewCenterPoint, error);
+        }
+        return;
+    }
+
     auto callback = m_computeElementLayoutCallbacks.take(callbackID);
     if (!callback)
         return;
@@ -1283,7 +1317,7 @@ void WebAutomationSession::addSingleCookie(const String& browsingContextHandle, 
 
     // Inherit the domain/host from the main frame's URL if it is not explicitly set.
     if (domain.isEmpty())
-        domain = activeURL.host();
+        domain = activeURL.host().toString();
 
     cookie.domain = domainByAddingDotPrefixIfNeeded(domain);
 
@@ -1327,7 +1361,7 @@ void WebAutomationSession::deleteAllCookies(ErrorString& errorString, const Stri
     ASSERT(activeURL.isValid());
 
     WebCookieManagerProxy* cookieManager = m_processPool->supplement<WebCookieManagerProxy>();
-    cookieManager->deleteCookiesForHostname(page->websiteDataStore().sessionID(), domainByAddingDotPrefixIfNeeded(activeURL.host()));
+    cookieManager->deleteCookiesForHostname(page->websiteDataStore().sessionID(), domainByAddingDotPrefixIfNeeded(activeURL.host().toString()));
 }
 
 void WebAutomationSession::getSessionPermissions(ErrorString&, RefPtr<JSON::ArrayOf<Inspector::Protocol::Automation::SessionPermissionData>>& out_permissions)
@@ -1391,7 +1425,7 @@ SimulatedInputDispatcher& WebAutomationSession::inputDispatcherForPage(WebPagePr
     }).iterator->value;
 }
 
-SimulatedInputSource* WebAutomationSession::inputSourceForType(SimulatedInputSource::Type type) const
+SimulatedInputSource* WebAutomationSession::inputSourceForType(SimulatedInputSourceType type) const
 {
     // FIXME: this should use something like Vector's findMatching().
     for (auto& inputSource : m_inputSources) {
@@ -1403,6 +1437,15 @@ SimulatedInputSource* WebAutomationSession::inputSourceForType(SimulatedInputSou
 }
 
 // SimulatedInputDispatcher::Client API
+void WebAutomationSession::viewportInViewCenterPointOfElement(WebPageProxy& page, uint64_t frameID, const String& nodeHandle, Function<void (std::optional<WebCore::IntPoint>, std::optional<AutomationCommandError>)>&& completionHandler)
+{
+    // Start at 3 and use only odd numbers to not conflict with m_nextComputeElementLayoutCallbackID.
+    uint64_t callbackID = m_nextViewportInViewCenterPointOfElementCallbackID += 2;
+    m_viewportInViewCenterPointOfElementCallbacks.set(callbackID, WTFMove(completionHandler));
+
+    page.process().send(Messages::WebAutomationSessionProxy::ComputeElementLayout(page.pageID(), frameID, nodeHandle, false, CoordinateSystem::LayoutViewport, callbackID), 0);
+}
+
 void WebAutomationSession::simulateMouseInteraction(WebPageProxy& page, MouseInteraction interaction, WebMouseEvent::Button mouseButton, const WebCore::IntPoint& locationInViewport, CompletionHandler<void(std::optional<AutomationCommandError>)>&& completionHandler)
 {
     WebCore::IntPoint locationInView = WebCore::IntPoint(locationInViewport.x(), locationInViewport.y() + page.topContentInset());
@@ -1646,24 +1689,24 @@ void WebAutomationSession::performKeyboardInteractions(const String& handle, con
 }
 
 #if USE(APPKIT) || PLATFORM(GTK)
-static SimulatedInputSource::Type simulatedInputSourceTypeFromProtocolSourceType(Inspector::Protocol::Automation::InputSourceType protocolType)
+static SimulatedInputSourceType simulatedInputSourceTypeFromProtocolSourceType(Inspector::Protocol::Automation::InputSourceType protocolType)
 {
     switch (protocolType) {
     case Inspector::Protocol::Automation::InputSourceType::Null:
-        return SimulatedInputSource::Type::Null;
+        return SimulatedInputSourceType::Null;
     case Inspector::Protocol::Automation::InputSourceType::Keyboard:
-        return SimulatedInputSource::Type::Keyboard;
+        return SimulatedInputSourceType::Keyboard;
     case Inspector::Protocol::Automation::InputSourceType::Mouse:
-        return SimulatedInputSource::Type::Mouse;
+        return SimulatedInputSourceType::Mouse;
     case Inspector::Protocol::Automation::InputSourceType::Touch:
-        return SimulatedInputSource::Type::Touch;
+        return SimulatedInputSourceType::Touch;
     }
 
     RELEASE_ASSERT_NOT_REACHED();
 }
 #endif // USE(APPKIT) || PLATFORM(GTK)
 
-void WebAutomationSession::performInteractionSequence(const String& handle, const JSON::Array& inputSources, const JSON::Array& steps, Ref<WebAutomationSession::PerformInteractionSequenceCallback>&& callback)
+void WebAutomationSession::performInteractionSequence(const String& handle, const String* optionalFrameHandle, const JSON::Array& inputSources, const JSON::Array& steps, Ref<WebAutomationSession::PerformInteractionSequenceCallback>&& callback)
 {
     // This command implements WebKit support for §17.5 Perform Actions.
 
@@ -1674,8 +1717,12 @@ void WebAutomationSession::performInteractionSequence(const String& handle, cons
     if (!page)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
 
+    auto frameID = webFrameIDForHandle(optionalFrameHandle ? *optionalFrameHandle : emptyString());
+    if (!frameID)
+        ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
+
     HashMap<String, Ref<SimulatedInputSource>> sourceIdToInputSourceMap;
-    HashMap<SimulatedInputSource::Type, String, WTF::IntHash<SimulatedInputSource::Type>, WTF::StrongEnumHashTraits<SimulatedInputSource::Type>> typeToSourceIdMap;
+    HashMap<SimulatedInputSourceType, String, WTF::IntHash<SimulatedInputSourceType>, WTF::StrongEnumHashTraits<SimulatedInputSourceType>> typeToSourceIdMap;
 
     // Parse and validate Automation protocol arguments. By this point, the driver has
     // already performed the steps in §17.3 Processing Actions Requests.
@@ -1699,8 +1746,8 @@ void WebAutomationSession::performInteractionSequence(const String& handle, cons
         if (!parsedInputSourceType)
             ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "An input source in the 'inputSources' parameter has an invalid 'sourceType'.");
 
-        SimulatedInputSource::Type inputSourceType = simulatedInputSourceTypeFromProtocolSourceType(*parsedInputSourceType);
-        if (inputSourceType == SimulatedInputSource::Type::Touch)
+        SimulatedInputSourceType inputSourceType = simulatedInputSourceTypeFromProtocolSourceType(*parsedInputSourceType);
+        if (inputSourceType == SimulatedInputSourceType::Touch)
             ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(NotImplemented, "Touch input sources are not yet supported.");
 
         if (typeToSourceIdMap.contains(inputSourceType))
@@ -1758,6 +1805,17 @@ void WebAutomationSession::performInteractionSequence(const String& handle, cons
                 sourceState.pressedMouseButton = protocolMouseButtonToWebMouseEventButton(protocolButton.value_or(Inspector::Protocol::Automation::MouseButton::None));
             }
 
+            String originString;
+            if (stateObject->getString(ASCIILiteral("origin"), originString))
+                sourceState.origin = Inspector::Protocol::AutomationHelpers::parseEnumValueFromString<Inspector::Protocol::Automation::MouseMoveOrigin>(originString);
+
+            if (sourceState.origin && sourceState.origin.value() == Inspector::Protocol::Automation::MouseMoveOrigin::Element) {
+                String nodeHandleString;
+                if (!stateObject->getString(ASCIILiteral("nodeHandle"), nodeHandleString))
+                    ASYNC_FAIL_WITH_PREDEFINED_ERROR_AND_DETAILS(InvalidParameter, "Node handle not provided for 'Element' origin");
+                sourceState.nodeHandle = nodeHandleString;
+            }
+
             RefPtr<JSON::Object> locationObject;
             if (stateObject->getObject(ASCIILiteral("location"), locationObject)) {
                 int x, y;
@@ -1782,7 +1840,7 @@ void WebAutomationSession::performInteractionSequence(const String& handle, cons
     }
 
     // Delegate the rest of §17.4 Dispatching Actions to the dispatcher.
-    inputDispatcher.run(WTFMove(keyFrames), m_inputSources, [protectedThis = makeRef(*this), callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
+    inputDispatcher.run(frameID.value(), WTFMove(keyFrames), m_inputSources, [protectedThis = makeRef(*this), callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
         if (error)
             callback->sendFailure(error.value().toProtocolString());
         else
@@ -1791,7 +1849,7 @@ void WebAutomationSession::performInteractionSequence(const String& handle, cons
 #endif // PLATFORM(COCOA) || PLATFORM(GTK)
 }
 
-void WebAutomationSession::cancelInteractionSequence(const String& handle, Ref<CancelInteractionSequenceCallback>&& callback)
+void WebAutomationSession::cancelInteractionSequence(const String& handle, const String* optionalFrameHandle, Ref<CancelInteractionSequenceCallback>&& callback)
 {
     // This command implements WebKit support for §17.6 Release Actions.
 
@@ -1802,11 +1860,15 @@ void WebAutomationSession::cancelInteractionSequence(const String& handle, Ref<C
     if (!page)
         ASYNC_FAIL_WITH_PREDEFINED_ERROR(WindowNotFound);
 
+    auto frameID = webFrameIDForHandle(optionalFrameHandle ? *optionalFrameHandle : emptyString());
+    if (!frameID)
+        ASYNC_FAIL_WITH_PREDEFINED_ERROR(FrameNotFound);
+
     Vector<SimulatedInputKeyFrame> keyFrames({ SimulatedInputKeyFrame::keyFrameToResetInputSources(m_inputSources) });
     SimulatedInputDispatcher& inputDispatcher = inputDispatcherForPage(*page);
     inputDispatcher.cancel();
     
-    inputDispatcher.run(WTFMove(keyFrames), m_inputSources, [protectedThis = makeRef(*this), callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
+    inputDispatcher.run(frameID.value(), WTFMove(keyFrames), m_inputSources, [protectedThis = makeRef(*this), callback = WTFMove(callback)](std::optional<AutomationCommandError> error) {
         if (error)
             callback->sendFailure(error.value().toProtocolString());
         else

@@ -79,7 +79,7 @@ TextPaintStyle computeTextPaintStyle(const Frame& frame, const RenderStyle& line
     TextPaintStyle paintStyle;
 
 #if ENABLE(LETTERPRESS)
-    paintStyle.useLetterpressEffect = lineStyle.textDecorationsInEffect() & TextDecorationLetterpress;
+    paintStyle.useLetterpressEffect = lineStyle.textDecorationsInEffect().contains(TextDecoration::Letterpress);
 #endif
     auto viewportSize = frame.view() ? frame.view()->size() : IntSize();
     paintStyle.strokeWidth = lineStyle.computedStrokeWidth(viewportSize);
@@ -110,7 +110,7 @@ TextPaintStyle computeTextPaintStyle(const Frame& frame, const RenderStyle& line
 
     bool forceBackgroundToWhite = false;
     if (frame.document() && frame.document()->printing()) {
-        if (lineStyle.printColorAdjust() == PrintColorAdjustEconomy)
+        if (lineStyle.printColorAdjust() == PrintColorAdjust::Economy)
             forceBackgroundToWhite = true;
         if (frame.settings().shouldPrintBackgrounds())
             forceBackgroundToWhite = false;

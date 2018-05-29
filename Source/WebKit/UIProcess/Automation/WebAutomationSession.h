@@ -138,6 +138,7 @@ public:
     // SimulatedInputDispatcher::Client API
     void simulateMouseInteraction(WebPageProxy&, MouseInteraction, WebMouseEvent::Button, const WebCore::IntPoint& locationInView, AutomationCompletionHandler&&) final;
     void simulateKeyboardInteraction(WebPageProxy&, KeyboardInteraction, std::optional<VirtualKey>, std::optional<CharKey>, AutomationCompletionHandler&&) final;
+    void viewportInViewCenterPointOfElement(WebPageProxy&, uint64_t frameID, const String& nodeHandle, Function<void (std::optional<WebCore::IntPoint>, std::optional<AutomationCommandError>)>&&) final;
 
     // Inspector::AutomationBackendDispatcherHandler API
     // NOTE: the set of declarations included in this interface depend on the "platform" property in Automation.json
@@ -150,6 +151,7 @@ public:
     void closeBrowsingContext(Inspector::ErrorString&, const String&) final;
     void switchToBrowsingContext(const String& browsingContextHandle, const String* optionalFrameHandle, Ref<SwitchToBrowsingContextCallback>&&) final;
     void setWindowFrameOfBrowsingContext(const String& handle, const JSON::Object* origin, const JSON::Object* size, Ref<SetWindowFrameOfBrowsingContextCallback>&&) final;
+    void maximizeWindowOfBrowsingContext(const String& handle, Ref<MaximizeWindowOfBrowsingContextCallback>&&) final;
     void hideWindowOfBrowsingContext(const String& handle, Ref<HideWindowOfBrowsingContextCallback>&&) final;
     void navigateBrowsingContext(const String& handle, const String& url, const String* optionalPageLoadStrategyString, const int* optionalPageLoadTimeout, Ref<NavigateBrowsingContextCallback>&&) override;
     void goBackInBrowsingContext(const String&, const String* optionalPageLoadStrategyString, const int* optionalPageLoadTimeout, Ref<GoBackInBrowsingContextCallback>&&) override;
@@ -159,8 +161,8 @@ public:
     void evaluateJavaScriptFunction(const String& browsingContextHandle, const String* optionalFrameHandle, const String& function, const JSON::Array& arguments, const bool* optionalExpectsImplicitCallbackArgument, const int* optionalCallbackTimeout, Ref<Inspector::AutomationBackendDispatcherHandler::EvaluateJavaScriptFunctionCallback>&&) override;
     void performMouseInteraction(const String& handle, const JSON::Object& requestedPosition, const String& mouseButton, const String& mouseInteraction, const JSON::Array& keyModifiers, Ref<PerformMouseInteractionCallback>&&) final;
     void performKeyboardInteractions(const String& handle, const JSON::Array& interactions, Ref<PerformKeyboardInteractionsCallback>&&) override;
-    void performInteractionSequence(const String& handle, const JSON::Array& sources, const JSON::Array& steps, Ref<PerformInteractionSequenceCallback>&&) override;
-    void cancelInteractionSequence(const String& handle, Ref<CancelInteractionSequenceCallback>&&) override;
+    void performInteractionSequence(const String& handle, const String* optionalFrameHandle, const JSON::Array& sources, const JSON::Array& steps, Ref<PerformInteractionSequenceCallback>&&) override;
+    void cancelInteractionSequence(const String& handle, const String* optionalFrameHandle, Ref<CancelInteractionSequenceCallback>&&) override;
     void takeScreenshot(const String& handle, const String* optionalFrameHandle, const String* optionalNodeHandle, const bool* optionalScrollIntoViewIfNeeded, const bool* optionalClipToViewport, Ref<TakeScreenshotCallback>&&) override;
     void resolveChildFrameHandle(const String& browsingContextHandle, const String* optionalFrameHandle, const int* optionalOrdinal, const String* optionalName, const String* optionalNodeHandle, Ref<ResolveChildFrameHandleCallback>&&) override;
     void resolveParentFrameHandle(const String& browsingContextHandle, const String& frameHandle, Ref<ResolveParentFrameHandleCallback>&&) override;
@@ -187,7 +189,7 @@ public:
     // Event Simulation Support.
     bool isSimulatingUserInteraction() const;
     SimulatedInputDispatcher& inputDispatcherForPage(WebPageProxy&);
-    SimulatedInputSource* inputSourceForType(SimulatedInputSource::Type) const;
+    SimulatedInputSource* inputSourceForType(SimulatedInputSourceType) const;
 
 #if PLATFORM(MAC)
     bool wasEventSynthesizedForAutomation(NSEvent *);
@@ -212,6 +214,7 @@ private:
 
     void exitFullscreenWindowForPage(WebPageProxy&, WTF::CompletionHandler<void()>&&);
     void restoreWindowForPage(WebPageProxy&, WTF::CompletionHandler<void()>&&);
+    void maximizeWindowForPage(WebPageProxy&, WTF::CompletionHandler<void()>&&);
     void hideWindowForPage(WebPageProxy&, WTF::CompletionHandler<void()>&&);
 
     // Implemented in generated WebAutomationSessionMessageReceiver.cpp.
@@ -276,8 +279,13 @@ private:
     uint64_t m_nextResolveParentFrameCallbackID { 1 };
     HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::ResolveParentFrameHandleCallback>> m_resolveParentFrameHandleCallbacks;
 
-    uint64_t m_nextComputeElementLayoutCallbackID { 1 };
+    // Start at 2 and use only even numbers to not conflict with m_nextViewportInViewCenterPointOfElementCallbackID.
+    uint64_t m_nextComputeElementLayoutCallbackID { 2 };
     HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::ComputeElementLayoutCallback>> m_computeElementLayoutCallbacks;
+
+    // Start at 3 and use only odd numbers to not conflict with m_nextComputeElementLayoutCallbackID.
+    uint64_t m_nextViewportInViewCenterPointOfElementCallbackID { 3 };
+    HashMap<uint64_t, Function<void(std::optional<WebCore::IntPoint>, std::optional<AutomationCommandError>)>> m_viewportInViewCenterPointOfElementCallbacks;
 
     uint64_t m_nextScreenshotCallbackID { 1 };
     HashMap<uint64_t, RefPtr<Inspector::AutomationBackendDispatcherHandler::TakeScreenshotCallback>> m_screenshotCallbacks;

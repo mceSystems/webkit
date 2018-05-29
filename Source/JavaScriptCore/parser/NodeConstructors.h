@@ -97,6 +97,15 @@ namespace JSC {
         : ConstantNode(location, ResultType::bigIntType())
         , m_value(value)
         , m_radix(radix)
+        , m_sign(false)
+    {
+    }
+    
+    inline BigIntNode::BigIntNode(const JSTokenLocation& location, const Identifier& value, uint8_t radix, bool sign)
+        : ConstantNode(location, ResultType::bigIntType())
+        , m_value(value)
+        , m_radix(radix)
+        , m_sign(sign)
     {
     }
 
@@ -623,7 +632,7 @@ namespace JSC {
     }
 
     inline InNode::InNode(const JSTokenLocation& location, ExpressionNode* expr1, ExpressionNode* expr2, bool rightHasAssignments)
-        : ThrowableBinaryOpNode(location, expr1, expr2, op_in, rightHasAssignments)
+        : ThrowableBinaryOpNode(location, expr1, expr2, op_in_by_val, rightHasAssignments)
     {
     }
 

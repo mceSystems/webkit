@@ -1,11 +1,11 @@
 include(GNUInstallDirs)
 include(VersioningUtils)
 
-SET_PROJECT_VERSION(2 21 1)
+SET_PROJECT_VERSION(2 21 3)
 set(WEBKITGTK_API_VERSION 4.0)
 
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT 66 0 29)
-CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 26 0 8)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(WEBKIT 67 1 30)
+CALCULATE_LIBRARY_VERSIONS_FROM_LIBTOOL_TRIPLE(JAVASCRIPTCORE 27 1 9)
 
 # These are shared variables, but we special case their definition so that we can use the
 # CMAKE_INSTALL_* variables that are populated by the GNUInstallDirs macro.
@@ -47,6 +47,10 @@ include(GStreamerDefinitions)
 SET_AND_EXPOSE_TO_BUILD(USE_CAIRO TRUE)
 SET_AND_EXPOSE_TO_BUILD(USE_XDGMIME TRUE)
 SET_AND_EXPOSE_TO_BUILD(USE_GCRYPT TRUE)
+
+if (WTF_CPU_ARM OR WTF_CPU_MIPS)
+    SET_AND_EXPOSE_TO_BUILD(USE_CAPSTONE ${DEVELOPER_MODE})
+endif ()
 
 # For old versions of HarfBuzz that do not expose an API for the OpenType MATH
 # table, we enable our own code to parse that table.

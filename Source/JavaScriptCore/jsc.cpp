@@ -1813,7 +1813,11 @@ EncodedJSValue JSC_HOST_CALL functionMallocInALoop(ExecState*)
 
 EncodedJSValue JSC_HOST_CALL functionTotalCompileTime(ExecState*)
 {
+#if ENABLE(JIT)
     return JSValue::encode(jsNumber(JIT::totalCompileTime().milliseconds()));
+#else
+    return JSValue::encode(jsNumber(0));
+#endif
 }
 
 template<typename ValueType>
