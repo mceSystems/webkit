@@ -23,7 +23,6 @@ find_package(ZLIB REQUIRED)
 
 list(APPEND WebCore_UNIFIED_SOURCE_LIST_FILES
     "SourcesCocoa.txt"
-    "SourcesMac.txt"
 )
 
 list(APPEND WebCore_LIBRARIES
@@ -157,7 +156,6 @@ list(APPEND WebCore_SOURCES
     page/mac/EventHandlerMac.mm
     page/mac/ServicesOverlayController.mm
     page/mac/TextIndicatorWindow.mm
-    page/mac/UserAgentMac.mm
     page/mac/WheelEventDeltaFilterMac.mm
 
     page/scrolling/mac/ScrollingCoordinatorMac.mm
@@ -202,7 +200,6 @@ list(APPEND WebCore_SOURCES
     platform/cocoa/KeyEventCocoa.mm
     platform/cocoa/LocalizedStringsCocoa.mm
     platform/cocoa/MIMETypeRegistryCocoa.mm
-    platform/cocoa/MachSendRight.cpp
     platform/cocoa/NetworkExtensionContentFilter.mm
     platform/cocoa/ParentalControlsContentFilter.mm
     platform/cocoa/PasteboardCocoa.mm
@@ -351,8 +348,6 @@ list(APPEND WebCore_SOURCES
     platform/graphics/mac/IntPointMac.mm
     platform/graphics/mac/IntRectMac.mm
     platform/graphics/mac/IntSizeMac.mm
-    platform/graphics/mac/MediaPlayerPrivateQTKit.mm
-    platform/graphics/mac/MediaTimeQTKit.mm
     platform/graphics/mac/PDFDocumentImageMac.mm
     platform/graphics/mac/SimpleFontDataCoreText.cpp
     platform/graphics/mac/WebLayer.mm
@@ -398,6 +393,7 @@ list(APPEND WebCore_SOURCES
     platform/mac/ThreadCheck.mm
     platform/mac/URLMac.mm
     platform/mac/UserActivityMac.mm
+    platform/mac/UserAgentMac.mm
     platform/mac/ValidationBubbleMac.mm
     platform/mac/WebCoreFullScreenPlaceholderView.mm
     platform/mac/WebCoreFullScreenWarningView.mm
@@ -406,9 +402,6 @@ list(APPEND WebCore_SOURCES
     platform/mac/WebCoreObjCExtras.mm
     platform/mac/WebGLBlacklist.mm
     platform/mac/WebNSAttributedStringExtras.mm
-    platform/mac/WebVideoFullscreenController.mm
-    platform/mac/WebVideoFullscreenHUDWindowController.mm
-    platform/mac/WebWindowAnimation.mm
     platform/mac/WidgetMac.mm
 
     platform/mediastream/mac/MockRealtimeVideoSourceMac.mm

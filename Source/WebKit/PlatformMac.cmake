@@ -138,7 +138,6 @@ list(APPEND WebKit_SOURCES
     Shared/mac/ChildProcessMac.mm
     Shared/mac/CodeSigning.mm
     Shared/mac/ColorSpaceData.mm
-    Shared/mac/CookieStorageShimLibrary.cpp
     Shared/mac/HangDetectionDisablerMac.mm
     Shared/mac/NativeWebGestureEventMac.mm
     Shared/mac/NativeWebKeyboardEventMac.mm
