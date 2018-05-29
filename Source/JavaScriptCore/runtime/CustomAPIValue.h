@@ -76,11 +76,25 @@ protected:
 private:
 	static JSValue defaultGetter(CustomAPIValue * thisApiValue, ExecState* exec, JSObject * slotBase, JSValue receiver, PropertyName propertyName)
 	{
+		UNUSED_PARAM(thisApiValue);
+		UNUSED_PARAM(exec);
+		UNUSED_PARAM(slotBase);
+		UNUSED_PARAM(receiver);
+		UNUSED_PARAM(propertyName);
+
 		return jsUndefined();
 	}
 
 	static bool defaultSetter(CustomAPIValue * thisApiValue, ExecState* exec, JSObject * slotBase, JSValue receiver, PropertyName propertyName, JSValue value, bool isStrictMode)
 	{
+		UNUSED_PARAM(thisApiValue);
+		UNUSED_PARAM(exec);
+		UNUSED_PARAM(slotBase);
+		UNUSED_PARAM(receiver);
+		UNUSED_PARAM(propertyName);
+		UNUSED_PARAM(value);
+		UNUSED_PARAM(isStrictMode);
+
 		return true;
 	}
 
