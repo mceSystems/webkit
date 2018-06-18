@@ -516,6 +516,7 @@ set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS
     heap/GCAssertions.h
     heap/GCConductor.h
     heap/GCDeferralContext.h
+    heap/GCDeferralContextInlines.h
     heap/GCIncomingRefCounted.h
     heap/GCIncomingRefCountedInlines.h
     heap/GCIncomingRefCountedSet.h
@@ -727,6 +728,7 @@ set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS
     runtime/DumpContext.h
     runtime/EnumerationMode.h
     runtime/Error.h
+    runtime/ErrorConstructor.h
     runtime/ErrorHandlingScope.h
     runtime/ErrorInstance.h
     runtime/ErrorPrototype.h
