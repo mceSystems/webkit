@@ -47,7 +47,7 @@ public:
 
     static JSObject* objectAtScope(JSScope*);
 
-    static JSObject* resolve(ExecState*, JSScope*, const Identifier&);
+    JS_EXPORT_PRIVATE static JSObject* resolve(ExecState*, JSScope*, const Identifier&);
     static JSValue resolveScopeForHoistingFuncDeclInEval(ExecState*, JSScope*, const Identifier&);
     static ResolveOp abstractResolve(ExecState*, size_t depthOffset, JSScope*, const Identifier&, GetOrPut, ResolveType, InitializationMode);
 

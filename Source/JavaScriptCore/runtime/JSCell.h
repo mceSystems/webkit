@@ -181,14 +181,14 @@ public:
     const ClassInfo* classInfo(VM&) const;
     const MethodTable* methodTable() const;
     const MethodTable* methodTable(VM&) const;
-    static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
-    static bool putByIndex(JSCell*, ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
+    JS_EXPORT_PRIVATE static bool put(JSCell*, ExecState*, PropertyName, JSValue, PutPropertySlot&);
+    JS_EXPORT_PRIVATE static bool putByIndex(JSCell*, ExecState*, unsigned propertyName, JSValue, bool shouldThrow);
     bool putInline(ExecState*, PropertyName, JSValue, PutPropertySlot&);
         
-    static bool deleteProperty(JSCell*, ExecState*, PropertyName);
-    static bool deletePropertyByIndex(JSCell*, ExecState*, unsigned propertyName);
+    JS_EXPORT_PRIVATE static bool deleteProperty(JSCell*, ExecState*, PropertyName);
+    JS_EXPORT_PRIVATE static bool deletePropertyByIndex(JSCell*, ExecState*, unsigned propertyName);
 
-    static JSValue toThis(JSCell*, ExecState*, ECMAMode);
+    JS_EXPORT_PRIVATE static JSValue toThis(JSCell*, ExecState*, ECMAMode);
 
     static bool canUseFastGetOwnProperty(const Structure&);
     JSValue fastGetOwnProperty(VM&, Structure&, PropertyName);
@@ -245,25 +245,25 @@ protected:
     void finishCreation(VM&, Structure*, CreatingEarlyCellTag);
 
     // Dummy implementations of override-able static functions for classes to put in their MethodTable
-    static JSValue defaultValue(const JSObject*, ExecState*, PreferredPrimitiveType);
-    static NO_RETURN_DUE_TO_CRASH void getOwnPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
-    static NO_RETURN_DUE_TO_CRASH void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
-    static NO_RETURN_DUE_TO_CRASH void getPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+    JS_EXPORT_PRIVATE static JSValue defaultValue(const JSObject*, ExecState*, PreferredPrimitiveType);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH void getOwnPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH void getOwnNonIndexPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH void getPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
 
-    static uint32_t getEnumerableLength(ExecState*, JSObject*);
-    static NO_RETURN_DUE_TO_CRASH void getStructurePropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
-    static NO_RETURN_DUE_TO_CRASH void getGenericPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
-    static NO_RETURN_DUE_TO_CRASH bool preventExtensions(JSObject*, ExecState*);
-    static NO_RETURN_DUE_TO_CRASH bool isExtensible(JSObject*, ExecState*);
-    static NO_RETURN_DUE_TO_CRASH bool setPrototype(JSObject*, ExecState*, JSValue, bool);
-    static NO_RETURN_DUE_TO_CRASH JSValue getPrototype(JSObject*, ExecState*);
+    JS_EXPORT_PRIVATE static uint32_t getEnumerableLength(ExecState*, JSObject*);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH void getStructurePropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH void getGenericPropertyNames(JSObject*, ExecState*, PropertyNameArray&, EnumerationMode);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH bool preventExtensions(JSObject*, ExecState*);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH bool isExtensible(JSObject*, ExecState*);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH bool setPrototype(JSObject*, ExecState*, JSValue, bool);
+    JS_EXPORT_PRIVATE static NO_RETURN_DUE_TO_CRASH JSValue getPrototype(JSObject*, ExecState*);
 
-    static String className(const JSObject*);
-    static String toStringName(const JSObject*, ExecState*);
+    JS_EXPORT_PRIVATE static String className(const JSObject*);
+    JS_EXPORT_PRIVATE static String toStringName(const JSObject*, ExecState*);
     JS_EXPORT_PRIVATE static bool customHasInstance(JSObject*, ExecState*, JSValue);
-    static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
-    static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
-    static bool getOwnPropertySlotByIndex(JSObject*, ExecState*, unsigned propertyName, PropertySlot&);
+    JS_EXPORT_PRIVATE static bool defineOwnProperty(JSObject*, ExecState*, PropertyName, const PropertyDescriptor&, bool shouldThrow);
+    JS_EXPORT_PRIVATE static bool getOwnPropertySlot(JSObject*, ExecState*, PropertyName, PropertySlot&);
+    JS_EXPORT_PRIVATE static bool getOwnPropertySlotByIndex(JSObject*, ExecState*, unsigned propertyName, PropertySlot&);
     JS_EXPORT_PRIVATE static ArrayBuffer* slowDownAndWasteMemory(JSArrayBufferView*);
     JS_EXPORT_PRIVATE static RefPtr<ArrayBufferView> getTypedArrayImpl(JSArrayBufferView*);
 

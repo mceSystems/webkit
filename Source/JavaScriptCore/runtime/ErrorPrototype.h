@@ -38,7 +38,7 @@ public:
         return prototype;
     }
 
-    DECLARE_INFO;
+    DECLARE_EXPORT_INFO;
 
     static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
     {
@@ -46,8 +46,8 @@ public:
     }
 
 protected:
-    ErrorPrototype(VM&, Structure*);
-    void finishCreation(VM&);
+    JS_EXPORT_PRIVATE ErrorPrototype(VM&, Structure*);
+    JS_EXPORT_PRIVATE void finishCreation(VM&);
 };
 
 } // namespace JSC

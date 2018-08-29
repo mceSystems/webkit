@@ -305,7 +305,7 @@ public:
     JSValue toThis(ExecState*, ECMAMode) const;
 
     static bool equal(ExecState*, JSValue v1, JSValue v2);
-    static bool equalSlowCase(ExecState*, JSValue v1, JSValue v2);
+    JS_EXPORT_PRIVATE static bool equalSlowCase(ExecState*, JSValue v1, JSValue v2);
     static bool equalSlowCaseInline(ExecState*, JSValue v1, JSValue v2);
     static bool strictEqual(ExecState*, JSValue v1, JSValue v2);
     static bool strictEqualSlowCase(ExecState*, JSValue v1, JSValue v2);

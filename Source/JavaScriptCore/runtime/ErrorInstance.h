@@ -73,9 +73,9 @@ public:
     bool materializeErrorInfoIfNeeded(VM&, PropertyName);
 
 protected:
-    explicit ErrorInstance(VM&, Structure*);
+    JS_EXPORT_PRIVATE explicit ErrorInstance(VM&, Structure*);
 
-    void finishCreation(ExecState*, VM&, const String&, bool useCurrentFrame = true);
+    JS_EXPORT_PRIVATE void finishCreation(ExecState*, VM&, const String&, bool useCurrentFrame = true);
     static void destroy(JSCell*);
 
     static void visitChildren(JSCell*, SlotVisitor&);
