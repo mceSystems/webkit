@@ -52,6 +52,12 @@ if (NOT ENABLE_REMOTE_INSPECTOR)
     add_definitions(-DENABLE_INSPECTOR_ALTERNATE_DISPATCHERS=0)
 endif ()
 
+if (APPLE)
+    add_definitions(-DUSE_FOUNDATION=1)
+    add_definitions(-DUSE_EXPORT_MACROS=1)
+    add_definitions(-DBUSE_EXPORT_MACROS=1)
+endif ()
+
 # FIXME: JSCOnly on WIN32 seems to only work with fully static build
 # https://bugs.webkit.org/show_bug.cgi?id=172862
 if (NOT ENABLE_STATIC_JSC AND NOT WIN32)
