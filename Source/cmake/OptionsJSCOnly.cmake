@@ -56,6 +56,9 @@ if (APPLE)
     add_definitions(-DUSE_FOUNDATION=1)
     add_definitions(-DUSE_EXPORT_MACROS=1)
     add_definitions(-DBUSE_EXPORT_MACROS=1)
+
+    #FIXME: This is here to enable WTF::RetainPtr, to enable support for JSC::Heap::releaseSoon
+    add_definitions(-DUSE_CF_RETAIN_PTR=1)
 endif ()
 
 # FIXME: JSCOnly on WIN32 seems to only work with fully static build

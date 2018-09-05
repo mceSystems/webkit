@@ -23,13 +23,13 @@
 
 #include <wtf/Platform.h>
 
-#if USE(CF) || defined(__OBJC__)
+#if USE(CF) || defined(__OBJC__) || USE(CF_RETAIN_PTR)
 
 #include <wtf/HashTraits.h>
 #include <algorithm>
 #include <cstddef>
 
-#if USE(CF)
+#if USE(CF) || USE(CF_RETAIN_PTR)
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
@@ -343,6 +343,6 @@ using WTF::retainPtr;
 using WTF::dynamic_objc_cast;
 #endif
 
-#endif // USE(CF) || defined(__OBJC__)
+#endif // USE(CF) || defined(__OBJC__) || USE(CF_RETAIN_PTR)
 
 #endif // WTF_RetainPtr_h

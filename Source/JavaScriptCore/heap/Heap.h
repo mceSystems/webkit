@@ -47,6 +47,9 @@
 #include <wtf/HashCountedSet.h>
 #include <wtf/HashSet.h>
 #include <wtf/ParallelHelperPool.h>
+#if USE(FOUNDATION)
+#include <wtf/RetainPtr.h>
+#endif
 #include <wtf/Threading.h>
 
 namespace JSC {
