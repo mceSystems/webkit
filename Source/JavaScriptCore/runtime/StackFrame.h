@@ -41,10 +41,10 @@ public:
     StackFrame(VM&, JSCell* owner, JSCell* callee, CodeBlock*, unsigned bytecodeOffset);
     StackFrame(Wasm::IndexOrName);
 
-	JSCell * callee() const { return m_callee.get(); }
+    JSCell * callee() const { return m_callee.get(); }
     CodeBlock * codeBlock() const { return m_codeBlock.get(); }
-	bool isWasmFrame() const { return m_isWasmFrame; }
-	const Wasm::IndexOrName& wasmFunctionIndexOrName() const { return m_wasmFunctionIndexOrName; }
+    bool isWasmFrame() const { return m_isWasmFrame; }
+    const Wasm::IndexOrName& wasmFunctionIndexOrName() const { return m_wasmFunctionIndexOrName; }
 
     bool hasLineAndColumnInfo() const { return !!m_codeBlock; }
     

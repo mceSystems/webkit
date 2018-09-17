@@ -27,30 +27,30 @@
 #include "ExternalStringImpl.h"
 
 namespace WTF {
-	WTF_EXPORT_PRIVATE Ref<ExternalStringImpl> ExternalStringImpl::create(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free)
-	{
-		return adoptRef(*new ExternalStringImpl(characters, length, WTFMove(free)));
-	}
+    WTF_EXPORT_PRIVATE Ref<ExternalStringImpl> ExternalStringImpl::create(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free)
+    {
+        return adoptRef(*new ExternalStringImpl(characters, length, WTFMove(free)));
+    }
 
-	WTF_EXPORT_PRIVATE Ref<ExternalStringImpl> ExternalStringImpl::create(const UChar* characters, unsigned length, ExternalStringImplFreeFunction&& free)
-	{
-		return adoptRef(*new ExternalStringImpl(characters, length, WTFMove(free)));
-	}
+    WTF_EXPORT_PRIVATE Ref<ExternalStringImpl> ExternalStringImpl::create(const UChar* characters, unsigned length, ExternalStringImplFreeFunction&& free)
+    {
+        return adoptRef(*new ExternalStringImpl(characters, length, WTFMove(free)));
+    }
 
-	ExternalStringImpl::ExternalStringImpl(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free) :
-		StringImpl(characters, length, ConstructWithoutCopying),
-		m_free(WTFMove(free))
-	{
-		ASSERT(m_free);
-		m_hashAndFlags |= s_hashFlagIsExternal;
-	}
+    ExternalStringImpl::ExternalStringImpl(const LChar * characters, unsigned length, ExternalStringImplFreeFunction&& free) :
+        StringImpl(characters, length, ConstructWithoutCopying),
+        m_free(WTFMove(free))
+    {
+        ASSERT(m_free);
+        m_hashAndFlags |= s_hashFlagIsExternal;
+    }
 
-	ExternalStringImpl::ExternalStringImpl(const UChar * characters, unsigned length, ExternalStringImplFreeFunction&& free) :
-		StringImpl(characters, length, ConstructWithoutCopying),
-		m_free(WTFMove(free))
-	{
-		ASSERT(m_free);
-		m_hashAndFlags |= s_hashFlagIsExternal;
-	}
+    ExternalStringImpl::ExternalStringImpl(const UChar * characters, unsigned length, ExternalStringImplFreeFunction&& free) :
+        StringImpl(characters, length, ConstructWithoutCopying),
+        m_free(WTFMove(free))
+    {
+        ASSERT(m_free);
+        m_hashAndFlags |= s_hashFlagIsExternal;
+    }
 
 } // namespace WTF

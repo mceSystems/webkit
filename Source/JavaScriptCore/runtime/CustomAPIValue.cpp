@@ -33,7 +33,7 @@ const ClassInfo CustomAPIValue::s_info = { "CustomAPIValue", nullptr, nullptr, n
 
 JSC::Structure* CustomAPIValue::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
 {
-	return Structure::create(vm, globalObject, prototype, TypeInfo(CustomAPIValueType, StructureFlags), info());
+    return Structure::create(vm, globalObject, prototype, TypeInfo(CustomAPIValueType, StructureFlags), info());
 }
 
 }

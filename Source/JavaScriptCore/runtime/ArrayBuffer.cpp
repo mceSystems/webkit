@@ -264,7 +264,7 @@ ArrayBuffer::ArrayBuffer(ArrayBufferContents&& contents)
     , m_pinCount(0)
     , m_isWasmMemory(false)
     , m_locked(false)
-	, m_isApiUserControlledBuffer(false)
+    , m_isApiUserControlledBuffer(false)
 {
 }
 
@@ -318,14 +318,14 @@ void ArrayBuffer::makeWasmMemory()
 
 void ArrayBuffer::makeApiUserControlledBuffer()
 {
-	m_isApiUserControlledBuffer = true;
-	
-	if (m_contents.m_shared) {
-		m_contents.m_shared->m_destructor = [](void*) {};
-	}
-	else {
-		m_contents.m_destructor = [](void*) {};
-	}
+    m_isApiUserControlledBuffer = true;
+    
+    if (m_contents.m_shared) {
+        m_contents.m_shared->m_destructor = [](void*) {};
+    }
+    else {
+        m_contents.m_destructor = [](void*) {};
+    }
 }
 
 void ArrayBuffer::setSharingMode(ArrayBufferSharingMode newSharingMode)
@@ -379,14 +379,14 @@ bool ArrayBuffer::transferTo(VM& vm, ArrayBufferContents& result)
 // We allow neutering wasm memory ArrayBuffers even though they are locked.
 void ArrayBuffer::neuter(VM& vm)
 {
-	/* TODO: Originally, there was an "ASSERT(isWasmMemory())" here, but 
+    /* TODO: Originally, there was an "ASSERT(isWasmMemory())" here, but 
      * we need neutering for the ArrayBuffer api. Make sure this is OK. */
-	bool isNeuterable = isWasmMemory() || (!isShared() && !m_pinCount && !m_locked);
-	if (isNeuterable) {
-		ArrayBufferContents unused;
-		m_contents.transferTo(unused);
-		notifyIncommingReferencesOfTransfer(vm);
-	}
+    bool isNeuterable = isWasmMemory() || (!isShared() && !m_pinCount && !m_locked);
+    if (isNeuterable) {
+        ArrayBufferContents unused;
+        m_contents.transferTo(unused);
+        notifyIncommingReferencesOfTransfer(vm);
+    }
 }
 
 void ArrayBuffer::notifyIncommingReferencesOfTransfer(VM& vm)

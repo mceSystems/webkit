@@ -593,7 +593,7 @@ public:
     bool putDirectNonIndexAccessor(VM&, PropertyName, GetterSetter*, unsigned attributes);
     bool putDirectAccessor(ExecState*, PropertyName, GetterSetter*, unsigned attributes);
     JS_EXPORT_PRIVATE bool putDirectCustomAccessor(VM&, PropertyName, JSValue, unsigned attributes);
-	JS_EXPORT_PRIVATE bool putDirectCustomAPIValue(VM&, PropertyName, CustomAPIValue *, unsigned attributes);
+    JS_EXPORT_PRIVATE bool putDirectCustomAPIValue(VM&, PropertyName, CustomAPIValue *, unsigned attributes);
 
     bool putGetter(ExecState*, PropertyName, JSValue, unsigned attributes);
     bool putSetter(ExecState*, PropertyName, JSValue, unsigned attributes);
@@ -1368,9 +1368,9 @@ ALWAYS_INLINE bool JSObject::getOwnNonIndexPropertySlot(VM& vm, Structure* struc
         case CustomGetterSetterType:
             fillCustomGetterPropertySlot(vm, slot, jsCast<CustomGetterSetter*>(cell), attributes, structure);
             return true;
-		case CustomAPIValueType:
-			slot.setCustomAPIValue(this, attributes, jsCast<CustomAPIValue*>(cell));
-			return true;
+        case CustomAPIValueType:
+            slot.setCustomAPIValue(this, attributes, jsCast<CustomAPIValue*>(cell));
+            return true;
         default:
             break;
         }

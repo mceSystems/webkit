@@ -606,7 +606,7 @@ inline bool JSValue::isCustomGetterSetter() const
 
 inline bool JSValue::isCustomAPIValue() const
 {
-	return isCell() && asCell()->isCustomAPIValue();
+    return isCell() && asCell()->isCustomAPIValue();
 }
 
 inline bool JSValue::isObject() const

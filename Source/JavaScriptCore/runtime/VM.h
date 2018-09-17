@@ -565,7 +565,7 @@ public:
     Strong<Structure> mapIteratorStructure;
     Strong<Structure> bigIntStructure;
     Strong<Structure> executableToCodeBlockEdgeStructure;
-	Strong<Structure> customAPIValueStructure;
+    Strong<Structure> customAPIValueStructure;
 
     Strong<JSCell> emptyPropertyNameEnumerator;
     Strong<JSCell> sentinelSetBucket;

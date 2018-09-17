@@ -856,7 +856,7 @@ JSValue JSONParse(ExecState* exec, const String& json)
 
 String JSONStringify(ExecState* exec, JSValue value, JSValue gap)
 {
-	VM& vm = exec->vm();
+    VM& vm = exec->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     Stringifier stringifier(exec, jsNull(), gap);
     RETURN_IF_EXCEPTION(throwScope, { });
@@ -868,7 +868,7 @@ String JSONStringify(ExecState* exec, JSValue value, JSValue gap)
 
 String JSONStringify(ExecState* exec, JSValue value, unsigned indent)
 {
-	return JSONStringify(exec, value, jsNumber(indent));
+    return JSONStringify(exec, value, jsNumber(indent));
 }
 
 } // namespace JSC

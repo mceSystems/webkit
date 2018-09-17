@@ -108,7 +108,7 @@ public:
     bool isObject() const;
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
-	bool isCustomAPIValue() const;
+    bool isCustomAPIValue() const;
     bool isProxy() const;
     bool isFunction(VM&);
     bool isCallable(VM&, CallType&, CallData&);

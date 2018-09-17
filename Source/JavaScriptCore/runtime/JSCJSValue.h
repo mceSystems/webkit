@@ -234,7 +234,7 @@ public:
     bool isPrimitive() const;
     bool isGetterSetter() const;
     bool isCustomGetterSetter() const;
-	bool isCustomAPIValue() const;
+    bool isCustomAPIValue() const;
     bool isObject() const;
     bool inherits(VM&, const ClassInfo*) const;
     template<typename Target> bool inherits(VM&) const;

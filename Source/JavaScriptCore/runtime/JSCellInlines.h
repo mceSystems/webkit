@@ -225,7 +225,7 @@ inline bool JSCell::isCustomGetterSetter() const
 
 inline bool JSCell::isCustomAPIValue() const
 {
-	return m_type == CustomAPIValueType;
+    return m_type == CustomAPIValueType;
 }
 
 inline bool JSCell::isProxy() const

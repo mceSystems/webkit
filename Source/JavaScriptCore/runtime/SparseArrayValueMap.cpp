@@ -162,10 +162,10 @@ void SparseArrayEntry::get(JSObject* thisObject, PropertySlot& slot) const
         return;
     }
 
-	if (value.isCustomAPIValue()) {
-		slot.setCustomAPIValue(thisObject, m_attributes, jsCast<CustomAPIValue*>(value));
-		return;
-	}
+    if (value.isCustomAPIValue()) {
+        slot.setCustomAPIValue(thisObject, m_attributes, jsCast<CustomAPIValue*>(value));
+        return;
+    }
 
     slot.setGetterSlot(thisObject, m_attributes, jsCast<GetterSetter*>(value));
 }
