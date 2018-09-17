@@ -67,7 +67,7 @@ struct WebPageCreationParameters {
 
     WebCore::IntSize viewSize;
 
-    WebCore::ActivityState::Flags activityState;
+    OptionSet<WebCore::ActivityState::Flag> activityState;
     
     WebPreferencesStore store;
     DrawingAreaType drawingAreaType;
@@ -138,7 +138,7 @@ struct WebPageCreationParameters {
 #if PLATFORM(MAC)
     ColorSpaceData colorSpace;
     bool useSystemAppearance;
-    bool defaultAppearance;
+    bool useDarkAppearance;
 #endif
 #if PLATFORM(IOS)
     WebCore::FloatSize screenSize;

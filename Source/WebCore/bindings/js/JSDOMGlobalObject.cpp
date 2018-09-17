@@ -40,19 +40,21 @@
 #include "JSReadableStreamPrivateConstructors.h"
 #include "JSRemoteDOMWindow.h"
 #include "JSWorkerGlobalScope.h"
+#include "RejectedPromiseTracker.h"
 #include "RuntimeEnabledFeatures.h"
 #include "StructuredClone.h"
 #include "WebCoreJSClientData.h"
 #include "WorkerGlobalScope.h"
 #include <JavaScriptCore/BuiltinNames.h>
 #include <JavaScriptCore/CodeBlock.h>
+#include <JavaScriptCore/JSInternalPromise.h>
+#include <JavaScriptCore/JSInternalPromiseDeferred.h>
 
 namespace WebCore {
 using namespace JSC;
 
 EncodedJSValue JSC_HOST_CALL makeThisTypeErrorForBuiltins(ExecState*);
 EncodedJSValue JSC_HOST_CALL makeGetterTypeErrorForBuiltins(ExecState*);
-EncodedJSValue JSC_HOST_CALL isWebRTCLegacyAPIEnabled(ExecState*);
 EncodedJSValue JSC_HOST_CALL isReadableByteStreamAPIEnabled(ExecState*);
 
 const ClassInfo JSDOMGlobalObject::s_info = { "DOMGlobalObject", &JSGlobalObject::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDOMGlobalObject) };
@@ -99,13 +101,6 @@ EncodedJSValue JSC_HOST_CALL makeGetterTypeErrorForBuiltins(ExecState* execState
     scope.assertNoException();
     return JSValue::encode(createTypeError(execState, makeGetterTypeErrorMessage(interfaceName.utf8().data(), attributeName.utf8().data())));
 }
-
-#if ENABLE(WEB_RTC)
-EncodedJSValue JSC_HOST_CALL isWebRTCLegacyAPIEnabled(ExecState*)
-{
-    return JSValue::encode(jsBoolean(RuntimeEnabledFeatures::sharedFeatures().webRTCLegacyAPIEnabled()));
-}
-#endif
 
 #if ENABLE(STREAMS_API)
 EncodedJSValue JSC_HOST_CALL isReadableByteStreamAPIEnabled(ExecState*)
@@ -166,9 +161,6 @@ void JSDOMGlobalObject::addBuiltinGlobals(VM& vm)
         JSDOMGlobalObject::GlobalPropertyInfo(clientData.builtinNames().ReadableStreamDefaultReaderPrivateName(), privateReadableStreamDefaultReaderConstructor, PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly),
         JSDOMGlobalObject::GlobalPropertyInfo(clientData.builtinNames().ReadableStreamBYOBReaderPrivateName(), privateReadableStreamBYOBReaderConstructor, PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly),
         JSDOMGlobalObject::GlobalPropertyInfo(clientData.builtinNames().readableByteStreamAPIEnabledPrivateName(), JSFunction::create(vm, this, 0, String(), isReadableByteStreamAPIEnabled), PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly),
-#endif
-#if ENABLE(WEB_RTC)
-        JSDOMGlobalObject::GlobalPropertyInfo(clientData.builtinNames().webRTCLegacyAPIEnabledPrivateName(), JSFunction::create(vm, this, 0, String(), isWebRTCLegacyAPIEnabled), PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly),
 #endif
     };
     addStaticGlobals(staticGlobals, WTF_ARRAY_LENGTH(staticGlobals));
@@ -239,6 +231,33 @@ Event* JSDOMGlobalObject::currentEvent() const
     return m_currentEvent;
 }
 
+void JSDOMGlobalObject::promiseRejectionTracker(JSGlobalObject* jsGlobalObject, ExecState* exec, JSPromise* promise, JSPromiseRejectionOperation operation)
+{
+    // https://html.spec.whatwg.org/multipage/webappapis.html#the-hostpromiserejectiontracker-implementation
+
+    VM& vm = exec->vm();
+    auto& globalObject = *JSC::jsCast<JSDOMGlobalObject*>(jsGlobalObject);
+    auto* context = globalObject.scriptExecutionContext();
+    if (!context)
+        return;
+
+    // InternalPromises should not be exposed to user scripts.
+    if (JSC::jsDynamicCast<JSC::JSInternalPromise*>(vm, promise))
+        return;
+
+    // FIXME: If script has muted errors (cross origin), terminate these steps.
+    // <https://webkit.org/b/171415> Implement the `muted-errors` property of Scripts to avoid onerror/onunhandledrejection for cross-origin scripts
+
+    switch (operation) {
+    case JSPromiseRejectionOperation::Reject:
+        context->ensureRejectedPromiseTracker().promiseRejected(*exec, globalObject, *promise);
+        break;
+    case JSPromiseRejectionOperation::Handle:
+        context->ensureRejectedPromiseTracker().promiseHandled(*exec, globalObject, *promise);
+        break;
+    }
+}
+
 JSDOMGlobalObject& callerGlobalObject(ExecState& state)
 {
     class GetCallerGlobalObjectFunctor {
@@ -274,7 +293,11 @@ JSDOMGlobalObject& callerGlobalObject(ExecState& state)
 
     GetCallerGlobalObjectFunctor iter;
     state.iterate(iter);
-    return *jsCast<JSDOMGlobalObject*>(iter.globalObject() ? iter.globalObject() : state.vmEntryGlobalObject());
+    if (iter.globalObject())
+        return *jsCast<JSDOMGlobalObject*>(iter.globalObject());
+
+    VM& vm = state.vm();
+    return *jsCast<JSDOMGlobalObject*>(vm.vmEntryGlobalObject(&state));
 }
 
 JSDOMGlobalObject* toJSDOMGlobalObject(ScriptExecutionContext& context, DOMWrapperWorld& world)

@@ -331,6 +331,7 @@ public:
     Overflow overflowY() const { return static_cast<Overflow>(m_nonInheritedFlags.overflowY); }
     Overflow overflowInlineDirection() const { return isHorizontalWritingMode() ? overflowX() : overflowY(); }
     Overflow overflowBlockDirection() const { return isHorizontalWritingMode() ? overflowY() : overflowX(); }
+    bool isOverflowVisible() const { return overflowX() == Overflow::Visible || overflowY() == Overflow::Visible; }
     
     Visibility visibility() const { return static_cast<Visibility>(m_inheritedFlags.visibility); }
     VerticalAlign verticalAlign() const { return static_cast<VerticalAlign>(m_nonInheritedFlags.verticalAlign); }
@@ -361,7 +362,7 @@ public:
 #endif
     FontSelectionValue fontWeight() const { return fontDescription().weight(); }
     FontSelectionValue fontStretch() const { return fontDescription().stretch(); }
-    FontSelectionValue fontItalic() const { return fontDescription().italic(); }
+    std::optional<FontSelectionValue> fontItalic() const { return fontDescription().italic(); }
 
     const Length& textIndent() const { return m_rareInheritedData->indent; }
     TextAlignMode textAlign() const { return static_cast<TextAlignMode>(m_inheritedFlags.textAlign); }
@@ -388,7 +389,7 @@ public:
     TextZoom textZoom() const { return static_cast<TextZoom>(m_rareInheritedData->textZoom); }
 
     TextDirection direction() const { return static_cast<TextDirection>(m_inheritedFlags.direction); }
-    bool isLeftToRightDirection() const { return direction() == LTR; }
+    bool isLeftToRightDirection() const { return direction() == TextDirection::LTR; }
     bool hasExplicitlySetDirection() const { return m_nonInheritedFlags.hasExplicitlySetDirection; }
 
     const Length& specifiedLineHeight() const;
@@ -683,8 +684,6 @@ public:
     
     LineBoxContain lineBoxContain() const { return m_rareInheritedData->lineBoxContain; }
     const LineClampValue& lineClamp() const { return m_rareNonInheritedData->lineClamp; }
-    const LinesClampValue& linesClamp() const { return m_rareNonInheritedData->linesClamp; }
-    bool hasLinesClamp() const { return !linesClamp().start().isNone(); }
     const IntSize& initialLetter() const { return m_rareNonInheritedData->initialLetter; }
     int initialLetterDrop() const { return initialLetter().width(); }
     int initialLetterHeight() const { return initialLetter().height(); }
@@ -754,9 +753,9 @@ public:
     bool hasFilter() const { return !m_rareNonInheritedData->filter->operations.operations().isEmpty(); }
     bool hasReferenceFilterOnly() const;
 
-    FilterOperations& mutableColorFilter() { return m_rareInheritedData.access().colorFilter.access().operations; }
-    const FilterOperations& colorFilter() const { return m_rareInheritedData->colorFilter->operations; }
-    bool hasColorFilter() const { return !m_rareInheritedData->colorFilter->operations.operations().isEmpty(); }
+    FilterOperations& mutableAppleColorFilter() { return m_rareInheritedData.access().appleColorFilter.access().operations; }
+    const FilterOperations& appleColorFilter() const { return m_rareInheritedData->appleColorFilter->operations; }
+    bool hasAppleColorFilter() const { return !m_rareInheritedData->appleColorFilter->operations.operations().isEmpty(); }
 
 #if ENABLE(FILTERS_LEVEL_2)
     FilterOperations& mutableBackdropFilter() { return m_rareNonInheritedData.access().backdropFilter.access().operations; }
@@ -768,14 +767,14 @@ public:
 
 #if ENABLE(CSS_COMPOSITING)
     BlendMode blendMode() const { return static_cast<BlendMode>(m_rareNonInheritedData->effectiveBlendMode); }
-    void setBlendMode(BlendMode mode) { SET_VAR(m_rareNonInheritedData, effectiveBlendMode, mode); }
-    bool hasBlendMode() const { return static_cast<BlendMode>(m_rareNonInheritedData->effectiveBlendMode) != BlendModeNormal; }
+    void setBlendMode(BlendMode mode) { SET_VAR(m_rareNonInheritedData, effectiveBlendMode, static_cast<unsigned>(mode)); }
+    bool hasBlendMode() const { return static_cast<BlendMode>(m_rareNonInheritedData->effectiveBlendMode) != BlendMode::Normal; }
 
     Isolation isolation() const { return static_cast<Isolation>(m_rareNonInheritedData->isolation); }
     void setIsolation(Isolation isolation) { SET_VAR(m_rareNonInheritedData, isolation, static_cast<unsigned>(isolation)); }
     bool hasIsolation() const { return isolation() != Isolation::Auto; }
 #else
-    BlendMode blendMode() const { return BlendModeNormal; }
+    BlendMode blendMode() const { return BlendMode::Normal; }
     bool hasBlendMode() const { return false; }
 
     Isolation isolation() const { return Isolation::Auto; }
@@ -910,7 +909,7 @@ public:
 #endif
     void setFontWeight(FontSelectionValue);
     void setFontStretch(FontSelectionValue);
-    void setFontItalic(FontSelectionValue);
+    void setFontItalic(std::optional<FontSelectionValue>);
 
     void setColor(const Color&);
     void setTextIndent(Length&& length) { SET_VAR(m_rareInheritedData, indent, WTFMove(length)); }
@@ -1162,7 +1161,7 @@ public:
     void setRubyPosition(RubyPosition position) { SET_VAR(m_rareInheritedData, rubyPosition, static_cast<unsigned>(position)); }
 
     void setFilter(const FilterOperations& ops) { SET_NESTED_VAR(m_rareNonInheritedData, filter, operations, ops); }
-    void setColorFilter(const FilterOperations& ops) { SET_NESTED_VAR(m_rareInheritedData, colorFilter, operations, ops); }
+    void setAppleColorFilter(const FilterOperations& ops) { SET_NESTED_VAR(m_rareInheritedData, appleColorFilter, operations, ops); }
 
 #if ENABLE(FILTERS_LEVEL_2)
     void setBackdropFilter(const FilterOperations& ops) { SET_NESTED_VAR(m_rareNonInheritedData, backdropFilter, operations, ops); }
@@ -1201,7 +1200,6 @@ public:
 
     void setLineBoxContain(LineBoxContain c) { SET_VAR(m_rareInheritedData, lineBoxContain, c); }
     void setLineClamp(LineClampValue c) { SET_VAR(m_rareNonInheritedData, lineClamp, c); }
-    void setLinesClamp(const LinesClampValue& c) { SET_VAR(m_rareNonInheritedData, linesClamp, c); }
     
     void setInitialLetter(const IntSize& size) { SET_VAR(m_rareNonInheritedData, initialLetter, size); }
     
@@ -1445,7 +1443,7 @@ public:
     static CaptionSide initialCaptionSide() { return CaptionSide::Top; }
     static ColumnAxis initialColumnAxis() { return ColumnAxis::Auto; }
     static ColumnProgression initialColumnProgression() { return ColumnProgression::Normal; }
-    static TextDirection initialDirection() { return LTR; }
+    static TextDirection initialDirection() { return TextDirection::LTR; }
     static WritingMode initialWritingMode() { return TopToBottomWritingMode; }
     static TextCombine initialTextCombine() { return TextCombine::None; }
     static TextOrientation initialTextOrientation() { return TextOrientation::Mixed; }
@@ -1647,7 +1645,6 @@ public:
 
     static IntSize initialInitialLetter() { return IntSize(); }
     static LineClampValue initialLineClamp() { return LineClampValue(); }
-    static LinesClampValue initialLinesClamp() { return LinesClampValue(); }
     static TextSecurity initialTextSecurity() { return TextSecurity::None; }
 
 #if PLATFORM(IOS)
@@ -1668,14 +1665,14 @@ public:
 #endif
 
     static const FilterOperations& initialFilter() { static NeverDestroyed<FilterOperations> ops; return ops; }
-    static const FilterOperations& initialColorFilter() { static NeverDestroyed<FilterOperations> ops; return ops; }
+    static const FilterOperations& initialAppleColorFilter() { static NeverDestroyed<FilterOperations> ops; return ops; }
 
 #if ENABLE(FILTERS_LEVEL_2)
     static const FilterOperations& initialBackdropFilter() { static NeverDestroyed<FilterOperations> ops; return ops; }
 #endif
 
 #if ENABLE(CSS_COMPOSITING)
-    static BlendMode initialBlendMode() { return BlendModeNormal; }
+    static BlendMode initialBlendMode() { return BlendMode::Normal; }
     static Isolation initialIsolation() { return Isolation::Auto; }
 #endif
 
@@ -2044,13 +2041,13 @@ inline bool RenderStyle::breakOnlyAfterWhiteSpace() const
 
 inline bool RenderStyle::breakWords() const
 {
-    return wordBreak() == WordBreak::Break || overflowWrap() == OverflowWrap::Break;
+    return wordBreak() == WordBreak::BreakWord || overflowWrap() == OverflowWrap::Break;
 }
 
 inline bool RenderStyle::hasInlineColumnAxis() const
 {
     auto axis = columnAxis();
-    return (axis == ColumnAxis::Auto || isHorizontalWritingMode() == (axis == ColumnAxis::Horizontal)) && !hasLinesClamp();
+    return axis == ColumnAxis::Auto || isHorizontalWritingMode() == (axis == ColumnAxis::Horizontal);
 }
 
 inline ImageOrientationEnum RenderStyle::imageOrientation() const

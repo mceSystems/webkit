@@ -73,8 +73,6 @@ static WorkQueue& workQueue()
 
 static std::optional<SecItemResponseData> sendSecItemRequest(SecItemRequestData::Type requestType, CFDictionaryRef query, CFDictionaryRef attributesToMatch = 0)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
-
     std::optional<SecItemResponseData> response;
 
     auto semaphore = adoptOSObject(dispatch_semaphore_create(0));
@@ -93,7 +91,6 @@ static std::optional<SecItemResponseData> sendSecItemRequest(SecItemRequestData:
 
 static OSStatus webSecItemCopyMatching(CFDictionaryRef query, CFTypeRef* result)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
     auto response = sendSecItemRequest(SecItemRequestData::CopyMatching, query);
     if (!response)
         return errSecInteractionNotAllowed;
@@ -102,21 +99,24 @@ static OSStatus webSecItemCopyMatching(CFDictionaryRef query, CFTypeRef* result)
     return response->resultCode();
 }
 
-static OSStatus webSecItemAdd(CFDictionaryRef query, CFTypeRef* result)
+static OSStatus webSecItemAdd(CFDictionaryRef query, CFTypeRef* unusedResult)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
+    // Return value of SecItemAdd should be ignored for WebKit use cases. WebKit can't serialize SecKeychainItemRef, so we do not use it.
+    // If someone passes a result value to be populated, the API contract is being violated so we should assert.
+    if (unusedResult) {
+        ASSERT_NOT_REACHED();
+        return errSecParam;
+    }
+
     auto response = sendSecItemRequest(SecItemRequestData::Add, query);
     if (!response)
         return errSecInteractionNotAllowed;
 
-    if (result)
-        *result = response->resultObject().leakRef();
     return response->resultCode();
 }
 
 static OSStatus webSecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
     auto response = sendSecItemRequest(SecItemRequestData::Update, query, attributesToUpdate);
     if (!response)
         return errSecInteractionNotAllowed;
@@ -126,7 +126,6 @@ static OSStatus webSecItemUpdate(CFDictionaryRef query, CFDictionaryRef attribut
 
 static OSStatus webSecItemDelete(CFDictionaryRef query)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
     auto response = sendSecItemRequest(SecItemRequestData::Delete, query);
     if (!response)
         return errSecInteractionNotAllowed;
@@ -136,7 +135,6 @@ static OSStatus webSecItemDelete(CFDictionaryRef query)
 
 void initializeSecItemShim(ChildProcess& process)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
     sharedProcess = &process;
 
 #if PLATFORM(IOS)

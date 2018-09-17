@@ -28,10 +28,11 @@
 #if PLATFORM(MAC)
 
 #include "PluginComplexTextInputState.h"
+#include "ShareableBitmap.h"
 #include "WKDragDestinationAction.h"
 #include "WKLayoutMode.h"
-#include "WebPageProxy.h"
 #include "_WKOverlayScrollbarStyle.h"
+#include <WebCore/ScrollTypes.h>
 #include <WebCore/TextIndicatorWindow.h>
 #include <WebCore/UserInterfaceLayoutDirection.h>
 #include <pal/spi/cocoa/AVKitSPI.h>
@@ -55,7 +56,12 @@ OBJC_CLASS WKImmediateActionController;
 OBJC_CLASS WKViewLayoutStrategy;
 OBJC_CLASS WKWebView;
 OBJC_CLASS WKWindowVisibilityObserver;
+OBJC_CLASS _WKRemoteObjectRegistry;
 OBJC_CLASS _WKThumbnailView;
+
+#if WK_API_ENABLED
+OBJC_CLASS WKShareSheet;
+#endif
 
 #if HAVE(TOUCH_BAR)
 OBJC_CLASS NSCandidateListTouchBarItem;
@@ -66,6 +72,16 @@ OBJC_CLASS NSPopoverTouchBarItem;
 OBJC_CLASS WKTextTouchBarItemController;
 OBJC_CLASS WebPlaybackControlsManager;
 #endif // HAVE(TOUCH_BAR)
+
+namespace API {
+class HitTestResult;
+class Object;
+class PageConfiguration;
+}
+
+namespace WebCore {
+struct ShareDataWithParsedURL;
+}
 
 @protocol WebViewImplDelegate
 
@@ -96,6 +112,7 @@ OBJC_CLASS WebPlaybackControlsManager;
 
 #if ENABLE(DRAG_SUPPORT) && WK_API_ENABLED
 - (WKDragDestinationAction)_web_dragDestinationActionForDraggingInfo:(id <NSDraggingInfo>)draggingInfo;
+- (void)_web_didPerformDragOperation:(BOOL)handled;
 #endif
 
 @optional
@@ -108,23 +125,30 @@ OBJC_CLASS WebPlaybackControlsManager;
 
 namespace WebCore {
 struct DragItem;
-struct KeyPressCommand;
+struct KeypressCommand;
 }
 
 namespace WebKit {
 
+class PageClient;
 class PageClientImpl;
 class DrawingAreaProxy;
 class ViewGestureController;
+class ViewSnapshot;
+class WebBackForwardListItem;
 class WebEditCommandProxy;
+class WebFrameProxy;
 class WebPageProxy;
+class WebProcessPool;
 struct ColorSpaceData;
+struct WebHitTestResultData;
+enum class UndoOrRedo;
 
 typedef id <NSValidatedUserInterfaceItem> ValidationItem;
 typedef Vector<RetainPtr<ValidationItem>> ValidationVector;
 typedef HashMap<String, ValidationVector> ValidationMap;
 
-class WebViewImpl {
+class WebViewImpl : public CanMakeWeakPtr<WebViewImpl> {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(WebViewImpl);
 public:
@@ -290,16 +314,19 @@ public:
     bool isEditable() const;
     bool executeSavedCommandBySelector(SEL);
     void executeEditCommandForSelector(SEL, const String& argument = String());
-    void registerEditCommand(Ref<WebEditCommandProxy>&&, WebPageProxy::UndoOrRedo);
+    void registerEditCommand(Ref<WebEditCommandProxy>&&, UndoOrRedo);
     void clearAllEditCommands();
     bool writeSelectionToPasteboard(NSPasteboard *, NSArray *types);
     bool readSelectionFromPasteboard(NSPasteboard *);
     id validRequestorForSendAndReturnTypes(NSString *sendType, NSString *returnType);
     void centerSelectionInVisibleArea();
     void selectionDidChange();
+    
     void didBecomeEditable();
     void updateFontPanelIfNeeded();
-    void changeFontFromFontPanel();
+    void changeFontFromFontManager();
+    void changeFontAttributesFromSender(id);
+    void changeFontColorFromSender(id);
     bool validateUserInterfaceItem(id <NSValidatedUserInterfaceItem>);
     void setEditableElementIsFocused(bool);
 
@@ -349,7 +376,7 @@ public:
     void prepareForDictionaryLookup();
     void setAllowsLinkPreview(bool);
     bool allowsLinkPreview() const { return m_allowsLinkPreview; }
-    void* immediateActionAnimationControllerForHitTestResult(API::HitTestResult*, uint32_t type, API::Object* userData);
+    NSObject *immediateActionAnimationControllerForHitTestResult(API::HitTestResult*, uint32_t type, API::Object* userData);
     void didPerformImmediateActionHitTest(const WebHitTestResultData&, bool contentPreventsDefault, API::Object* userData);
     void prepareForImmediateActionAnimation();
     void cancelImmediateActionAnimation();
@@ -394,6 +421,9 @@ public:
 
     void setInspectorAttachmentView(NSView *);
     NSView *inspectorAttachmentView();
+    
+    void showShareSheet(const WebCore::ShareDataWithParsedURL&, WTF::CompletionHandler<void(bool)>&&, WKWebView *);
+    void shareSheetDidDismiss(WKShareSheet *);
 
     _WKRemoteObjectRegistry *remoteObjectRegistry();
 
@@ -409,6 +439,14 @@ public:
     bool performDragOperation(id <NSDraggingInfo>);
     NSView *hitTestForDragTypes(CGPoint, NSSet *types);
     void registerDraggedTypes();
+
+    NSDragOperation dragSourceOperationMask(NSDraggingSession *, NSDraggingContext);
+    void draggingSessionEnded(NSDraggingSession *, NSPoint, NSDragOperation);
+
+    NSString *fileNameForFilePromiseProvider(NSFilePromiseProvider *, NSString *fileType);
+    void writeToURLForFilePromiseProvider(NSFilePromiseProvider *, NSURL *, void(^)(NSError *));
+
+    void didPerformDragOperation(bool handled);
 #endif
 
     void startWindowDrag();
@@ -511,12 +549,19 @@ public:
 
     void handleAcceptedCandidate(NSTextCheckingResult *acceptedCandidate);
 
+    void doAfterProcessingAllPendingMouseEvents(dispatch_block_t action);
+    void didFinishProcessingAllPendingMouseEvents();
+
 #if HAVE(TOUCH_BAR)
     NSTouchBar *makeTouchBar();
     void updateTouchBar();
     NSTouchBar *currentTouchBar() const { return m_currentTouchBar.get(); }
     NSCandidateListTouchBarItem *candidateListTouchBarItem() const;
 #if ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+    bool isPictureInPictureActive();
+    void togglePictureInPicture();
+    void updateMediaPlaybackControlsManager();
+
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
     AVTouchBarScrubber *mediaPlaybackControlsView() const;
 #else
@@ -531,6 +576,8 @@ public:
 
     void updateTouchBarAndRefreshTextBarIdentifiers();
     void setIsCustomizingTouchBar(bool isCustomizingTouchBar) { m_isCustomizingTouchBar = isCustomizingTouchBar; };
+
+    bool canTogglePictureInPicture();
 #endif // HAVE(TOUCH_BAR)
 
     bool beginBackSwipeForTesting();
@@ -538,7 +585,9 @@ public:
     
     void setUseSystemAppearance(bool);
     bool useSystemAppearance();
-    void setDefaultAppearance(bool);
+
+    void effectiveAppearanceDidChange();
+    bool effectiveAppearanceIsDark();
 
 private:
 #if HAVE(TOUCH_BAR)
@@ -577,8 +626,6 @@ private:
 #endif // ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
 #endif // HAVE(TOUCH_BAR)
 
-    WeakPtr<WebViewImpl> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
-
     bool supportsArbitraryLayoutModes() const;
     float intrinsicDeviceScaleFactor() const;
     void dispatchSetTopContentInset();
@@ -607,12 +654,15 @@ private:
     bool mightBeginScrollWhileInactive();
 
     void handleRequestedCandidates(NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates);
+    void flushPendingMouseEventCallbacks();
+
+#if ENABLE(DRAG_SUPPORT)
+    void sendDragEndToPage(CGPoint endPoint, NSDragOperation);
+#endif
 
     WeakObjCPtr<NSView<WebViewImplDelegate>> m_view;
     std::unique_ptr<PageClient> m_pageClient;
     Ref<WebPageProxy> m_page;
-
-    WeakPtrFactory<WebViewImpl> m_weakPtrFactory;
 
     bool m_willBecomeFirstResponderAgain { false };
     bool m_inBecomeFirstResponder { false };
@@ -652,6 +702,10 @@ private:
 
 #if ENABLE(FULLSCREEN_API)
     RetainPtr<WKFullScreenWindowController> m_fullScreenWindowController;
+#endif
+    
+#if WK_API_ENABLED
+    RetainPtr<WKShareSheet> _shareSheet;
 #endif
 
     RetainPtr<WKWindowVisibilityObserver> m_windowVisibilityObserver;
@@ -719,6 +773,7 @@ private:
     // that has been already sent to WebCore.
     RetainPtr<NSEvent> m_keyDownEventBeingResent;
     Vector<WebCore::KeypressCommand>* m_collectedKeypressCommands { nullptr };
+    Vector<BlockPtr<void()>> m_callbackHandlersAfterProcessingPendingMouseEvents;
 
     String m_lastStringForCandidateRequest;
     NSInteger m_lastCandidateRequestSequenceNumber;

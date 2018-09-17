@@ -53,7 +53,7 @@
 #include "ImageData.h"
 #include "InspectorInstrumentation.h"
 #include "IntSize.h"
-#include "JSMainThreadExecState.h"
+#include "JSExecState.h"
 #include "Logging.h"
 #include "NotImplemented.h"
 #include "OESElementIndexUint.h"
@@ -538,7 +538,8 @@ std::unique_ptr<WebGLRenderingContextBase> WebGLRenderingContextBase::create(Can
         // The FrameLoaderClient might block creation of a new WebGL context despite the page settings; in
         // particular, if WebGL contexts were lost one or more times via the GL_ARB_robustness extension.
         if (!frame->loader().client().allowWebGL(frame->settings().webGLEnabled())) {
-            canvasElement->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextcreationerrorEvent, false, true, "Web page was not allowed to create a WebGL context."));
+            canvasElement->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextcreationerrorEvent,
+                Event::CanBubble::No, Event::IsCancelable::Yes, "Web page was not allowed to create a WebGL context."));
             return nullptr;
         }
 
@@ -583,7 +584,7 @@ std::unique_ptr<WebGLRenderingContextBase> WebGLRenderingContextBase::create(Can
 
 #if ENABLE(WEBGL2)
     if (type == "webgl2")
-        attributes.useGLES3 = true;
+        attributes.isWebGL2 = true;
 #endif
 
     if (isPendingPolicyResolution) {
@@ -601,19 +602,21 @@ std::unique_ptr<WebGLRenderingContextBase> WebGLRenderingContextBase::create(Can
 
     auto context = GraphicsContext3D::create(attributes, hostWindow);
     if (!context || !context->makeContextCurrent()) {
-        if (canvasElement)
-            canvasElement->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextcreationerrorEvent, false, true, "Could not create a WebGL context."));
+        if (canvasElement) {
+            canvasElement->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextcreationerrorEvent,
+                Event::CanBubble::No, Event::IsCancelable::Yes, "Could not create a WebGL context."));
+        }
         return nullptr;
     }
 
     auto& extensions = context->getExtensions();
-    if (extensions.supports(ASCIILiteral { "GL_EXT_debug_marker" }))
-        extensions.pushGroupMarkerEXT(ASCIILiteral { "WebGLRenderingContext" });
+    if (extensions.supports("GL_EXT_debug_marker"_s))
+        extensions.pushGroupMarkerEXT("WebGLRenderingContext"_s);
 
 #if ENABLE(WEBGL2) && PLATFORM(MAC)
     // glTexStorage() was only added to Core in OpenGL 4.2.
     // However, according to https://developer.apple.com/opengl/capabilities/ all Apple GPUs support this extension.
-    if (attributes.useGLES3 && !extensions.supports("GL_ARB_texture_storage"))
+    if (attributes.isWebGL2 && !extensions.supports("GL_ARB_texture_storage"))
         return nullptr;
 #endif
 
@@ -741,6 +744,7 @@ void WebGLRenderingContextBase::initializeNewContext()
     m_boundArrayBuffer = nullptr;
     m_currentProgram = nullptr;
     m_framebufferBinding = nullptr;
+    m_readFramebufferBinding = nullptr;
     m_renderbufferBinding = nullptr;
     m_depthMask = true;
     m_stencilEnabled = false;
@@ -870,6 +874,7 @@ WebGLRenderingContextBase::~WebGLRenderingContextBase()
     m_vertexAttrib0Buffer = nullptr;
     m_currentProgram = nullptr;
     m_framebufferBinding = nullptr;
+    m_readFramebufferBinding = nullptr;
     m_renderbufferBinding = nullptr;
 
     for (auto& textureUnit : m_textureUnits) {
@@ -1261,11 +1266,29 @@ void WebGLRenderingContextBase::bindFramebuffer(GC3Denum target, WebGLFramebuffe
         return;
     if (deleted)
         buffer = 0;
-    if (target != GraphicsContext3D::FRAMEBUFFER) {
+
+    bool isWebGL2DrawFramebufferTarget = false;
+#if ENABLE(WEBGL2)
+    isWebGL2DrawFramebufferTarget = isWebGL2() && target == GraphicsContext3D::DRAW_FRAMEBUFFER;
+#endif
+    bool success = false;
+
+    if (target == GraphicsContext3D::FRAMEBUFFER || isWebGL2DrawFramebufferTarget) {
+        m_framebufferBinding = buffer;
+        success = true;
+    }
+#if ENABLE(WEBGL2)
+    if (isWebGL2() && (target == GraphicsContext3D::FRAMEBUFFER || target == GraphicsContext3D::READ_FRAMEBUFFER)) {
+        m_readFramebufferBinding = buffer;
+        success = true;
+    }
+#endif
+
+    if (!success) {
         synthesizeGLError(GraphicsContext3D::INVALID_ENUM, "bindFramebuffer", "invalid target");
         return;
     }
-    m_framebufferBinding = buffer;
+
     m_context->bindFramebuffer(target, objectOrZero(buffer));
     if (buffer)
         buffer->setHasEverBeenBound();
@@ -1460,13 +1483,22 @@ GC3Denum WebGLRenderingContextBase::checkFramebufferStatus(GC3Denum target)
     if (isContextLostOrPending())
         return GraphicsContext3D::FRAMEBUFFER_UNSUPPORTED;
     if (target != GraphicsContext3D::FRAMEBUFFER) {
-        synthesizeGLError(GraphicsContext3D::INVALID_ENUM, "checkFramebufferStatus", "invalid target");
-        return 0;
+#if ENABLE(WEBGL2)
+        if (isWebGL1() || (target != GraphicsContext3D::DRAW_FRAMEBUFFER && target != GraphicsContext3D::READ_FRAMEBUFFER)) {
+#endif
+            synthesizeGLError(GraphicsContext3D::INVALID_ENUM, "checkFramebufferStatus", "invalid target");
+            return 0;
+#if ENABLE(WEBGL2)
+        }
+#endif
     }
-    if (!m_framebufferBinding || !m_framebufferBinding->object())
+
+    auto targetFramebuffer = (target == GraphicsContext3D::READ_FRAMEBUFFER) ? m_readFramebufferBinding : m_framebufferBinding;
+
+    if (!targetFramebuffer || !targetFramebuffer->object())
         return GraphicsContext3D::FRAMEBUFFER_COMPLETE;
     const char* reason = "framebuffer incomplete";
-    GC3Denum result = m_framebufferBinding->checkStatus(&reason);
+    GC3Denum result = targetFramebuffer->checkStatus(&reason);
     if (result != GraphicsContext3D::FRAMEBUFFER_COMPLETE) {
         String str = "WebGL: checkFramebufferStatus:" + String(reason);
         printToConsole(MessageLevel::Warning, str);
@@ -1534,11 +1566,9 @@ void WebGLRenderingContextBase::compileShader(WebGLShader* shader)
     auto* canvas = htmlCanvas();
 
     if (canvas && m_synthesizedErrorsToConsole && !value) {
-        Ref<Inspector::ScriptCallStack> stackTrace = Inspector::createScriptCallStack(JSMainThreadExecState::currentState());
+        Ref<Inspector::ScriptCallStack> stackTrace = Inspector::createScriptCallStack(JSExecState::currentState());
 
-        Vector<String> errors;
-        getShaderInfoLog(shader).split("\n", errors);
-        for (String& error : errors)
+        for (auto& error : getShaderInfoLog(shader).split('\n'))
             canvas->document().addConsoleMessage(std::make_unique<Inspector::ConsoleMessage>(MessageSource::Rendering, MessageType::Log, MessageLevel::Error, "WebGL: " + error, stackTrace.copyRef()));
     }
 }
@@ -1770,6 +1800,8 @@ bool WebGLRenderingContextBase::deleteObject(WebGLObject* object)
         synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, "delete", "object does not belong to this context");
         return false;
     }
+    if (object->isDeleted())
+        return false;
     if (object->object())
         // We need to pass in context here because we want
         // things in this context unbound.
@@ -1791,9 +1823,20 @@ void WebGLRenderingContextBase::deleteFramebuffer(WebGLFramebuffer* framebuffer)
 {
     if (!deleteObject(framebuffer))
         return;
+#if ENABLE(WEBGL2)
+    if (isWebGL2() && framebuffer == m_readFramebufferBinding) {
+        m_readFramebufferBinding = nullptr;
+        m_context->bindFramebuffer(GraphicsContext3D::READ_FRAMEBUFFER, 0);
+    }
+#endif
     if (framebuffer == m_framebufferBinding) {
         m_framebufferBinding = nullptr;
-        m_context->bindFramebuffer(GraphicsContext3D::FRAMEBUFFER, 0);
+#if ENABLE(WEBGL2)
+        if (isWebGL2())
+            m_context->bindFramebuffer(GraphicsContext3D::DRAW_FRAMEBUFFER, 0);
+        else
+#endif
+            m_context->bindFramebuffer(GraphicsContext3D::FRAMEBUFFER, 0);
     }
 }
 
@@ -2358,10 +2401,13 @@ void WebGLRenderingContextBase::framebufferRenderbuffer(GC3Denum target, GC3Denu
         synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, "framebufferRenderbuffer", "no buffer or buffer not from this context");
         return;
     }
+
+    auto targetFramebuffer = (target == GraphicsContext3D::READ_FRAMEBUFFER) ? m_readFramebufferBinding : m_framebufferBinding;
+
     // Don't allow the default framebuffer to be mutated; all current
     // implementations use an FBO internally in place of the default
     // FBO.
-    if (!m_framebufferBinding || !m_framebufferBinding->object()) {
+    if (!targetFramebuffer || !targetFramebuffer->object()) {
         synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, "framebufferRenderbuffer", "no framebuffer bound");
         return;
     }
@@ -2374,7 +2420,7 @@ void WebGLRenderingContextBase::framebufferRenderbuffer(GC3Denum target, GC3Denu
     default:
         m_context->framebufferRenderbuffer(target, attachment, renderbuffertarget, bufferObject);
     }
-    m_framebufferBinding->setAttachmentForBoundFramebuffer(attachment, buffer);
+    targetFramebuffer->setAttachmentForBoundFramebuffer(attachment, buffer);
     applyStencilTest();
 }
 
@@ -2382,7 +2428,7 @@ void WebGLRenderingContextBase::framebufferTexture2D(GC3Denum target, GC3Denum a
 {
     if (isContextLostOrPending() || !validateFramebufferFuncParameters("framebufferTexture2D", target, attachment))
         return;
-    if (level) {
+    if (level && isWebGL1()) {
         synthesizeGLError(GraphicsContext3D::INVALID_VALUE, "framebufferTexture2D", "level not 0");
         return;
     }
@@ -2390,10 +2436,13 @@ void WebGLRenderingContextBase::framebufferTexture2D(GC3Denum target, GC3Denum a
         synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, "framebufferTexture2D", "no texture or texture not from this context");
         return;
     }
+
+    auto targetFramebuffer = (target == GraphicsContext3D::READ_FRAMEBUFFER) ? m_readFramebufferBinding : m_framebufferBinding;
+
     // Don't allow the default framebuffer to be mutated; all current
     // implementations use an FBO internally in place of the default
     // FBO.
-    if (!m_framebufferBinding || !m_framebufferBinding->object()) {
+    if (!targetFramebuffer || !targetFramebuffer->object()) {
         synthesizeGLError(GraphicsContext3D::INVALID_OPERATION, "framebufferTexture2D", "no framebuffer bound");
         return;
     }
@@ -2412,7 +2461,7 @@ void WebGLRenderingContextBase::framebufferTexture2D(GC3Denum target, GC3Denum a
     default:
         m_context->framebufferTexture2D(target, attachment, textarget, textureObject, level);
     }
-    m_framebufferBinding->setAttachmentForBoundFramebuffer(attachment, textarget, texture, level);
+    targetFramebuffer->setAttachmentForBoundFramebuffer(attachment, textarget, texture, level);
     applyStencilTest();
 }
 
@@ -3837,7 +3886,29 @@ ExceptionOr<void> WebGLRenderingContextBase::texSubImage2D(GC3Denum target, GC3D
     if (isContextLostOrPending())
         return { };
 
-    auto visitor = WTF::makeVisitor([&](const RefPtr<ImageData>& pixels) -> ExceptionOr<void> {
+    auto visitor = WTF::makeVisitor([&](const RefPtr<ImageBitmap>& bitmap) -> ExceptionOr<void> {
+        auto texture = validateTextureBinding("texSubImage2D", target, true);
+        if (!texture)
+            return { };
+
+        GC3Denum internalFormat = texture->getInternalFormat(target, level);
+        if (!internalFormat) {
+            synthesizeGLError(GraphicsContext3D::INVALID_VALUE, "texSubImage2D", "invalid texture target or level");
+            return { };
+        }
+
+        if (!validateTexFunc("texSubImage2D", TexSubImage, SourceImageBitmap, target, level, internalFormat, bitmap->width(), bitmap->height(), 0, format, type, xoffset, yoffset))
+            return { };
+
+        ImageBuffer* buffer = bitmap->buffer();
+        if (!buffer)
+            return { };
+
+        RefPtr<Image> image = buffer->copyImage(ImageBuffer::fastCopyImageMode());
+        if (image)
+            texSubImage2DImpl(target, level, xoffset, yoffset, format, type, image.get(), GraphicsContext3D::HtmlDomImage, m_unpackFlipY, m_unpackPremultiplyAlpha);
+        return { };
+    }, [&](const RefPtr<ImageData>& pixels) -> ExceptionOr<void> {
         auto texture = validateTextureBinding("texSubImage2D", target, true);
         if (!texture)
             return { };
@@ -4381,7 +4452,38 @@ ExceptionOr<void> WebGLRenderingContextBase::texImage2D(GC3Denum target, GC3Dint
         return { };
     }
 
-    auto visitor = WTF::makeVisitor([&](const RefPtr<ImageData>& pixels) -> ExceptionOr<void> {
+    auto visitor = WTF::makeVisitor([&](const RefPtr<ImageBitmap>& bitmap) -> ExceptionOr<void> {
+        if (isContextLostOrPending() || !validateTexFunc("texImage2D", TexImage, SourceImageBitmap, target, level, internalformat, bitmap->width(), bitmap->height(), 0, format, type, 0, 0))
+            return { };
+
+        ImageBuffer* buffer = bitmap->buffer();
+        if (!buffer)
+            return { };
+
+        auto texture = validateTextureBinding("texImage2D", target, true);
+        // If possible, copy from the bitmap directly to the texture
+        // via the GPU, without a read-back to system memory.
+        //
+        // FIXME: restriction of (RGB || RGBA)/UNSIGNED_BYTE should be lifted when
+        // ImageBuffer::copyToPlatformTexture implementations are fully functional.
+        if (texture
+            && (format == GraphicsContext3D::RGB || format == GraphicsContext3D::RGBA)
+            && type == GraphicsContext3D::UNSIGNED_BYTE) {
+            auto textureInternalFormat = texture->getInternalFormat(target, level);
+            if (isRGBFormat(textureInternalFormat) || !texture->isValid(target, level)) {
+                if (buffer->copyToPlatformTexture(*m_context.get(), target, texture->object(), internalformat, m_unpackPremultiplyAlpha, m_unpackFlipY)) {
+                    texture->setLevelInfo(target, level, internalformat, bitmap->width(), bitmap->height(), type);
+                    return { };
+                }
+            }
+        }
+
+        // Normal pure SW path.
+        RefPtr<Image> image = buffer->copyImage(ImageBuffer::fastCopyImageMode());
+        if (image)
+            texImage2DImpl(target, level, internalformat, format, type, image.get(), GraphicsContext3D::HtmlDomImage, m_unpackFlipY, m_unpackPremultiplyAlpha);
+        return { };
+    }, [&](const RefPtr<ImageData>& pixels) -> ExceptionOr<void> {
         if (isContextLostOrPending() || !validateTexFunc("texImage2D", TexImage, SourceImageData, target, level, internalformat, pixels->width(), pixels->height(), 0, format, type, 0, 0))
             return { };
         Vector<uint8_t> data;
@@ -5658,7 +5760,7 @@ void WebGLRenderingContextBase::printToConsole(MessageLevel level, const String&
 
     // Error messages can occur during function calls, so show stack traces for them.
     if (level == MessageLevel::Error) {
-        Ref<Inspector::ScriptCallStack> stackTrace = Inspector::createScriptCallStack(JSMainThreadExecState::currentState());
+        Ref<Inspector::ScriptCallStack> stackTrace = Inspector::createScriptCallStack(JSExecState::currentState());
         consoleMessage = std::make_unique<Inspector::ConsoleMessage>(MessageSource::Rendering, MessageType::Log, level, message, WTFMove(stackTrace));
     } else
         consoleMessage = std::make_unique<Inspector::ConsoleMessage>(MessageSource::Rendering, MessageType::Log, level, message);
@@ -6017,7 +6119,7 @@ void WebGLRenderingContextBase::dispatchContextLostEvent()
     if (!canvas)
         return;
 
-    Ref<WebGLContextEvent> event = WebGLContextEvent::create(eventNames().webglcontextlostEvent, false, true, emptyString());
+    Ref<WebGLContextEvent> event = WebGLContextEvent::create(eventNames().webglcontextlostEvent, Event::CanBubble::No, Event::IsCancelable::Yes, emptyString());
     canvas->dispatchEvent(event);
     m_restoreAllowed = event->defaultPrevented();
     if (m_contextLostMode == RealLostContext && m_restoreAllowed)
@@ -6103,7 +6205,7 @@ void WebGLRenderingContextBase::maybeRestoreContext()
     setupFlags();
     initializeNewContext();
     initializeVertexArrayObjects();
-    canvas->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextrestoredEvent, false, true, emptyString()));
+    canvas->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextrestoredEvent, Event::CanBubble::No, Event::IsCancelable::Yes, emptyString()));
 }
 
 void WebGLRenderingContextBase::dispatchContextChangedEvent()
@@ -6112,7 +6214,7 @@ void WebGLRenderingContextBase::dispatchContextChangedEvent()
     if (!canvas)
         return;
 
-    canvas->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextchangedEvent, false, true, emptyString()));
+    canvas->dispatchEvent(WebGLContextEvent::create(eventNames().webglcontextchangedEvent, Event::CanBubble::No, Event::IsCancelable::Yes, emptyString()));
 }
 
 void WebGLRenderingContextBase::simulateContextChanged()
@@ -6172,17 +6274,17 @@ namespace {
     {
         switch (error) {
         case GraphicsContext3D::INVALID_ENUM:
-            return ASCIILiteral("INVALID_ENUM");
+            return "INVALID_ENUM"_s;
         case GraphicsContext3D::INVALID_VALUE:
-            return ASCIILiteral("INVALID_VALUE");
+            return "INVALID_VALUE"_s;
         case GraphicsContext3D::INVALID_OPERATION:
-            return ASCIILiteral("INVALID_OPERATION");
+            return "INVALID_OPERATION"_s;
         case GraphicsContext3D::OUT_OF_MEMORY:
-            return ASCIILiteral("OUT_OF_MEMORY");
+            return "OUT_OF_MEMORY"_s;
         case GraphicsContext3D::INVALID_FRAMEBUFFER_OPERATION:
-            return ASCIILiteral("INVALID_FRAMEBUFFER_OPERATION");
+            return "INVALID_FRAMEBUFFER_OPERATION"_s;
         case GraphicsContext3D::CONTEXT_LOST_WEBGL:
-            return ASCIILiteral("CONTEXT_LOST_WEBGL");
+            return "CONTEXT_LOST_WEBGL"_s;
         default:
             return String::format("WebGL ERROR(%04x)", error);
         }
@@ -6360,25 +6462,25 @@ void WebGLRenderingContextBase::vertexAttribDivisor(GC3Duint index, GC3Duint div
     m_context->vertexAttribDivisor(index, divisor);
 }
 
-bool WebGLRenderingContextBase::enableSupportedExtension(const char* extensionNameLiteral)
+bool WebGLRenderingContextBase::enableSupportedExtension(ASCIILiteral extensionNameLiteral)
 {
     ASSERT(m_context);
     auto& extensions = m_context->getExtensions();
-    String extensionName { ASCIILiteral { extensionNameLiteral } };
+    String extensionName { extensionNameLiteral };
     if (!extensions.supports(extensionName))
         return false;
     extensions.ensureEnabled(extensionName);
     return true;
 }
 
-void WebGLRenderingContextBase::activityStateDidChange(ActivityState::Flags oldActivityState, ActivityState::Flags newActivityState)
+void WebGLRenderingContextBase::activityStateDidChange(OptionSet<ActivityState::Flag> oldActivityState, OptionSet<ActivityState::Flag> newActivityState)
 {
     if (!m_context)
         return;
 
-    ActivityState::Flags changed = oldActivityState ^ newActivityState;
+    auto changed = oldActivityState ^ newActivityState;
     if (changed & ActivityState::IsVisible)
-        m_context->setContextVisibility(newActivityState & ActivityState::IsVisible);
+        m_context->setContextVisibility(newActivityState.contains(ActivityState::IsVisible));
 }
 
 void WebGLRenderingContextBase::setFailNextGPUStatusCheck()

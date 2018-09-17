@@ -25,7 +25,10 @@
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMWrapperCache.h"
+#include "ScriptExecutionContext.h"
+#include "URL.h"
 #include <JavaScriptCore/FunctionPrototype.h>
+#include <JavaScriptCore/HeapSnapshotBuilder.h>
 #include <JavaScriptCore/JSCInlines.h>
 #include <wtf/GetPtr.h>
 #include <wtf/PointerPreparations.h>
@@ -75,7 +78,7 @@ template<> JSValue JSInterfaceNameConstructor::prototypeForStructure(JSC::VM& vm
 template<> void JSInterfaceNameConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
     putDirect(vm, vm.propertyNames->prototype, JSInterfaceName::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("InterfaceName"))), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String("InterfaceName"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
 
@@ -162,16 +165,26 @@ void JSInterfaceName::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.reportExtraMemoryVisited(thisObject->wrapped().memoryCost());
 }
 
-size_t JSInterfaceName::estimatedSize(JSCell* cell)
+size_t JSInterfaceName::estimatedSize(JSCell* cell, VM& vm)
 {
     auto* thisObject = jsCast<JSInterfaceName*>(cell);
-    return Base::estimatedSize(thisObject) + thisObject->wrapped().memoryCost();
+    return Base::estimatedSize(thisObject, vm) + thisObject->wrapped().memoryCost();
 }
 
-bool JSInterfaceNameOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor)
+void JSInterfaceName::heapSnapshot(JSCell* cell, HeapSnapshotBuilder& builder)
+{
+    auto* thisObject = jsCast<JSInterfaceName*>(cell);
+    builder.setWrappedObjectForCell(cell, &thisObject->wrapped());
+    if (thisObject->scriptExecutionContext())
+        builder.setLabelForCell(cell, String::format("url %s", thisObject->scriptExecutionContext()->url().string().utf8().data()));
+    Base::heapSnapshot(cell, builder);
+}
+
+bool JSInterfaceNameOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor, const char** reason)
 {
     UNUSED_PARAM(handle);
     UNUSED_PARAM(visitor);
+    UNUSED_PARAM(reason);
     return false;
 }
 

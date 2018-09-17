@@ -28,6 +28,7 @@
 #include "CacheModel.h"
 #include "NetworkSessionCreationParameters.h"
 #include "SandboxExtension.h"
+#include <WebCore/Cookie.h>
 #include <wtf/ProcessID.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
@@ -50,24 +51,21 @@ struct NetworkProcessCreationParameters {
     void encode(IPC::Encoder&) const;
     static bool decode(IPC::Decoder&, NetworkProcessCreationParameters&);
 
-    NetworkSessionCreationParameters defaultSessionParameters;
     bool privateBrowsingEnabled { false };
     CacheModel cacheModel { CacheModelDocumentViewer };
     int64_t diskCacheSizeOverride { -1 };
     bool canHandleHTTPSServerTrustEvaluation { true };
 
-    String cacheStorageDirectory;
-    uint64_t cacheStoragePerOriginQuota;
-    SandboxExtension::Handle cacheStorageDirectoryExtensionHandle;
     String diskCacheDirectory;
     SandboxExtension::Handle diskCacheDirectoryExtensionHandle;
     bool shouldEnableNetworkCacheEfficacyLogging { false };
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     bool shouldEnableNetworkCacheSpeculativeRevalidation { false };
 #endif
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     Vector<uint8_t> uiProcessCookieStorageIdentifier;
 #endif
+    Vector<WebCore::Cookie> defaultSessionPendingCookies;
 #if PLATFORM(IOS)
     SandboxExtension::Handle cookieStorageDirectoryExtensionHandle;
     SandboxExtension::Handle containerCachesDirectoryExtensionHandle;
@@ -81,8 +79,8 @@ struct NetworkProcessCreationParameters {
     ProcessID presentingApplicationPID { 0 };
 
 #if PLATFORM(COCOA)
-    String parentProcessName;
     String uiProcessBundleIdentifier;
+    uint32_t uiProcessSDKVersion { 0 };
     String sourceApplicationBundleIdentifier;
     String sourceApplicationSecondaryIdentifier;
 #if PLATFORM(IOS)
@@ -90,11 +88,9 @@ struct NetworkProcessCreationParameters {
 #endif
     String httpProxy;
     String httpsProxy;
-#if PLATFORM(COCOA)
     RetainPtr<CFDataRef> networkATSContext;
-#endif
-    bool cookieStoragePartitioningEnabled;
     bool storageAccessAPIEnabled;
+    bool suppressesConnectionTerminationOnSystemChange;
 #endif
 
 #if USE(SOUP)
@@ -125,9 +121,7 @@ struct NetworkProcessCreationParameters {
     Vector<String> urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
     Vector<String> urlSchemesRegisteredAsCORSEnabled;
 
-    bool tracksResourceLoadMilestones { false };
-    
-#if ENABLE(WIFI_ASSERTIONS)
+#if ENABLE(PROXIMITY_NETWORKING)
     unsigned wirelessContextIdentifier { 0 };
 #endif
 };

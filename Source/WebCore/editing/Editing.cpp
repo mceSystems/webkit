@@ -362,10 +362,10 @@ TextDirection directionOfEnclosingBlock(const Position& position)
 {
     auto block = enclosingBlock(position.containerNode());
     if (!block)
-        return LTR;
+        return TextDirection::LTR;
     auto renderer = block->renderer();
     if (!renderer)
-        return LTR;
+        return TextDirection::LTR;
     return renderer->style().direction();
 }
 
@@ -927,7 +927,7 @@ Ref<Element> createTabSpanElement(Document& document, const String& tabText)
 
 Ref<Element> createTabSpanElement(Document& document)
 {
-    return createTabSpanElement(document, document.createEditingTextNode(ASCIILiteral("\t")));
+    return createTabSpanElement(document, document.createEditingTextNode("\t"_s));
 }
 
 bool isNodeRendered(const Node& node)

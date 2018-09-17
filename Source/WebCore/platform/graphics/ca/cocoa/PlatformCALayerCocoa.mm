@@ -75,7 +75,7 @@ Ref<PlatformCALayer> PlatformCALayerCocoa::create(LayerType layerType, PlatformC
 
 Ref<PlatformCALayer> PlatformCALayerCocoa::create(void* platformLayer, PlatformCALayerClient* owner)
 {
-    return adoptRef(*new PlatformCALayerCocoa(static_cast<PlatformLayer*>(platformLayer), owner));
+    return adoptRef(*new PlatformCALayerCocoa((__bridge CALayer *)platformLayer, owner));
 }
 
 static NSString * const platformCALayerPointer = @"WKPlatformCALayer";
@@ -87,7 +87,7 @@ PlatformCALayer* PlatformCALayer::platformCALayer(void* platformLayer)
     // Pointer to PlatformCALayer is kept in a key of the CALayer
     PlatformCALayer* platformCALayer = nil;
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    platformCALayer = static_cast<PlatformCALayer*>([[static_cast<CALayer*>(platformLayer) valueForKey:platformCALayerPointer] pointerValue]);
+    platformCALayer = static_cast<PlatformCALayer*>([[(__bridge CALayer *)platformLayer valueForKey:platformCALayerPointer] pointerValue]);
     END_BLOCK_OBJC_EXCEPTIONS
     return platformCALayer;
 }
@@ -207,7 +207,6 @@ PlatformCALayer::LayerType PlatformCALayerCocoa::layerTypeForPlatformLayer(Platf
 
 PlatformCALayerCocoa::PlatformCALayerCocoa(LayerType layerType, PlatformCALayerClient* owner)
     : PlatformCALayer(layerType, owner)
-    , m_customAppearance(GraphicsLayer::NoCustomAppearance)
 {
     Class layerClass = Nil;
     switch (layerType) {
@@ -278,7 +277,6 @@ PlatformCALayerCocoa::PlatformCALayerCocoa(LayerType layerType, PlatformCALayerC
 
 PlatformCALayerCocoa::PlatformCALayerCocoa(PlatformLayer* layer, PlatformCALayerClient* owner)
     : PlatformCALayer(layerTypeForPlatformLayer(layer), owner)
-    , m_customAppearance(GraphicsLayer::NoCustomAppearance)
 {
     m_layer = layer;
     commonInit();
@@ -391,6 +389,9 @@ void PlatformCALayerCocoa::animationEnded(const String& animationKey)
 
 void PlatformCALayerCocoa::setNeedsDisplay()
 {
+    if (!m_backingStoreAttached)
+        return;
+
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setNeedsDisplay];
     END_BLOCK_OBJC_EXCEPTIONS
@@ -398,6 +399,9 @@ void PlatformCALayerCocoa::setNeedsDisplay()
 
 void PlatformCALayerCocoa::setNeedsDisplayInRect(const FloatRect& dirtyRect)
 {
+    if (!m_backingStoreAttached)
+        return;
+
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setNeedsDisplayInRect:dirtyRect];
     END_BLOCK_OBJC_EXCEPTIONS
@@ -416,7 +420,7 @@ void PlatformCALayerCocoa::copyContentsFromLayer(PlatformCALayer* layer)
 
 PlatformCALayer* PlatformCALayerCocoa::superlayer() const
 {
-    return platformCALayer([m_layer superlayer]);
+    return platformCALayer((__bridge void*)[m_layer superlayer]);
 }
 
 void PlatformCALayerCocoa::removeFromSuperlayer()
@@ -638,6 +642,7 @@ void PlatformCALayerCocoa::setBackingStoreAttached(bool attached)
 {
     if (attached == m_backingStoreAttached)
         return;
+
     m_backingStoreAttached = attached;
 
     if (attached)
@@ -739,15 +744,20 @@ void PlatformCALayerCocoa::setSupportsSubpixelAntialiasedText(bool supportsSubpi
     updateContentsFormat();
 }
 
-CFTypeRef PlatformCALayerCocoa::contents() const
+bool PlatformCALayerCocoa::hasContents() const
 {
     return [m_layer contents];
+}
+
+CFTypeRef PlatformCALayerCocoa::contents() const
+{
+    return (__bridge CFTypeRef)[m_layer contents];
 }
 
 void PlatformCALayerCocoa::setContents(CFTypeRef value)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    [m_layer setContents:static_cast<id>(const_cast<void*>(value))];
+    [m_layer setContents:(__bridge id)value];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
@@ -980,7 +990,7 @@ void PlatformCALayerCocoa::setShapePath(const Path& path)
 
 bool PlatformCALayerCocoa::requiresCustomAppearanceUpdateOnBoundsChange() const
 {
-    return m_customAppearance == GraphicsLayer::ScrollingShadow;
+    return m_customAppearance == GraphicsLayer::CustomAppearance::ScrollingShadow;
 }
 
 void PlatformCALayerCocoa::updateCustomAppearance(GraphicsLayer::CustomAppearance appearance)
@@ -992,16 +1002,16 @@ void PlatformCALayerCocoa::updateCustomAppearance(GraphicsLayer::CustomAppearanc
 
 #if ENABLE(RUBBER_BANDING)
     switch (appearance) {
-    case GraphicsLayer::NoCustomAppearance:
-    case GraphicsLayer::LightBackdropAppearance:
-    case GraphicsLayer::DarkBackdropAppearance:
+    case GraphicsLayer::CustomAppearance::None:
+    case GraphicsLayer::CustomAppearance::LightBackdrop:
+    case GraphicsLayer::CustomAppearance::DarkBackdrop:
         ScrollbarThemeMac::removeOverhangAreaBackground(platformLayer());
         ScrollbarThemeMac::removeOverhangAreaShadow(platformLayer());
         break;
-    case GraphicsLayer::ScrollingOverhang:
+    case GraphicsLayer::CustomAppearance::ScrollingOverhang:
         ScrollbarThemeMac::setUpOverhangAreaBackground(platformLayer());
         break;
-    case GraphicsLayer::ScrollingShadow:
+    case GraphicsLayer::CustomAppearance::ScrollingShadow:
         ScrollbarThemeMac::setUpOverhangAreaShadow(platformLayer());
         break;
     }
@@ -1129,8 +1139,8 @@ void PlatformCALayer::drawLayerContents(CGContextRef context, WebCore::PlatformC
     
     CGContextSaveGState(context);
     
-    // We never use CompositingCoordinatesBottomUp on Mac.
-    ASSERT(layerContents->platformCALayerContentsOrientation() == GraphicsLayer::CompositingCoordinatesTopDown);
+    // We never use CompositingCoordinatesOrientation::BottomUp on Mac.
+    ASSERT(layerContents->platformCALayerContentsOrientation() == GraphicsLayer::CompositingCoordinatesOrientation::TopDown);
     
 #if PLATFORM(IOS)
     FontAntialiasingStateSaver fontAntialiasingState(context, [platformCALayer->platformLayer() isOpaque]);
@@ -1140,10 +1150,9 @@ void PlatformCALayer::drawLayerContents(CGContextRef context, WebCore::PlatformC
     
     // Set up an NSGraphicsContext for the context, so that parts of AppKit that rely on
     // the current NSGraphicsContext (e.g. NSCell drawing) get the right one.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     NSGraphicsContext* layerContext = [NSGraphicsContext graphicsContextWithGraphicsPort:context flipped:YES];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     [NSGraphicsContext setCurrentContext:layerContext];
 #endif
     

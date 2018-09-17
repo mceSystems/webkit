@@ -56,6 +56,10 @@
 #include <WebCore/RenderElement.h>
 #include <wtf/UUID.h>
 
+#if ENABLE(DATALIST_ELEMENT)
+#include <WebCore/HTMLDataListElement.h>
+#endif
+
 namespace WebKit {
 
 template <typename T>
@@ -85,7 +89,7 @@ static JSObjectRef toJSArray(JSContextRef context, const Vector<T>& data, JSValu
 
 static inline JSRetainPtr<JSStringRef> toJSString(const String& string)
 {
-    return JSRetainPtr<JSStringRef>(Adopt, OpaqueJSString::create(string).leakRef());
+    return adopt(OpaqueJSString::create(string).leakRef());
 }
 
 static inline JSValueRef toJSValue(JSContextRef context, const String& string)
@@ -123,7 +127,7 @@ static JSValueRef evaluate(JSContextRef context, JSObjectRef function, JSObjectR
     if (argumentCount != 1)
         return JSValueMakeUndefined(context);
 
-    JSRetainPtr<JSStringRef> script(Adopt, JSValueToStringCopy(context, arguments[0], exception));
+    auto script = adopt(JSValueToStringCopy(context, arguments[0], exception));
     return JSEvaluateScript(context, script.get(), nullptr, nullptr, 0, exception);
 }
 
@@ -146,7 +150,7 @@ static JSValueRef evaluateJavaScriptCallback(JSContextRef context, JSObjectRef f
 
     uint64_t frameID = JSValueToNumber(context, arguments[0], exception);
     uint64_t callbackID = JSValueToNumber(context, arguments[1], exception);
-    JSRetainPtr<JSStringRef> result(Adopt, JSValueToStringCopy(context, arguments[2], exception));
+    auto result = adopt(JSValueToStringCopy(context, arguments[2], exception));
 
     bool resultIsErrorName = JSValueToBoolean(context, arguments[3]);
 
@@ -207,7 +211,7 @@ WebCore::Element* WebAutomationSessionProxy::elementForNodeHandle(WebFrame& fram
         toJSValue(context, nodeHandle)
     };
 
-    JSValueRef result = callPropertyFunction(context, scriptObject, ASCIILiteral("nodeForIdentifier"), WTF_ARRAY_LENGTH(functionArguments), functionArguments, nullptr);
+    JSValueRef result = callPropertyFunction(context, scriptObject, "nodeForIdentifier"_s, WTF_ARRAY_LENGTH(functionArguments), functionArguments, nullptr);
     JSObjectRef element = JSValueToObject(context, result, nullptr);
     if (!element)
         return nullptr;
@@ -225,7 +229,7 @@ void WebAutomationSessionProxy::didClearWindowObjectForFrame(WebFrame& frame)
     if (JSObjectRef scriptObject = m_webFrameScriptObjectMap.take(frameID))
         JSValueUnprotect(frame.jsContext(), scriptObject);
 
-    String errorMessage = ASCIILiteral("Callback was not called before the unload event.");
+    String errorMessage = "Callback was not called before the unload event."_s;
     String errorType = Inspector::Protocol::AutomationHelpers::getEnumConstantValue(Inspector::Protocol::Automation::ErrorMessage::JavaScriptError);
 
     auto pendingFrameCallbacks = m_webFramePendingEvaluateJavaScriptCallbacksMap.take(frameID);
@@ -272,7 +276,7 @@ void WebAutomationSessionProxy::evaluateJavaScriptFunction(uint64_t pageID, uint
 
     {
         WebCore::UserGestureIndicator gestureIndicator(WebCore::ProcessingUserGesture, frame->coreFrame()->document());
-        callPropertyFunction(context, scriptObject, ASCIILiteral("evaluateJavaScriptFunction"), WTF_ARRAY_LENGTH(functionArguments), functionArguments, &exception);
+        callPropertyFunction(context, scriptObject, "evaluateJavaScriptFunction"_s, WTF_ARRAY_LENGTH(functionArguments), functionArguments, &exception);
     }
 
     if (!exception)
@@ -282,8 +286,8 @@ void WebAutomationSessionProxy::evaluateJavaScriptFunction(uint64_t pageID, uint
 
     JSRetainPtr<JSStringRef> exceptionMessage;
     if (JSValueIsObject(context, exception)) {
-        JSValueRef nameValue = JSObjectGetProperty(context, const_cast<JSObjectRef>(exception), toJSString(ASCIILiteral("name")).get(), nullptr);
-        JSRetainPtr<JSStringRef> exceptionName(Adopt, JSValueToStringCopy(context, nameValue, nullptr));
+        JSValueRef nameValue = JSObjectGetProperty(context, const_cast<JSObjectRef>(exception), toJSString("name"_s).get(), nullptr);
+        auto exceptionName = adopt(JSValueToStringCopy(context, nameValue, nullptr));
         if (exceptionName->string() == "NodeNotFound")
             errorType = Inspector::Protocol::AutomationHelpers::getEnumConstantValue(Inspector::Protocol::Automation::ErrorMessage::NodeNotFound);
         else if (exceptionName->string() == "InvalidElementState")
@@ -293,10 +297,10 @@ void WebAutomationSessionProxy::evaluateJavaScriptFunction(uint64_t pageID, uint
         else if (exceptionName->string() == "InvalidSelector")
             errorType = Inspector::Protocol::AutomationHelpers::getEnumConstantValue(Inspector::Protocol::Automation::ErrorMessage::InvalidSelector);
 
-        JSValueRef messageValue = JSObjectGetProperty(context, const_cast<JSObjectRef>(exception), toJSString(ASCIILiteral("message")).get(), nullptr);
-        exceptionMessage.adopt(JSValueToStringCopy(context, messageValue, nullptr));
+        JSValueRef messageValue = JSObjectGetProperty(context, const_cast<JSObjectRef>(exception), toJSString("message"_s).get(), nullptr);
+        exceptionMessage = adopt(JSValueToStringCopy(context, messageValue, nullptr));
     } else
-        exceptionMessage.adopt(JSValueToStringCopy(context, exception, nullptr));
+        exceptionMessage = adopt(JSValueToStringCopy(context, exception, nullptr));
 
     didEvaluateJavaScriptFunction(frameID, callbackID, exceptionMessage->string(), errorType);
 }
@@ -613,7 +617,7 @@ void WebAutomationSessionProxy::computeElementLayout(uint64_t pageID, uint64_t f
         }
     }
 
-    WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidComputeElementLayout(callbackID, resultElementBounds, resultInViewCenterPoint.value(), isObscured, String()), 0);
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebAutomationSession::DidComputeElementLayout(callbackID, resultElementBounds, resultInViewCenterPoint, isObscured, String()), 0);
 }
 
 void WebAutomationSessionProxy::selectOptionElement(uint64_t pageID, uint64_t frameID, String nodeHandle, uint64_t callbackID)

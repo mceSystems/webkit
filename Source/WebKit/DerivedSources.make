@@ -43,7 +43,6 @@ VPATH = \
     $(WebKit2)/WebProcess/ApplicationCache \
     $(WebKit2)/WebProcess/Automation \
     $(WebKit2)/WebProcess/Cache \
-    $(WebKit2)/WebProcess/CredentialManagement \
     $(WebKit2)/WebProcess/Databases/IndexedDB \
     $(WebKit2)/WebProcess/FullScreen \
     $(WebKit2)/WebProcess/Geolocation \
@@ -58,6 +57,7 @@ VPATH = \
     $(WebKit2)/WebProcess/ResourceCache \
     $(WebKit2)/WebProcess/Storage \
     $(WebKit2)/WebProcess/UserContent \
+    $(WebKit2)/WebProcess/WebAuthentication \
     $(WebKit2)/WebProcess/WebCoreSupport \
     $(WebKit2)/WebProcess/WebPage \
     $(WebKit2)/WebProcess/WebPage/RemoteLayerTree \
@@ -69,7 +69,6 @@ VPATH = \
     $(WebKit2)/UIProcess/ApplePay \
     $(WebKit2)/UIProcess/Automation \
     $(WebKit2)/UIProcess/Cocoa \
-    $(WebKit2)/UIProcess/CredentialManagement \
     $(WebKit2)/UIProcess/Databases \
     $(WebKit2)/UIProcess/Downloads \
     $(WebKit2)/UIProcess/MediaStream \
@@ -80,6 +79,7 @@ VPATH = \
     $(WebKit2)/UIProcess/RemoteLayerTree \
     $(WebKit2)/UIProcess/Storage \
     $(WebKit2)/UIProcess/UserContent \
+    $(WebKit2)/UIProcess/WebAuthentication \
     $(WebKit2)/UIProcess/WebStorage \
     $(WebKit2)/UIProcess/mac \
     $(WebKit2)/UIProcess/ios \
@@ -149,8 +149,8 @@ MESSAGE_RECEIVERS = \
     WebConnection \
     WebCookieManager \
     WebCookieManagerProxy \
-    WebCredentialsMessenger \
-    WebCredentialsMessengerProxy \
+    WebAuthenticatorCoordinator \
+    WebAuthenticatorCoordinatorProxy \
     WebFullScreenManager \
     WebFullScreenManagerProxy \
     WebGeolocationManager \
@@ -268,7 +268,7 @@ AUTOMATION_PROTOCOL_OUTPUT_FILES = \
 #
 
 ifeq ($(OS),MACOS)
-ifeq ($(shell $(CC) -std=gnu++17 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep ' WTF_PLATFORM_IOS ' | cut -d' ' -f3), 1)
+ifeq ($(shell $(CC) -std=gnu++14 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep ' WTF_PLATFORM_IOS ' | cut -d' ' -f3), 1)
 	AUTOMATION_BACKEND_PLATFORM_ARGUMENTS = --platform iOS
 else
 	AUTOMATION_BACKEND_PLATFORM_ARGUMENTS = --platform macOS
@@ -295,14 +295,15 @@ WEB_PREFERENCES_TEMPLATES = \
     $(WebKit2)/Scripts/PreferencesTemplates/WebPageUpdatePreferences.cpp.erb \
     $(WebKit2)/Scripts/PreferencesTemplates/WebPreferencesDefinitions.h.erb \
     $(WebKit2)/Scripts/PreferencesTemplates/WebPreferencesExperimentalFeatures.cpp.erb \
+    $(WebKit2)/Scripts/PreferencesTemplates/WebPreferencesInternalDebugFeatures.cpp.erb \
     $(WebKit2)/Scripts/PreferencesTemplates/WebPreferencesKeys.h.erb \
     $(WebKit2)/Scripts/PreferencesTemplates/WebPreferencesKeys.cpp.erb \
     $(WebKit2)/Scripts/PreferencesTemplates/WebPreferencesStoreDefaultsMap.cpp.erb \
 
 #
 
-all : WebPageUpdatePreferences.cpp WebPreferencesDefinitions.h WebPreferencesExperimentalFeatures.cpp WebPreferencesKeys.h WebPreferencesKeys.cpp WebPreferencesStoreDefaultsMap.cpp
+all : WebPageUpdatePreferences.cpp WebPreferencesDefinitions.h WebPreferencesExperimentalFeatures.cpp WebPreferencesInternalDebugFeatures.cpp WebPreferencesKeys.h WebPreferencesKeys.cpp WebPreferencesStoreDefaultsMap.cpp
 
-WebPageUpdatePreferences%cpp WebPreferencesDefinitions%h WebPreferencesExperimentalFeatures%cpp WebPreferencesKeys%h WebPreferencesKeys%cpp WebPreferencesStoreDefaultsMap%cpp : $(WebKit2)/Scripts/GeneratePreferences.rb $(WEB_PREFERENCES_TEMPLATES) $(WebKit2)/Shared/WebPreferences.yaml
+WebPageUpdatePreferences%cpp WebPreferencesDefinitions%h WebPreferencesExperimentalFeatures%cpp WebPreferencesInternalDebugFeatures%cpp WebPreferencesKeys%h WebPreferencesKeys%cpp WebPreferencesStoreDefaultsMap%cpp : $(WebKit2)/Scripts/GeneratePreferences.rb $(WEB_PREFERENCES_TEMPLATES) $(WebKit2)/Shared/WebPreferences.yaml
 	$(RUBY) $< --input $(WebKit2)/Shared/WebPreferences.yaml
 

@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "CertificateInfo.h"
 #include "CurlFormDataStream.h"
 #include "CurlMultipartHandle.h"
 #include "CurlMultipartHandleClient.h"
@@ -34,6 +35,8 @@
 #include "FileSystem.h"
 #include "NetworkLoadMetrics.h"
 #include "ResourceRequest.h"
+#include <wtf/MessageQueue.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/Noncopyable.h>
 
 namespace WebCore {
@@ -56,26 +59,27 @@ public:
         Yes = true
     };
 
-    static Ref<CurlRequest> create(const ResourceRequest& request, CurlRequestClient& client, ShouldSuspend shouldSuspend = ShouldSuspend::No, EnableMultipart enableMultipart = EnableMultipart::No)
+    static Ref<CurlRequest> create(const ResourceRequest& request, CurlRequestClient& client, ShouldSuspend shouldSuspend = ShouldSuspend::No, EnableMultipart enableMultipart = EnableMultipart::No, MessageQueue<Function<void()>>* messageQueue = nullptr)
     {
-        return adoptRef(*new CurlRequest(request, &client, shouldSuspend == ShouldSuspend::Yes, enableMultipart == EnableMultipart::Yes));
+        return adoptRef(*new CurlRequest(request, &client, shouldSuspend == ShouldSuspend::Yes, enableMultipart == EnableMultipart::Yes, messageQueue));
     }
 
     virtual ~CurlRequest() = default;
 
-    void invalidateClient() { m_client = nullptr;  }
+    void invalidateClient();
     WEBCORE_EXPORT void setUserPass(const String&, const String&);
+    void setStartTime(const MonotonicTime& startTime) { m_requestStartTime = startTime; }
 
-    void start(bool isSyncRequest = false);
+    void start();
     void cancel();
     WEBCORE_EXPORT void suspend();
     WEBCORE_EXPORT void resume();
 
     const ResourceRequest& resourceRequest() const { return m_request; }
-    bool isSyncRequest() const { return m_isSyncRequest; }
     bool isCompleted() const { return !m_curlHandle; }
     bool isCancelled() const { return m_cancelled; }
     bool isCompletedOrCancelled() const { return isCompleted() || isCancelled(); }
+    Seconds timeoutInterval() const;
 
     const String& user() const { return m_user; }
     const String& password() const { return m_password; }
@@ -87,7 +91,8 @@ public:
     void enableDownloadToFile();
     const String& getDownloadedFilePath();
 
-    NetworkLoadMetrics getNetworkLoadMetrics() { return m_networkLoadMetrics.isolatedCopy(); }
+    const CertificateInfo& certificateInfo() const { return m_certificateInfo; }
+    const NetworkLoadMetrics& networkLoadMetrics() const { return m_networkLoadMetrics; }
 
 private:
     enum class Action {
@@ -97,7 +102,7 @@ private:
         FinishTransfer
     };
 
-    CurlRequest(const ResourceRequest&, CurlRequestClient*, bool shouldSuspend, bool enableMultipart);
+    CurlRequest(const ResourceRequest&, CurlRequestClient*, bool, bool, MessageQueue<Function<void()>>*);
 
     void retain() override { ref(); }
     void release() override { deref(); }
@@ -106,12 +111,12 @@ private:
     void startWithJobManager();
 
     void callClient(Function<void(CurlRequest&, CurlRequestClient&)>&&);
+    void runOnMainThread(Function<void()>&&);
     void runOnWorkerThreadIfRequired(Function<void()>&&);
 
     // Transfer processing of Request body, Response header/body
     // Called by worker thread in case of async, main thread in case of sync.
     CURL* setupTransfer() override;
-    CURLcode willSetupSslCtx(void*);
     size_t willSendData(char*, size_t, size_t);
     size_t didReceiveHeader(String&&);
     size_t didReceiveData(Ref<SharedBuffer>&&);
@@ -140,23 +145,23 @@ private:
     void updateHandlePauseState(bool);
     bool isHandlePaused() const;
 
+    void updateNetworkLoadMetrics();
+
     // Download
     void writeDataToDownloadFileIfEnabled(const SharedBuffer&);
     void closeDownloadFile();
     void cleanupDownloadFile();
 
     // Callback functions for curl
-    static CURLcode willSetupSslCtxCallback(CURL*, void*, void*);
     static size_t willSendDataCallback(char*, size_t, size_t, void*);
     static size_t didReceiveHeaderCallback(char*, size_t, size_t, void*);
     static size_t didReceiveDataCallback(char*, size_t, size_t, void*);
 
 
-    std::atomic<CurlRequestClient*> m_client { };
-    bool m_isSyncRequest { false };
+    CurlRequestClient* m_client { };
     bool m_cancelled { false };
+    MessageQueue<Function<void()>>* m_messageQueue { };
 
-    // Used by worker thread in case of async, and main thread in case of sync.
     ResourceRequest m_request;
     String m_user;
     String m_password;
@@ -165,7 +170,6 @@ private:
 
     std::unique_ptr<CurlHandle> m_curlHandle;
     CurlFormDataStream m_formDataStream;
-    std::unique_ptr<CurlSSLVerifier> m_sslVerifier;
     std::unique_ptr<CurlMultipartHandle> m_multipartHandle;
 
     CurlResponse m_response;
@@ -193,7 +197,11 @@ private:
     String m_downloadFilePath;
     FileSystem::PlatformFileHandle m_downloadFileHandle { FileSystem::invalidPlatformFileHandle };
 
+    CertificateInfo m_certificateInfo;
     NetworkLoadMetrics m_networkLoadMetrics;
+    MonotonicTime m_requestStartTime { MonotonicTime::nan() };
+    MonotonicTime m_performStartTime;
+    size_t m_totalReceivedSize { 0 };
 };
 
 } // namespace WebCore

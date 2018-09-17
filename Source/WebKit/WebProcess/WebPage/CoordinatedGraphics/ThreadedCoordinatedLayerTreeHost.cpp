@@ -39,6 +39,13 @@
 namespace WebKit {
 using namespace WebCore;
 
+static const PlatformDisplayID primaryDisplayID = 0;
+#if PLATFORM(GTK)
+static const PlatformDisplayID compositingDisplayID = 1;
+#else
+static const PlatformDisplayID compositingDisplayID = primaryDisplayID;
+#endif
+
 Ref<ThreadedCoordinatedLayerTreeHost> ThreadedCoordinatedLayerTreeHost::create(WebPage& webPage)
 {
     return adoptRef(*new ThreadedCoordinatedLayerTreeHost(webPage));
@@ -70,10 +77,12 @@ ThreadedCoordinatedLayerTreeHost::ThreadedCoordinatedLayerTreeHost(WebPage& webP
         if (m_surface->shouldPaintMirrored())
             paintFlags |= TextureMapper::PaintingMirrored;
 
-        m_compositor = ThreadedCompositor::create(m_compositorClient, webPage, scaledSize, scaleFactor, ThreadedCompositor::ShouldDoFrameSync::Yes, paintFlags);
+        m_compositor = ThreadedCompositor::create(m_compositorClient, m_compositorClient, compositingDisplayID, scaledSize, scaleFactor, ThreadedCompositor::ShouldDoFrameSync::Yes, paintFlags);
         m_layerTreeContext.contextID = m_surface->surfaceID();
     } else
-        m_compositor = ThreadedCompositor::create(m_compositorClient, webPage, scaledSize, scaleFactor);
+        m_compositor = ThreadedCompositor::create(m_compositorClient, m_compositorClient, compositingDisplayID, scaledSize, scaleFactor);
+
+    m_webPage.windowScreenDidChange(compositingDisplayID);
 
     didChangeViewport();
 }
@@ -94,6 +103,22 @@ void ThreadedCoordinatedLayerTreeHost::forceRepaint()
 void ThreadedCoordinatedLayerTreeHost::frameComplete()
 {
     m_compositor->frameComplete();
+}
+
+void ThreadedCoordinatedLayerTreeHost::requestDisplayRefreshMonitorUpdate()
+{
+    // Flush layers to cause a repaint. If m_isWaitingForRenderer was true at this point, the layer
+    // flush won't do anything, but that means there's a painting ongoing that will send the
+    // display refresh notification when it's done.
+    flushLayersAndForceRepaint();
+}
+
+void ThreadedCoordinatedLayerTreeHost::handleDisplayRefreshMonitorUpdate(bool hasBeenRescheduled)
+{
+    // Call renderNextFrame. If hasBeenRescheduled is true, the layer flush will force a repaint
+    // that will cause the display refresh notification to come.
+    renderNextFrame(hasBeenRescheduled);
+    m_compositor->handleDisplayRefreshMonitorUpdate();
 }
 
 uint64_t ThreadedCoordinatedLayerTreeHost::nativeSurfaceHandleForCompositing()
@@ -131,7 +156,7 @@ void ThreadedCoordinatedLayerTreeHost::scrollNonCompositedContents(const IntRect
 
     m_viewportController.didScroll(rect.location());
     if (m_isDiscardable)
-        m_discardableSyncActions |= DiscardableSyncActions::UpdateViewport;
+        m_discardableSyncActions.add(DiscardableSyncActions::UpdateViewport);
     else
         didChangeViewport();
 }
@@ -140,7 +165,7 @@ void ThreadedCoordinatedLayerTreeHost::contentsSizeChanged(const IntSize& newSiz
 {
     m_viewportController.didChangeContentsSize(newSize);
     if (m_isDiscardable)
-        m_discardableSyncActions |= DiscardableSyncActions::UpdateViewport;
+        m_discardableSyncActions.add(DiscardableSyncActions::UpdateViewport);
     else
         didChangeViewport();
 }
@@ -148,7 +173,7 @@ void ThreadedCoordinatedLayerTreeHost::contentsSizeChanged(const IntSize& newSiz
 void ThreadedCoordinatedLayerTreeHost::deviceOrPageScaleFactorChanged()
 {
     if (m_isDiscardable) {
-        m_discardableSyncActions |= DiscardableSyncActions::UpdateScale;
+        m_discardableSyncActions.add(DiscardableSyncActions::UpdateScale);
         return;
     }
 
@@ -162,7 +187,7 @@ void ThreadedCoordinatedLayerTreeHost::deviceOrPageScaleFactorChanged()
 void ThreadedCoordinatedLayerTreeHost::pageBackgroundTransparencyChanged()
 {
     if (m_isDiscardable) {
-        m_discardableSyncActions |= DiscardableSyncActions::UpdateBackground;
+        m_discardableSyncActions.add(DiscardableSyncActions::UpdateBackground);
         return;
     }
 
@@ -173,7 +198,7 @@ void ThreadedCoordinatedLayerTreeHost::pageBackgroundTransparencyChanged()
 void ThreadedCoordinatedLayerTreeHost::sizeDidChange(const IntSize& size)
 {
     if (m_isDiscardable) {
-        m_discardableSyncActions |= DiscardableSyncActions::UpdateSize;
+        m_discardableSyncActions.add(DiscardableSyncActions::UpdateSize);
         m_viewportController.didChangeViewportSize(size);
         return;
     }
@@ -193,7 +218,7 @@ void ThreadedCoordinatedLayerTreeHost::didChangeViewportAttributes(ViewportAttri
 {
     m_viewportController.didChangeViewportAttributes(WTFMove(attr));
     if (m_isDiscardable)
-        m_discardableSyncActions |= DiscardableSyncActions::UpdateViewport;
+        m_discardableSyncActions.add(DiscardableSyncActions::UpdateViewport);
     else
         didChangeViewport();
 }
@@ -253,8 +278,10 @@ void ThreadedCoordinatedLayerTreeHost::setIsDiscardable(bool discardable)
     m_isDiscardable = discardable;
     if (m_isDiscardable) {
         m_discardableSyncActions = OptionSet<DiscardableSyncActions>();
+        m_webPage.windowScreenDidChange(primaryDisplayID);
         return;
     }
+    m_webPage.windowScreenDidChange(compositingDisplayID);
 
     if (m_discardableSyncActions.isEmpty())
         return;

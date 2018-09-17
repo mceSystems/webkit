@@ -41,9 +41,8 @@
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static uint64_t generateDownloadID()
 {
@@ -99,7 +98,7 @@ WebPageProxy* DownloadProxy::originatingPage() const
 
 void DownloadProxy::setOriginatingPage(WebPageProxy* page)
 {
-    m_originatingPage = page ? page->createWeakPtr() : nullptr;
+    m_originatingPage = makeWeakPtr(page);
 }
 
 void DownloadProxy::didStart(const ResourceRequest& request, const String& suggestedFilename)

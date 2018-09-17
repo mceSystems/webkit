@@ -348,7 +348,7 @@ private:
         return;
 
     [_textSelectionAssistant deactivateSelection];
-#if !ENABLE(MINIMAL_SIMULATOR)
+#if !PLATFORM(IOSMAC)
     [[_webSelectionAssistant selectionView] setHidden:YES];
 #endif
 }
@@ -621,13 +621,6 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
     _page->applicationWillResignActive();
 }
 
-- (void)_applicationDidCreateWindowContext
-{
-    [super _applicationDidCreateWindowContext];
-    if (auto drawingArea = _page->drawingArea())
-        drawingArea->hideContentUntilAnyUpdate();
-}
-
 - (void)_applicationDidBecomeActive:(NSNotification*)notification
 {
     _page->applicationDidBecomeActive();
@@ -637,7 +630,7 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
 
 #pragma mark Printing
 
-#if !ENABLE(MINIMAL_SIMULATOR)
+#if !PLATFORM(IOSMAC)
 
 @interface WKContentView (_WKWebViewPrintFormatter) <_WKWebViewPrintProvider>
 @end
@@ -700,11 +693,11 @@ static void storeAccessibilityRemoteConnectionInformation(id element, pid_t pid,
         ASSERT(!_isPrintingToPDF);
     }
 
-    return _printedDocument.autorelease();
+    return _printedDocument.get();
 }
 
 @end
 
-#endif // !ENABLE(MINIMAL_SIMULATOR)
+#endif // !PLATFORM(IOSMAC)
 
 #endif // PLATFORM(IOS)

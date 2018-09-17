@@ -189,7 +189,7 @@ extern "C" {
         // FIXME: This code can be shared between WebHostedNetscapePluginView and WebNetscapePluginView.
         // Since this layer isn't going to be inserted into a view, we need to create another layer and flip its geometry
         // in order to get the coordinate system right.
-        RetainPtr<CALayer> realPluginLayer = adoptNS(_pluginLayer.leakRef());
+        RetainPtr<CALayer> realPluginLayer = WTFMove(_pluginLayer);
 
         _pluginLayer = adoptNS([[CALayer alloc] init]);
         _pluginLayer.get().bounds = realPluginLayer.get().bounds;
@@ -477,8 +477,7 @@ extern "C" {
     }
 
     if (_proxy) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         if (_softwareRenderer) {
             if ([NSGraphicsContext currentContextDrawingToScreen]) {
                 _softwareRenderer->render((CGContextRef)[[NSGraphicsContext currentContext] graphicsPort], NSRectToCGRect(rect));
@@ -488,7 +487,7 @@ extern "C" {
         } else if (_snapshotting && [self supportsSnapshotting]) {
             _proxy->snapshot(reinterpret_cast<CGContextRef>([[NSGraphicsContext currentContext] graphicsPort]), [self bounds].size.width, [self bounds].size.height);
         }
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
 
         return;
     }

@@ -402,6 +402,16 @@ void WKContextSetCanHandleHTTPSServerTrustEvaluation(WKContextRef contextRef, bo
     toImpl(contextRef)->setCanHandleHTTPSServerTrustEvaluation(value);
 }
 
+void WKContextSetPrewarmsProcessesAutomatically(WKContextRef contextRef, bool value)
+{
+    toImpl(contextRef)->configuration().setIsAutomaticProcessWarmingEnabled(value);
+}
+
+void WKContextSetCustomWebContentServiceBundleIdentifier(WKContextRef contextRef, WKStringRef name)
+{
+    toImpl(contextRef)->setCustomWebContentServiceBundleIdentifier(toImpl(name)->string());
+}
+
 void WKContextSetDiskCacheSpeculativeValidationEnabled(WKContextRef contextRef, bool value)
 {
     toImpl(contextRef)->configuration().setDiskCacheSpeculativeValidationEnabled(value);
@@ -505,7 +515,7 @@ void WKContextSetHTTPPipeliningEnabled(WKContextRef contextRef, bool enabled)
 
 void WKContextWarmInitialProcess(WKContextRef contextRef)
 {
-    toImpl(contextRef)->warmInitialProcess();
+    toImpl(contextRef)->prewarmProcess();
 }
 
 void WKContextGetStatistics(WKContextRef contextRef, void* context, WKContextGetStatisticsFunction callback)
@@ -609,6 +619,11 @@ void WKContextTerminateNetworkProcess(WKContextRef context)
 void WKContextTerminateServiceWorkerProcess(WKContextRef context)
 {
     toImpl(context)->terminateServiceWorkerProcesses();
+}
+
+void WKContextTerminateStorageProcess(WKContextRef context)
+{
+    toImpl(context)->terminateStorageProcessForTesting();
 }
 
 ProcessID WKContextGetNetworkProcessIdentifier(WKContextRef contextRef)

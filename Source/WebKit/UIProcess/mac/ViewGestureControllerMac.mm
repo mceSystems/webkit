@@ -28,6 +28,7 @@
 
 #if PLATFORM(MAC)
 
+#import "APINavigation.h"
 #import "DrawingAreaProxy.h"
 #import "FrameLoadState.h"
 #import "Logging.h"
@@ -47,8 +48,6 @@
 #import <WebCore/WebActionDisablingCALayerDelegate.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <pal/spi/mac/NSEventSPI.h>
-
-using namespace WebCore;
 
 static const double minMagnification = 1;
 static const double maxMagnification = 3;
@@ -85,6 +84,7 @@ static const float swipeSnapshotRemovalRenderTreeSizeTargetFraction = 0.5;
 @end
 
 namespace WebKit {
+using namespace WebCore;
 
 void ViewGestureController::platformTeardown()
 {
@@ -615,22 +615,22 @@ void ViewGestureController::beginSwipeGesture(WebBackForwardListItem* targetItem
         m_swipeShadowLayer = adoptNS([[CAGradientLayer alloc] init]);
         [m_swipeShadowLayer setName:@"Gesture Swipe Shadow Layer"];
         [m_swipeShadowLayer setColors:@[
-            (id)adoptCF(CGColorCreateGenericGray(0, 1.)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.99)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.98)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.95)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.92)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.82)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.71)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.46)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.35)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.25)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.17)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.11)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.07)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.04)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.01)).get(),
-            (id)adoptCF(CGColorCreateGenericGray(0, 0.)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 1.)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.99)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.98)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.95)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.92)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.82)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.71)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.46)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.35)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.25)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.17)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.11)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.07)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.04)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.01)).get(),
+            (__bridge id)adoptCF(CGColorCreateGenericGray(0, 0.)).get(),
         ]];
         [m_swipeShadowLayer setLocations:@[
             @0,
@@ -743,13 +743,15 @@ void ViewGestureController::endSwipeGesture(WebBackForwardListItem* targetItem, 
     m_webPageProxy.navigationGestureDidEnd(true, *targetItem);
     m_webPageProxy.goToBackForwardItem(*targetItem);
 
-    SnapshotRemovalTracker::Events desiredEvents = SnapshotRemovalTracker::VisuallyNonEmptyLayout
-        | SnapshotRemovalTracker::MainFrameLoad
-        | SnapshotRemovalTracker::SubresourceLoads
-        | SnapshotRemovalTracker::ScrollPositionRestoration;
-    if (renderTreeSize)
-        desiredEvents |= SnapshotRemovalTracker::RenderTreeSizeThreshold;
-    m_snapshotRemovalTracker.start(desiredEvents, [this] { this->forceRepaintIfNeeded(); });
+    m_provisionalOrSameDocumentLoadCallback = [this, renderTreeSize] {
+        SnapshotRemovalTracker::Events desiredEvents = SnapshotRemovalTracker::VisuallyNonEmptyLayout
+            | SnapshotRemovalTracker::MainFrameLoad
+            | SnapshotRemovalTracker::SubresourceLoads
+            | SnapshotRemovalTracker::ScrollPositionRestoration;
+        if (renderTreeSize)
+            desiredEvents |= SnapshotRemovalTracker::RenderTreeSizeThreshold;
+        m_snapshotRemovalTracker.start(desiredEvents, [this] { this->forceRepaintIfNeeded(); });
+    };
 
     // FIXME: Like on iOS, we should ensure that even if one of the timeouts fires,
     // we never show the old page content, instead showing the snapshot background color.

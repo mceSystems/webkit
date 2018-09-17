@@ -83,6 +83,7 @@ static long changeCountForPasteboard(const String& pasteboardName = { })
 
 // FIXME: Does this need to be declared in the header file?
 WEBCORE_EXPORT NSString *WebArchivePboardType = @"Apple Web Archive pasteboard type";
+NSString *UIColorPboardType = @"com.apple.uikit.color";
 
 Pasteboard::Pasteboard()
     : m_changeCount(0)
@@ -139,6 +140,11 @@ void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL&)
     ASSERT_NOT_REACHED();
 }
 
+void Pasteboard::write(const Color& color)
+{
+    platformStrategies()->pasteboardStrategy()->setColor(color, m_pasteboardName);
+}
+
 bool Pasteboard::canSmartReplace()
 {
     return false;
@@ -148,14 +154,14 @@ void Pasteboard::read(PasteboardPlainText& text)
 {
     PasteboardStrategy& strategy = *platformStrategies()->pasteboardStrategy();
     text.text = strategy.readStringFromPasteboard(0, kUTTypeURL, m_pasteboardName);
-    if (!text.text.isNull() && !text.text.isEmpty()) {
+    if (!text.text.isEmpty()) {
         text.isURL = true;
         return;
     }
 
-    text.text = strategy.readStringFromPasteboard(0, kUTTypeText, m_pasteboardName);
+    text.text = strategy.readStringFromPasteboard(0, kUTTypePlainText, m_pasteboardName);
     if (text.text.isEmpty())
-        text.text = strategy.readStringFromPasteboard(0, kUTTypePlainText, m_pasteboardName);
+        text.text = strategy.readStringFromPasteboard(0, kUTTypeText, m_pasteboardName);
 
     text.isURL = false;
 }
@@ -213,7 +219,7 @@ Pasteboard::ReaderResult Pasteboard::readPasteboardWebContentDataForType(Pastebo
 
     if ([type isEqualToString:(NSString *)kUTTypeURL]) {
         String title;
-        URL url = strategy.readURLFromPasteboard(itemIndex, kUTTypeURL, m_pasteboardName, title);
+        URL url = strategy.readURLFromPasteboard(itemIndex, m_pasteboardName, title);
         if (m_changeCount != changeCount())
             return ReaderResult::PasteboardWasChangedExternally;
         return !url.isNull() && reader.readURL(url, title) ? ReaderResult::ReadType : ReaderResult::DidNotReadType;
@@ -367,38 +373,28 @@ void Pasteboard::clear()
     platformStrategies()->pasteboardStrategy()->writeToPasteboard(String(), String(), m_pasteboardName);
 }
 
-String Pasteboard::readPlatformValueAsString(const String& domType, long changeCount, const String& pasteboardName)
+Vector<String> Pasteboard::readPlatformValuesAsStrings(const String& domType, long changeCount, const String& pasteboardName)
 {
-    PasteboardStrategy& strategy = *platformStrategies()->pasteboardStrategy();
-
-    int numberOfItems = strategy.getPasteboardItemsCount(pasteboardName);
-
-    if (!numberOfItems)
-        return String();
+    auto& strategy = *platformStrategies()->pasteboardStrategy();
 
     // Grab the value off the pasteboard corresponding to the cocoaType.
-    RetainPtr<NSString> cocoaType = cocoaTypeFromHTMLClipboardType(domType);
+    auto cocoaType = cocoaTypeFromHTMLClipboardType(domType);
+    if (!cocoaType)
+        return { };
 
-    NSString *cocoaValue = nil;
-
-    if ([cocoaType isEqualToString:(NSString *)kUTTypeURL]) {
-        String title;
-        URL url = strategy.readURLFromPasteboard(0, kUTTypeURL, pasteboardName, title);
-        if (!url.isNull())
-            cocoaValue = [(NSURL *)url absoluteString];
-    } else if ([cocoaType isEqualToString:(NSString *)kUTTypePlainText]) {
-        String value = strategy.readStringFromPasteboard(0, kUTTypePlainText, pasteboardName);
-        if (!value.isNull())
-            cocoaValue = [(NSString *)value precomposedStringWithCanonicalMapping];
-    } else if (cocoaType)
-        cocoaValue = (NSString *)strategy.readStringFromPasteboard(0, cocoaType.get(), pasteboardName);
+    auto values = strategy.allStringsForType(cocoaType.get(), pasteboardName);
+    if ([cocoaType isEqualToString:(__bridge NSString *)kUTTypePlainText]) {
+        values = values.map([&] (auto& value) -> String {
+            return [value precomposedStringWithCanonicalMapping];
+        });
+    }
 
     // Enforce changeCount ourselves for security. We check after reading instead of before to be
     // sure it doesn't change between our testing the change count and accessing the data.
-    if (cocoaValue && changeCount == changeCountForPasteboard(pasteboardName))
-        return cocoaValue;
+    if (changeCount != changeCountForPasteboard(pasteboardName))
+        return { };
 
-    return String();
+    return values;
 }
 
 void Pasteboard::addHTMLClipboardTypesForCocoaType(ListHashSet<String>& resultTypes, const String& cocoaType)
@@ -407,15 +403,15 @@ void Pasteboard::addHTMLClipboardTypesForCocoaType(ListHashSet<String>& resultTy
     if ([cocoaType isEqualToString:(NSString *)kUTTypePlainText]
         || [cocoaType isEqualToString:(NSString *)kUTTypeUTF8PlainText]
         || [cocoaType isEqualToString:(NSString *)kUTTypeUTF16PlainText]) {
-        resultTypes.add(ASCIILiteral("text/plain"));
+        resultTypes.add("text/plain"_s);
         return;
     }
     if ([cocoaType isEqualToString:(NSString *)kUTTypeURL]) {
-        resultTypes.add(ASCIILiteral("text/uri-list"));
+        resultTypes.add("text/uri-list"_s);
         return;
     }
     if ([cocoaType isEqualToString:(NSString *)kUTTypeHTML]) {
-        resultTypes.add(ASCIILiteral("text/html"));
+        resultTypes.add("text/html"_s);
         // We don't return here for App compatibility.
     }
     if (Pasteboard::shouldTreatCocoaTypeAsFile(cocoaType))

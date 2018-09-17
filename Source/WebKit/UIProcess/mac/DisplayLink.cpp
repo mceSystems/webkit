@@ -26,7 +26,7 @@
 #include "config.h"
 #include "DisplayLink.h"
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
 
 #include "DrawingAreaMessages.h"
 #include "WebPageProxy.h"
@@ -36,6 +36,8 @@
 namespace WebKit {
     
 DisplayLink::DisplayLink(WebCore::PlatformDisplayID displayID, WebPageProxy& webPageProxy)
+    : m_connection(webPageProxy.process().connection())
+    , m_pageID(webPageProxy.pageID())
 {
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     CVReturn error = CVDisplayLinkCreateWithCGDisplay(displayID, &m_displayLink);
@@ -44,7 +46,7 @@ DisplayLink::DisplayLink(WebCore::PlatformDisplayID displayID, WebPageProxy& web
         return;
     }
     
-    error = CVDisplayLinkSetOutputCallback(m_displayLink, displayLinkCallback, &webPageProxy);
+    error = CVDisplayLinkSetOutputCallback(m_displayLink, displayLinkCallback, this);
     if (error) {
         WTFLogAlways("Could not set the display link output callback: %d", error);
         return;
@@ -81,26 +83,10 @@ bool DisplayLink::hasObservers() const
     return !m_observers.isEmpty();
 }
 
-void DisplayLink::pause()
-{
-    if (!CVDisplayLinkIsRunning(m_displayLink))
-        return;
-    CVDisplayLinkStop(m_displayLink);
-}
-
-void DisplayLink::resume()
-{
-    if (CVDisplayLinkIsRunning(m_displayLink))
-        return;
-    CVDisplayLinkStart(m_displayLink);
-}
-
 CVReturn DisplayLink::displayLinkCallback(CVDisplayLinkRef displayLinkRef, const CVTimeStamp*, const CVTimeStamp*, CVOptionFlags, CVOptionFlags*, void* data)
 {
-    WebPageProxy* webPageProxy = reinterpret_cast<WebPageProxy*>(data);
-    callOnMainThread([webPageProxy = makeRefPtr(webPageProxy)] {
-        webPageProxy->process().send(Messages::DrawingArea::DisplayWasRefreshed(), webPageProxy->pageID());
-    });
+    DisplayLink* displayLink = static_cast<DisplayLink*>(data);
+    displayLink->m_connection->send(Messages::DrawingArea::DisplayWasRefreshed(), displayLink->m_pageID);
     return kCVReturnSuccess;
 }
 

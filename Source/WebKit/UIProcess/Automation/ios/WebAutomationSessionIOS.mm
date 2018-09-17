@@ -35,9 +35,8 @@
 #import <WebCore/NotImplemented.h>
 #import <WebCore/WebEvent.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 void WebAutomationSession::sendSynthesizedEventsToPage(WebPageProxy& page, NSArray *eventsToSend)
 {
@@ -65,10 +64,8 @@ void WebAutomationSession::sendSynthesizedEventsToPage(WebPageProxy& page, NSArr
 
 #pragma mark Commands for Platform: 'iOS'
 
-void WebAutomationSession::platformSimulateKeyboardInteraction(WebPageProxy& page, KeyboardInteraction interaction, std::optional<VirtualKey> virtualKey, std::optional<CharKey> charKey)
+void WebAutomationSession::platformSimulateKeyboardInteraction(WebPageProxy& page, KeyboardInteraction interaction, WTF::Variant<VirtualKey, CharKey>&& key)
 {
-    ASSERT(virtualKey.has_value() || charKey.has_value());
-
     // The modifiers changed by the virtual key when it is pressed or released.
     WebEventFlags changedModifiers = 0;
 
@@ -79,35 +76,36 @@ void WebAutomationSession::platformSimulateKeyboardInteraction(WebPageProxy& pag
     std::optional<unichar> charCodeIgnoringModifiers;
 
     // Figure out the effects of sticky modifiers.
-    if (virtualKey.has_value()) {
-        charCode = charCodeForVirtualKey(virtualKey.value());
-        charCodeIgnoringModifiers = charCodeIgnoringModifiersForVirtualKey(virtualKey.value());
+    WTF::switchOn(key,
+        [&] (VirtualKey virtualKey) {
+            charCode = charCodeForVirtualKey(virtualKey);
+            charCodeIgnoringModifiers = charCodeIgnoringModifiersForVirtualKey(virtualKey);
 
-        switch (virtualKey.value()) {
-        case VirtualKey::Shift:
-            changedModifiers |= WebEventFlagMaskShift;
-            break;
-        case VirtualKey::Control:
-            changedModifiers |= WebEventFlagMaskControl;
-            break;
-        case VirtualKey::Alternate:
-            changedModifiers |= WebEventFlagMaskAlternate;
-            break;
-        case VirtualKey::Meta:
-            // The 'meta' key does not exist on Apple keyboards and is usually
-            // mapped to the Command key when using third-party keyboards.
-        case VirtualKey::Command:
-            changedModifiers |= WebEventFlagMaskCommand;
-            break;
-        default:
-            break;
+            switch (virtualKey) {
+            case VirtualKey::Shift:
+                changedModifiers |= WebEventFlagMaskShift;
+                break;
+            case VirtualKey::Control:
+                changedModifiers |= WebEventFlagMaskControl;
+                break;
+            case VirtualKey::Alternate:
+                changedModifiers |= WebEventFlagMaskAlternate;
+                break;
+            case VirtualKey::Meta:
+                // The 'meta' key does not exist on Apple keyboards and is usually
+                // mapped to the Command key when using third-party keyboards.
+            case VirtualKey::Command:
+                changedModifiers |= WebEventFlagMaskCommand;
+                break;
+            default:
+                break;
+            }
+        },
+        [&] (CharKey charKey) {
+            charCode = (unichar)charKey;
+            charCodeIgnoringModifiers = (unichar)charKey;
         }
-    }
-
-    if (charKey.has_value()) {
-        charCode = (unichar)charKey.value();
-        charCodeIgnoringModifiers = (unichar)charKey.value();
-    }
+    );
 
     // FIXME: consider using UIKit SPI to normalize 'characters', i.e., changing * to Shift-8,
     // and passing that in to charactersIgnoringModifiers. This is probably not worth the trouble

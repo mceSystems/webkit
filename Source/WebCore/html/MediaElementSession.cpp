@@ -167,6 +167,8 @@ void MediaElementSession::visibilityChanged()
 
     if (m_element.elementIsHidden() && !m_element.isFullscreen())
         m_elementIsHiddenUntilVisibleInViewport = true;
+    else if (m_element.isVisibleInViewport())
+        m_elementIsHiddenUntilVisibleInViewport = false;
 }
 
 void MediaElementSession::isVisibleInViewportChanged()
@@ -254,8 +256,10 @@ static bool needsArbitraryUserGestureAutoplayQuirk(const Document& document)
 
 SuccessOr<MediaPlaybackDenialReason> MediaElementSession::playbackPermitted() const
 {
-    if (m_element.isSuspended())
-        return { };
+    if (m_element.isSuspended()) {
+        ALWAYS_LOG(LOGIDENTIFIER, "Returning FALSE because element is suspended");
+        return MediaPlaybackDenialReason::InvalidState;
+    }
 
     auto& document = m_element.document();
     if (document.isMediaDocument() && !document.ownerElement())
@@ -473,6 +477,15 @@ bool MediaElementSession::canShowControlsManager(PlaybackControlsPurpose purpose
         return false;
     }
 
+#if ENABLE(FULLSCREEN_API)
+    // Elements which are not descendents of the current fullscreen element cannot be main content.
+    auto* fullscreenElement = m_element.document().webkitCurrentFullScreenElement();
+    if (fullscreenElement && !m_element.isDescendantOf(*fullscreenElement)) {
+        INFO_LOG(LOGIDENTIFIER, "returning FALSE: outside of full screen");
+        return false;
+    }
+#endif
+
     // Only allow the main content heuristic to forbid videos from showing up if our purpose is the controls manager.
     if (purpose == PlaybackControlsPurpose::ControlsManager && m_element.isVideo()) {
         if (!m_element.renderer()) {
@@ -636,16 +649,6 @@ void MediaElementSession::externalOutputDeviceAvailableDidChange(bool hasTargets
 
     m_hasPlaybackTargets = hasTargets;
     m_targetAvailabilityChangedTimer.startOneShot(0_s);
-}
-
-bool MediaElementSession::canPlayToWirelessPlaybackTarget() const
-{
-#if !PLATFORM(IOS)
-    if (!m_playbackTarget || !m_playbackTarget->hasActiveRoute())
-        return false;
-#endif
-
-    return client().canPlayToWirelessPlaybackTarget();
 }
 
 bool MediaElementSession::isPlayingToWirelessPlaybackTarget() const

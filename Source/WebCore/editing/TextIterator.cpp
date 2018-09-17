@@ -1756,10 +1756,12 @@ static inline UChar foldQuoteMark(UChar c)
     switch (c) {
         case hebrewPunctuationGershayim:
         case leftDoubleQuotationMark:
+        case leftLowDoubleQuotationMark:
         case rightDoubleQuotationMark:
             return '"';
         case hebrewPunctuationGeresh:
         case leftSingleQuotationMark:
+        case leftLowSingleQuotationMark:
         case rightSingleQuotationMark:
             return '\'';
         default:
@@ -1775,7 +1777,9 @@ static inline String foldQuoteMarks(String string)
     string.replace(hebrewPunctuationGeresh, '\'');
     string.replace(hebrewPunctuationGershayim, '"');
     string.replace(leftDoubleQuotationMark, '"');
+    string.replace(leftLowDoubleQuotationMark, '"');
     string.replace(leftSingleQuotationMark, '\'');
+    string.replace(leftLowSingleQuotationMark, '\'');
     string.replace(rightDoubleQuotationMark, '"');
     string.replace(rightSingleQuotationMark, '\'');
 
@@ -2007,10 +2011,7 @@ static inline bool containsKanaLetters(const String& pattern)
     return false;
 }
 
-#if COMPILER(GCC_OR_CLANG)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 // NOTE: ICU's unorm_normalize function is deprecated.
 
 static void normalizeCharacters(const UChar* characters, unsigned length, Vector<UChar>& buffer)
@@ -2034,9 +2035,7 @@ static void normalizeCharacters(const UChar* characters, unsigned length, Vector
     ASSERT(status == U_STRING_NOT_TERMINATED_WARNING);
 }
 
-#if COMPILER(GCC_OR_CLANG)
-#pragma GCC diagnostic pop
-#endif
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 static bool isNonLatin1Separator(UChar32 character)
 {
@@ -2093,7 +2092,7 @@ inline SearchBuffer::SearchBuffer(const String& target, FindOptions options)
         // Characters in the separator category never really occur at the beginning of a word,
         // so if the target begins with such a character, we just ignore the AtWordStart option.
         if (isSeparator(targetFirstCharacter)) {
-            m_options -= AtWordStarts;
+            m_options.remove(AtWordStarts);
             m_needsMoreContext = false;
         }
     }

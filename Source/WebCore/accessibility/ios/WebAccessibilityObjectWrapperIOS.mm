@@ -1092,8 +1092,7 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     if (!m_object->isPasswordField())
         return NO;
     
-    AutoFillButtonType type = m_object->valueAutofillButtonType();
-    return type == AutoFillButtonType::StrongConfirmationPassword || type == AutoFillButtonType::StrongPassword;
+    return m_object->valueAutofillButtonType() == AutoFillButtonType::StrongPassword;
 }
 
 - (CGFloat)_accessibilityMinValue
@@ -1122,7 +1121,7 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     if (![self _prepareAccessibilityCall])
         return nil;
 
-    // check if the label was overriden
+    // check if the label was overridden
     NSString *label = [super accessibilityLabel];
     if (label)
         return label;
@@ -1397,7 +1396,7 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     if (![self _prepareAccessibilityCall])
         return nil;
     
-    // check if the value was overriden
+    // check if the value was overridden
     NSString *value = [super accessibilityValue];
     if (value)
         return value;
@@ -1823,6 +1822,14 @@ static void appendStringToResult(NSMutableString *result, NSString *string)
     return m_object->canSetValueAttribute();
 }
 
+- (NSString *)accessibilityLinkRelationshipType
+{
+    if (![self _prepareAccessibilityCall])
+        return nil;
+    
+    return m_object->linkRelValue();
+}
+
 - (BOOL)accessibilityRequired
 {
     if (![self _prepareAccessibilityCall])
@@ -2055,26 +2062,7 @@ static RenderObject* rendererForView(WAKView* view)
     if (![self _prepareAccessibilityCall])
         return;
     
-    // The focused VoiceOver element might be the text inside a link.
-    // In those cases we should focus on the link itself.
-    for (AccessibilityObject* object = m_object; object != nil; object = object->parentObject()) {
-        if (object->roleValue() == AccessibilityRole::WebArea)
-            break;
-
-        if (object->canSetFocusAttribute()) {
-            // webkit.org/b/162041 Taking focus onto elements inside a details node will cause VO focusing onto random items.
-            if ([self detailParentForObject:object])
-                break;
-            
-            // webkit.org/b/162322 When a dialog is focusable, allowing focusing onto the dialog node will cause VO cursor jumping
-            // back and forward while navigating its children.
-            if ([object->wrapper() accessibilityIsDialog])
-                break;
-            
-            object->setFocused(true);
-            break;
-        }
-    }
+    m_object->dispatchAccessibilityEventWithType(AccessibilityEventType::Focus);
 }
 
 - (void)accessibilityModifySelection:(TextGranularity)granularity increase:(BOOL)increase
@@ -2526,25 +2514,10 @@ static void AXAttributedStringAppendText(NSMutableAttributedString* attrString, 
     return [WebAccessibilityTextMarker textMarkerWithCharacterOffset:characterOffset cache:cache];
 }
 
-- (id)_stringForRange:(NSRange)range attributed:(BOOL)attributed
+- (id)_stringFromStartMarker:(WebAccessibilityTextMarker*)startMarker toEndMarker:(WebAccessibilityTextMarker*)endMarker attributed:(BOOL)attributed
 {
-    if (![self _prepareAccessibilityCall])
+    if (!startMarker || !endMarker)
         return nil;
-    
-    WebAccessibilityTextMarker* startMarker = [self textMarkerForPosition:range.location];
-    WebAccessibilityTextMarker* endMarker = [self textMarkerForPosition:NSMaxRange(range)];
-    
-    // Clients don't always know the exact range, rather than force them to compute it,
-    // allow clients to overshoot and use the max text marker range.
-    if (!startMarker || !endMarker) {
-        NSArray *markers = [self textMarkerRange];
-        if ([markers count] != 2)
-            return nil;
-        if (!startMarker)
-            startMarker = [markers objectAtIndex:0];
-        if (!endMarker)
-            endMarker = [markers objectAtIndex:1];
-    }
     
     NSArray* array = [self arrayOfTextForTextMarkers:[NSArray arrayWithObjects:startMarker, endMarker, nil] attributed:attributed];
     Class returnClass = attributed ? [NSMutableAttributedString class] : [NSMutableString class];
@@ -2569,6 +2542,29 @@ static void AXAttributedStringAppendText(NSMutableAttributedString* attrString, 
     return returnValue;
 }
 
+- (id)_stringForRange:(NSRange)range attributed:(BOOL)attributed
+{
+    if (![self _prepareAccessibilityCall])
+        return nil;
+    
+    WebAccessibilityTextMarker* startMarker = [self textMarkerForPosition:range.location];
+    WebAccessibilityTextMarker* endMarker = [self textMarkerForPosition:NSMaxRange(range)];
+    
+    // Clients don't always know the exact range, rather than force them to compute it,
+    // allow clients to overshoot and use the max text marker range.
+    if (!startMarker || !endMarker) {
+        NSArray *markers = [self textMarkerRange];
+        if ([markers count] != 2)
+            return nil;
+        if (!startMarker)
+            startMarker = [markers objectAtIndex:0];
+        if (!endMarker)
+            endMarker = [markers objectAtIndex:1];
+    }
+    
+    return [self _stringFromStartMarker:startMarker toEndMarker:endMarker attributed:attributed];
+}
+
 
 // A convenience method for getting the text of a NSRange. Currently used only by DRT.
 - (NSString *)stringForRange:(NSRange)range
@@ -2579,6 +2575,18 @@ static void AXAttributedStringAppendText(NSMutableAttributedString* attrString, 
 - (NSAttributedString *)attributedStringForRange:(NSRange)range
 {
     return [self _stringForRange:range attributed:YES];
+}
+
+- (NSAttributedString *)attributedStringForElement
+{
+    if (![self _prepareAccessibilityCall])
+        return nil;
+    
+    NSArray *markers = [self textMarkerRange];
+    if ([markers count] != 2)
+        return nil;
+    
+    return [self _stringFromStartMarker:markers.firstObject toEndMarker:markers.lastObject attributed:YES];
 }
 
 - (NSRange)_accessibilitySelectedTextRange

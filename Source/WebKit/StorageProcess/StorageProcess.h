@@ -43,6 +43,7 @@ class FormDataReference;
 }
 
 namespace WebCore {
+class ResourceError;
 class SWServer;
 class ServiceWorkerRegistrationKey;
 struct MessageWithMessagePorts;
@@ -70,6 +71,8 @@ class StorageProcess : public ChildProcess
     friend NeverDestroyed<StorageProcess>;
 public:
     static StorageProcess& singleton();
+    static constexpr ProcessType processType = ProcessType::Storage;
+
     ~StorageProcess();
 
     WorkQueue& queue() { return m_queue.get(); }
@@ -128,6 +131,7 @@ private:
     void initializeWebsiteDataStore(const StorageProcessCreationParameters&);
     void createStorageToWebProcessConnection(bool isServiceWorkerProcess, WebCore::SecurityOriginData&&);
 
+    void destroySession(PAL::SessionID);
     void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, uint64_t callbackID);
     void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, WallTime modifiedSince, uint64_t callbackID);
     void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType> websiteDataTypes, const Vector<WebCore::SecurityOriginData>& origins, uint64_t callbackID);
@@ -140,7 +144,7 @@ private:
     void didReceiveFetchData(WebCore::SWServerConnectionIdentifier, WebCore::FetchIdentifier, const IPC::DataReference&, int64_t encodedDataLength);
     void didReceiveFetchFormData(WebCore::SWServerConnectionIdentifier, WebCore::FetchIdentifier, const IPC::FormDataReference&);
     void didFinishFetch(WebCore::SWServerConnectionIdentifier, WebCore::FetchIdentifier);
-    void didFailFetch(WebCore::SWServerConnectionIdentifier, WebCore::FetchIdentifier);
+    void didFailFetch(WebCore::SWServerConnectionIdentifier, WebCore::FetchIdentifier, const WebCore::ResourceError&);
     void didNotHandleFetch(WebCore::SWServerConnectionIdentifier, WebCore::FetchIdentifier);
 
     void postMessageToServiceWorkerClient(const WebCore::ServiceWorkerClientIdentifier& destinationIdentifier, WebCore::MessageWithMessagePorts&&, WebCore::ServiceWorkerIdentifier sourceIdentifier, const String& sourceOrigin);
@@ -149,10 +153,11 @@ private:
     void disableServiceWorkerProcessTerminationDelay();
 
     WebSWOriginStore& swOriginStoreForSession(PAL::SessionID);
+    WebSWOriginStore* existingSWOriginStoreForSession(PAL::SessionID) const;
     bool needsServerToContextConnectionForOrigin(const WebCore::SecurityOriginData&) const;
 #endif
 #if ENABLE(INDEXED_DATABASE)
-    Vector<WebCore::SecurityOriginData> indexedDatabaseOrigins(const String& path);
+    HashSet<WebCore::SecurityOriginData> indexedDatabaseOrigins(const String& path);
 #endif
 
     // For execution on work queue thread only

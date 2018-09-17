@@ -41,6 +41,11 @@
 #include <wtf/MachSendRight.h>
 #endif
 
+#if PLATFORM(MAC)
+#include <WebCore/PlatformScreen.h>
+#include <WebCore/ScreenProperties.h>
+#endif
+
 #if USE(SOUP)
 #include "HTTPCookieAcceptPolicy.h"
 #include <WebCore/SoupNetworkProxySettings.h>
@@ -79,7 +84,7 @@ struct WebProcessCreationParameters {
     SandboxExtension::Handle mediaCacheDirectoryExtensionHandle;
     String javaScriptConfigurationDirectory;
     SandboxExtension::Handle javaScriptConfigurationDirectoryExtensionHandle;
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     Vector<uint8_t> uiProcessCookieStorageIdentifier;
 #endif
 #if PLATFORM(IOS)
@@ -128,6 +133,7 @@ struct WebProcessCreationParameters {
     bool resourceLoadStatisticsEnabled { false };
     bool fullKeyboardAccessEnabled { false };
     bool memoryCacheDisabled { false };
+    bool attrStyleEnabled { false };
 
 #if ENABLE(SERVICE_CONTROLS)
     bool hasImageServices { false };
@@ -141,6 +147,7 @@ struct WebProcessCreationParameters {
 
 #if PLATFORM(COCOA)
     String uiProcessBundleIdentifier;
+    uint32_t uiProcessSDKVersion { 0 };
 #endif
 
     ProcessID presentingApplicationPID { 0 };
@@ -187,6 +194,11 @@ struct WebProcessCreationParameters {
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     bool shouldLogUserInteraction { false };
+#endif
+
+#if PLATFORM(MAC)
+    WebCore::ScreenProperties screenProperties;
+    bool useOverlayScrollbars { true };
 #endif
 };
 

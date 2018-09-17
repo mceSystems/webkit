@@ -103,10 +103,13 @@ public:
     bool hasPendingActivity() const final;
 
     static const MediaTime& currentTimeFudgeFactor();
+    static bool contentTypeShouldGenerateTimestamps(const ContentType&);
 
 private:
     explicit MediaSource(ScriptExecutionContext&);
 
+    void suspend(ReasonForSuspension) final;
+    void resume() final;
     void stop() final;
     bool canSuspendForDocumentSuspension() const final;
     const char* activeDOMObjectName() const final;

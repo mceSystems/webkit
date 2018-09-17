@@ -1121,12 +1121,11 @@ WI.tabContentViewClassForRepresentedObject = function(representedObject)
         || (representedObject instanceof WI.Collection && !(representedObject instanceof WI.CanvasCollection)))
         return WI.ResourcesTabContentView;
 
-    // FIXME: Move these to a Storage tab.
     if (representedObject instanceof WI.DOMStorageObject || representedObject instanceof WI.CookieStorageObject ||
         representedObject instanceof WI.DatabaseTableObject || representedObject instanceof WI.DatabaseObject ||
         representedObject instanceof WI.ApplicationCacheFrame || representedObject instanceof WI.IndexedDatabaseObjectStore ||
-        representedObject instanceof WI.IndexedDatabaseObjectStoreIndex)
-        return WI.ResourcesTabContentView;
+        representedObject instanceof WI.IndexedDatabase || representedObject instanceof WI.IndexedDatabaseObjectStoreIndex)
+        return WI.StorageTabContentView;
 
     if (representedObject instanceof WI.CanvasCollection)
         return WI.CanvasTabContentView;
@@ -1307,11 +1306,14 @@ WI._focusChanged = function(event)
     // The selection change should not apply to text fields and text areas either.
 
     if (WI.isEventTargetAnEditableField(event)) {
-        // Still update the currentFocusElement if inside of a CodeMirror editor.
-        var codeMirrorEditorElement = event.target.enclosingNodeOrSelfWithClass("CodeMirror");
+        // Still update the currentFocusElement if inside of a CodeMirror editor or an input element.
+        let codeMirrorEditorElement = event.target.enclosingNodeOrSelfWithClass("CodeMirror");
         if (codeMirrorEditorElement && codeMirrorEditorElement !== this.currentFocusElement) {
             this.previousFocusElement = this.currentFocusElement;
             this.currentFocusElement = codeMirrorEditorElement;
+        } else if (event.target.tagName === "INPUT") {
+            this.previousFocusElement = this.currentFocusElement;
+            this.currentFocusElement = event.target;
         }
 
         // Due to the change in WI.isEventTargetAnEditableField (r196271), this return
@@ -1812,6 +1814,7 @@ WI._moveWindowMouseDown = function(event)
 WI._storageWasInspected = function(event)
 {
     this.showStorageTab();
+    this.showRepresentedObject(event.data.domStorage, null, {ignoreSearchTab: true});
 };
 
 WI._domNodeWasInspected = function(event)

@@ -58,6 +58,9 @@ typedef unsigned WKJavaScriptRuntimeFlagSet;
 WK_EXPORT WKPreferencesRef WKPreferencesCreateCopy(WKPreferencesRef);
 
 WK_EXPORT void WKPreferencesEnableAllExperimentalFeatures(WKPreferencesRef);
+WK_EXPORT void WKPreferencesSetExperimentalFeatureForKey(WKPreferencesRef, bool, WKStringRef);
+WK_EXPORT void WKPreferencesResetAllInternalDebugFeatures(WKPreferencesRef);
+WK_EXPORT void WKPreferencesSetInternalDebugFeatureForKey(WKPreferencesRef, bool, WKStringRef);
 
 // Defaults to kWKFontSmoothingLevelMedium.
 WK_EXPORT void WKPreferencesSetFontSmoothingLevel(WKPreferencesRef, WKFontSmoothingLevel);
@@ -260,6 +263,10 @@ WK_EXPORT void WKPreferencesSetAsynchronousPluginInitializationEnabledForAllPlug
 WK_EXPORT bool WKPreferencesGetAsynchronousPluginInitializationEnabledForAllPlugins(WKPreferencesRef preferencesRef);
 
 // Defaults to false
+WK_EXPORT void WKPreferencesSetPluginSandboxProfilesEnabledForAllPlugins(WKPreferencesRef preferencesRef, bool enabled);
+WK_EXPORT bool WKPreferencesGetPluginSandboxProfilesEnabledForAllPlugins(WKPreferencesRef preferencesRef);
+
+// Defaults to false
 WK_EXPORT void WKPreferencesSetArtificialPluginInitializationDelayEnabled(WKPreferencesRef preferencesRef, bool enabled);
 WK_EXPORT bool WKPreferencesGetArtificialPluginInitializationDelayEnabled(WKPreferencesRef preferencesRef);
 
@@ -372,6 +379,10 @@ WK_EXPORT bool WKPreferencesUseLegacyTextAlignPositionedElementBehavior(WKPrefer
 // Defaults to true.
 WK_EXPORT void WKPreferencesSetMediaSourceEnabled(WKPreferencesRef preferencesRef, bool enabled);
 WK_EXPORT bool WKPreferencesGetMediaSourceEnabled(WKPreferencesRef preferencesRef);
+
+// Defaults to true;
+WK_EXPORT void WKPreferencesSetSourceBufferChangeTypeEnabled(WKPreferencesRef preferencesRef, bool enabled);
+WK_EXPORT bool WKPreferencesGetSourceBufferChangeTypeEnabled(WKPreferencesRef preferencesRef);
 
 // Default to false.
 WK_EXPORT void WKPreferencesSetViewGestureDebuggingEnabled(WKPreferencesRef preferencesRef, bool enabled);
@@ -488,6 +499,10 @@ WK_EXPORT bool WKPreferencesGetDataTransferItemsEnabled(WKPreferencesRef);
 // Defaults to false
 WK_EXPORT void WKPreferencesSetCustomPasteboardDataEnabled(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetCustomPasteboardDataEnabled(WKPreferencesRef);
+    
+// Defaults to false, true for iOS
+WK_EXPORT void WKPreferencesSetWebShareEnabled(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetWebShareEnabled(WKPreferencesRef);
 
 // Defaults to false
 WK_EXPORT void WKPreferencesSetUserTimingEnabled(WKPreferencesRef, bool flag);
@@ -553,6 +568,14 @@ WK_EXPORT bool WKPreferencesGetStorageAccessAPIEnabled(WKPreferencesRef);
 WK_EXPORT void WKPreferencesSetAccessibilityObjectModelEnabled(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetAccessibilityObjectModelEnabled(WKPreferencesRef);
 
+// Defaults to true
+WK_EXPORT void WKPreferencesSetAriaReflectionEnabled(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetAriaReflectionEnabled(WKPreferencesRef);
+
+// Defaults to false.
+WK_EXPORT void WKPreferencesSetCSSOMViewScrollingAPIEnabled(WKPreferencesRef, bool);
+WK_EXPORT bool WKPreferencesGetCSSOMViewScrollingAPIEnabled(WKPreferencesRef);
+
 // Defaults to false.
 WK_EXPORT void WKPreferencesSetShouldAllowUserInstalledFonts(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetShouldAllowUserInstalledFonts(WKPreferencesRef);
@@ -564,6 +587,14 @@ WK_EXPORT bool WKPreferencesGetAllowCrossOriginSubresourcesToAskForCredentials(W
 // Defaults to false.
 WK_EXPORT void WKPreferencesSetServerTimingEnabled(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetServerTimingEnabled(WKPreferencesRef);
+
+// Defaults to false.
+WK_EXPORT void WKPreferencesSetColorFilterEnabled(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetColorFilterEnabled(WKPreferencesRef);
+
+// Defaults to false.
+WK_EXPORT void WKPreferencesSetPunchOutWhiteBackgroundsInDarkMode(WKPreferencesRef, bool flag);
+WK_EXPORT bool WKPreferencesGetPunchOutWhiteBackgroundsInDarkMode(WKPreferencesRef);
 
 #ifdef __cplusplus
 }

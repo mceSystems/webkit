@@ -29,6 +29,7 @@
 #if ENABLE(NETSCAPE_PLUGIN_API)
 
 #import "PluginProcessCreationParameters.h"
+#import "PluginProcessManager.h"
 #import "PluginProcessMessages.h"
 #import "SandboxUtilities.h"
 #import <QuartzCore/CARemoteLayerServer.h>
@@ -55,9 +56,9 @@
 
 @end
 
+namespace WebKit {
 using namespace WebCore;
 
-namespace WebKit {
     
 void PluginProcessProxy::platformGetLaunchOptions(ProcessLauncher::LaunchOptions& launchOptions, const PluginProcessAttributes& pluginProcessAttributes)
 {
@@ -67,6 +68,9 @@ void PluginProcessProxy::platformGetLaunchOptions(ProcessLauncher::LaunchOptions
         launchOptions.processType = ProcessLauncher::ProcessType::Plugin64;
 
     launchOptions.extraInitializationData.add("plugin-path", pluginProcessAttributes.moduleInfo.path);
+
+    if (PluginProcessManager::singleton().experimentalPlugInSandboxProfilesEnabled())
+        launchOptions.extraInitializationData.add("experimental-sandbox-plugin", "1");
 
     if (pluginProcessAttributes.sandboxPolicy == PluginProcessSandboxPolicyUnsandboxed) {
         if (!currentProcessIsSandboxed())
@@ -90,10 +94,9 @@ void PluginProcessProxy::platformInitializePluginProcess(PluginProcessCreationPa
 bool PluginProcessProxy::getPluginProcessSerialNumber(ProcessSerialNumber& pluginProcessSerialNumber)
 {
     pid_t pluginProcessPID = processIdentifier();
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return GetProcessForPID(pluginProcessPID, &pluginProcessSerialNumber) == noErr;
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void PluginProcessProxy::makePluginProcessTheFrontProcess()
@@ -102,20 +105,18 @@ void PluginProcessProxy::makePluginProcessTheFrontProcess()
     if (!getPluginProcessSerialNumber(pluginProcessSerialNumber))
         return;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     SetFrontProcess(&pluginProcessSerialNumber);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void PluginProcessProxy::makeUIProcessTheFrontProcess()
 {
     ProcessSerialNumber processSerialNumber;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     GetCurrentProcess(&processSerialNumber);
     SetFrontProcess(&processSerialNumber);            
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void PluginProcessProxy::setFullscreenWindowIsShowing(bool fullscreenWindowIsShowing)
@@ -148,10 +149,9 @@ void PluginProcessProxy::exitFullscreen()
 {
     // If the plug-in host is the current application then we should bring ourselves to the front when it exits full-screen mode.
     ProcessSerialNumber frontProcessSerialNumber;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     GetFrontProcess(&frontProcessSerialNumber);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     // The UI process must be the front process in order to change the presentation mode.
     makeUIProcessTheFrontProcess();
@@ -164,15 +164,13 @@ void PluginProcessProxy::exitFullscreen()
     // If the plug-in process was not the front process, switch back to the previous front process.
     // (Otherwise we'll keep the UI process as the front process).
     Boolean isPluginProcessFrontProcess;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     SameProcess(&frontProcessSerialNumber, &pluginProcessSerialNumber, &isPluginProcessFrontProcess);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     if (!isPluginProcessFrontProcess) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         SetFrontProcess(&frontProcessSerialNumber);
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
     }
 }
 

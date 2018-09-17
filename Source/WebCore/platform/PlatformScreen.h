@@ -58,6 +58,7 @@ class FloatSize;
 class Widget;
 
 using PlatformDisplayID = uint32_t;
+using IORegistryGPUID = int64_t; // Global IOKit I/O registryID that can match a GPU across process boundaries.
 
 int screenDepth(Widget*);
 int screenDepthPerComponent(Widget*);
@@ -81,7 +82,9 @@ WEBCORE_EXPORT CGColorSpaceRef screenColorSpace(Widget* = nullptr);
 #if PLATFORM(MAC)
 struct ScreenProperties;
 
-NSScreen *screen(NSWindow *);
+WEBCORE_EXPORT PlatformDisplayID displayID(NSScreen *);
+
+WEBCORE_EXPORT NSScreen *screen(NSWindow *);
 NSScreen *screen(PlatformDisplayID);
 
 FloatRect screenRectForDisplay(PlatformDisplayID);
@@ -93,11 +96,21 @@ WEBCORE_EXPORT NSRect toDeviceSpace(const FloatRect&, NSWindow *source);
 
 NSPoint flipScreenPoint(const NSPoint&, NSScreen *);
 
-WEBCORE_EXPORT std::pair<PlatformDisplayID, HashMap<PlatformDisplayID, ScreenProperties>> getScreenProperties();
-WEBCORE_EXPORT void setScreenProperties(PlatformDisplayID primaryScreenID, const HashMap<PlatformDisplayID, ScreenProperties>&);
-ScreenProperties screenProperties(PlatformDisplayID);
+WEBCORE_EXPORT ScreenProperties collectScreenProperties();
+WEBCORE_EXPORT void setScreenProperties(const ScreenProperties&);
 
+WEBCORE_EXPORT PlatformDisplayID primaryScreenDisplayID();
+
+uint32_t primaryOpenGLDisplayMask();
+uint32_t displayMaskForDisplay(PlatformDisplayID);
+
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+IORegistryGPUID primaryGPUID();
+IORegistryGPUID gpuIDForDisplay(PlatformDisplayID);
+IORegistryGPUID gpuIDForDisplayMask(uint32_t);
 #endif
+
+#endif // !PLATFORM(MAC)
 
 #if PLATFORM(IOS)
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -40,9 +40,8 @@
 #include <WebCore/WebAudioBufferList.h>
 #include <WebCore/WebAudioSourceProviderAVFObjC.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static uint64_t nextSessionID()
 {
@@ -66,17 +65,20 @@ public:
     }
 
     SharedRingBufferStorage& storage() { return static_cast<SharedRingBufferStorage&>(m_ringBuffer.storage()); }
-    const RealtimeMediaSourceCapabilities& capabilities() const final {
+
+    const RealtimeMediaSourceCapabilities& capabilities() final
+    {
         if (!m_capabilities)
             m_capabilities = m_manager.capabilities(m_id);
         return m_capabilities.value();
     }
 
-    const RealtimeMediaSourceSettings& settings() const final { return m_settings; }
+    const RealtimeMediaSourceSettings& settings() final { return m_settings; }
     void setSettings(RealtimeMediaSourceSettings&& settings)
     {
+        auto changed = m_settings.difference(settings);
         m_settings = WTFMove(settings);
-        settingsDidChange();
+        settingsDidChange(changed);
     }
 
     const CAAudioStreamDescription& description() const { return m_description; }

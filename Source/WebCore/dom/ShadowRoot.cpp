@@ -82,6 +82,9 @@ ShadowRoot::~ShadowRoot()
     // to access it Document reference after that.
     willBeDeletedFrom(document());
 
+    ASSERT(!m_hasBegunDeletingDetachedChildren);
+    m_hasBegunDeletingDetachedChildren = true;
+
     // We must remove all of our children first before the TreeScope destructor
     // runs so we don't go through Node::setTreeScopeRecursively for each child with a
     // destructed tree scope in each descendant.
@@ -101,6 +104,30 @@ void ShadowRoot::removedFromAncestor(RemovalType removalType, ContainerNode& old
     DocumentFragment::removedFromAncestor(removalType, oldParentOfRemovedTree);
     if (removalType.disconnectedFromDocument)
         document().didRemoveInDocumentShadowRoot(*this);
+}
+
+void ShadowRoot::childrenChanged(const ChildChange& childChange)
+{
+    DocumentFragment::childrenChanged(childChange);
+
+    if (!m_host || m_type == ShadowRootMode::UserAgent)
+        return; // Don't support first-child, nth-of-type, etc... in UA shadow roots as an optimization.
+
+    // FIXME: Avoid always invalidating style just for first-child, etc... as done in Element::childrenChanged.
+    switch (childChange.type) {
+    case ElementInserted:
+    case ElementRemoved:
+        m_host->invalidateStyleForSubtreeInternal();
+        break;
+    case TextInserted:
+    case TextRemoved:
+    case TextChanged:
+    case AllChildrenRemoved:
+    case NonContentsChildRemoved:
+    case NonContentsChildInserted:
+    case AllChildrenReplaced:
+        break;
+    }
 }
 
 void ShadowRoot::moveShadowRootToNewParentScope(TreeScope& newScope, Document& newDocument)
@@ -131,8 +158,6 @@ String ShadowRoot::innerHTML() const
 
 ExceptionOr<void> ShadowRoot::setInnerHTML(const String& markup)
 {
-    if (isOrphan())
-        return Exception { InvalidAccessError };
     auto fragment = createFragmentForInnerOuterHTML(*host(), markup, AllowScriptingContent);
     if (fragment.hasException())
         return fragment.releaseException();
@@ -181,17 +206,31 @@ HTMLSlotElement* ShadowRoot::findAssignedSlot(const Node& node)
     return m_slotAssignment->findAssignedSlot(node, *this);
 }
 
+void ShadowRoot::renameSlotElement(HTMLSlotElement& slot, const AtomicString& oldName, const AtomicString& newName)
+{
+    ASSERT(m_slotAssignment);
+    return m_slotAssignment->renameSlotElement(slot, oldName, newName, *this);
+}
+
 void ShadowRoot::addSlotElementByName(const AtomicString& name, HTMLSlotElement& slot)
 {
+    ASSERT(&slot.rootNode() == this);
     if (!m_slotAssignment)
         m_slotAssignment = std::make_unique<SlotAssignment>();
 
     return m_slotAssignment->addSlotElementByName(name, slot, *this);
 }
 
-void ShadowRoot::removeSlotElementByName(const AtomicString& name, HTMLSlotElement& slot)
+void ShadowRoot::removeSlotElementByName(const AtomicString& name, HTMLSlotElement& slot, ContainerNode& oldParentOfRemovedTree)
 {
-    return m_slotAssignment->removeSlotElementByName(name, slot, *this);
+    ASSERT(m_slotAssignment);
+    return m_slotAssignment->removeSlotElementByName(name, slot, &oldParentOfRemovedTree, *this);
+}
+
+void ShadowRoot::slotFallbackDidChange(HTMLSlotElement& slot)
+{
+    ASSERT(&slot.rootNode() == this);
+    return m_slotAssignment->slotFallbackDidChange(slot, *this);
 }
 
 const Vector<Node*>* ShadowRoot::assignedNodesForSlot(const HTMLSlotElement& slot)

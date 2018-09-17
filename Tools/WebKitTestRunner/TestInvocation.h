@@ -33,6 +33,7 @@
 #include <WebKit/WKRetainPtr.h>
 #include <string>
 #include <wtf/Noncopyable.h>
+#include <wtf/Seconds.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WTR {
@@ -50,12 +51,10 @@ public:
 
     void setIsPixelTest(const std::string& expectedPixelHash);
 
-    // Milliseconds
-    void setCustomTimeout(int duration) { m_timeout = duration; }
+    void setCustomTimeout(WTF::Seconds duration) { m_timeout = duration; }
     void setDumpJSConsoleLogInStdErr(bool value) { m_dumpJSConsoleLogInStdErr = value; }
 
-    // Seconds
-    double shortTimeout() const;
+    WTF::Seconds shortTimeout() const;
 
     void invoke();
     void didReceiveMessageFromInjectedBundle(WKStringRef messageName, WKTypeRef messageBody);
@@ -72,10 +71,19 @@ public:
     void notifyDownloadDone();
 
     void didClearStatisticsThroughWebsiteDataRemoval();
-    void didSetPartitionOrBlockCookiesForHost();
+    void didResetStatisticsToConsistentState();
+    void didSetBlockCookiesForHost();
+    void didSetStatisticsDebugMode();
+    void didSetPrevalentResourceForDebugMode();
+    void didSetLastSeen();
+    void didSetPrevalentResource();
+    void didSetVeryPrevalentResource();
+    void didSetHasHadUserInteraction();
     void didReceiveAllStorageAccessEntries(Vector<String>& domains);
 
     void didRemoveAllSessionCredentials();
+    
+    void dumpResourceLoadStatistics();
     
 private:
     WKRetainPtr<WKMutableDictionaryRef> createTestSettingsDictionary();
@@ -109,7 +117,7 @@ private:
 
     std::string m_expectedPixelHash;
 
-    int m_timeout { 0 };
+    WTF::Seconds m_timeout;
     bool m_dumpJSConsoleLogInStdErr { false };
 
     // Invocation state
@@ -123,9 +131,11 @@ private:
     bool m_dumpFrameLoadCallbacks { false };
     bool m_dumpPixels { false };
     bool m_pixelResultIsPending { false };
+    bool m_shouldDumpResourceLoadStatistics { false };
     WhatToDump m_whatToDump { WhatToDump::RenderTree };
 
     StringBuilder m_textOutput;
+    String m_savedResourceLoadStatistics;
     WKRetainPtr<WKDataRef> m_audioResult;
     WKRetainPtr<WKImageRef> m_pixelResult;
     WKRetainPtr<WKArrayRef> m_repaintRects;

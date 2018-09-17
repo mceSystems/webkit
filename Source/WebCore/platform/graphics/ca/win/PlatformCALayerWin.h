@@ -108,6 +108,7 @@ public:
     bool supportsSubpixelAntialiasedText() const override;
     void setSupportsSubpixelAntialiasedText(bool) override;
 
+    bool hasContents() const override;
     CFTypeRef contents() const override;
     void setContents(CFTypeRef) override;
 
@@ -174,7 +175,7 @@ private:
 
     HashMap<String, RefPtr<PlatformCAAnimation>> m_animations;
     std::unique_ptr<PlatformCALayerList> m_customSublayers;
-    GraphicsLayer::CustomAppearance m_customAppearance;
+    GraphicsLayer::CustomAppearance m_customAppearance { GraphicsLayer::CustomAppearance::None };
 };
 
 }

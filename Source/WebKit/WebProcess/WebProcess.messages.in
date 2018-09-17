@@ -26,6 +26,8 @@ messages -> WebProcess LegacyReceiver {
     # Create a new page.
     CreateWebPage(uint64_t newPageID, struct WebKit::WebPageCreationParameters pageCreationParameters)
 
+    Prewarm();
+ 
     # Global preferences.
     SetCacheModel(uint32_t cacheModel)
 
@@ -130,13 +132,21 @@ messages -> WebProcess LegacyReceiver {
     UpdateActivePages()
 
 #if PLATFORM(MAC)
-    SetScreenProperties(uint32_t primaryScreenID, HashMap<uint32_t, WebCore::ScreenProperties> screenProperties)
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+    SetScreenProperties(struct WebCore::ScreenProperties screenProperties)
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
     ScrollerStylePreferenceChanged(bool useOvelayScrollbars)
+    DisplayConfigurationChanged(CGDirectDisplayID displayID, CGDisplayChangeSummaryFlags flags)
 #endif
 #endif
 
 #if PLATFORM(COCOA)
     SetMediaMIMETypes(Vector<String> types)
+#endif
+
+#if ENABLE(MEDIA_STREAM)
+    AddMockMediaDevice(struct WebCore::MockMediaDevice device);
+    ClearMockMediaDevices();
+    RemoveMockMediaDevice(String persistentId);
+    ResetMockMediaDevices();
 #endif
 }

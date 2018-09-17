@@ -34,9 +34,8 @@
 #include <pal/SessionID.h>
 #include <wtf/UUID.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #define RELEASE_LOG_IF_ALLOWED(sessionID, fmt, ...) RELEASE_LOG_IF(sessionID.isAlwaysOnLoggingAllowed(), Network, "%p - NetworkMDNSRegister::" fmt, this, ##__VA_ARGS__)
 #define RELEASE_LOG_IF_ALLOWED_IN_CALLBACK(sessionID, fmt, ...) RELEASE_LOG_IF(sessionID.isAlwaysOnLoggingAllowed(), Network, "NetworkMDNSRegister callback - " fmt, ##__VA_ARGS__)
@@ -79,9 +78,20 @@ struct PendingRegistrationRequest {
     DNSRecordRef record;
 };
 
+
+static uintptr_t pendingRegistrationRequestCount = 1;
+static HashMap<uintptr_t, std::unique_ptr<PendingRegistrationRequest>>& pendingRegistrationRequests()
+{
+    ASSERT(RunLoop::isMain());
+    static NeverDestroyed<HashMap<uintptr_t, std::unique_ptr<PendingRegistrationRequest>>> map;
+    return map;
+}
+
 static void registerMDNSNameCallback(DNSServiceRef, DNSRecordRef record, DNSServiceFlags, DNSServiceErrorType errorCode, void *context)
 {
-    std::unique_ptr<PendingRegistrationRequest> request { static_cast<PendingRegistrationRequest*>(context) };
+    auto request = pendingRegistrationRequests().take(reinterpret_cast<uintptr_t>(context));
+    if (!request)
+        return;
 
     RELEASE_LOG_IF_ALLOWED_IN_CALLBACK(request->sessionID, "registerMDNSNameCallback with error %d", errorCode);
 
@@ -115,7 +125,7 @@ void NetworkMDNSRegister::registerMDNSName(uint64_t requestIdentifier, PAL::Sess
         service = iterator->value;
 
     String baseName = createCanonicalUUIDString();
-    String name = makeString(baseName, String::number(++m_registrationCount), ".local");
+    String name = makeString(baseName, String::number(pendingRegistrationRequestCount), ".local");
 
     auto ip = inet_addr(ipAddress.utf8().data());
 
@@ -138,13 +148,13 @@ void NetworkMDNSRegister::registerMDNSName(uint64_t requestIdentifier, PAL::Sess
         &ip,
         0,
         registerMDNSNameCallback,
-        pendingRequest.get());
+        reinterpret_cast<void*>(pendingRegistrationRequestCount));
     if (error) {
         RELEASE_LOG_IF_ALLOWED(sessionID, "registerMDNSName DNSServiceRegisterRecord error %d", error);
         m_connection.connection().send(Messages::WebMDNSRegister::FinishedRegisteringMDNSName { requestIdentifier, makeUnexpected(MDNSRegisterError::DNSSD) }, 0);
         return;
     }
-    pendingRequest.release();
+    pendingRegistrationRequests().add(pendingRegistrationRequestCount++, WTFMove(pendingRequest));
 }
 
 struct PendingResolutionRequest {
@@ -257,5 +267,8 @@ void NetworkMDNSRegister::resolveMDNSName(uint64_t requestIdentifier, PAL::Sessi
 #endif
 
 } // namespace WebKit
+
+#undef RELEASE_LOG_IF_ALLOWED
+#undef RELEASE_LOG_IF_ALLOWED_IN_CALLBACK
 
 #endif // ENABLE(WEB_RTC)

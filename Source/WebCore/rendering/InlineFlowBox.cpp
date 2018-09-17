@@ -36,8 +36,10 @@
 #include "RenderRubyRun.h"
 #include "RenderRubyText.h"
 #include "RenderTableCell.h"
+#include "RenderTheme.h"
 #include "RenderView.h"
 #include "RootInlineBox.h"
+#include "Settings.h"
 #include "Text.h"
 #include <math.h>
 #include <wtf/IsoMallocInlines.h>
@@ -47,8 +49,8 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(InlineFlowBox);
 
 struct SameSizeAsInlineFlowBox : public InlineBox {
-    void* pointers[5];
     uint32_t bitfields : 23;
+    void* pointers[5];
 };
 
 COMPILE_ASSERT(sizeof(InlineFlowBox) == sizeof(SameSizeAsInlineFlowBox), InlineFlowBox_should_stay_small);
@@ -698,9 +700,8 @@ void InlineFlowBox::placeBoxesInBlockDirection(LayoutUnit top, LayoutUnit maxHei
                 }
             }
             if (is<InlineTextBox>(*child)) {
-                bool emphasisMarkIsOver;
-                if (downcast<InlineTextBox>(*child).emphasisMarkExistsAndIsAbove(childLineStyle, emphasisMarkIsOver)) {
-                    if (emphasisMarkIsOver != childLineStyle.isFlippedLinesWritingMode())
+                if (std::optional<bool> markExistsAndIsAbove = downcast<InlineTextBox>(*child).emphasisMarkExistsAndIsAbove(childLineStyle)) {
+                    if (*markExistsAndIsAbove != childLineStyle.isFlippedLinesWritingMode())
                         hasAnnotationsBefore = true;
                     else
                         hasAnnotationsAfter = true;
@@ -894,10 +895,9 @@ inline void InlineFlowBox::addTextBoxVisualOverflow(InlineTextBox& textBox, Glyp
     int leftGlyphOverflow = -strokeOverflow - leftGlyphEdge;
     int rightGlyphOverflow = strokeOverflow + rightGlyphEdge;
 
-    bool emphasisMarkIsAbove;
-    if (lineStyle.textEmphasisMark() != TextEmphasisMark::None && textBox.emphasisMarkExistsAndIsAbove(lineStyle, emphasisMarkIsAbove)) {
+    if (std::optional<bool> markExistsAndIsAbove = textBox.emphasisMarkExistsAndIsAbove(lineStyle)) {
         int emphasisMarkHeight = lineStyle.fontCascade().emphasisMarkHeight(lineStyle.textEmphasisMarkString());
-        if (emphasisMarkIsAbove == !lineStyle.isFlippedLinesWritingMode())
+        if (*markExistsAndIsAbove == !lineStyle.isFlippedLinesWritingMode())
             topGlyphOverflow = std::min(topGlyphOverflow, -emphasisMarkHeight);
         else
             bottomGlyphOverflow = std::max(bottomGlyphOverflow, emphasisMarkHeight);
@@ -1141,7 +1141,7 @@ bool InlineFlowBox::nodeAtPoint(const HitTestRequest& request, HitTestResult& re
 
 void InlineFlowBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, LayoutUnit lineTop, LayoutUnit lineBottom)
 {
-    if (paintInfo.phase != PaintPhaseForeground && paintInfo.phase != PaintPhaseSelection && paintInfo.phase != PaintPhaseOutline && paintInfo.phase != PaintPhaseSelfOutline && paintInfo.phase != PaintPhaseChildOutlines && paintInfo.phase != PaintPhaseTextClip && paintInfo.phase != PaintPhaseMask)
+    if (paintInfo.phase != PaintPhase::Foreground && paintInfo.phase != PaintPhase::Selection && paintInfo.phase != PaintPhase::Outline && paintInfo.phase != PaintPhase::SelfOutline && paintInfo.phase != PaintPhase::ChildOutlines && paintInfo.phase != PaintPhase::TextClip && paintInfo.phase != PaintPhase::Mask)
         return;
 
     LayoutRect overflowRect(visualOverflowRect(lineTop, lineBottom));
@@ -1151,8 +1151,8 @@ void InlineFlowBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
     if (!paintInfo.rect.intersects(snappedIntRect(overflowRect)))
         return;
 
-    if (paintInfo.phase != PaintPhaseChildOutlines) {
-        if (paintInfo.phase == PaintPhaseOutline || paintInfo.phase == PaintPhaseSelfOutline) {
+    if (paintInfo.phase != PaintPhase::ChildOutlines) {
+        if (paintInfo.phase == PaintPhase::Outline || paintInfo.phase == PaintPhase::SelfOutline) {
             // Add ourselves to the paint info struct's list of inlines that need to paint their
             // outlines.
             if (renderer().style().visibility() == Visibility::Visible && renderer().hasOutline() && !isRootInlineBox()) {
@@ -1185,7 +1185,7 @@ void InlineFlowBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
                 } else if (!inlineFlow.isContinuation())
                     paintInfo.outlineObjects->add(&inlineFlow);
             }
-        } else if (paintInfo.phase == PaintPhaseMask)
+        } else if (paintInfo.phase == PaintPhase::Mask)
             paintMask(paintInfo, paintOffset);
         else {
             // Paint our background, border and box-shadow.
@@ -1193,16 +1193,16 @@ void InlineFlowBox::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset, 
         }
     }
 
-    if (paintInfo.phase == PaintPhaseMask)
+    if (paintInfo.phase == PaintPhase::Mask)
         return;
 
-    PaintPhase paintPhase = paintInfo.phase == PaintPhaseChildOutlines ? PaintPhaseOutline : paintInfo.phase;
+    PaintPhase paintPhase = paintInfo.phase == PaintPhase::ChildOutlines ? PaintPhase::Outline : paintInfo.phase;
     PaintInfo childInfo(paintInfo);
     childInfo.phase = paintPhase;
     childInfo.updateSubtreePaintRootForChildren(&renderer());
     
     // Paint our children.
-    if (paintPhase != PaintPhaseSelfOutline) {
+    if (paintPhase != PaintPhase::SelfOutline) {
         for (InlineBox* curr = firstChild(); curr; curr = curr->nextOnLine()) {
             if (curr->renderer().isText() || !curr->boxModelObject()->hasSelfPaintingLayer())
                 curr->paint(childInfo, paintOffset, lineTop, lineBottom);
@@ -1251,7 +1251,7 @@ void InlineFlowBox::paintFillLayer(const PaintInfo& paintInfo, const Color& colo
         // the previous line left off.
         LayoutUnit logicalOffsetOnLine = 0;
         LayoutUnit totalLogicalWidth;
-        if (renderer().style().direction() == LTR) {
+        if (renderer().style().direction() == TextDirection::LTR) {
             for (InlineFlowBox* curr = prevLineBox(); curr; curr = curr->prevLineBox())
                 logicalOffsetOnLine += curr->logicalWidth();
             totalLogicalWidth = logicalOffsetOnLine;
@@ -1335,7 +1335,7 @@ static LayoutRect clipRectForNinePieceImageStrip(InlineFlowBox* box, const NineP
 
 void InlineFlowBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
-    if (!paintInfo.shouldPaintWithinRoot(renderer()) || renderer().style().visibility() != Visibility::Visible || paintInfo.phase != PaintPhaseForeground)
+    if (!paintInfo.shouldPaintWithinRoot(renderer()) || renderer().style().visibility() != Visibility::Visible || paintInfo.phase != PaintPhase::Foreground)
         return;
 
     LayoutRect frameRect(this->frameRect());
@@ -1360,8 +1360,15 @@ void InlineFlowBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint&
     if (!renderer().boxShadowShouldBeAppliedToBackground(adjustedPaintoffset, BackgroundBleedNone, this))
         paintBoxShadow(paintInfo, lineStyle, Normal, paintRect);
 
-    const Color& color = lineStyle.visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
-    paintFillLayers(paintInfo, color, lineStyle.backgroundLayers(), paintRect);
+    Color color = lineStyle.visitedDependentColor(CSSPropertyBackgroundColor);
+
+    CompositeOperator compositeOp = CompositeSourceOver;
+    if (renderer().document().settings().punchOutWhiteBackgroundsInDarkMode() && Color::isWhiteColor(color) && renderer().theme().usingDarkAppearance(renderer()))
+        compositeOp = CompositeDestinationOut;
+
+    color = lineStyle.colorByApplyingColorFilter(color);
+
+    paintFillLayers(paintInfo, color, lineStyle.backgroundLayers(), paintRect, compositeOp);
     paintBoxShadow(paintInfo, lineStyle, Inset, paintRect);
 
     // :first-line cannot be used to put borders on a line. Always paint borders with our
@@ -1407,7 +1414,7 @@ void InlineFlowBox::paintBoxDecorations(PaintInfo& paintInfo, const LayoutPoint&
 
 void InlineFlowBox::paintMask(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
-    if (!paintInfo.shouldPaintWithinRoot(renderer()) || renderer().style().visibility() != Visibility::Visible || paintInfo.phase != PaintPhaseMask)
+    if (!paintInfo.shouldPaintWithinRoot(renderer()) || renderer().style().visibility() != Visibility::Visible || paintInfo.phase != PaintPhase::Mask)
         return;
 
     LayoutRect frameRect(this->frameRect());
@@ -1424,7 +1431,7 @@ void InlineFlowBox::paintMask(PaintInfo& paintInfo, const LayoutPoint& paintOffs
     // Figure out if we need to push a transparency layer to render our mask.
     bool pushTransparencyLayer = false;
     bool compositedMask = renderer().hasLayer() && renderer().layer()->hasCompositedMask();
-    bool flattenCompositingLayers = renderer().view().frameView().paintBehavior() & PaintBehaviorFlattenCompositingLayers;
+    bool flattenCompositingLayers = renderer().view().frameView().paintBehavior().contains(PaintBehavior::FlattenCompositingLayers);
     CompositeOperator compositeOp = CompositeSourceOver;
     if (!compositedMask || flattenCompositingLayers) {
         if ((maskBoxImage && renderer().style().maskLayers().hasImage()) || renderer().style().maskLayers().next())
@@ -1575,8 +1582,8 @@ LayoutUnit InlineFlowBox::computeOverAnnotationAdjustment(LayoutUnit allowedPosi
 
         if (is<InlineTextBox>(*child)) {
             const RenderStyle& childLineStyle = child->lineStyle();
-            bool emphasisMarkIsAbove;
-            if (childLineStyle.textEmphasisMark() != TextEmphasisMark::None && downcast<InlineTextBox>(*child).emphasisMarkExistsAndIsAbove(childLineStyle, emphasisMarkIsAbove) && emphasisMarkIsAbove) {
+            std::optional<bool> markExistsAndIsAbove = downcast<InlineTextBox>(*child).emphasisMarkExistsAndIsAbove(childLineStyle);
+            if (markExistsAndIsAbove && *markExistsAndIsAbove) {
                 if (!childLineStyle.isFlippedLinesWritingMode()) {
                     int topOfEmphasisMark = child->logicalTop() - childLineStyle.fontCascade().emphasisMarkHeight(childLineStyle.textEmphasisMarkString());
                     result = std::max(result, allowedPosition - topOfEmphasisMark);
@@ -1623,9 +1630,8 @@ LayoutUnit InlineFlowBox::computeUnderAnnotationAdjustment(LayoutUnit allowedPos
 
         if (is<InlineTextBox>(*child)) {
             const RenderStyle& childLineStyle = child->lineStyle();
-            bool emphasisMarkIsAbove;
-            downcast<InlineTextBox>(*child).emphasisMarkExistsAndIsAbove(childLineStyle, emphasisMarkIsAbove);
-            if (childLineStyle.textEmphasisMark() != TextEmphasisMark::None && !emphasisMarkIsAbove) {
+            std::optional<bool> markExistsAndIsAbove = downcast<InlineTextBox>(*child).emphasisMarkExistsAndIsAbove(childLineStyle);
+            if (markExistsAndIsAbove && !*markExistsAndIsAbove) {
                 if (!childLineStyle.isFlippedLinesWritingMode()) {
                     LayoutUnit bottomOfEmphasisMark = child->logicalBottom() + childLineStyle.fontCascade().emphasisMarkHeight(childLineStyle.textEmphasisMarkString());
                     result = std::max(result, bottomOfEmphasisMark - allowedPosition);

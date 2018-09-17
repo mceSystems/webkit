@@ -111,6 +111,8 @@
     ;; Needed by <rdar://problem/40093461>, remove when <rdar://problem/39402555> is fixed.
     (allow file-read* file-write-unlink
         (prefix "/private/tmp/cvmsCodeSignObj"))
+    (allow file-read*
+        (prefix "/private/var/db/CVMS/cvmsCodeSignObj"))
 #endif
     ;; OpenCL
     (allow iokit-open
@@ -163,7 +165,6 @@
         "hw.byteorder"
         "hw.busfrequency_max"
         "hw.cputype"
-        "hw.l2cachesize"
         "hw.machine"
         "hw.memsize"
         "hw.model"
@@ -174,10 +175,12 @@
         "kern.memorystatus_level"
         "kern.safeboot"
         "kern.version"
+        "machdep.cpu.brand_string"
         "security.mac.sandbox.sentinel"
         "vm.footprint_suspend")
     (sysctl-name-regex #"^hw.(active|avail)cpu")
-    (sysctl-name-regex #"^hw.(busfrequency|cachelinesize|cpufrequency|pagesize|tbfrequency)_compat")
+    (sysctl-name-regex #"^hw.(busfrequency|cachelinesize|cpufrequency(|_max)|pagesize|tbfrequency)(|_compat)")
+    (sysctl-name-regex #"^hw.l.+cachesize")
     (sysctl-name-regex #"^hw.(logical|physical)cpu_max")
     (sysctl-name-regex #"^hw.optional\.")
     (sysctl-name-regex #"^kern.os(release|type|variant_status|version)")
@@ -196,6 +199,7 @@
     (iokit-property-regex #"Apple(GVAKeyDoesNotExist|IntelMEVABundleName)")
     (iokit-property-regex #"^AAPL,(DisplayPipe|OpenCLdisabled|IOGraphics_LER(|_RegTag_1|_RegTag_0|_Busy_2)|alias-policy|boot-display|display-alias|mux-switch-state|ndrv-dev|primary-display|slot-name)")
     (iokit-property-regex #"^ATY,(cbits|fb_(linebytes|offset|size)|intrev)")
+    (iokit-property "AVCSupported")
     (iokit-property "BacklightHandle")
     (iokit-property "BlockSize")
     (iokit-property-regex #"^CEA(ModeID|PixelRepetition)")
@@ -214,6 +218,7 @@
     (iokit-property "Formats")
     (iokit-property "GPUConfigurationVariable")
     (iokit-property "GpuDebugPolicy")
+    (iokit-property "HEVCSupported")
     (iokit-property "HIDPointerAccelerationType")
     (iokit-property-regex #"^IOAccel(DisplayPipeCapabilities|Index|Types|Revision)")
     (iokit-property-regex #"^IO(Class|MatchCategory|NameMatch)")
@@ -258,6 +263,7 @@
     (iokit-property-regex #"^IOName(|Match(|ed))")
     (iokit-property "IOOCDBundleName")
     (iokit-property "IOPCITunnelled")
+    (iokit-property "IOPCITunnelCompatible")
     (iokit-property "IOPMStrictTreeOrder")
     (iokit-property "IOParentMatch")
     (iokit-property-regex #"^IOPCI((Class|Primary|Property|)Match|Express(Capabilities|Link(Status|Capabilities))|MSIMode|Resourced|Tunnelled)")
@@ -490,6 +496,11 @@
 (allow file-read*
     (literal "/Library/Preferences/com.apple.ViewBridge.plist"))
 
+; FIXME: This is needed for some security framework calls (that use non-CFPreferences readers)
+(allow file-read-data
+    (literal "/Library/Preferences/com.apple.security.plist")
+    (home-subpath "/Library/Preferences/com.apple.security.plist"))
+
 ;; On-disk WebKit2 framework location, to account for debug installations outside of /System/Library/Frameworks,
 ;; and to allow issuing extensions.
 (allow-read-directory-and-issue-read-extensions (param "WEBKIT2_FRAMEWORK_DIR"))
@@ -571,12 +582,14 @@
        (global-name "com.apple.analyticsd")
        (global-name "com.apple.audio.AudioComponentRegistrar")
 #endif
+       (global-name "com.apple.assertiond.processassertionconnection")
        (global-name "com.apple.audio.audiohald")
        (global-name "com.apple.audio.coreaudiod")
        (global-name "com.apple.awdd")
        (global-name "com.apple.cfnetwork.AuthBrokerAgent")
        (global-name "com.apple.cfprefsd.agent")
        (global-name "com.apple.cfprefsd.daemon")
+       (global-name "com.apple.cmio.registerassistantservice") ;; Needed by CoreMedia for plugin drivers
        (global-name "com.apple.cookied")
        (global-name "com.apple.coreservices.launchservicesd")
        (global-name "com.apple.diagnosticd")
@@ -591,12 +604,12 @@
        (global-name "com.apple.lsd.mapdb")
        (global-name "com.apple.mobileassetd")
        (global-name "com.apple.nesessionmanager.flow-divert-token")
+       (global-name "com.apple.powerlog.plxpclogger.xpc")
        (global-name "com.apple.speech.speechsynthesisd")
        (global-name "com.apple.speech.synthesis.console")
        (global-name "com.apple.system.DirectoryService.libinfo_v1")
        (global-name "com.apple.system.logger")
        (global-name "com.apple.system.opendirectoryd.api")
-       (global-name "com.apple.systemstats.analysis")
        (global-name "com.apple.tccd")
        (global-name "com.apple.tccd.system")
        (global-name "com.apple.trustd")
@@ -611,9 +624,17 @@
        (global-name "com.apple.xpcd")
 )
 
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+(deny mach-lookup (with no-log)
+    (global-name "com.apple.ViewBridgeAuxiliary")
+    (global-name "com.apple.windowserver.active"))
+#endif
+
+
 ;; Needed to support encrypted media playback <rdar://problem/40038478>
 (allow mach-lookup
-    (global-name "com.apple.SecurityServer"))
+    (global-name "com.apple.SecurityServer")
+    (global-name "com.apple.ocspd"))
 
 (allow file-read* file-write* (subpath "/private/var/db/mds/system")) ;; FIXME: This should be removed when <rdar://problem/9538414> is fixed.
 
@@ -627,7 +648,10 @@
 ;; CoreFoundation. We don't import com.apple.corefoundation.sb, because it allows unnecessary access to pasteboard.
 (allow mach-lookup
     (global-name-regex #"^com.apple.distributed_notifications")                                                       
-    (global-name "com.apple.CoreServices.coreservicesd"))
+#if __MAC_OS_X_VERSION_MIN_REQUIRED < 101400
+    (global-name "com.apple.CoreServices.coreservicesd")
+#endif
+)
 (allow file-read-data
     (literal "/dev/autofs_nowait")) ; Used by CF to circumvent automount triggers
 (allow ipc-posix-shm

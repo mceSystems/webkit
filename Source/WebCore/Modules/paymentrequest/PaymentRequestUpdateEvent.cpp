@@ -28,19 +28,22 @@
 
 #if ENABLE(PAYMENT_REQUEST)
 
+#include "EventNames.h"
 #include "PaymentRequest.h"
 
 namespace WebCore {
 
-PaymentRequestUpdateEvent::PaymentRequestUpdateEvent(const AtomicString& type, PaymentRequestUpdateEventInit&& eventInit)
-    : Event { type, WTFMove(eventInit), IsTrusted::No }
+PaymentRequestUpdateEvent::PaymentRequestUpdateEvent(const AtomicString& type, const PaymentRequestUpdateEventInit& eventInit)
+    : Event { type, eventInit, IsTrusted::No }
 {
+    ASSERT(!isTrusted());
 }
 
 PaymentRequestUpdateEvent::PaymentRequestUpdateEvent(const AtomicString& type, PaymentRequest& paymentRequest)
-    : Event { type, false, false }
+    : Event { type, CanBubble::No, IsCancelable::No }
     , m_paymentRequest { &paymentRequest }
 {
+    ASSERT(isTrusted());
 }
 
 PaymentRequestUpdateEvent::~PaymentRequestUpdateEvent() = default;
@@ -49,6 +52,8 @@ ExceptionOr<void> PaymentRequestUpdateEvent::updateWith(Ref<DOMPromise>&& detail
 {
     if (!isTrusted())
         return Exception { InvalidStateError };
+
+    ASSERT(m_paymentRequest);
 
     if (m_waitForUpdate)
         return Exception { InvalidStateError };
@@ -61,6 +66,8 @@ ExceptionOr<void> PaymentRequestUpdateEvent::updateWith(Ref<DOMPromise>&& detail
         reason = PaymentRequest::UpdateReason::ShippingAddressChanged;
     else if (type() == eventNames().shippingoptionchangeEvent)
         reason = PaymentRequest::UpdateReason::ShippingOptionChanged;
+    else if (type() == eventNames().paymentmethodchangeEvent)
+        reason = PaymentRequest::UpdateReason::PaymentMethodChanged;
     else {
         ASSERT_NOT_REACHED();
         return Exception { TypeError };

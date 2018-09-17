@@ -46,6 +46,7 @@
 #include "RenderObject.h"
 #include "ResourceHandle.h"
 #include "Settings.h"
+#include "ShareData.h"
 #include "StorageNamespace.h"
 #include "WindowFeatures.h"
 #include <JavaScriptCore/VM.h>
@@ -54,6 +55,14 @@
 
 #if ENABLE(INPUT_TYPE_COLOR)
 #include "ColorChooser.h"
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+#include "DataListSuggestionPicker.h"
+#endif
+
+#if PLATFORM(MAC) && ENABLE(GRAPHICS_CONTEXT_3D)
+#include "GraphicsContext3DManager.h"
 #endif
 
 namespace WebCore {
@@ -348,7 +357,7 @@ void Chrome::setToolTip(const HitTestResult& result)
                         if (form->renderer())
                             toolTipDirection = form->renderer()->style().direction();
                         else
-                            toolTipDirection = LTR;
+                            toolTipDirection = TextDirection::LTR;
                     }
                 }
             }
@@ -359,7 +368,7 @@ void Chrome::setToolTip(const HitTestResult& result)
             // FIXME: Need to pass this URL through userVisibleString once that's in WebCore
             toolTip = result.absoluteLinkURL().string();
             // URL always display as LTR.
-            toolTipDirection = LTR;
+            toolTipDirection = TextDirection::LTR;
         }
     }
 
@@ -381,7 +390,7 @@ void Chrome::setToolTip(const HitTestResult& result)
                 // implementations don't use text direction information for
                 // ChromeClient::setToolTip. We'll work on tooltip text
                 // direction during bidi cleanup in form inputs.
-                toolTipDirection = LTR;
+                toolTipDirection = TextDirection::LTR;
             }
         }
     }
@@ -416,8 +425,21 @@ void Chrome::disableSuddenTermination()
 
 std::unique_ptr<ColorChooser> Chrome::createColorChooser(ColorChooserClient& client, const Color& initialColor)
 {
+#if PLATFORM(IOS)
+    return nullptr;
+#endif
     notifyPopupOpeningObservers();
     return m_client.createColorChooser(client, initialColor);
+}
+
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+
+std::unique_ptr<DataListSuggestionPicker> Chrome::createDataListSuggestionPicker(DataListSuggestionsClient& client)
+{
+    notifyPopupOpeningObservers();
+    return m_client.createDataListSuggestionPicker(client);
 }
 
 #endif
@@ -426,6 +448,11 @@ void Chrome::runOpenPanel(Frame& frame, FileChooser& fileChooser)
 {
     notifyPopupOpeningObservers();
     m_client.runOpenPanel(frame, fileChooser);
+}
+
+void Chrome::showShareSheet(ShareDataWithParsedURL& shareData, CompletionHandler<void(bool)>&& callback)
+{
+    m_client.showShareSheet(shareData, WTFMove(callback));
 }
 
 void Chrome::loadIconForFiles(const Vector<String>& filenames, FileIconLoader& loader)
@@ -496,6 +523,11 @@ void Chrome::windowScreenDidChange(PlatformDisplayID displayID)
         if (frame->document())
             frame->document()->windowScreenDidChange(displayID);
     }
+
+#if PLATFORM(MAC) && ENABLE(GRAPHICS_CONTEXT_3D)
+    GraphicsContext3DManager::sharedManager().screenDidChange(displayID, this);
+#endif
+
 }
 
 // --------

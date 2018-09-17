@@ -25,6 +25,7 @@
 
 #import "config.h"
 #import "WebProcessCocoa.h"
+#import "XPCServiceEntryPoint.h"
 
 #import <CoreFoundation/CoreFoundation.h>
 #import <wtf/OSObjectPtr.h>
@@ -59,7 +60,7 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
                 typedef void (*InitializerFunction)(xpc_connection_t, xpc_object_t, xpc_object_t);
                 InitializerFunction initializerFunctionPtr = reinterpret_cast<InitializerFunction>(CFBundleGetFunctionPointerForName(webKitBundle, entryPointFunctionName));
                 if (!initializerFunctionPtr) {
-                    NSLog(@"Unable to find entry point in WebKit.framework with name: %@", (NSString *)entryPointFunctionName);
+                    NSLog(@"Unable to find entry point in WebKit.framework with name: %@", (__bridge NSString *)entryPointFunctionName);
                     exit(EXIT_FAILURE);
                 }
 
@@ -91,11 +92,7 @@ static void XPCServiceEventHandler(xpc_connection_t peer)
     xpc_connection_resume(peer);
 }
 
-} // namespace WebKit
-
-using namespace WebKit;
-
-int main(int argc, char** argv)
+int XPCServiceMain()
 {
 #if defined(__i386__)
     // FIXME: This should only be done for the 32-bit plug-in XPC service so we rely on the fact that
@@ -159,4 +156,11 @@ int main(int argc, char** argv)
 
     xpc_main(XPCServiceEventHandler);
     return 0;
+}
+
+} // namespace WebKit
+
+int main(int argc, char** argv)
+{
+    return WebKit::XPCServiceMain();
 }

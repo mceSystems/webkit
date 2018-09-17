@@ -103,7 +103,7 @@ static bool createAndStoreMasterKey(Vector<uint8_t>& masterKeyData)
 
 #if USE(KEYCHAIN_ACCESS_CONTROL_LISTS)
     SecAccessRef accessRef;
-    status = SecAccessCreate((CFStringRef)localizedItemName, nullptr, &accessRef);
+    status = SecAccessCreate((__bridge CFStringRef)localizedItemName, nullptr, &accessRef);
     if (status) {
         WTFLogAlways("Cannot create a security access object for storing WebCrypto master key, error %d", (int)status);
         return false;
@@ -121,7 +121,7 @@ static bool createAndStoreMasterKey(Vector<uint8_t>& masterKeyData)
     }
     RetainPtr<SecTrustedApplicationRef> trustedApp = adoptCF(trustedAppRef);
 
-    status = SecACLSetContents(acl, (CFArrayRef)@[ (id)trustedApp.get() ], (CFStringRef)localizedItemName, kSecKeychainPromptRequirePassphase);
+    status = SecACLSetContents(acl, (__bridge CFArrayRef)@[ (__bridge id)trustedApp.get() ], (__bridge CFStringRef)localizedItemName, kSecKeychainPromptRequirePassphase);
     if (status) {
         WTFLogAlways("Cannot set ACL for WebCrypto master key, error %d", (int)status);
         return false;
@@ -136,7 +136,7 @@ static bool createAndStoreMasterKey(Vector<uint8_t>& masterKeyData)
         (id)kSecClass : (id)kSecClassGenericPassword,
         (id)kSecAttrSynchronizable : @NO,
 #if USE(KEYCHAIN_ACCESS_CONTROL_LISTS)
-        (id)kSecAttrAccess : (id)access.get(),
+        (id)kSecAttrAccess : (__bridge id)access.get(),
 #endif
         (id)kSecAttrComment : webCryptoMasterKeyKeychainComment(),
         (id)kSecAttrLabel : localizedItemName,
@@ -171,7 +171,7 @@ static bool findMasterKey(Vector<uint8_t>& masterKeyData)
     }
     RetainPtr<CFDataRef> keyData = adoptCF(keyDataRef);
 
-    Vector<uint8_t> base64EncodedMasterKeyData = vectorFromNSData((NSData *)keyData.get());
+    Vector<uint8_t> base64EncodedMasterKeyData = vectorFromNSData((__bridge NSData *)keyData.get());
     return base64Decode((const char*)base64EncodedMasterKeyData.data(), base64EncodedMasterKeyData.size(), masterKeyData);
 }
 
@@ -220,15 +220,14 @@ bool wrapSerializedCryptoKey(const Vector<uint8_t>& masterKey, const Vector<uint
     size_t tagLength = 16;
     uint8_t tag[tagLength];
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     status = CCCryptorGCM(kCCEncrypt, kCCAlgorithmAES128, kek.data(), kek.size(),
         nullptr, 0, // iv
         nullptr, 0, // auth data
         key.data(), key.size(),
         encryptedKey.data(),
         tag, &tagLength);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (status != kCCSuccess)
         return false;
@@ -289,15 +288,14 @@ bool unwrapSerializedCryptoKey(const Vector<uint8_t>& masterKey, const Vector<ui
     uint8_t actualTag[tagLength];
 
     key.resize(encryptedKey.size());
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     status = CCCryptorGCM(kCCDecrypt, kCCAlgorithmAES128, kek.data(), kek.size(),
         nullptr, 0, // iv
         nullptr, 0, // auth data
         encryptedKey.data(), encryptedKey.size(),
         key.data(),
         actualTag, &tagLength);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (status != kCCSuccess)
         return false;

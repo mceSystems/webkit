@@ -178,8 +178,7 @@ static void drawShadowLayerBuffer(PlatformContextCairo& platformContext, ImageBu
         return;
 
     if (auto surface = image->nativeImageForCurrentFrame()) {
-        drawNativeImage(platformContext, surface.get(), FloatRect(roundedIntPoint(layerOrigin), layerSize), FloatRect(FloatPoint(), layerSize),
-            shadowState.globalCompositeOperator, BlendModeNormal, ImageOrientation(),
+        drawNativeImage(platformContext, surface.get(), FloatRect(roundedIntPoint(layerOrigin), layerSize), FloatRect(FloatPoint(), layerSize), shadowState.globalCompositeOperator, BlendMode::Normal, ImageOrientation(),
             InterpolationDefault, shadowState.globalAlpha, ShadowState());
     }
 }
@@ -735,7 +734,7 @@ void fillRectWithRoundedHole(PlatformContextCairo& platformContext, const FloatR
 {
     // FIXME: this should leverage the specified color.
 
-    if (shadowState.isRequired(platformContext)) {
+    if (shadowState.isVisible()) {
         ShadowBlur shadow({ shadowState.blur, shadowState.blur }, shadowState.offset, shadowState.color, shadowState.ignoreTransforms);
         shadow.drawInsetShadow(State::getCTM(platformContext), State::getClipBounds(platformContext), rect, roundedHoleRect,
             [&platformContext, &shadowState](ImageBuffer& layerImage, const FloatPoint& layerOrigin, const FloatSize& layerSize, const FloatRect& sourceRect)
@@ -837,8 +836,8 @@ void drawNativeImage(PlatformContextCairo& platformContext, cairo_surface_t* sur
     platformContext.save();
 
     // Set the compositing operation.
-    if (compositeOperator == CompositeSourceOver && blendMode == BlendModeNormal && !cairoSurfaceHasAlpha(surface))
-        Cairo::State::setCompositeOperation(platformContext, CompositeCopy, BlendModeNormal);
+    if (compositeOperator == CompositeSourceOver && blendMode == BlendMode::Normal && !cairoSurfaceHasAlpha(surface))
+        Cairo::State::setCompositeOperation(platformContext, CompositeCopy, BlendMode::Normal);
     else
         Cairo::State::setCompositeOperation(platformContext, compositeOperator, blendMode);
 
@@ -1049,18 +1048,18 @@ void drawLinesForText(PlatformContextCairo& platformContext, const FloatPoint& p
     cairo_restore(cr);
 }
 
-void drawLineForDocumentMarker(PlatformContextCairo& platformContext, const FloatPoint& origin, float width, GraphicsContext::DocumentMarkerLineStyle style)
+void drawLineForDocumentMarker(PlatformContextCairo& platformContext, const FloatPoint& origin, float width, DocumentMarkerLineStyle style)
 {
-    if (style != GraphicsContext::DocumentMarkerSpellingLineStyle
-        && style != GraphicsContext::DocumentMarkerGrammarLineStyle)
+    if (style != DocumentMarkerLineStyle::Spelling
+        && style != DocumentMarkerLineStyle::Grammar)
         return;
 
     cairo_t* cr = platformContext.cr();
     cairo_save(cr);
 
-    if (style == GraphicsContext::DocumentMarkerSpellingLineStyle)
+    if (style == DocumentMarkerLineStyle::Spelling)
         cairo_set_source_rgb(cr, 1, 0, 0);
-    else if (style == GraphicsContext::DocumentMarkerGrammarLineStyle)
+    else if (style == DocumentMarkerLineStyle::Grammar)
         cairo_set_source_rgb(cr, 0, 1, 0);
 
     drawErrorUnderline(cr, origin.x(), origin.y(), width, cMisspellingLineThickness);

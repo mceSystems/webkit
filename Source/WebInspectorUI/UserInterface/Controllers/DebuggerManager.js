@@ -99,6 +99,14 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
         if (DebuggerAgent.setAsyncStackTraceDepth)
             DebuggerAgent.setAsyncStackTraceDepth(this._asyncStackTraceDepthSetting.value);
 
+        // COMPATIBILITY (iOS 12): DebuggerAgent.setPauseForInternalScripts did not exist yet.
+        if (DebuggerAgent.setPauseForInternalScripts) {
+            let updateBackendSetting = () => { DebuggerAgent.setPauseForInternalScripts(WI.settings.pauseForInternalScripts.value); };
+            WI.settings.pauseForInternalScripts.addEventListener(WI.Setting.Event.Changed, updateBackendSetting);
+
+            updateBackendSetting();
+        }
+
         this._ignoreBreakpointDisplayLocationDidChangeEvent = false;
 
         function restoreBreakpointsSoon() {
@@ -810,6 +818,8 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
     {
         // FIXME: Handle other backend pause reasons.
         switch (payload) {
+        case DebuggerAgent.PausedReason.AnimationFrame:
+            return WI.DebuggerManager.PauseReason.AnimationFrame;
         case DebuggerAgent.PausedReason.Assert:
             return WI.DebuggerManager.PauseReason.Assertion;
         case DebuggerAgent.PausedReason.Breakpoint:
@@ -820,10 +830,14 @@ WI.DebuggerManager = class DebuggerManager extends WI.Object
             return WI.DebuggerManager.PauseReason.DOM;
         case DebuggerAgent.PausedReason.DebuggerStatement:
             return WI.DebuggerManager.PauseReason.DebuggerStatement;
+        case DebuggerAgent.PausedReason.EventListener:
+            return WI.DebuggerManager.PauseReason.EventListener;
         case DebuggerAgent.PausedReason.Exception:
             return WI.DebuggerManager.PauseReason.Exception;
         case DebuggerAgent.PausedReason.PauseOnNextStatement:
             return WI.DebuggerManager.PauseReason.PauseOnNextStatement;
+        case DebuggerAgent.PausedReason.Timer:
+            return WI.DebuggerManager.PauseReason.Timer;
         case DebuggerAgent.PausedReason.XHR:
             return WI.DebuggerManager.PauseReason.XHR;
         default:
@@ -1223,13 +1237,16 @@ WI.DebuggerManager.Event = {
 };
 
 WI.DebuggerManager.PauseReason = {
+    AnimationFrame: "animation-frame",
     Assertion: "assertion",
     Breakpoint: "breakpoint",
     CSPViolation: "CSP-violation",
     DebuggerStatement: "debugger-statement",
     DOM: "DOM",
+    EventListener: "event-listener",
     Exception: "exception",
     PauseOnNextStatement: "pause-on-next-statement",
+    Timer: "timer",
     XHR: "xhr",
     Other: "other",
 };

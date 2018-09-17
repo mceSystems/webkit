@@ -95,7 +95,7 @@ static NSURL *colorProfileURLForDisplay(NSString *displayUUIDString)
         return nil;
     }
 
-    NSURL *url = (NSURL *)CFAutorelease(CFRetain(profileURL));
+    NSURL *url = CFBridgingRelease(CFRetain(profileURL));
     CFRelease(deviceInfo);
     return url;
 }
@@ -147,7 +147,7 @@ static void saveDisplayColorProfiles(NSArray *displayUUIDStrings)
 static void setDisplayColorProfile(NSString *displayUUIDString, NSURL *colorProfileURL)
 {
     NSDictionary *profileInfo = @{
-        (NSString *)kColorSyncDeviceDefaultProfileID : colorProfileURL
+        (__bridge NSString *)kColorSyncDeviceDefaultProfileID : colorProfileURL
     };
 
     CFUUIDRef uuid = CFUUIDCreateFromString(kCFAllocatorDefault, (CFStringRef)displayUUIDString);

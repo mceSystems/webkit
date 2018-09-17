@@ -40,6 +40,7 @@
 #import "WebCookieManagerProxy.h"
 #import "WebProcessMessages.h"
 #import "WebProcessPool.h"
+#import "XPCServiceEntryPoint.h"
 #import "_WKAutomationDelegate.h"
 #import "_WKAutomationSessionInternal.h"
 #import "_WKDownloadDelegate.h"
@@ -73,11 +74,6 @@ static WKProcessPool *sharedProcessPool;
 {
     if (!(self = [super init]))
         return nil;
-
-#if PLATFORM(IOS)
-    // FIXME: Remove once <rdar://problem/15256572> is fixed.
-    InitWebCoreThreadSystemInterface();
-#endif
 
     API::Object::constructInWrapper<WebKit::WebProcessPool>(self, *configuration->_processPoolConfiguration);
 
@@ -130,7 +126,7 @@ static WKProcessPool *sharedProcessPool;
 
 - (_WKProcessPoolConfiguration *)_configuration
 {
-    return wrapper(_processPool->configuration().copy().leakRef());
+    return wrapper(_processPool->configuration().copy());
 }
 
 - (API::Object&)_apiObject
@@ -161,6 +157,15 @@ static WKProcessPool *sharedProcessPool;
     return sharedProcessPool;
 }
 
++ (NSArray<WKProcessPool *> *)_allProcessPoolsForTesting
+{
+    auto& allPools = WebKit::WebProcessPool::allProcessPools();
+    auto nsAllPools = adoptNS([[NSMutableArray alloc] initWithCapacity:allPools.size()]);
+    for (auto* pool : allPools)
+        [nsAllPools addObject:wrapper(*pool)];
+    return nsAllPools.autorelease();
+}
+
 + (NSURL *)_websiteDataURLForContainerWithURL:(NSURL *)containerURL
 {
     return [WKProcessPool _websiteDataURLForContainerWithURL:containerURL bundleIdentifierIfNotInContainer:nil];
@@ -177,9 +182,14 @@ static WKProcessPool *sharedProcessPool;
     return [url URLByAppendingPathComponent:@"WebsiteData" isDirectory:YES];
 }
 
++ (int)_webContentProcessXPCMain
+{
+    return WebKit::XPCServiceMain();
+}
+
 - (void)_setAllowsSpecificHTTPSCertificate:(NSArray *)certificateChain forHost:(NSString *)host
 {
-    _processPool->allowSpecificHTTPSCertificateForHost(WebKit::WebCertificateInfo::create(WebCore::CertificateInfo((CFArrayRef)certificateChain)).ptr(), host);
+    _processPool->allowSpecificHTTPSCertificateForHost(WebKit::WebCertificateInfo::create(WebCore::CertificateInfo((__bridge CFArrayRef)certificateChain)).ptr(), host);
 }
 
 - (void)_registerURLSchemeServiceWorkersCanHandle:(NSString *)scheme
@@ -388,7 +398,7 @@ static NSDictionary *policiesHashMapToDictionary(const HashMap<String, HashMap<S
 
 - (void)_warmInitialProcess
 {
-    _processPool->warmInitialProcess();
+    _processPool->prewarmProcess();
 }
 
 - (void)_automationCapabilitiesDidChange
@@ -421,7 +431,7 @@ static NSDictionary *policiesHashMapToDictionary(const HashMap<String, HashMap<S
 
 - (void)_terminateStorageProcess
 {
-    _processPool->terminateStorageProcess();
+    _processPool->terminateStorageProcessForTesting();
 }
 
 - (void)_terminateNetworkProcess
@@ -464,19 +474,23 @@ static NSDictionary *policiesHashMapToDictionary(const HashMap<String, HashMap<S
     _processPool->setShouldMakeNextWebProcessLaunchFailForTesting(true);
 }
 
-- (size_t)_prewarmedWebProcessCount
+- (void)_makeNextNetworkProcessLaunchFailForTesting
 {
-    size_t result = 0;
+    _processPool->setShouldMakeNextNetworkProcessLaunchFailForTesting(true);
+}
+
+- (BOOL)_hasPrewarmedWebProcess
+{
     for (auto& process : _processPool->processes()) {
-        if (process->isInPrewarmedPool())
-            ++result;
+        if (process->isPrewarmed())
+            return YES;
     }
-    return result;
+    return NO;
 }
 
 - (size_t)_webProcessCountIgnoringPrewarmed
 {
-    return [self _webProcessCount] - [self _prewarmedWebProcessCount];
+    return [self _webProcessCount] - ([self _hasPrewarmedWebProcess] ? 1 : 0);
 }
 
 - (size_t)_webPageContentProcessCount

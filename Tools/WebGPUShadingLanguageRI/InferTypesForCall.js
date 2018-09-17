@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -20,23 +20,16 @@
  * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
  * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 "use strict";
 
-function inferTypesForCall(func, typeArguments, argumentTypes, returnType)
+function inferTypesForCall(func, argumentTypes, returnType)
 {
-    if (typeArguments.length && typeArguments.length != func.typeParameters.length)
-        return {failure: new OverloadResolutionFailure(func, "Wrong number of type arguments (passed " + typeArguments.length + ", require " + func.typeParameters.length + ")")};
     if (argumentTypes.length != func.parameters.length)
         return {failure: new OverloadResolutionFailure(func, "Wrong number of arguments (passed " + argumentTypes.length + ", require " + func.parameters.length + ")")};
-    let unificationContext = new UnificationContext(func.typeParametersForCallResolution);
-    for (let i = 0; i < typeArguments.length; ++i) {
-        let argument = typeArguments[i];
-        let parameter = func.typeParameters[i];
-        if (!argument.unify(unificationContext, parameter))
-            return {failure: new OverloadResolutionFailure(func, "Type argument #" + (i + 1) + " for parameter " + parameter.name + " does not match (passed " + argument + ", require " + parameter + ")")};
-    }
+    let unificationContext = new UnificationContext();
+
     for (let i = 0; i < argumentTypes.length; ++i) {
         if (!argumentTypes[i])
             throw new Error("Null argument type at i = " + i);
@@ -48,16 +41,25 @@ function inferTypesForCall(func, typeArguments, argumentTypes, returnType)
     let verificationResult = unificationContext.verify();
     if (!verificationResult.result)
         return {failure: new OverloadResolutionFailure(func, verificationResult.reason)};
-    let shouldBuildTypeArguments = !typeArguments.length;
-    if (shouldBuildTypeArguments)
-        typeArguments = [];
-    for (let typeParameter of func.typeParameters) {
-        let typeArgument = unificationContext.find(typeParameter);
-        if (typeArgument == typeParameter)
-            return {failure: new OverloadResolutionFailure(func, "Type parameter " + typeParameter + " did not get assigned a type")};
-        if (shouldBuildTypeArguments)
-            typeArguments.push(typeArgument);
-    }
-    return {func, unificationContext, typeArguments};
+
+    return {func, unificationContext};
 }
 
+function inferTypesForTypeArguments(type, typeArguments)
+{
+    if (typeArguments.length != type.typeArguments.length)
+        return {failure: new TypeOverloadResolutionFailure(type, "Wrong number of arguments (passed " + typeArguments.length + ", require " + type.typeArguments.length + ")")};
+    let unificationContext = new UnificationContext();
+
+    for (let i = 0; i < typeArguments.length; ++i) {
+        if (!typeArguments[i])
+            throw new Error("Null type argument at i = " + i);
+        if (!typeArguments[i].unify(unificationContext, type.typeArguments[i]))
+            return {failure: new TypeOverloadResolutionFailure(type, "Argument #" + (i + 1) + " " + (type.typeArguments[i].name ? "for parameter " + type.typeArguments[i].name + " " : "") + "does not match (passed " + typeArguments[i] + ", require " + type.typeArguments[i].type + ")")};
+    }
+    let verificationResult = unificationContext.verify();
+    if (!verificationResult.result)
+        return {failure: new TypeOverloadResolutionFailure(type, verificationResult.reason)};
+
+    return {type, unificationContext};
+}

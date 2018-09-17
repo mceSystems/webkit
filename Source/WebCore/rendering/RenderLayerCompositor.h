@@ -165,7 +165,7 @@ public:
     void rootOrBodyStyleChanged(RenderElement&, const RenderStyle* oldStyle);
 
     // Called after the view transparency, or the document or base background color change.
-    void rootBackgroundTransparencyChanged();
+    void rootBackgroundColorOrTransparencyChanged();
     
     // Repaint the appropriate layers when the given RenderLayer starts or stops being composited.
     void repaintOnCompositingChange(RenderLayer&);
@@ -313,7 +313,6 @@ public:
     
     void didPaintBacking(RenderLayerBacking*);
 
-    void setRootExtendedBackgroundColor(const Color&);
     const Color& rootExtendedBackgroundColor() const { return m_rootExtendedBackgroundColor; }
 
     void updateRootContentLayerClipping();
@@ -334,6 +333,9 @@ private:
     struct CompositingState;
     struct OverlapExtent;
 
+    // Returns true if the policy changed.
+    bool updateCompositingPolicy();
+    
     // GraphicsLayerClient implementation
     void notifyFlushRequired(const GraphicsLayer*) override;
     void paintContents(const GraphicsLayer*, GraphicsContext&, GraphicsLayerPaintingPhase, const FloatRect&, GraphicsLayerPaintBehavior) override;
@@ -374,7 +376,7 @@ private:
     void computeCompositingRequirements(RenderLayer* ancestorLayer, RenderLayer&, OverlapMap&, CompositingState&, bool& layersChanged, bool& descendantHas3DTransform);
 
     // Recurses down the tree, parenting descendant compositing layers and collecting an array of child layers for the current compositing layer.
-    void rebuildCompositingLayerTree(RenderLayer&, Vector<GraphicsLayer*>& childGraphicsLayersOfEnclosingLayer, int depth);
+    void rebuildCompositingLayerTree(RenderLayer&, Vector<Ref<GraphicsLayer>>& childGraphicsLayersOfEnclosingLayer, int depth);
 
     // Recurses down the tree, updating layer geometry only.
     void updateLayerTreeGeometry(RenderLayer&, int depth);
@@ -386,7 +388,7 @@ private:
     bool layerHas3DContent(const RenderLayer&) const;
     bool isRunningTransformAnimation(RenderLayerModelObject&) const;
 
-    void appendDocumentOverlayLayers(Vector<GraphicsLayer*>&);
+    void appendDocumentOverlayLayers(Vector<Ref<GraphicsLayer>>&);
     bool hasAnyAdditionalCompositedLayers(const RenderLayer& rootLayer) const;
 
     void ensureRootLayer();
@@ -443,8 +445,8 @@ private:
 
     void updateScrollCoordinationForThisFrame(ScrollingNodeID);
     ScrollingNodeID attachScrollingNode(RenderLayer&, ScrollingNodeType, ScrollingNodeID parentNodeID);
-    void updateScrollCoordinatedLayer(RenderLayer&, LayerScrollCoordinationRoles, OptionSet<ScrollingNodeChangeFlags>);
-    void detachScrollCoordinatedLayer(RenderLayer&, LayerScrollCoordinationRoles);
+    void updateScrollCoordinatedLayer(RenderLayer&, OptionSet<LayerScrollCoordinationRole>, OptionSet<ScrollingNodeChangeFlags>);
+    void detachScrollCoordinatedLayer(RenderLayer&, OptionSet<LayerScrollCoordinationRole>);
     void reattachSubframeScrollLayers();
     
     FixedPositionViewportConstraints computeFixedViewportConstraints(RenderLayer&) const;
@@ -481,14 +483,18 @@ private:
 
     bool documentUsesTiledBacking() const;
     bool isMainFrameCompositor() const;
+    
+    void setRootLayerConfigurationNeedsUpdate() { m_rootLayerConfigurationNeedsUpdate = true; }
 
 private:
     RenderView& m_renderView;
-    std::unique_ptr<GraphicsLayer> m_rootContentLayer;
+    RefPtr<GraphicsLayer> m_rootContentLayer;
     Timer m_updateCompositingLayersTimer;
 
     ChromeClient::CompositingTriggerFlags m_compositingTriggers { static_cast<ChromeClient::CompositingTriggerFlags>(ChromeClient::AllTriggers) };
     bool m_hasAcceleratedCompositing { true };
+    
+    CompositingPolicy m_compositingPolicy { CompositingPolicy::Normal };
 
     bool m_showDebugBorders { false };
     bool m_showRepaintCounter { false };
@@ -501,6 +507,7 @@ private:
 
     bool m_compositing { false };
     bool m_compositingLayersNeedRebuild { false };
+    bool m_rootLayerConfigurationNeedsUpdate { false };
     bool m_flushingLayers { false };
     bool m_shouldFlushOnReattach { false };
     bool m_forceCompositingMode { false };
@@ -517,8 +524,8 @@ private:
     RootLayerAttachment m_rootLayerAttachment { RootLayerUnattached };
 
     // Enclosing clipping layer for iframe content
-    std::unique_ptr<GraphicsLayer> m_clipLayer;
-    std::unique_ptr<GraphicsLayer> m_scrollLayer;
+    RefPtr<GraphicsLayer> m_clipLayer;
+    RefPtr<GraphicsLayer> m_scrollLayer;
 
 #if PLATFORM(IOS)
     HashSet<RenderLayer*> m_scrollingLayers;
@@ -528,19 +535,19 @@ private:
     HashSet<RenderLayer*> m_scrollCoordinatedLayersNeedingUpdate;
 
     // Enclosing layer for overflow controls and the clipping layer
-    std::unique_ptr<GraphicsLayer> m_overflowControlsHostLayer;
+    RefPtr<GraphicsLayer> m_overflowControlsHostLayer;
 
     // Layers for overflow controls
-    std::unique_ptr<GraphicsLayer> m_layerForHorizontalScrollbar;
-    std::unique_ptr<GraphicsLayer> m_layerForVerticalScrollbar;
-    std::unique_ptr<GraphicsLayer> m_layerForScrollCorner;
+    RefPtr<GraphicsLayer> m_layerForHorizontalScrollbar;
+    RefPtr<GraphicsLayer> m_layerForVerticalScrollbar;
+    RefPtr<GraphicsLayer> m_layerForScrollCorner;
 #if ENABLE(RUBBER_BANDING)
-    std::unique_ptr<GraphicsLayer> m_layerForOverhangAreas;
-    std::unique_ptr<GraphicsLayer> m_contentShadowLayer;
-    std::unique_ptr<GraphicsLayer> m_layerForTopOverhangArea;
-    std::unique_ptr<GraphicsLayer> m_layerForBottomOverhangArea;
-    std::unique_ptr<GraphicsLayer> m_layerForHeader;
-    std::unique_ptr<GraphicsLayer> m_layerForFooter;
+    RefPtr<GraphicsLayer> m_layerForOverhangAreas;
+    RefPtr<GraphicsLayer> m_contentShadowLayer;
+    RefPtr<GraphicsLayer> m_layerForTopOverhangArea;
+    RefPtr<GraphicsLayer> m_layerForBottomOverhangArea;
+    RefPtr<GraphicsLayer> m_layerForHeader;
+    RefPtr<GraphicsLayer> m_layerForFooter;
 #endif
 
     std::unique_ptr<GraphicsLayerUpdater> m_layerUpdater; // Updates tiled layer visible area periodically while animations are running.
@@ -561,6 +568,7 @@ private:
     double m_secondaryBackingStoreBytes { 0 };
 #endif
 
+    Color m_viewBackgroundColor;
     Color m_rootExtendedBackgroundColor;
 
     HashMap<ScrollingNodeID, RenderLayer*> m_scrollingNodeToLayerMap;
@@ -569,5 +577,6 @@ private:
 void paintScrollbar(Scrollbar*, GraphicsContext&, const IntRect& clip);
 
 WTF::TextStream& operator<<(WTF::TextStream&, CompositingUpdateType);
+WTF::TextStream& operator<<(WTF::TextStream&, CompositingPolicy);
 
 } // namespace WebCore

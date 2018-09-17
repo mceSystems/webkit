@@ -35,9 +35,8 @@
 
 WTF_DECLARE_CF_TYPE_TRAIT(SecCertificate);
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static SecCertificateRef leafCertificate(const CertificateInfo& certificateInfo)
 {
@@ -67,7 +66,7 @@ static NSArray *chain(const CertificateInfo& certificateInfo)
 #endif
     ASSERT(certificateInfo.type() == CertificateInfo::Type::CertificateChain);
     CFIndex chainCount = CFArrayGetCount(certificateInfo.certificateChain());
-    return chainCount > 1 ? [(NSArray *)certificateInfo.certificateChain() subarrayWithRange:NSMakeRange(1, chainCount - 1)] : nil;
+    return chainCount > 1 ? [(__bridge NSArray *)certificateInfo.certificateChain() subarrayWithRange:NSMakeRange(1, chainCount - 1)] : nil;
 }
 
 WebCredential::WebCredential(WebCertificateInfo* certificateInfo)

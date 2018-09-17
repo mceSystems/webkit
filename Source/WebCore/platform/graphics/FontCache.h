@@ -31,6 +31,7 @@
 
 #include "FontDescription.h"
 #include "FontPlatformData.h"
+#include "FontTaggedSettings.h"
 #include "Timer.h"
 #include <array>
 #include <limits.h>
@@ -110,7 +111,7 @@ struct FontDescriptionKey {
         hasher.add(m_size);
         hasher.add(m_fontSelectionRequest.weight);
         hasher.add(m_fontSelectionRequest.width);
-        hasher.add(m_fontSelectionRequest.slope);
+        hasher.add(m_fontSelectionRequest.slope.value_or(normalItalicValue()));
         hasher.add(m_locale.existingHash());
         for (unsigned flagItem : m_flags)
             hasher.add(flagItem);

@@ -132,7 +132,12 @@ class EmptyChromeClient : public ChromeClient {
     std::unique_ptr<ColorChooser> createColorChooser(ColorChooserClient&, const Color&) final;
 #endif
 
+#if ENABLE(DATALIST_ELEMENT)
+    std::unique_ptr<DataListSuggestionPicker> createDataListSuggestionPicker(DataListSuggestionsClient&) final;
+#endif
+
     void runOpenPanel(Frame&, FileChooser&) final;
+    void showShareSheet(ShareDataWithParsedURL&, CompletionHandler<void(bool)>&&) final;
     void loadIconForFiles(const Vector<String>&, FileIconLoader&) final { }
 
     void elementDidFocus(Element&) final { }

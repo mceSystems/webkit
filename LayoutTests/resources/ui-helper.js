@@ -111,6 +111,25 @@ window.UIHelper = class UIHelper {
         });
     }
 
+    static activateFormControl(element)
+    {
+        if (!this.isWebKit2() || !this.isIOS())
+            return this.activateElement(element);
+
+        const x = element.offsetLeft + element.offsetWidth / 2;
+        const y = element.offsetTop + element.offsetHeight / 2;
+
+        return new Promise(resolve => {
+            testRunner.runUIScript(`
+                (function() {
+                    uiController.didStartFormControlInteractionCallback = function() {
+                        uiController.uiScriptComplete("Done");
+                    };
+                    uiController.singleTapAtPoint(${x}, ${y}, function() { });
+                })()`, resolve);
+        });
+    }
+
     static waitForKeyboardToHide()
     {
         return new Promise(resolve => {
@@ -146,6 +165,38 @@ window.UIHelper = class UIHelper {
             testRunner.runUIScript(`(function() {
                 uiController.doAfterNextStablePresentationUpdate(function() {
                     uiController.uiScriptComplete(JSON.stringify(uiController.selectionRangeViewRects));
+                });
+            })()`, jsonString => {
+                resolve(JSON.parse(jsonString));
+            });
+        });
+    }
+
+    static getSelectionStartGrabberViewRect()
+    {
+        if (!this.isWebKit2() || !this.isIOS())
+            return Promise.resolve();
+
+        return new Promise(resolve => {
+            testRunner.runUIScript(`(function() {
+                uiController.doAfterNextStablePresentationUpdate(function() {
+                    uiController.uiScriptComplete(JSON.stringify(uiController.selectionStartGrabberViewRect));
+                });
+            })()`, jsonString => {
+                resolve(JSON.parse(jsonString));
+            });
+        });
+    }
+
+    static getSelectionEndGrabberViewRect()
+    {
+        if (!this.isWebKit2() || !this.isIOS())
+            return Promise.resolve();
+
+        return new Promise(resolve => {
+            testRunner.runUIScript(`(function() {
+                uiController.doAfterNextStablePresentationUpdate(function() {
+                    uiController.uiScriptComplete(JSON.stringify(uiController.selectionEndGrabberViewRect));
                 });
             })()`, jsonString => {
                 resolve(JSON.parse(jsonString));
@@ -211,11 +262,35 @@ window.UIHelper = class UIHelper {
         return new Promise(resolve => testRunner.runUIScript(setValueScript, resolve));
     }
 
+    static invokeShareSheetWithResolution(resolved)
+    {
+        const resolveShareSheet = `(() => uiController.invokeShareSheetWithResolution(${resolved}))()`;
+        return new Promise(resolve => testRunner.runUIScript(resolveShareSheet, resolve));
+    }
+
+    static textContentType()
+    {
+        return new Promise(resolve => {
+            testRunner.runUIScript(`(() => {
+                uiController.uiScriptComplete(uiController.textContentType);
+            })()`, resolve);
+        });
+    }
+
     static formInputLabel()
     {
         return new Promise(resolve => {
             testRunner.runUIScript(`(() => {
                 uiController.uiScriptComplete(uiController.formInputLabel);
+            })()`, resolve);
+        });
+    }
+
+    static isShowingDataListSuggestions()
+    {
+        return new Promise(resolve => {
+            testRunner.runUIScript(`(() => {
+                uiController.uiScriptComplete(uiController.isShowingDataListSuggestions);
             })()`, resolve);
         });
     }
@@ -226,6 +301,42 @@ window.UIHelper = class UIHelper {
             testRunner.runUIScript(`(() => {
                 uiController.uiScriptComplete(uiController.zoomScale);
             })()`, resolve);
+        });
+    }
+
+    static typeCharacter(characterString)
+    {
+        if (!this.isWebKit2() || !this.isIOS()) {
+            eventSender.keyDown(key);
+            return;
+        }
+
+        const escapedString = characterString.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
+        const uiScript = `uiController.typeCharacterUsingHardwareKeyboard(\`${escapedString}\`, () => uiController.uiScriptComplete())`;
+        return new Promise(resolve => testRunner.runUIScript(uiScript, resolve));
+    }
+
+    static applyAutocorrection(newText, oldText)
+    {
+        if (!this.isWebKit2())
+            return;
+
+        const [escapedNewText, escapedOldText] = [newText.replace(/`/g, "\\`"), oldText.replace(/`/g, "\\`")];
+        const uiScript = `uiController.applyAutocorrection(\`${escapedNewText}\`, \`${escapedOldText}\`, () => uiController.uiScriptComplete())`;
+        return new Promise(resolve => testRunner.runUIScript(uiScript, resolve));
+    }
+
+    static inputViewBounds()
+    {
+        if (!this.isWebKit2() || !this.isIOS())
+            return Promise.resolve();
+
+        return new Promise(resolve => {
+            testRunner.runUIScript(`(() => {
+                uiController.uiScriptComplete(JSON.stringify(uiController.inputViewBounds));
+            })()`, jsonString => {
+                resolve(JSON.parse(jsonString));
+            });
         });
     }
 }

@@ -23,6 +23,8 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+// FIXME: This is a .cpp but has ObjC in it?
+
 #include "config.h"
 #include "ArgumentCodersCF.h"
 
@@ -425,14 +427,13 @@ void encode(Encoder& encoder, CFDictionaryRef dictionary)
 
     for (CFIndex i = 0; i < size; ++i) {
         ASSERT(keys[i]);
-        ASSERT(CFGetTypeID(keys[i]) == CFStringGetTypeID());
         ASSERT(values[i]);
 
         // Ignore values we don't recognize.
         if (typeFromCFTypeRef(values[i]) == Unknown)
             continue;
 
-        encode(encoder, static_cast<CFStringRef>(keys[i]));
+        encode(encoder, keys[i]);
         encode(encoder, values[i]);
     }
 }
@@ -454,7 +455,7 @@ bool decode(Decoder& decoder, RetainPtr<CFDictionaryRef>& result)
     RetainPtr<CFMutableDictionaryRef> dictionary = adoptCF(CFDictionaryCreateMutable(0, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
     for (uint64_t i = 0; i < size; ++i) {
         // Try to decode the key name.
-        RetainPtr<CFStringRef> key;
+        RetainPtr<CFTypeRef> key;
         if (!decode(decoder, key))
             return false;
 
@@ -624,7 +625,7 @@ bool decode(Decoder& decoder, RetainPtr<CFURLRef>& result)
     if (urlBytes.isEmpty()) {
         // CFURL can't hold an empty URL, unlike NSURL.
         // FIXME: This discards base URL, which seems incorrect.
-        result = reinterpret_cast<CFURLRef>([NSURL URLWithString:@""]);
+        result = (__bridge CFURLRef)[NSURL URLWithString:@""];
         return true;
     }
 #endif
@@ -771,7 +772,6 @@ bool decode(Decoder& decoder, RetainPtr<SecKeychainItemRef>& result)
 #if HAVE(SEC_ACCESS_CONTROL)
 void encode(Encoder& encoder, SecAccessControlRef accessControl)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
     RetainPtr<CFDataRef> data = adoptCF(SecAccessControlCopyData(accessControl));
     if (data)
         encode(encoder, data.get());
@@ -779,7 +779,6 @@ void encode(Encoder& encoder, SecAccessControlRef accessControl)
 
 bool decode(Decoder& decoder, RetainPtr<SecAccessControlRef>& result)
 {
-    RELEASE_ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessCredentials));
     RetainPtr<CFDataRef> data;
     if (!decode(decoder, data))
         return false;

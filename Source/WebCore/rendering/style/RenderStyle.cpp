@@ -58,8 +58,8 @@
 namespace WebCore {
 
 struct SameSizeAsBorderValue {
-    float m_width;
     Color m_color;
+    float m_width;
     int m_restBits;
 };
 
@@ -152,7 +152,7 @@ RenderStyle::RenderStyle(CreateDefaultStyleTag)
 #if ENABLE(CURSOR_VISIBILITY)
     m_inheritedFlags.cursorVisibility = static_cast<unsigned>(initialCursorVisibility());
 #endif
-    m_inheritedFlags.direction = initialDirection();
+    m_inheritedFlags.direction = static_cast<unsigned>(initialDirection());
     m_inheritedFlags.whiteSpace = static_cast<unsigned>(initialWhiteSpace());
     m_inheritedFlags.borderCollapse = static_cast<unsigned>(initialBorderCollapse());
     m_inheritedFlags.rtlOrdering = static_cast<unsigned>(initialRTLOrdering());
@@ -613,7 +613,7 @@ bool RenderStyle::changeRequiresLayout(const RenderStyle& other, OptionSet<Style
             if (m_rareNonInheritedData->transform->hasTransform() != other.m_rareNonInheritedData->transform->hasTransform())
                 return true;
             if (*m_rareNonInheritedData->transform != *other.m_rareNonInheritedData->transform) {
-                changedContextSensitiveProperties |= StyleDifferenceContextSensitiveProperty::Transform;
+                changedContextSensitiveProperties.add(StyleDifferenceContextSensitiveProperty::Transform);
                 // Don't return; keep looking for another change
             }
         }
@@ -629,7 +629,7 @@ bool RenderStyle::changeRequiresLayout(const RenderStyle& other, OptionSet<Style
 #endif
 
         if (!arePointingToEqualData(m_rareNonInheritedData->willChange, other.m_rareNonInheritedData->willChange)) {
-            changedContextSensitiveProperties |= StyleDifferenceContextSensitiveProperty::WillChange;
+            changedContextSensitiveProperties.add(StyleDifferenceContextSensitiveProperty::WillChange);
             // Don't return; keep looking for another change
         }
     }
@@ -849,7 +849,7 @@ bool RenderStyle::changeRequiresLayerRepaint(const RenderStyle& other, OptionSet
 
     if (position() != PositionType::Static) {
         if (m_visualData->clip != other.m_visualData->clip || m_visualData->hasClip != other.m_visualData->hasClip) {
-            changedContextSensitiveProperties |= StyleDifferenceContextSensitiveProperty::ClipRect;
+            changedContextSensitiveProperties.add(StyleDifferenceContextSensitiveProperty::ClipRect);
             return true;
         }
     }
@@ -860,18 +860,18 @@ bool RenderStyle::changeRequiresLayerRepaint(const RenderStyle& other, OptionSet
 #endif
 
     if (m_rareNonInheritedData->opacity != other.m_rareNonInheritedData->opacity) {
-        changedContextSensitiveProperties |= StyleDifferenceContextSensitiveProperty::Opacity;
+        changedContextSensitiveProperties.add(StyleDifferenceContextSensitiveProperty::Opacity);
         // Don't return; keep looking for another change.
     }
 
     if (m_rareNonInheritedData->filter != other.m_rareNonInheritedData->filter) {
-        changedContextSensitiveProperties |= StyleDifferenceContextSensitiveProperty::Filter;
+        changedContextSensitiveProperties.add(StyleDifferenceContextSensitiveProperty::Filter);
         // Don't return; keep looking for another change.
     }
 
 #if ENABLE(FILTERS_LEVEL_2)
     if (m_rareNonInheritedData->backdropFilter != other.m_rareNonInheritedData->backdropFilter) {
-        changedContextSensitiveProperties |= StyleDifferenceContextSensitiveProperty::Filter;
+        changedContextSensitiveProperties.add(StyleDifferenceContextSensitiveProperty::Filter);
         // Don't return; keep looking for another change.
     }
 #endif
@@ -905,7 +905,7 @@ bool RenderStyle::changeRequiresRepaint(const RenderStyle& other, OptionSet<Styl
         || !m_backgroundData->isEquivalentForPainting(*other.m_backgroundData)
         || m_rareInheritedData->userModify != other.m_rareInheritedData->userModify
         || m_rareInheritedData->userSelect != other.m_rareInheritedData->userSelect
-        || m_rareInheritedData->colorFilter != other.m_rareInheritedData->colorFilter
+        || m_rareInheritedData->appleColorFilter != other.m_rareInheritedData->appleColorFilter
         || m_rareNonInheritedData->userDrag != other.m_rareNonInheritedData->userDrag
         || m_rareNonInheritedData->borderFit != other.m_rareNonInheritedData->borderFit
         || m_rareNonInheritedData->objectFit != other.m_rareNonInheritedData->objectFit
@@ -921,7 +921,7 @@ bool RenderStyle::changeRequiresRepaint(const RenderStyle& other, OptionSet<Styl
 
     // FIXME: this should probably be moved to changeRequiresLayerRepaint().
     if (m_rareNonInheritedData->clipPath != other.m_rareNonInheritedData->clipPath) {
-        changedContextSensitiveProperties |= StyleDifferenceContextSensitiveProperty::ClipPath;
+        changedContextSensitiveProperties.add(StyleDifferenceContextSensitiveProperty::ClipPath);
         // Don't return; keep looking for another change.
     }
 
@@ -1678,7 +1678,7 @@ void RenderStyle::setFontStretch(FontSelectionValue value)
     fontCascade().update(currentFontSelector);
 }
 
-void RenderStyle::setFontItalic(FontSelectionValue value)
+void RenderStyle::setFontItalic(std::optional<FontSelectionValue> value)
 {
     FontSelector* currentFontSelector = fontCascade().fontSelector();
     auto description = fontDescription();
@@ -1848,7 +1848,7 @@ Color RenderStyle::visitedDependentColor(CSSPropertyID colorProperty) const
 
 Color RenderStyle::visitedDependentColorWithColorFilter(CSSPropertyID colorProperty) const
 {
-    if (!hasColorFilter())
+    if (!hasAppleColorFilter())
         return visitedDependentColor(colorProperty);
 
     return colorByApplyingColorFilter(visitedDependentColor(colorProperty));
@@ -1857,7 +1857,7 @@ Color RenderStyle::visitedDependentColorWithColorFilter(CSSPropertyID colorPrope
 Color RenderStyle::colorByApplyingColorFilter(const Color& color) const
 {
     Color transformedColor = color;
-    colorFilter().transformColor(transformedColor);
+    appleColorFilter().transformColor(transformedColor);
     return transformedColor;
 }
 
@@ -2015,18 +2015,18 @@ std::pair<FontOrientation, NonCJKGlyphOrientation> RenderStyle::fontAndGlyphOrie
     // FIXME: TextOrientationSideways should map to sideways-left in vertical-lr, which is not supported yet.
 
     if (isHorizontalWritingMode())
-        return { Horizontal, NonCJKGlyphOrientation::Mixed };
+        return { FontOrientation::Horizontal, NonCJKGlyphOrientation::Mixed };
 
     switch (textOrientation()) {
     case TextOrientation::Mixed:
-        return { Vertical, NonCJKGlyphOrientation::Mixed };
+        return { FontOrientation::Vertical, NonCJKGlyphOrientation::Mixed };
     case TextOrientation::Upright:
-        return { Vertical, NonCJKGlyphOrientation::Upright };
+        return { FontOrientation::Vertical, NonCJKGlyphOrientation::Upright };
     case TextOrientation::Sideways:
-        return { Horizontal, NonCJKGlyphOrientation::Mixed };
+        return { FontOrientation::Horizontal, NonCJKGlyphOrientation::Mixed };
     default:
         ASSERT_NOT_REACHED();
-        return { Horizontal, NonCJKGlyphOrientation::Mixed };
+        return { FontOrientation::Horizontal, NonCJKGlyphOrientation::Mixed };
     }
 }
 

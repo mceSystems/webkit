@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,14 +25,14 @@
 "use strict";
 
 class NativeType extends Type {
-    constructor(origin, name, typeParameters)
+    constructor(origin, name, typeArguments)
     {
-        if (!(typeParameters instanceof Array))
-            throw new Error("type parameters not array: " + typeParameters);
+        if (!(typeArguments instanceof Array))
+            throw new Error("type parameters not array: " + typeArguments);
         super();
         this._origin = origin;
         this._name = name;
-        this._typeParameters = typeParameters;
+        this._typeArguments = typeArguments;
         this._isNumber = false;
         this._isInt = false;
         this._isFloating = false;
@@ -41,7 +41,7 @@ class NativeType extends Type {
     
     get origin() { return this._origin; }
     get name() { return this._name; }
-    get typeParameters() { return this._typeParameters; }
+    get typeArguments() { return this._typeArguments; }
     get isNative() { return true; }
     
     // We let Intrinsics.js set these as it likes.
@@ -54,18 +54,22 @@ class NativeType extends Type {
     get isPrimitive() { return this._isPrimitive; }
     set isPrimitive(value) { this._isPrimitive = value; }
     
-    instantiate(typeArguments)
-    {
-        if (typeArguments.length != this.typeParameters.length)
-            throw new Error("Wrong number of type arguments to instantiation");
-        if (!typeArguments.length)
-            return this;
-        return new NativeTypeInstance(this, typeArguments);
-    }
-    
     toString()
     {
-        return "native typedef " + this.name + "<" + this.typeParameters + ">";
+        let result = `native typedef ${this.name}`;
+        if (this.typeArguments.length)
+            result += "<" + this.typeArguments.join(",") + ">";
+        return result;
+    }
+    
+    static create(origin, name, typeArguments)
+    {
+        if (name == "vector")
+            return new VectorType(origin, name, typeArguments);
+        if (name == "matrix")
+            return new MatrixType(origin, name, typeArguments);
+
+        return new NativeType(origin, name, typeArguments);
     }
 }
 

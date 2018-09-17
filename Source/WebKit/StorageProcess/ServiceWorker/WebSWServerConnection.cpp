@@ -76,11 +76,6 @@ WebSWServerConnection::~WebSWServerConnection()
         server().unregisterServiceWorkerClient(keyValue.value, keyValue.key);
 }
 
-void WebSWServerConnection::disconnectedFromWebProcess()
-{
-    notImplemented();
-}
-
 void WebSWServerConnection::rejectJobInClient(ServiceWorkerJobIdentifier jobIdentifier, const ExceptionData& exceptionData)
 {
     send(Messages::WebSWClientConnection::JobRejectedInServer(jobIdentifier, exceptionData));
@@ -256,10 +251,10 @@ void WebSWServerConnection::didFinishFetch(FetchIdentifier fetchIdentifier)
     m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidFinish { }, fetchIdentifier.toUInt64());
 }
 
-void WebSWServerConnection::didFailFetch(FetchIdentifier fetchIdentifier)
+void WebSWServerConnection::didFailFetch(FetchIdentifier fetchIdentifier, const ResourceError& error)
 {
     SWSERVERCONNECTION_RELEASE_LOG_ERROR_IF_ALLOWED("didFailFetch: fetchIdentifier: %s", fetchIdentifier.loggingString().utf8().data());
-    m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidFail { }, fetchIdentifier.toUInt64());
+    m_contentConnection->send(Messages::ServiceWorkerClientFetch::DidFail { error }, fetchIdentifier.toUInt64());
 }
 
 void WebSWServerConnection::didNotHandleFetch(FetchIdentifier fetchIdentifier)

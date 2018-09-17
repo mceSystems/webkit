@@ -40,9 +40,8 @@
 #import <WebCore/NotImplemented.h>
 #import <wtf/RefPtr.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #if ENABLE(IOS_TOUCH_EVENTS)
 
@@ -97,12 +96,12 @@ void WebChromeClient::didLayout(LayoutType type)
 
 void WebChromeClient::didStartOverflowScroll()
 {
-    m_page.send(Messages::WebPageProxy::OverflowScrollWillStartScroll());
+    m_page.send(Messages::WebPageProxy::ScrollingNodeScrollWillStartScroll());
 }
 
 void WebChromeClient::didEndOverflowScroll()
 {
-    m_page.send(Messages::WebPageProxy::OverflowScrollDidEndScroll());
+    m_page.send(Messages::WebPageProxy::ScrollingNodeScrollDidEndScroll());
 }
 
 bool WebChromeClient::hasStablePageScaleFactor() const
@@ -157,7 +156,7 @@ RefPtr<Icon> WebChromeClient::createIconForFiles(const Vector<String>& filenames
 
     // FIXME: We should generate an icon showing multiple files here, if applicable. Currently, if there are multiple
     // files, we only use the first URL to generate an icon.
-    return Icon::createIconForImage(iconForFile([NSURL fileURLWithPath:filenames[0]]).CGImage);
+    return Icon::createIconForImage(iconForFile([NSURL fileURLWithPath:filenames[0] isDirectory:NO]).CGImage);
 }
 
 } // namespace WebKit

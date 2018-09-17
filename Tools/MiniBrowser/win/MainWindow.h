@@ -25,27 +25,47 @@
 
 #pragma once
 
+#include "BrowserWindow.h"
 #include <memory>
 #include <string>
+#include <wtf/RefPtr.h>
 
-class MiniBrowser;
-
-class MainWindow {
+class MainWindow : public RefCounted<MainWindow> {
 public:
+    enum class BrowserWindowType {
+        WebKit,
+        WebKitLegacy
+    };
+    static Ref<MainWindow> create(BrowserWindowType);
+
+    ~MainWindow();
     bool init(HINSTANCE hInstance, bool usesLayeredWebView = false, bool pageLoadTesting = false);
 
     void resizeSubViews();
     HWND hwnd() const { return m_hMainWnd; }
-    MiniBrowser* browserWindow() const { return m_browserWindow.get(); }
+    BrowserWindow* browserWindow() const { return m_browserWindow.get(); }
+
+    void loadURL(BSTR url);
     
 private:
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+    static INT_PTR CALLBACK customUserAgentDialogProc(HWND, UINT, WPARAM, LPARAM);
+    static INT_PTR CALLBACK cachesDialogProc(HWND, UINT, WPARAM, LPARAM);
     static void registerClass(HINSTANCE hInstance);
     static std::wstring s_windowClass;
+    static size_t s_numInstances;
+
+    MainWindow(BrowserWindowType);
+    bool toggleMenuItem(UINT menuID);
+    void onURLBarEnter();
+    void updateDeviceScaleFactor();
 
     HWND m_hMainWnd { nullptr };
     HWND m_hURLBarWnd { nullptr };
     HWND m_hBackButtonWnd { nullptr };
     HWND m_hForwardButtonWnd { nullptr };
-    std::unique_ptr<MiniBrowser> m_browserWindow;
+    HWND m_hCacheWnd { nullptr };
+    HGDIOBJ m_hURLBarFont { nullptr };
+    BrowserWindowType m_browserWindowType;
+    RefPtr<BrowserWindow> m_browserWindow;
 };

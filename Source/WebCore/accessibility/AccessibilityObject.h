@@ -708,6 +708,7 @@ public:
     virtual bool canvasHasFallbackContent() const { return false; }
     bool supportsRangeValue() const;
     const AtomicString& identifierAttribute() const;
+    const AtomicString& linkRelValue() const;
     void classList(Vector<String>&) const;
     virtual String roleDescription() const;
     AccessibilityCurrentState currentState() const;
@@ -730,7 +731,7 @@ public:
     virtual bool supportsARIADragging() const { return false; }
     virtual bool isARIAGrabbed() { return false; }
     virtual void setARIAGrabbed(bool) { }
-    virtual void determineARIADropEffects(Vector<String>&) { }
+    virtual Vector<String> determineARIADropEffects() { return { }; }
     
     // Called on the root AX object to return the deepest available element.
     virtual AccessibilityObject* accessibilityHitTest(const IntPoint&) const { return nullptr; }

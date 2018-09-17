@@ -12,6 +12,8 @@
 
 #import <Foundation/Foundation.h>
 
+__attribute__((objc_runtime_name("WK_RTCUIApplicationStatusObserver")))
+NS_EXTENSION_UNAVAILABLE_IOS("Application status not available in app extensions.")
 @interface RTCUIApplicationStatusObserver : NSObject
 
 + (instancetype)sharedInstance;

@@ -29,10 +29,11 @@
 #if WK_API_ENABLED
 
 #import "APIArray.h"
+#import "PluginProcessManager.h"
 #import "WKNSArray.h"
 #import "WebPreferences.h"
-#import "_WKExperimentalFeature.h"
 #import "_WKExperimentalFeatureInternal.h"
+#import "_WKInternalDebugFeatureInternal.h"
 #import <WebCore/SecurityOrigin.h>
 #import <WebCore/Settings.h>
 #import <wtf/RetainPtr.h>
@@ -96,7 +97,7 @@
 
 - (id)copyWithZone:(NSZone *)zone
 {
-    return wrapper(_preferences->copy().leakRef());
+    return [wrapper(_preferences->copy()) retain];
 }
 
 - (CGFloat)minimumFontSize
@@ -526,20 +527,48 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
     _preferences->setFixedFontFamily(fixedPitchFontFamily);
 }
 
++ (NSArray<_WKInternalDebugFeature *> *)_internalDebugFeatures
+{
+    auto features = WebKit::WebPreferences::internalDebugFeatures();
+    return wrapper(API::Array::create(WTFMove(features)));
+}
+
+- (BOOL)_isEnabledForInternalDebugFeature:(_WKInternalDebugFeature *)feature
+{
+    return _preferences->isFeatureEnabled(*feature->_internalDebugFeature);
+}
+
+- (void)_setEnabled:(BOOL)value forInternalDebugFeature:(_WKInternalDebugFeature *)feature
+{
+    _preferences->setFeatureEnabled(*feature->_internalDebugFeature, value);
+}
+
 + (NSArray<_WKExperimentalFeature *> *)_experimentalFeatures
 {
     auto features = WebKit::WebPreferences::experimentalFeatures();
-    return [wrapper(API::Array::create(WTFMove(features)).leakRef()) autorelease];
+    return wrapper(API::Array::create(WTFMove(features)));
 }
 
+// FIXME: Remove this once Safari has adopted the new API.
 - (BOOL)_isEnabledForFeature:(_WKExperimentalFeature *)feature
 {
-    return _preferences->isEnabledForFeature(*feature->_experimentalFeature);
+    return [self _isEnabledForExperimentalFeature:feature];
 }
 
+// FIXME: Remove this once Safari has adopted the new API.
 - (void)_setEnabled:(BOOL)value forFeature:(_WKExperimentalFeature *)feature
 {
-    _preferences->setEnabledForFeature(value, *feature->_experimentalFeature);
+    [self _setEnabled:value forExperimentalFeature:feature];
+}
+
+- (BOOL)_isEnabledForExperimentalFeature:(_WKExperimentalFeature *)feature
+{
+    return _preferences->isFeatureEnabled(*feature->_experimentalFeature);
+}
+
+- (void)_setEnabled:(BOOL)value forExperimentalFeature:(_WKExperimentalFeature *)feature
+{
+    _preferences->setFeatureEnabled(*feature->_experimentalFeature, value);
 }
 
 - (BOOL)_applePayCapabilityDisclosureAllowed
@@ -670,12 +699,11 @@ static _WKStorageBlockingPolicy toAPI(WebCore::SecurityOrigin::StorageBlockingPo
 
 - (BOOL)_webRTCLegacyAPIEnabled
 {
-    return _preferences->webRTCLegacyAPIEnabled();
+    return NO;
 }
 
 - (void)_setWebRTCLegacyAPIEnabled:(BOOL)enabled
 {
-    _preferences->setWebRTCLegacyAPIEnabled(enabled);
 }
 
 - (void)_setJavaScriptCanAccessClipboard:(BOOL)javaScriptCanAccessClipboard
@@ -749,6 +777,36 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 - (BOOL)_avFoundationEnabled
 {
     return _preferences->isAVFoundationEnabled();
+}
+
+- (void)_setColorFilterEnabled:(BOOL)enabled
+{
+    _preferences->setColorFilterEnabled(enabled);
+}
+
+- (BOOL)_colorFilterEnabled
+{
+    return _preferences->colorFilterEnabled();
+}
+
+- (void)_setPunchOutWhiteBackgroundsInDarkMode:(BOOL)punches
+{
+    _preferences->setPunchOutWhiteBackgroundsInDarkMode(punches);
+}
+
+- (BOOL)_punchOutWhiteBackgroundsInDarkMode
+{
+    return _preferences->punchOutWhiteBackgroundsInDarkMode();
+}
+
+- (void)_setLowPowerVideoAudioBufferSizeEnabled:(BOOL)enabled
+{
+    _preferences->setLowPowerVideoAudioBufferSizeEnabled(enabled);
+}
+
+- (BOOL)_lowPowerVideoAudioBufferSizeEnabled
+{
+    return _preferences->lowPowerVideoAudioBufferSizeEnabled();
 }
 
 #if PLATFORM(MAC)
@@ -920,6 +978,19 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 - (BOOL)_artificialPluginInitializationDelayEnabled
 {
     return _preferences->artificialPluginInitializationDelayEnabled();
+}
+
+- (void)_setExperimentalPlugInSandboxProfilesEnabled:(BOOL)enabled
+{
+#if ENABLE(NETSCAPE_PLUGIN_API)
+    WebKit::PluginProcessManager::singleton().setExperimentalPlugInSandboxProfilesEnabled(enabled);
+#endif
+    _preferences->setExperimentalPlugInSandboxProfilesEnabled(enabled);
+}
+
+- (BOOL)_experimentalPlugInSandboxProfilesEnabled
+{
+    return _preferences->experimentalPlugInSandboxProfilesEnabled();
 }
 
 - (void)_setCookieEnabled:(BOOL)enabled

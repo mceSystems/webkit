@@ -26,6 +26,7 @@ typedef NS_ENUM(NSInteger, RTCVideoRotation) {
 
 // RTCVideoFrame is an ObjectiveC version of webrtc::VideoFrame.
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCVideoFrame")))
 @interface RTCVideoFrame : NSObject
 
 /** Width without rotation applied. */
@@ -44,7 +45,7 @@ RTC_EXPORT
 @property(nonatomic, readonly) id<RTCVideoFrameBuffer> buffer;
 
 - (instancetype)init NS_UNAVAILABLE;
-- (instancetype)new NS_UNAVAILABLE;
+- (instancetype) new NS_UNAVAILABLE;
 
 /** Initialize an RTCVideoFrame from a pixel buffer, rotation, and timestamp.
  *  Deprecated - initialize with a RTCCVPixelBuffer instead

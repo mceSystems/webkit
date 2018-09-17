@@ -542,7 +542,7 @@ RetainPtr<CTFontRef> preparePlatformFont(CTFontRef originalFont, const FontDescr
     const auto& variations = fontDescription.variationSettings();
     auto textRenderingMode = fontDescription.textRenderingMode();
 
-    if (!originalFont || (!features.size() && (!alwaysAddVariations && variations.isEmpty()) && (textRenderingMode == AutoTextRendering) && variantSettings.isAllNormal()
+    if (!originalFont || (!features.size() && (!alwaysAddVariations && variations.isEmpty()) && (textRenderingMode == TextRenderingMode::AutoTextRendering) && variantSettings.isAllNormal()
         && (!fontFaceFeatures || !fontFaceFeatures->size()) && (!fontFaceVariantSettings || fontFaceVariantSettings->isAllNormal())))
         return originalFont;
 
@@ -566,7 +566,7 @@ RetainPtr<CTFontRef> preparePlatformFont(CTFontRef originalFont, const FontDescr
         featuresToBeApplied.set(newFeature.key, newFeature.value);
 
     // Step 5: Other properties (text-rendering)
-    if (textRenderingMode == OptimizeSpeed) {
+    if (textRenderingMode == TextRenderingMode::OptimizeSpeed) {
         featuresToBeApplied.set(fontFeatureTag("liga"), 0);
         featuresToBeApplied.set(fontFeatureTag("clig"), 0);
         featuresToBeApplied.set(fontFeatureTag("dlig"), 0);
@@ -597,7 +597,7 @@ RetainPtr<CTFontRef> preparePlatformFont(CTFontRef originalFont, const FontDescr
     if (applyWeightWidthSlopeVariations && !fontIsSystemFont(originalFont)) {
         float weight = fontSelectionRequest.weight;
         float width = fontSelectionRequest.width;
-        float slope = fontSelectionRequest.slope;
+        float slope = fontSelectionRequest.slope.value_or(normalItalicValue());
         if (auto weightValue = fontFaceCapabilities.weight)
             weight = std::max(std::min(weight, static_cast<float>(weightValue->maximum)), static_cast<float>(weightValue->minimum));
         if (auto widthValue = fontFaceCapabilities.width)
@@ -653,7 +653,7 @@ RetainPtr<CTFontRef> preparePlatformFont(CTFontRef originalFont, const FontDescr
     }
 #endif
 
-    if (textRenderingMode == OptimizeLegibility) {
+    if (textRenderingMode == TextRenderingMode::OptimizeLegibility) {
         CGFloat size = CTFontGetSize(originalFont);
         auto sizeNumber = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberCGFloatType, &size));
         CFDictionaryAddValue(attributes.get(), kCTFontOpticalSizeAttribute, sizeNumber.get());
@@ -1481,14 +1481,22 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
 {
     // FIXME: Would be even better to somehow get the user's default font here.  For now we'll pick
     // the default that the user would get without changing any prefs.
-    if (RefPtr<Font> font = fontForFamily(fontDescription, AtomicString("Times", AtomicString::ConstructFromLiteral)))
-        return *font;
+    if (auto result = fontForFamily(fontDescription, AtomicString("Times", AtomicString::ConstructFromLiteral)))
+        return *result;
 
-    // The Times fallback will almost always work, but in the highly unusual case where
-    // the user doesn't have it, we fall back on Lucida Grande because that's
-    // guaranteed to be there, according to Nathan Taylor. This is good enough
-    // to avoid a crash at least.
-    return *fontForFamily(fontDescription, AtomicString("Lucida Grande", AtomicString::ConstructFromLiteral), nullptr, nullptr, { }, false);
+    // LastResort is guaranteed to be non-null.
+#if (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 110000) || (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300)
+    auto fontDescriptor = adoptCF(CTFontDescriptorCreateLastResort());
+    auto font = adoptCF(CTFontCreateWithFontDescriptor(fontDescriptor.get(), fontDescription.computedPixelSize(), nullptr));
+#else
+    // Even if Helvetica doesn't exist, CTFontCreateWithName will return
+    // a thin wrapper around a GraphicsFont which represents LastResort.
+    auto font = adoptCF(CTFontCreateWithName(CFSTR("Helvetica"), fontDescription.computedPixelSize(), nullptr));
+#endif
+    bool syntheticBold, syntheticOblique;
+    std::tie(syntheticBold, syntheticOblique) = computeNecessarySynthesis(font.get(), fontDescription).boldObliquePair();
+    FontPlatformData platformData(font.get(), fontDescription.computedPixelSize(), syntheticBold, syntheticOblique, fontDescription.orientation(), fontDescription.widthVariant(), fontDescription.textRenderingMode());
+    return fontForPlatformData(platformData);
 }
 
 }

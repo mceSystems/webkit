@@ -54,14 +54,9 @@ String formatLocalizedString(String format, ...)
     va_list arguments;
     va_start(arguments, format);
 
-#if COMPILER(CLANG)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-nonliteral"
-#endif
+    ALLOW_NONLITERAL_FORMAT_BEGIN
     auto result = adoptCF(CFStringCreateWithFormatAndArguments(0, 0, format.createCFString().get(), arguments));
-#if COMPILER(CLANG)
-#pragma clang diagnostic pop
-#endif
+    ALLOW_NONLITERAL_FORMAT_END
 
     va_end(arguments);
     return result.get();
@@ -630,11 +625,6 @@ String AXAutoFillStrongPasswordLabel()
     return WEB_UI_STRING("strong password auto fill", "Label for the strong password auto fill button inside a text field.");
 }
 
-String AXAutoFillStrongConfirmationPasswordLabel()
-{
-    return WEB_UI_STRING("strong password confirmation auto fill", "Label for the strong password confirmation auto fill button inside a text field.");
-}
-
 String autoFillStrongPasswordLabel()
 {
     return WEB_UI_STRING("Strong Password", "Label for strong password.");
@@ -1034,7 +1024,7 @@ String webCryptoMasterKeyKeychainComment()
 
 #endif
 
-#if ENABLE(EXTRA_ZOOM_MODE)
+#if PLATFORM(WATCHOS)
 
 String numberPadOKButtonTitle()
 {

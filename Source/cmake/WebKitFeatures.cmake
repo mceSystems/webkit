@@ -3,10 +3,6 @@
 # Options*.cmake, but should do so only if there is strong reason to
 # deviate from the defaults of the WebKit project (e.g. if the feature
 # requires platform-specific implementation that does not exist).
-#
-# Most defaults in this file affect end users but not developers.
-# Defaults for development builds are set in FeatureList.pm. Most all
-# features enabled here should also be enabled in FeatureList.pm.
 
 set(_WEBKIT_AVAILABLE_OPTIONS "")
 
@@ -72,6 +68,14 @@ macro(WEBKIT_OPTION_BEGIN)
         set(ENABLE_FTL_DEFAULT OFF)
     endif ()
 
+    if (WTF_CPU_ARM OR WTF_CPU_ARM64 OR WTF_CPU_MIPS OR WTF_CPU_X86_64 OR WTF_CPU_X86)
+        set(ENABLE_JIT_DEFAULT ON)
+        set(USE_SYSTEM_MALLOC_DEFAULT OFF)
+    else ()
+        set(ENABLE_JIT_DEFAULT OFF)
+        set(USE_SYSTEM_MALLOC_DEFAULT ON)
+    endif ()
+
     WEBKIT_OPTION_DEFINE(ENABLE_3D_TRANSFORMS "Toggle 3D transforms support" PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_ACCELERATED_2D_CANVAS "Toggle accelerated 2D canvas support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_ACCELERATED_OVERFLOW_SCROLLING "Toggle accelerated scrolling support" PRIVATE OFF)
@@ -100,7 +104,7 @@ macro(WEBKIT_OPTION_BEGIN)
     WEBKIT_OPTION_DEFINE(ENABLE_DATACUE_VALUE "Toggle datacue value support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_DATALIST_ELEMENT "Toggle HTML5 datalist support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_DEVICE_ORIENTATION "Toggle DeviceOrientation support" PRIVATE OFF)
-    WEBKIT_OPTION_DEFINE(ENABLE_DFG_JIT "Toggle data flow graph JIT tier" PRIVATE ON)
+    WEBKIT_OPTION_DEFINE(ENABLE_DFG_JIT "Toggle data flow graph JIT tier" PRIVATE ${ENABLE_JIT_DEFAULT})
     WEBKIT_OPTION_DEFINE(ENABLE_DOWNLOAD_ATTRIBUTE "Toggle download attribute support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_DRAG_SUPPORT "Toggle support of drag actions (including selection of text with mouse)" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_ENCRYPTED_MEDIA "Toggle EME support" PRIVATE OFF)
@@ -116,7 +120,6 @@ macro(WEBKIT_OPTION_BEGIN)
     WEBKIT_OPTION_DEFINE(ENABLE_INDEXED_DATABASE_IN_WORKERS "Toggle support for indexed database in workers" PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_INDIE_UI "Toggle Indie UI support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_INPUT_TYPE_COLOR "Toggle Color Input support" PRIVATE OFF)
-    WEBKIT_OPTION_DEFINE(ENABLE_INPUT_TYPE_COLOR_POPOVER "Toggle popover color input support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_INPUT_TYPE_DATE "Toggle date type <input> support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_INPUT_TYPE_DATETIME_INCOMPLETE "Toggle broken datetime type <input> support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_INPUT_TYPE_DATETIMELOCAL "Toggle datetime-local type <input> support" PRIVATE OFF)
@@ -125,10 +128,8 @@ macro(WEBKIT_OPTION_BEGIN)
     WEBKIT_OPTION_DEFINE(ENABLE_INPUT_TYPE_WEEK "Toggle week type <input> support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_INTERSECTION_OBSERVER "Enable Intersection Observer support" PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_INTL "Toggle Intl support" PRIVATE ON)
-    WEBKIT_OPTION_DEFINE(ENABLE_INTL_NUMBER_FORMAT_TO_PARTS "Toggle Intl.NumberFormat.prototype.formatToParts support" PRIVATE OFF)
-    WEBKIT_OPTION_DEFINE(ENABLE_INTL_PLURAL_RULES "Toggle Intl.PluralRules support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_IOS_AIRPLAY "Toggle iOS airplay support" PRIVATE OFF)
-    WEBKIT_OPTION_DEFINE(ENABLE_JIT "Enable JustInTime javascript support" PRIVATE ON)
+    WEBKIT_OPTION_DEFINE(ENABLE_JIT "Enable JustInTime javascript support" PRIVATE ${ENABLE_JIT_DEFAULT})
     WEBKIT_OPTION_DEFINE(ENABLE_LEGACY_CUSTOM_PROTOCOL_MANAGER "Toggle legacy protocol manager support" PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_LEGACY_CSS_VENDOR_PREFIXES "Toggle legacy css vendor prefix support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_LEGACY_ENCRYPTED_MEDIA "Support legacy EME" PRIVATE OFF)
@@ -187,7 +188,7 @@ macro(WEBKIT_OPTION_BEGIN)
     WEBKIT_OPTION_DEFINE(ENABLE_WEB_CRYPTO "Whether to enable support for Web Crypto API." PRIVATE ON)
     WEBKIT_OPTION_DEFINE(ENABLE_WEB_RTC "Toggle WebRTC API support" PRIVATE OFF)
     WEBKIT_OPTION_DEFINE(ENABLE_XSLT "Toggle XSLT support" PRIVATE ON)
-    WEBKIT_OPTION_DEFINE(USE_SYSTEM_MALLOC "Toggle system allocator instead of WebKit's custom allocator" PRIVATE OFF)
+    WEBKIT_OPTION_DEFINE(USE_SYSTEM_MALLOC "Toggle system allocator instead of WebKit's custom allocator" PRIVATE ${USE_SYSTEM_MALLOC_DEFAULT})
 
     WEBKIT_OPTION_DEPEND(ENABLE_WEB_RTC ENABLE_MEDIA_STREAM)
     WEBKIT_OPTION_DEPEND(ENABLE_LEGACY_ENCRYPTED_MEDIA ENABLE_VIDEO)
@@ -356,22 +357,27 @@ endmacro()
 
 macro(WEBKIT_CHECK_HAVE_INCLUDE _variable _header)
     check_include_file(${_header} ${_variable}_value)
-    SET_AND_EXPOSE_TO_BUILD(${_variable} ${_variable}_value)
+    SET_AND_EXPOSE_TO_BUILD(${_variable} ${${_variable}_value})
 endmacro()
 
 macro(WEBKIT_CHECK_HAVE_FUNCTION _variable _function)
     check_function_exists(${_function} ${_variable}_value)
-    SET_AND_EXPOSE_TO_BUILD(${_variable} ${_variable}_value)
+    SET_AND_EXPOSE_TO_BUILD(${_variable} ${${_variable}_value})
 endmacro()
 
 macro(WEBKIT_CHECK_HAVE_SYMBOL _variable _symbol _header)
-    check_symbol_exists(${_symbol} ${_header} ${_variable}_value)
-    SET_AND_EXPOSE_TO_BUILD(${_variable} ${_variable}_value)
+    check_symbol_exists(${_symbol} "${_header}" ${_variable}_value)
+    SET_AND_EXPOSE_TO_BUILD(${_variable} ${${_variable}_value})
 endmacro()
 
 macro(WEBKIT_CHECK_HAVE_STRUCT _variable _struct _member _header)
-    check_struct_has_member(${_struct} ${_member} ${_header} ${_variable}_value)
-    SET_AND_EXPOSE_TO_BUILD(${_variable} ${_variable}_value)
+    check_struct_has_member(${_struct} ${_member} "${_header}" ${_variable}_value)
+    SET_AND_EXPOSE_TO_BUILD(${_variable} ${${_variable}_value})
+endmacro()
+
+macro(WEBKIT_CHECK_SOURCE_COMPILES _variable _source)
+    check_cxx_source_compiles("${_source}" ${_variable}_value)
+    SET_AND_EXPOSE_TO_BUILD(${_variable} ${${_variable}_value})
 endmacro()
 
 option(ENABLE_EXPERIMENTAL_FEATURES "Enable experimental features" OFF)

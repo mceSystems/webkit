@@ -68,17 +68,11 @@ SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
 
 SOFT_LINK_CLASS(AVFoundation, AVAssetTrack)
 SOFT_LINK_CLASS(AVFoundation, AVStreamDataParser)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 SOFT_LINK_CLASS(AVFoundation, AVSampleBufferAudioRenderer)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 SOFT_LINK_CLASS(AVFoundation, AVSampleBufferDisplayLayer)
 SOFT_LINK_CLASS(AVFoundation, AVStreamSession)
-
-SOFT_LINK_POINTER_OPTIONAL(AVFoundation, AVMediaTypeVideo, NSString *)
-SOFT_LINK_POINTER_OPTIONAL(AVFoundation, AVMediaTypeAudio, NSString *)
-SOFT_LINK_POINTER_OPTIONAL(AVFoundation, AVMediaTypeText, NSString *)
 
 SOFT_LINK_CONSTANT(AVFoundation, AVMediaCharacteristicVisual, NSString*)
 SOFT_LINK_CONSTANT(AVFoundation, AVMediaCharacteristicAudible, NSString*)
@@ -86,9 +80,6 @@ SOFT_LINK_CONSTANT(AVFoundation, AVMediaCharacteristicLegible, NSString*)
 SOFT_LINK_CONSTANT(AVFoundation, AVSampleBufferDisplayLayerFailedToDecodeNotification, NSString*)
 SOFT_LINK_CONSTANT(AVFoundation, AVSampleBufferDisplayLayerFailedToDecodeNotificationErrorKey, NSString*)
 
-#define AVMediaTypeVideo getAVMediaTypeVideo()
-#define AVMediaTypeAudio getAVMediaTypeAudio()
-#define AVMediaTypeText getAVMediaTypeText()
 #define AVSampleBufferDisplayLayerFailedToDecodeNotification getAVSampleBufferDisplayLayerFailedToDecodeNotification()
 #define AVSampleBufferDisplayLayerFailedToDecodeNotificationErrorKey getAVSampleBufferDisplayLayerFailedToDecodeNotificationErrorKey()
 
@@ -250,23 +241,19 @@ SOFT_LINK_CONSTANT(AVFoundation, AVSampleBufferDisplayLayerFailedToDecodeNotific
 @interface WebAVSampleBufferErrorListener : NSObject {
     WebCore::SourceBufferPrivateAVFObjC* _parent;
     Vector<RetainPtr<AVSampleBufferDisplayLayer>> _layers;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
     Vector<RetainPtr<AVSampleBufferAudioRenderer>> _renderers;
-#pragma clang diagnostic pop
+    ALLOW_NEW_API_WITHOUT_GUARDS_END
 }
 
 - (id)initWithParent:(WebCore::SourceBufferPrivateAVFObjC*)parent;
 - (void)invalidate;
 - (void)beginObservingLayer:(AVSampleBufferDisplayLayer *)layer;
 - (void)stopObservingLayer:(AVSampleBufferDisplayLayer *)layer;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 - (void)beginObservingRenderer:(AVSampleBufferAudioRenderer *)renderer;
 - (void)stopObservingRenderer:(AVSampleBufferAudioRenderer *)renderer;
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 @end
 
 @implementation WebAVSampleBufferErrorListener
@@ -329,12 +316,10 @@ SOFT_LINK_CONSTANT(AVFoundation, AVSampleBufferDisplayLayerFailedToDecodeNotific
     [[NSNotificationCenter defaultCenter] removeObserver:self name:AVSampleBufferDisplayLayerFailedToDecodeNotification object:layer];
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 - (void)beginObservingRenderer:(AVSampleBufferAudioRenderer*)renderer
 {
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
     ASSERT(_parent);
     ASSERT(!_renderers.contains(renderer));
 
@@ -342,11 +327,9 @@ SOFT_LINK_CONSTANT(AVFoundation, AVSampleBufferDisplayLayerFailedToDecodeNotific
     [renderer addObserver:self forKeyPath:@"error" options:NSKeyValueObservingOptionNew context:nullptr];
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 - (void)stopObservingRenderer:(AVSampleBufferAudioRenderer*)renderer
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 {
     ASSERT(_parent);
     ASSERT(_renderers.contains(renderer));
@@ -379,11 +362,9 @@ SOFT_LINK_CONSTANT(AVFoundation, AVSampleBufferDisplayLayerFailedToDecodeNotific
             ASSERT_NOT_REACHED();
 
     } else if ([object isKindOfClass:getAVSampleBufferAudioRendererClass()]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+        ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
         RetainPtr<AVSampleBufferAudioRenderer> renderer = (AVSampleBufferAudioRenderer *)object;
-#pragma clang diagnostic pop
+        ALLOW_NEW_API_WITHOUT_GUARDS_END
         RetainPtr<NSError> error = [change valueForKey:NSKeyValueChangeNewKey];
 
         ASSERT(_renderers.contains(renderer.get()));
@@ -457,7 +438,7 @@ protected:
         , m_isText([track hasMediaCharacteristic:AVMediaCharacteristicLegible])
     {
         NSArray* formatDescriptions = [track formatDescriptions];
-        CMFormatDescriptionRef description = [formatDescriptions count] ? (CMFormatDescriptionRef)[formatDescriptions objectAtIndex:0] : 0;
+        CMFormatDescriptionRef description = [formatDescriptions count] ? (__bridge CMFormatDescriptionRef)[formatDescriptions objectAtIndex:0] : 0;
         if (description) {
             FourCharCode codec = CMFormatDescriptionGetMediaSubType(description);
             m_codec = AtomicString(reinterpret_cast<LChar*>(&codec), 4);
@@ -488,7 +469,7 @@ static void bufferWasConsumedCallback(CMNotificationCenterRef, const void*, CFSt
         return;
 
     ASSERT(CFGetTypeID(payload) == CFDictionaryGetTypeID());
-    auto context = (WebBufferConsumedContext *)[(NSDictionary *)payload valueForKey:kBufferConsumedContext];
+    WebBufferConsumedContext *context = [(__bridge NSDictionary *)payload valueForKey:kBufferConsumedContext];
     if (!context)
         return;
 
@@ -544,6 +525,8 @@ void SourceBufferPrivateAVFObjC::didParseStreamDataAsAsset(AVAsset* asset)
 
     m_videoTracks.clear();
     m_audioTracks.clear();
+
+    m_discardSamplesUntilNextInitializationSegment = false;
 
     SourceBufferPrivateClient::InitializationSegment segment;
 
@@ -613,6 +596,9 @@ bool SourceBufferPrivateAVFObjC::processCodedFrame(int trackID, CMSampleBufferRe
         // will just confuse its state. Drop this sample until we can handle text tracks properly.
         return false;
     }
+
+    if (m_discardSamplesUntilNextInitializationSegment)
+        return false;
 
     if (m_client) {
         Ref<MediaSample> mediaSample = MediaSampleAVFObjC::create(sampleBuffer, trackID);
@@ -753,6 +739,7 @@ void SourceBufferPrivateAVFObjC::abort()
 void SourceBufferPrivateAVFObjC::resetParserState()
 {
     m_parserStateWasReset = true;
+    m_discardSamplesUntilNextInitializationSegment = true;
 }
 
 void SourceBufferPrivateAVFObjC::destroyParser()
@@ -853,21 +840,17 @@ void SourceBufferPrivateAVFObjC::trackDidChangeEnabled(AudioTrackPrivateMediaSou
     int trackID = track->trackID();
 
     if (!track->enabled()) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+        ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
         RetainPtr<AVSampleBufferAudioRenderer> renderer = m_audioRenderers.get(trackID);
-#pragma clang diagnostic pop
+        ALLOW_NEW_API_WITHOUT_GUARDS_END
         [m_parser setShouldProvideMediaData:NO forTrackID:trackID];
         if (m_mediaSource)
             m_mediaSource->player()->removeAudioRenderer(renderer.get());
     } else {
         [m_parser setShouldProvideMediaData:YES forTrackID:trackID];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+        ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
         RetainPtr<AVSampleBufferAudioRenderer> renderer;
-#pragma clang diagnostic pop
+        ALLOW_NEW_API_WITHOUT_GUARDS_END
         if (!m_audioRenderers.contains(trackID)) {
             renderer = adoptNS([allocAVSampleBufferAudioRendererInstance() init]);
             auto weakThis = createWeakPtr();
@@ -998,11 +981,9 @@ void SourceBufferPrivateAVFObjC::outputObscuredDueToInsufficientExternalProtecti
     layerDidReceiveError(m_displayLayer.get(), error.get());
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 void SourceBufferPrivateAVFObjC::rendererDidReceiveError(AVSampleBufferAudioRenderer *renderer, NSError *error)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 {
     LOG(MediaSource, "SourceBufferPrivateAVFObjC::rendererDidReceiveError(%p): renderer(%p), error(%@)", this, renderer, [error description]);
 
@@ -1051,11 +1032,9 @@ void SourceBufferPrivateAVFObjC::flushVideo()
     }
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 void SourceBufferPrivateAVFObjC::flush(AVSampleBufferAudioRenderer *renderer)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 {
     [renderer flush];
 
@@ -1099,7 +1078,7 @@ void SourceBufferPrivateAVFObjC::enqueueSample(Ref<MediaSample>&& sample, const 
                 CMSampleBufferRef rawSampleCopy;
                 CMSampleBufferCreateCopy(kCFAllocatorDefault, platformSample.sample.cmSampleBuffer, &rawSampleCopy);
                 auto sampleCopy = adoptCF(rawSampleCopy);
-                CMSetAttachment(sampleCopy.get(), kCMSampleBufferAttachmentKey_PostNotificationWhenConsumed, @{kBufferConsumedContext: context.get()}, kCMAttachmentMode_ShouldNotPropagate);
+                CMSetAttachment(sampleCopy.get(), kCMSampleBufferAttachmentKey_PostNotificationWhenConsumed, (__bridge CFDictionaryRef)@{kBufferConsumedContext: context.get()}, kCMAttachmentMode_ShouldNotPropagate);
                 [m_displayLayer enqueueSampleBuffer:sampleCopy.get()];
             } else
                 [m_displayLayer enqueueSampleBuffer:platformSample.sample.cmSampleBuffer];
@@ -1202,6 +1181,14 @@ void SourceBufferPrivateAVFObjC::notifyClientWhenReadyForMoreSamples(const Atomi
                 weakThis->didBecomeReadyForMoreSamples(trackID);
         }];
     }
+}
+
+bool SourceBufferPrivateAVFObjC::canSwitchToType(const ContentType& contentType)
+{
+    MediaEngineSupportParameters parameters;
+    parameters.isMediaSource = true;
+    parameters.type = contentType;
+    return MediaPlayerPrivateMediaSourceAVFObjC::supportsType(parameters) != MediaPlayer::IsNotSupported;
 }
 
 void SourceBufferPrivateAVFObjC::setVideoLayer(AVSampleBufferDisplayLayer* layer)

@@ -31,6 +31,7 @@
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -46,11 +47,11 @@ public:
     ComputedTimingProperties getComputedTiming();
     virtual void apply(RenderStyle&) = 0;
     virtual void invalidate() = 0;
-    virtual void animationPlayStateDidChange(WebAnimation::PlayState) = 0;
     virtual void animationDidSeek() = 0;
+    virtual void animationSuspensionStateDidChange(bool) = 0;
 
     WebAnimation* animation() const { return m_animation.get(); }
-    void setAnimation(RefPtr<WebAnimation>&& animation) { m_animation = animation; }
+    void setAnimation(WebAnimation* animation) { m_animation = makeWeakPtr(animation); }
 
     std::optional<Seconds> localTime() const;
     std::optional<Seconds> activeTime() const;
@@ -83,7 +84,7 @@ private:
     std::optional<double> directedProgress() const;
     std::optional<double> transformedProgress() const;
 
-    RefPtr<WebAnimation> m_animation;
+    WeakPtr<WebAnimation> m_animation;
     RefPtr<AnimationEffectTimingReadOnly> m_timing;
 };
 

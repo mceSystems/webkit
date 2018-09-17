@@ -232,9 +232,9 @@ public:
     void texImage2D(GC3Denum target, GC3Dint level, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height, GC3Dint border, GC3Denum format, GC3Denum type, RefPtr<ArrayBufferView>&&);
 
 #if ENABLE(VIDEO)
-    using TexImageSource = WTF::Variant<RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<HTMLVideoElement>>;
+    using TexImageSource = WTF::Variant<RefPtr<ImageBitmap>, RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<HTMLVideoElement>>;
 #else
-    using TexImageSource = WTF::Variant<RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>>;
+    using TexImageSource = WTF::Variant<RefPtr<ImageBitmap>, RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>>;
 #endif
 
     ExceptionOr<void> texImage2D(GC3Denum target, GC3Dint level, GC3Denum internalformat, GC3Denum format, GC3Denum type, std::optional<TexImageSource>);
@@ -435,7 +435,7 @@ protected:
 
     WebGLTexture::TextureExtensionFlag textureExtensionFlags() const;
 
-    bool enableSupportedExtension(const char* extensionNameLiteral);
+    bool enableSupportedExtension(ASCIILiteral extensionNameLiteral);
 
     RefPtr<GraphicsContext3D> m_context;
     RefPtr<WebGLContextGroup> m_contextGroup;
@@ -497,6 +497,7 @@ protected:
 
     RefPtr<WebGLProgram> m_currentProgram;
     RefPtr<WebGLFramebuffer> m_framebufferBinding;
+    RefPtr<WebGLFramebuffer> m_readFramebufferBinding;
     RefPtr<WebGLRenderbuffer> m_renderbufferBinding;
     struct TextureUnitState {
         RefPtr<WebGLTexture> texture2DBinding;
@@ -675,6 +676,7 @@ protected:
 
     enum TexFuncValidationSourceType {
         SourceArrayBufferView,
+        SourceImageBitmap,
         SourceImageData,
         SourceHTMLImageElement,
         SourceHTMLCanvasElement,
@@ -838,7 +840,7 @@ private:
     void registerWithWebGLStateTracker();
     void checkForContextLossHandling();
 
-    void activityStateDidChange(ActivityState::Flags oldActivityState, ActivityState::Flags newActivityState) override;
+    void activityStateDidChange(OptionSet<ActivityState::Flag> oldActivityState, OptionSet<ActivityState::Flag> newActivityState) override;
 
     WebGLStateTracker::Token m_trackerToken;
     Timer m_checkForContextLossHandlingTimer;

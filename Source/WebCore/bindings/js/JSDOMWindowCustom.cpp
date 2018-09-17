@@ -45,7 +45,9 @@
 #include "ScheduledAction.h"
 #include "Settings.h"
 #include "WebCoreJSClientData.h"
+#include <JavaScriptCore/HeapSnapshotBuilder.h>
 #include <JavaScriptCore/JSCInlines.h>
+#include <JavaScriptCore/JSMicrotask.h>
 #include <JavaScriptCore/Lookup.h>
 
 #if ENABLE(USER_MESSAGE_HANDLERS)
@@ -56,10 +58,10 @@
 namespace WebCore {
 using namespace JSC;
 
-static CrossOriginOptions effectiveCrossOriginOptionsForAccess(ExecState& state, AbstractDOMWindow& target)
+static CrossOriginWindowPolicy effectiveCrossOriginWindowPolicyForAccess(ExecState& state, AbstractDOMWindow& target)
 {
-    static_assert(CrossOriginOptions::Deny < CrossOriginOptions::AllowPostMessage && CrossOriginOptions::AllowPostMessage < CrossOriginOptions::Allow, "More restrictive cross-origin options should have lower values");
-    return std::min(activeDOMWindow(state).crossOriginOptions(), target.crossOriginOptions());
+    static_assert(CrossOriginWindowPolicy::Deny < CrossOriginWindowPolicy::AllowPostMessage && CrossOriginWindowPolicy::AllowPostMessage < CrossOriginWindowPolicy::Allow, "More restrictive cross-origin options should have lower values");
+    return std::min(activeDOMWindow(state).crossOriginWindowPolicy(), target.crossOriginWindowPolicy());
 }
 
 EncodedJSValue JSC_HOST_CALL jsDOMWindowInstanceFunctionShowModalDialog(ExecState*);
@@ -100,18 +102,18 @@ bool jsDOMWindowGetOwnPropertySlotRestrictedAccess(JSDOMGlobalObject* thisObject
         return true;
     }
 
-    switch (effectiveCrossOriginOptionsForAccess(state, window)) {
-    case CrossOriginOptions::AllowPostMessage:
+    switch (effectiveCrossOriginWindowPolicyForAccess(state, window)) {
+    case CrossOriginWindowPolicy::AllowPostMessage:
         if (propertyName == builtinNames.postMessagePublicName()) {
             slot.setCustom(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum), windowType == DOMWindowType::Remote ? nonCachingStaticFunctionGetter<jsRemoteDOMWindowInstanceFunctionPostMessage, 0> : nonCachingStaticFunctionGetter<jsDOMWindowInstanceFunctionPostMessage, 2>);
             return true;
         }
         FALLTHROUGH;
-    case CrossOriginOptions::Deny:
+    case CrossOriginWindowPolicy::Deny:
         throwSecurityError(state, scope, errorMessage);
         slot.setUndefined();
         return false;
-    case CrossOriginOptions::Allow:
+    case CrossOriginWindowPolicy::Allow:
         break;
     }
 
@@ -201,7 +203,7 @@ bool JSDOMWindow::getOwnPropertySlot(JSObject* object, ExecState* state, Propert
     if (!BindingSecurity::shouldAllowAccessToDOMWindow(*state, thisObject->wrapped(), errorMessage))
         return jsDOMWindowGetOwnPropertySlotRestrictedAccess<DOMWindowType::Local>(thisObject, thisObject->wrapped(), *state, propertyName, slot, errorMessage);
 
-    // FIXME: this need more explanation.
+    // FIXME: this needs more explanation.
     // (Particularly, is it correct that this exists here but not in getOwnPropertySlotByIndex?)
     slot.setWatchpointSet(thisObject->m_windowCloseWatchpoints);
 
@@ -253,13 +255,13 @@ bool JSDOMWindow::getOwnPropertySlotByIndex(JSObject* object, ExecState* state, 
 
     // (1) First, indexed properties.
     // These are also allowed cross-origin, so come before the access check.
-    switch (effectiveCrossOriginOptionsForAccess(*state, window)) {
-    case CrossOriginOptions::Deny:
-    case CrossOriginOptions::AllowPostMessage:
+    switch (effectiveCrossOriginWindowPolicyForAccess(*state, window)) {
+    case CrossOriginWindowPolicy::Deny:
+    case CrossOriginWindowPolicy::AllowPostMessage:
         if (isCrossOriginAccess())
             break;
         FALLTHROUGH;
-    case CrossOriginOptions::Allow:
+    case CrossOriginWindowPolicy::Allow:
         if (frame && index < frame->tree().scopedChildCount()) {
             slot.setValue(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly), toJS(state, frame->tree().scopedChild(index)->document()->domWindow()));
             return true;
@@ -327,6 +329,15 @@ bool JSDOMWindow::deletePropertyByIndex(JSCell* cell, ExecState* exec, unsigned 
     return Base::deletePropertyByIndex(thisObject, exec, propertyName);
 }
 
+void JSDOMWindow::heapSnapshot(JSCell* cell, HeapSnapshotBuilder& builder)
+{
+    JSDOMWindow* thisObject = jsCast<JSDOMWindow*>(cell);
+    if (auto* location = thisObject->wrapped().location())
+        builder.setLabelForCell(cell, location->href());
+
+    Base::heapSnapshot(cell, builder);
+}
+
 // https://html.spec.whatwg.org/#crossoriginproperties-(-o-)
 static void addCrossOriginWindowPropertyNames(ExecState& state, AbstractDOMWindow& window, PropertyNameArray& propertyNames)
 {
@@ -348,15 +359,15 @@ static void addCrossOriginWindowPropertyNames(ExecState& state, AbstractDOMWindo
         &static_cast<JSVMClientData*>(vm.clientData)->builtinNames().windowPublicName()
     };
 
-    switch (effectiveCrossOriginOptionsForAccess(state, window)) {
-    case CrossOriginOptions::Allow:
+    switch (effectiveCrossOriginWindowPolicyForAccess(state, window)) {
+    case CrossOriginWindowPolicy::Allow:
         for (auto* property : properties)
             propertyNames.add(*property);
         break;
-    case CrossOriginOptions::AllowPostMessage:
+    case CrossOriginWindowPolicy::AllowPostMessage:
         propertyNames.add(static_cast<JSVMClientData*>(vm.clientData)->builtinNames().postMessagePublicName());
         break;
-    case CrossOriginOptions::Deny:
+    case CrossOriginWindowPolicy::Deny:
         break;
     }
 }
@@ -371,11 +382,11 @@ static void addScopedChildrenIndexes(ExecState& state, DOMWindow& window, Proper
     if (!frame)
         return;
 
-    switch (effectiveCrossOriginOptionsForAccess(state, window)) {
-    case CrossOriginOptions::Allow:
+    switch (effectiveCrossOriginWindowPolicyForAccess(state, window)) {
+    case CrossOriginWindowPolicy::Allow:
         break;
-    case CrossOriginOptions::Deny:
-    case CrossOriginOptions::AllowPostMessage:
+    case CrossOriginWindowPolicy::Deny:
+    case CrossOriginWindowPolicy::AllowPostMessage:
         return;
     }
 
@@ -437,7 +448,7 @@ bool JSDOMWindow::preventExtensions(JSObject*, ExecState* exec)
 {
     auto scope = DECLARE_THROW_SCOPE(exec->vm());
 
-    throwTypeError(exec, scope, ASCIILiteral("Cannot prevent extensions on this object"));
+    throwTypeError(exec, scope, "Cannot prevent extensions on this object"_s);
     return false;
 }
 
@@ -445,8 +456,8 @@ String JSDOMWindow::toStringName(const JSObject* object, ExecState* exec)
 {
     auto* thisObject = jsCast<const JSDOMWindow*>(object);
     if (!BindingSecurity::shouldAllowAccessToDOMWindow(exec, thisObject->wrapped(), DoNotReportSecurityError))
-        return ASCIILiteral("Object");
-    return ASCIILiteral("Window");
+        return "Object"_s;
+    return "Window"_s;
 }
 
 // Custom Attributes
@@ -519,6 +530,23 @@ JSValue JSDOMWindow::showModalDialog(ExecState& state)
     });
 
     return handler.returnValue();
+}
+
+JSValue JSDOMWindow::queueMicrotask(ExecState& state)
+{
+    VM& vm = state.vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (UNLIKELY(state.argumentCount() < 1))
+        return throwException(&state, scope, createNotEnoughArgumentsError(&state));
+
+    JSValue functionValue = state.uncheckedArgument(0);
+    if (UNLIKELY(!functionValue.isFunction(vm)))
+        return JSValue::decode(throwArgumentMustBeFunctionError(state, scope, 0, "callback", "Window", "queueMicrotask"));
+
+    scope.release();
+    Base::queueMicrotask(JSC::createJSMicrotask(vm, functionValue));
+    return jsUndefined();
 }
 
 DOMWindow* JSDOMWindow::toWrapped(VM& vm, JSValue value)

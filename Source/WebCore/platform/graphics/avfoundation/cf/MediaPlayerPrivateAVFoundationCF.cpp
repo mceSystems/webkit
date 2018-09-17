@@ -220,7 +220,7 @@ private:
     virtual bool platformCALayerRespondsToLayoutChanges() const { return true; }
 
     virtual void platformCALayerAnimationStarted(MonotonicTime beginTime) { }
-    virtual GraphicsLayer::CompositingCoordinatesOrientation platformCALayerContentsOrientation() const { return GraphicsLayer::CompositingCoordinatesBottomUp; }
+    virtual GraphicsLayer::CompositingCoordinatesOrientation platformCALayerContentsOrientation() const { return GraphicsLayer::CompositingCoordinatesOrientation::TopDown; }
     virtual void platformCALayerPaintContents(PlatformCALayer*, GraphicsContext&, const FloatRect&, GraphicsLayerPaintBehavior) { }
     virtual bool platformCALayerShowDebugBorders() const { return false; }
     virtual bool platformCALayerShowRepaintCounter(PlatformCALayer*) const { return false; }
@@ -524,15 +524,6 @@ MediaPlayerPrivateAVFoundation::ItemStatus MediaPlayerPrivateAVFoundationCF::pla
     return MediaPlayerPrivateAVFoundation::MediaPlayerAVPlayerItemStatusReadyToPlay;
 }
 
-PlatformMedia MediaPlayerPrivateAVFoundationCF::platformMedia() const
-{
-    LOG(Media, "MediaPlayerPrivateAVFoundationCF::platformMedia(%p)", this);
-    PlatformMedia pm;
-    pm.type = PlatformMedia::AVFoundationCFMediaPlayerType;
-    pm.media.avcfMediaPlayer = (AVCFPlayer*)avPlayer(m_avfWrapper);
-    return pm;
-}
-
 PlatformLayer* MediaPlayerPrivateAVFoundationCF::platformLayer() const
 {
     ASSERT(isMainThread());
@@ -609,7 +600,7 @@ MediaTime MediaPlayerPrivateAVFoundationCF::currentMediaTime() const
 
     CMTime itemTime = AVCFPlayerItemGetCurrentTime(avPlayerItem(m_avfWrapper));
     if (CMTIME_IS_NUMERIC(itemTime))
-        return std::max(PAL::toMediaTime(itemTime), MediaTime::zeroTime());
+        return max(PAL::toMediaTime(itemTime), MediaTime::zeroTime());
 
     return MediaTime::zeroTime();
 }

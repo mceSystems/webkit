@@ -32,8 +32,14 @@
 #if USE(LIBWEBRTC)
 
 #include "Logging.h"
+
+ALLOW_UNUSED_PARAMETERS_BEGIN
+
 #include <webrtc/api/video/i420_buffer.h>
 #include <webrtc/common_video/libyuv/include/webrtc_libyuv.h>
+
+ALLOW_UNUSED_PARAMETERS_END
+
 #include <wtf/MainThread.h>
 
 namespace WebCore {

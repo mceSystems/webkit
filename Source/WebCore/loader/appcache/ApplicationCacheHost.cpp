@@ -238,7 +238,7 @@ URL ApplicationCacheHost::createFileURL(const String& path)
     URL url(adoptCF(CFURLCreateWithFileSystemPath(0, path.createCFString().get(), kCFURLWindowsPathStyle, false)).get());
 #else
     URL url;
-    url.setProtocol(ASCIILiteral("file"));
+    url.setProtocol("file"_s);
     url.setPath(path);
 #endif
     return url;
@@ -374,7 +374,7 @@ static Ref<Event> createApplicationCacheEvent(const AtomicString& eventType, int
 {
     if (eventType == eventNames().progressEvent)
         return ProgressEvent::create(eventType, true, done, total);
-    return Event::create(eventType, false, false);
+    return Event::create(eventType, Event::CanBubble::No, Event::IsCancelable::No);
 }
 
 void ApplicationCacheHost::dispatchDOMEvent(const AtomicString& eventType, int total, int done)

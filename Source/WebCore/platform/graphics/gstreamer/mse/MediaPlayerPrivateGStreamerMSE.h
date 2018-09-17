@@ -30,7 +30,6 @@
 #include "MediaPlayerPrivateGStreamer.h"
 #include "MediaSample.h"
 #include "MediaSourceGStreamer.h"
-#include "PlaybackPipeline.h"
 #include "WebKitMediaSourceGStreamer.h"
 
 namespace WebCore {
@@ -94,8 +93,6 @@ private:
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>&);
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
 
-    static bool isAvailable();
-
     // FIXME: Reduce code duplication.
     void updateStates() override;
 
@@ -105,8 +102,7 @@ private:
     void updatePlaybackRate() override;
     void asyncStateChangeDone() override;
 
-    // FIXME: Implement.
-    std::optional<PlatformVideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() override { return std::nullopt; }
+    // FIXME: Implement videoPlaybackQualityMetrics.
     bool isTimeBuffered(const MediaTime&) const;
 
     bool isMediaSource() const override { return true; }

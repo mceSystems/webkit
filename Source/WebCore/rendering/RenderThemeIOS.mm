@@ -77,10 +77,6 @@
 #import <wtf/SoftLinking.h>
 #import <wtf/StdLibExtras.h>
 
-#if USE(SYSTEM_PREVIEW) && USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/SystemPreviewArtwork.cpp>
-#endif
-
 SOFT_LINK_FRAMEWORK(UIKit)
 SOFT_LINK_CLASS(UIKit, UIApplication)
 SOFT_LINK_CLASS(UIKit, UIColor)
@@ -371,14 +367,16 @@ static CGPoint shortened(CGPoint start, CGPoint end, float width)
     return CGPointMake(start.x + x * ratio, start.y + y * ratio);
 }
 
-static void drawJoinedLines(CGContextRef context, CGPoint points[], unsigned count, bool antialias, CGLineCap lineCap)
+static void drawJoinedLines(CGContextRef context, const Vector<CGPoint>& points, CGLineCap lineCap, float lineWidth, Color strokeColor)
 {
-    CGContextSetShouldAntialias(context, antialias);
+    CGContextSetLineWidth(context, lineWidth);
+    CGContextSetStrokeColorWithColor(context, cachedCGColor(strokeColor));
+    CGContextSetShouldAntialias(context, true);
     CGContextBeginPath(context);
     CGContextSetLineCap(context, lineCap);
     CGContextMoveToPoint(context, points[0].x, points[0].y);
     
-    for (unsigned i = 1; i < count; ++i)
+    for (unsigned i = 1; i < points.size(); ++i)
         CGContextAddLineToPoint(context, points[i].x, points[i].y);
 
     CGContextStrokePath(context);
@@ -392,45 +390,61 @@ bool RenderThemeIOS::paintCheckboxDecorations(const RenderObject& box, const Pai
     float width = clip.width();
     float height = clip.height();
 
-    CGContextRef cgContext = paintInfo.context().platformContext();
-    if (isChecked(box)) {
-        drawAxialGradient(cgContext, gradientWithName(ConcaveGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
+    bool checked = isChecked(box);
+    bool indeterminate = isIndeterminate(box);
 
-        static const float thicknessRatio = 2 / 14.0;
-        static const CGSize size = { 14.0f, 14.0f };
+    CGContextRef cgContext = paintInfo.context().platformContext();
+    if (!checked && !indeterminate) {
+        FloatPoint bottomCenter(clip.x() + clip.width() / 2.0f, clip.maxY());
+        drawAxialGradient(cgContext, gradientWithName(ShadeGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
+        drawRadialGradient(cgContext, gradientWithName(ShineGradient), bottomCenter, 0, bottomCenter, sqrtf((width * width) / 4.0f + height * height), ExponentialInterpolation);
+        return false;
+    }
+
+    drawAxialGradient(cgContext, gradientWithName(ConcaveGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
+
+    static const float thicknessRatio = 2 / 14.0;
+    static const CGSize size = { 14.0f, 14.0f };
+    float lineWidth = std::min(width, height) * 2.0f * thicknessRatio;
+
+    Vector<CGPoint> line;
+    Vector<CGPoint> shadow;
+
+    if (checked) {
         static const CGPoint pathRatios[3] = {
             { 2.5f / size.width, 7.5f / size.height },
             { 5.5f / size.width, 10.5f / size.height },
             { 11.5f / size.width, 2.5f / size.height }
         };
 
-        float lineWidth = std::min(width, height) * 2.0f * thicknessRatio;
-
-        CGPoint line[3] = {
+        line = {
             CGPointMake(clip.x() + width * pathRatios[0].x, clip.y() + height * pathRatios[0].y),
             CGPointMake(clip.x() + width * pathRatios[1].x, clip.y() + height * pathRatios[1].y),
             CGPointMake(clip.x() + width * pathRatios[2].x, clip.y() + height * pathRatios[2].y)
         };
-        CGPoint shadow[3] = {
+
+        shadow = {
             shortened(line[0], line[1], lineWidth / 4.0f),
             line[1],
             shortened(line[2], line[1], lineWidth / 4.0f)
         };
+    } else if (indeterminate) {
+        line = {
+            CGPointMake(clip.x() + 3.5, clip.center().y()),
+            CGPointMake(clip.maxX() - 3.5, clip.center().y())
+        };
 
-        lineWidth = std::max<float>(lineWidth, 1);
-        CGContextSetLineWidth(cgContext, lineWidth);
-        CGContextSetStrokeColorWithColor(cgContext, cachedCGColor(Color(0.0f, 0.0f, 0.0f, 0.7f)));
-        drawJoinedLines(cgContext, shadow, 3, true, kCGLineCapSquare);
-
-        lineWidth = std::max<float>(std::min(clip.width(), clip.height()) * thicknessRatio, 1);
-        CGContextSetLineWidth(cgContext, lineWidth);
-        CGContextSetStrokeColorWithColor(cgContext, cachedCGColor(Color(1.0f, 1.0f, 1.0f, 240 / 255.0f)));
-        drawJoinedLines(cgContext, line, 3, true, kCGLineCapButt);
-    } else {
-        FloatPoint bottomCenter(clip.x() + clip.width() / 2.0f, clip.maxY());
-        drawAxialGradient(cgContext, gradientWithName(ShadeGradient), clip.location(), FloatPoint(clip.x(), clip.maxY()), LinearInterpolation);
-        drawRadialGradient(cgContext, gradientWithName(ShineGradient), bottomCenter, 0, bottomCenter, sqrtf((width * width) / 4.0f + height * height), ExponentialInterpolation);
+        shadow = {
+            shortened(line[0], line[1], lineWidth / 4.0f),
+            shortened(line[1], line[0], lineWidth / 4.0f)
+        };
     }
+
+    lineWidth = std::max<float>(lineWidth, 1);
+    drawJoinedLines(cgContext, shadow, kCGLineCapSquare, lineWidth, Color(0.0f, 0.0f, 0.0f, 0.7f));
+
+    lineWidth = std::max<float>(std::min(clip.width(), clip.height()) * thicknessRatio, 1);
+    drawJoinedLines(cgContext, line, kCGLineCapButt, lineWidth, Color(1.0f, 1.0f, 1.0f, 240 / 255.0f));
 
     return false;
 }
@@ -529,7 +543,7 @@ const float MenuListButtonPaddingAfter = 19;
 LengthBox RenderThemeIOS::popupInternalPaddingBox(const RenderStyle& style) const
 {
     if (style.appearance() == MenulistButtonPart) {
-        if (style.direction() == RTL)
+        if (style.direction() == TextDirection::RTL)
             return { 0, 0, 0, static_cast<int>(MenuListButtonPaddingAfter + style.borderTopWidth()) };
         return { 0, static_cast<int>(MenuListButtonPaddingAfter + style.borderTopWidth()), 0, 0 };
     }
@@ -630,7 +644,7 @@ void RenderThemeIOS::adjustMenuListButtonStyle(StyleResolver&, RenderStyle& styl
 bool RenderThemeIOS::paintMenuListButtonDecorations(const RenderBox& box, const PaintInfo& paintInfo, const FloatRect& rect)
 {
     auto& style = box.style();
-    bool isRTL = style.direction() == RTL;
+    bool isRTL = style.direction() == TextDirection::RTL;
     float borderTopWidth = style.borderTopWidth();
     FloatRect clip(rect.x() + style.borderLeftWidth(), rect.y() + style.borderTopWidth(), rect.width() - style.borderLeftWidth() - style.borderRightWidth(), rect.height() - style.borderTopWidth() - style.borderBottomWidth());
     CGContextRef cgContext = paintInfo.context().platformContext();
@@ -1101,12 +1115,12 @@ bool RenderThemeIOS::paintFileUploadIconDecorations(const RenderObject&, const R
     return false;
 }
 
-Color RenderThemeIOS::platformActiveSelectionBackgroundColor() const
+Color RenderThemeIOS::platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
     return Color::transparent;
 }
 
-Color RenderThemeIOS::platformInactiveSelectionBackgroundColor() const
+Color RenderThemeIOS::platformInactiveSelectionBackgroundColor(OptionSet<StyleColor::Options>) const
 {
     return Color::transparent;
 }
@@ -1402,6 +1416,20 @@ String RenderThemeIOS::mediaControlsBase64StringForIconNameAndType(const String&
 }
 
 #endif // ENABLE(VIDEO)
+
+CGColorRef RenderThemeIOS::colorForMarkerLineStyle(DocumentMarkerLineStyle style, bool)
+{
+    switch (style) {
+    case DocumentMarkerLineStyle::Spelling:
+        return [getUIColorClass() systemRedColor].CGColor;
+    case DocumentMarkerLineStyle::DictationAlternatives:
+    case DocumentMarkerLineStyle::TextCheckingDictationPhraseWithAlternatives:
+    case DocumentMarkerLineStyle::AutocorrectionReplacement:
+        return [getUIColorClass() systemBlueColor].CGColor;
+    case DocumentMarkerLineStyle::Grammar:
+        return [getUIColorClass() systemGreenColor].CGColor;
+    }
+}
 
 Color RenderThemeIOS::systemColor(CSSValueID cssValueID, OptionSet<StyleColor::Options> options) const
 {
@@ -1815,16 +1843,53 @@ bool RenderThemeIOS::paintAttachment(const RenderObject& renderer, const PaintIn
 
 #endif // ENABLE(ATTACHMENT_ELEMENT)
 
-#if ENABLE(EXTRA_ZOOM_MODE)
+#if PLATFORM(WATCHOS)
 
 String RenderThemeIOS::extraDefaultStyleSheet()
 {
-    return ASCIILiteral("* { -webkit-text-size-adjust: auto; -webkit-hyphens: auto !important; }");
+    return "* { -webkit-text-size-adjust: auto; -webkit-hyphens: auto !important; }"_s;
 }
 
 #endif
 
 #if USE(SYSTEM_PREVIEW)
+static NSBundle *arKitBundle()
+{
+    static NSBundle *arKitBundle = []() {
+#if PLATFORM(IOS_SIMULATOR)
+        dlopen("/System/Library/PrivateFrameworks/AssetViewer.framework/AssetViewer", RTLD_NOW);
+        return [NSBundle bundleForClass:NSClassFromString(@"ASVThumbnailView")];
+#else
+        return [NSBundle bundleWithURL:[NSURL fileURLWithPath:@"/System/Library/PrivateFrameworks/AssetViewer.framework"]];
+#endif
+    }();
+
+    return arKitBundle;
+}
+
+static RetainPtr<CGPDFPageRef> loadARKitPDFPage(NSString *imageName)
+{
+    NSURL *url = [arKitBundle() URLForResource:imageName withExtension:@"pdf"];
+
+    if (!url)
+        return nullptr;
+
+    auto document = adoptCF(CGPDFDocumentCreateWithURL((CFURLRef)url));
+    if (!document)
+        return nullptr;
+
+    if (!CGPDFDocumentGetNumberOfPages(document.get()))
+        return nullptr;
+
+    return CGPDFDocumentGetPage(document.get(), 1);
+}
+
+static CGPDFPageRef systemPreviewLogo()
+{
+    static CGPDFPageRef logoPage = loadARKitPDFPage(@"ARKitBadge").leakRef();
+    return logoPage;
+}
+
 void RenderThemeIOS::paintSystemPreviewBadge(Image& image, const PaintInfo& paintInfo, const FloatRect& rect)
 {
     static const int largeBadgeDimension = 70;
@@ -1852,21 +1917,38 @@ void RenderThemeIOS::paintSystemPreviewBadge(Image& image, const PaintInfo& pain
     // Create a circle to be used for the clipping path in the badge, as well as the drop shadow.
     RetainPtr<CGPathRef> circle = adoptCF(CGPathCreateWithRoundedRect(absoluteBadgeRect, badgeDimension / 2, badgeDimension / 2, nullptr));
 
-    CGContextRef ctx = paintInfo.context().platformContext();
+    auto& graphicsContext = paintInfo.context();
+    if (graphicsContext.paintingDisabled())
+        return;
+
+    GraphicsContextStateSaver stateSaver(graphicsContext);
+
+    CGContextRef ctx = graphicsContext.platformContext();
+    if (!ctx)
+        return;
 
     CGContextSaveGState(ctx);
 
     // Draw a drop shadow around the circle.
-    CGFloat shadowColorComponents[4] = { 0, 0, 0, 0.1 };
-    RetainPtr<CGColorRef> shadowColor = adoptCF(CGColorCreate(sRGBColorSpaceRef(), shadowColorComponents));
+    // Use the GraphicsContext function, because it calculates the blur radius in context space,
+    // rather than screen space.
+    Color shadowColor = Color { 0.f, 0.f, 0.f, 0.1f };
+    graphicsContext.setShadow(FloatSize { }, 16, shadowColor);
+
     // The circle must have an alpha channel value of 1 for the shadow color to appear.
     CGFloat circleColorComponents[4] = { 0, 0, 0, 1 };
     RetainPtr<CGColorRef> circleColor = adoptCF(CGColorCreate(sRGBColorSpaceRef(), circleColorComponents));
     CGContextSetFillColorWithColor(ctx, circleColor.get());
-    CGContextSetShadowWithColor(ctx, CGSizeZero, 16, shadowColor.get());
+
+    // Clip out the circle to only show the shadow.
+    CGContextBeginPath(ctx);
+    CGContextAddRect(ctx, rect);
+    CGContextAddPath(ctx, circle.get());
+    CGContextClosePath(ctx);
+    CGContextEOClip(ctx);
 
     // Draw a slightly smaller circle with a shadow, otherwise we'll see a fringe of the solid
-    // black circle around the edges of the cliped path below.
+    // black circle around the edges of the clipped path below.
     CGContextBeginPath(ctx);
     CGRect slightlySmallerAbsoluteBadgeRect = CGRectMake(absoluteBadgeRect.origin.x + 0.5, absoluteBadgeRect.origin.y + 0.5, badgeDimension - 1, badgeDimension - 1);
     RetainPtr<CGPathRef> slightlySmallerCircle = adoptCF(CGPathCreateWithRoundedRect(slightlySmallerAbsoluteBadgeRect, slightlySmallerAbsoluteBadgeRect.size.width / 2, slightlySmallerAbsoluteBadgeRect.size.height / 2, nullptr));
@@ -1941,7 +2023,6 @@ void RenderThemeIOS::paintSystemPreviewBadge(Image& image, const PaintInfo& pain
     CGContextScaleCTM(ctx, 1, -1);
     CGContextDrawImage(ctx, badgeRect, cgImage.get());
 
-#if USE(APPLE_INTERNAL_SDK)
     if (auto logo = systemPreviewLogo()) {
         CGSize pdfSize = CGPDFPageGetBoxRect(logo, kCGPDFMediaBox).size;
         CGFloat scaleX = badgeDimension / pdfSize.width;
@@ -1949,7 +2030,6 @@ void RenderThemeIOS::paintSystemPreviewBadge(Image& image, const PaintInfo& pain
         CGContextScaleCTM(ctx, scaleX, scaleY);
         CGContextDrawPDFPage(ctx, logo);
     }
-#endif
 
     CGContextFlush(ctx);
     CGContextRestoreGState(ctx);

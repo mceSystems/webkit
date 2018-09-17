@@ -620,7 +620,7 @@ String AccessibilityRenderObject::textUnderElement(AccessibilityTextUnderElement
     
     // Reflect when a content author has explicitly marked a line break.
     if (m_renderer->isBR())
-        return ASCIILiteral("\n");
+        return "\n"_s;
 
     if (shouldGetTextFromNode(mode))
         return AccessibilityNodeObject::textUnderElement(mode);
@@ -1029,17 +1029,16 @@ bool AccessibilityRenderObject::isARIAGrabbed()
     return elementAttributeValue(aria_grabbedAttr);
 }
 
-void AccessibilityRenderObject::determineARIADropEffects(Vector<String>& effects)
+Vector<String> AccessibilityRenderObject::determineARIADropEffects()
 {
     const AtomicString& dropEffects = getAttribute(aria_dropeffectAttr);
     if (dropEffects.isEmpty()) {
-        effects.clear();
-        return;
+        return { };
     }
     
     String dropEffectsString = dropEffects.string();
     dropEffectsString.replace('\n', ' ');
-    dropEffectsString.split(' ', effects);
+    return dropEffectsString.split(' ');
 }
     
 bool AccessibilityRenderObject::exposesTitleUIElement() const
@@ -1772,22 +1771,21 @@ void AccessibilityRenderObject::setValue(const String& string)
     Element& element = downcast<Element>(*m_renderer->node());
     RenderObject& renderer = *m_renderer;
     
+    // We should use the editor's insertText to mimic typing into the field.
+    // Also only do this when the field is in editing mode.
+    if (Frame* frame = renderer.document().frame()) {
+        Editor& editor = frame->editor();
+        if (element.shouldUseInputMethod()) {
+            editor.clearText();
+            editor.insertText(string, nullptr);
+            return;
+        }
+    }
     // FIXME: Do we want to do anything here for ARIA textboxes?
     if (renderer.isTextField() && is<HTMLInputElement>(element))
         downcast<HTMLInputElement>(element).setValue(string);
     else if (renderer.isTextArea() && is<HTMLTextAreaElement>(element))
         downcast<HTMLTextAreaElement>(element).setValue(string);
-    else if (is<HTMLElement>(element) && contentEditableAttributeIsEnabled(&element)) {
-        // Set the style to the element so the child Text node won't collapse spaces
-        if (is<RenderElement>(renderer)) {
-            RenderElement& renderElement = downcast<RenderElement>(renderer);
-            auto style = RenderStyle::create();
-            style.inheritFrom(renderElement.style());
-            style.setWhiteSpace(WhiteSpace::Pre);
-            renderElement.setStyleInternal(WTFMove(style));
-        }
-        downcast<HTMLElement>(element).setInnerText(string);
-    }
 }
 
 bool AccessibilityRenderObject::supportsARIAOwns() const
@@ -3599,7 +3597,7 @@ bool AccessibilityRenderObject::hasPlainText() const
 
     const RenderStyle& style = m_renderer->style();
     return style.fontDescription().weight() == normalWeightValue()
-        && style.fontDescription().italic() == normalItalicValue()
+        && !isItalic(style.fontDescription().italic())
         && style.textDecorationsInEffect().isEmpty();
 }
 

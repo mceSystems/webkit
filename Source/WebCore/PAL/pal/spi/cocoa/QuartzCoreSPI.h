@@ -41,6 +41,7 @@
 #import <QuartzCore/CAContext.h>
 #import <QuartzCore/CALayerHost.h>
 #import <QuartzCore/CALayerPrivate.h>
+#import <QuartzCore/CAMediaTimingFunctionPrivate.h>
 #import <QuartzCore/QuartzCorePrivate.h>
 
 #if PLATFORM(MAC)
@@ -72,6 +73,11 @@ typedef struct _CARenderContext CARenderContext;
 - (mach_port_t)createFencePort;
 - (void)setFencePort:(mach_port_t)port;
 - (void)setFencePort:(mach_port_t)port commitHandler:(void(^)(void))block;
+
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
++ (void)setAllowsCGSConnections:(BOOL)flag;
+#endif
+
 #if PLATFORM(MAC)
 @property uint32_t commitPriority;
 @property BOOL colorMatchUntaggedContent;
@@ -89,6 +95,7 @@ typedef struct _CARenderContext CARenderContext;
 - (void *)regionBeingDrawn;
 - (void)reloadValueForKeyPath:(NSString *)keyPath;
 @property BOOL allowsGroupBlending;
+@property BOOL allowsHitTesting;
 @property BOOL canDrawConcurrently;
 @property BOOL contentsOpaque;
 @property BOOL hitTestsAsOpaque;
@@ -145,6 +152,10 @@ typedef enum {
 
 @interface CASpringAnimation (Private)
 @property CGFloat velocity;
+@end
+
+@interface CAMediaTimingFunction ()
+- (float)_solveForInput:(float)t;
 @end
 
 #endif // __OBJC__

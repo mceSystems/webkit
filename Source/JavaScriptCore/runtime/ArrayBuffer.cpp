@@ -268,12 +268,30 @@ ArrayBuffer::ArrayBuffer(ArrayBufferContents&& contents)
 {
 }
 
-RefPtr<ArrayBuffer> ArrayBuffer::slice(int begin, int end) const
+unsigned ArrayBuffer::clampValue(double x, unsigned left, unsigned right)
+{
+    ASSERT(left <= right);
+    if (x < left)
+        x = left;
+    if (right < x)
+        x = right;
+    return x;
+}
+
+unsigned ArrayBuffer::clampIndex(double index) const
+{
+    unsigned currentLength = byteLength();
+    if (index < 0)
+        index = currentLength + index;
+    return clampValue(index, 0, currentLength);
+}
+
+RefPtr<ArrayBuffer> ArrayBuffer::slice(double begin, double end) const
 {
     return sliceImpl(clampIndex(begin), clampIndex(end));
 }
 
-RefPtr<ArrayBuffer> ArrayBuffer::slice(int begin) const
+RefPtr<ArrayBuffer> ArrayBuffer::slice(double begin) const
 {
     return sliceImpl(clampIndex(begin), byteLength());
 }
@@ -386,10 +404,10 @@ ASCIILiteral errorMesasgeForTransfer(ArrayBuffer* buffer)
 {
     ASSERT(buffer->isLocked());
     if (buffer->isShared())
-        return ASCIILiteral("Cannot transfer a SharedArrayBuffer");
+        return "Cannot transfer a SharedArrayBuffer"_s;
     if (buffer->isWasmMemory())
-        return ASCIILiteral("Cannot transfer a WebAssembly.Memory");
-    return ASCIILiteral("Cannot transfer an ArrayBuffer whose backing store has been accessed by the JavaScriptCore C API");
+        return "Cannot transfer a WebAssembly.Memory"_s;
+    return "Cannot transfer an ArrayBuffer whose backing store has been accessed by the JavaScriptCore C API"_s;
 }
 
 } // namespace JSC

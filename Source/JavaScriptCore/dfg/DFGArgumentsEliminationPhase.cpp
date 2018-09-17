@@ -252,7 +252,7 @@ private:
                 // If we're out-of-bounds then we proceed only if the prototype chain
                 // for the allocation is sane (i.e. doesn't have indexed properties).
                 JSGlobalObject* globalObject = m_graph.globalObjectFor(edge->origin.semantic);
-                Structure* objectPrototypeStructure = globalObject->objectPrototype()->structure();
+                Structure* objectPrototypeStructure = globalObject->objectPrototype()->structure(m_graph.m_vm);
                 if (objectPrototypeStructure->transitionWatchpointSetIsStillValid()
                     && globalObject->objectPrototypeIsSane()) {
                     m_graph.registerAndWatchStructureTransition(objectPrototypeStructure);
@@ -275,9 +275,9 @@ private:
                 // If we're out-of-bounds then we proceed only if the prototype chain
                 // for the allocation is sane (i.e. doesn't have indexed properties).
                 JSGlobalObject* globalObject = m_graph.globalObjectFor(edge->origin.semantic);
-                Structure* objectPrototypeStructure = globalObject->objectPrototype()->structure();
+                Structure* objectPrototypeStructure = globalObject->objectPrototype()->structure(m_graph.m_vm);
                 if (edge->op() == CreateRest) {
-                    Structure* arrayPrototypeStructure = globalObject->arrayPrototype()->structure();
+                    Structure* arrayPrototypeStructure = globalObject->arrayPrototype()->structure(m_graph.m_vm);
                     if (arrayPrototypeStructure->transitionWatchpointSetIsStillValid()
                         && objectPrototypeStructure->transitionWatchpointSetIsStillValid()
                         && globalObject->arrayPrototypeChainIsSane()) {
@@ -400,6 +400,12 @@ private:
                     // butterfly's child and check if it's a candidate.
                     break;
                     
+                case FilterGetByIdStatus:
+                case FilterPutByIdStatus:
+                case FilterCallLinkStatus:
+                case FilterInByIdStatus:
+                    break;
+
                 case CheckArray:
                     escapeBasedOnArrayMode(node->arrayMode(), node->child1(), node);
                     break;
@@ -1182,7 +1188,11 @@ private:
                 }
                     
                 case CheckArray:
-                case GetButterfly: {
+                case GetButterfly:
+                case FilterGetByIdStatus:
+                case FilterPutByIdStatus:
+                case FilterCallLinkStatus:
+                case FilterInByIdStatus: {
                     if (!isEliminatedAllocation(node->child1().node()))
                         break;
                     node->remove(m_graph);

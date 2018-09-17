@@ -49,6 +49,7 @@ class PluginProcess : public ChildProcess
 
 public:
     static PluginProcess& singleton();
+    static constexpr ProcessType processType = ProcessType::Plugin;
 
     void removeWebProcessConnection(WebProcessConnection*);
 
@@ -73,6 +74,10 @@ public:
 private:
     PluginProcess();
     ~PluginProcess();
+
+#if PLATFORM(MAC)
+    bool shouldOverrideQuarantine() final;
+#endif
 
     // ChildProcess
     void initializeProcess(const ChildProcessInitializationParameters&) override;

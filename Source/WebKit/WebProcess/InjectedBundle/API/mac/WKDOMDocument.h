@@ -42,6 +42,8 @@ WK_CLASS_AVAILABLE(macosx(10.10), ios(8.0))
 
 @property(readonly) WKDOMElement *body;
 
+- (id)parserYieldToken WK_API_AVAILABLE(macosx(10.14), ios(12.0));
+
 @end
 
 #endif // WK_API_ENABLED

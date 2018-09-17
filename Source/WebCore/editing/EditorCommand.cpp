@@ -100,11 +100,12 @@ static bool applyCommandToFrame(Frame& frame, EditorCommandSource source, EditAc
     // FIXME: We don't call shouldApplyStyle when the source is DOM; is there a good reason for that?
     switch (source) {
     case CommandFromMenuOrKeyBinding:
-        frame.editor().applyStyleToSelection(WTFMove(style), action);
+        // Use InvertColor for testing purposes. foreColor and backColor are never triggered with CommandFromMenuOrKeyBinding outside DRT/WTR.
+        frame.editor().applyStyleToSelection(WTFMove(style), action, Editor::ColorFilterMode::InvertColor);
         return true;
     case CommandFromDOM:
     case CommandFromDOMWithUserInterface:
-        frame.editor().applyStyle(WTFMove(style), EditActionUnspecified);
+        frame.editor().applyStyle(WTFMove(style), EditAction::Unspecified, Editor::ColorFilterMode::UseOriginalColor);
         return true;
     }
     ASSERT_NOT_REACHED();
@@ -158,7 +159,7 @@ static bool executeApplyParagraphStyle(Frame& frame, EditorCommandSource source,
 static bool executeInsertFragment(Frame& frame, Ref<DocumentFragment>&& fragment)
 {
     ASSERT(frame.document());
-    ReplaceSelectionCommand::create(*frame.document(), WTFMove(fragment), ReplaceSelectionCommand::PreventNesting, EditActionInsert)->apply();
+    ReplaceSelectionCommand::create(*frame.document(), WTFMove(fragment), ReplaceSelectionCommand::PreventNesting, EditAction::Insert)->apply();
     return true;
 }
 
@@ -236,7 +237,7 @@ static RefPtr<Range> unionDOMRanges(Range& a, Range& b)
 
 static bool executeBackColor(Frame& frame, Event*, EditorCommandSource source, const String& value)
 {
-    return executeApplyStyle(frame, source, EditActionSetBackgroundColor, CSSPropertyBackgroundColor, value);
+    return executeApplyStyle(frame, source, EditAction::SetBackgroundColor, CSSPropertyBackgroundColor, value);
 }
 
 static bool executeCopy(Frame& frame, Event*, EditorCommandSource, const String&)
@@ -382,7 +383,7 @@ static bool executeFindString(Frame& frame, Event*, EditorCommandSource, const S
 
 static bool executeFontName(Frame& frame, Event*, EditorCommandSource source, const String& value)
 {
-    return executeApplyStyle(frame, source, EditActionSetFont, CSSPropertyFontFamily, value);
+    return executeApplyStyle(frame, source, EditAction::SetFont, CSSPropertyFontFamily, value);
 }
 
 static bool executeFontSize(Frame& frame, Event*, EditorCommandSource source, const String& value)
@@ -390,17 +391,17 @@ static bool executeFontSize(Frame& frame, Event*, EditorCommandSource source, co
     CSSValueID size;
     if (!HTMLFontElement::cssValueFromFontSizeNumber(value, size))
         return false;
-    return executeApplyStyle(frame, source, EditActionChangeAttributes, CSSPropertyFontSize, size);
+    return executeApplyStyle(frame, source, EditAction::ChangeAttributes, CSSPropertyFontSize, size);
 }
 
 static bool executeFontSizeDelta(Frame& frame, Event*, EditorCommandSource source, const String& value)
 {
-    return executeApplyStyle(frame, source, EditActionChangeAttributes, CSSPropertyWebkitFontSizeDelta, value);
+    return executeApplyStyle(frame, source, EditAction::ChangeAttributes, CSSPropertyWebkitFontSizeDelta, value);
 }
 
 static bool executeForeColor(Frame& frame, Event*, EditorCommandSource source, const String& value)
 {
-    return executeApplyStyle(frame, source, EditActionSetColor, CSSPropertyColor, value);
+    return executeApplyStyle(frame, source, EditAction::SetColor, CSSPropertyColor, value);
 }
 
 static bool executeFormatBlock(Frame& frame, Event*, EditorCommandSource, const String& value)
@@ -452,7 +453,7 @@ static bool executeIndent(Frame& frame, Event*, EditorCommandSource, const Strin
 
 static bool executeInsertBacktab(Frame& frame, Event* event, EditorCommandSource, const String&)
 {
-    return targetFrame(frame, event)->eventHandler().handleTextInputEvent(ASCIILiteral("\t"), event, TextEventInputBackTab);
+    return targetFrame(frame, event)->eventHandler().handleTextInputEvent("\t"_s, event, TextEventInputBackTab);
 }
 
 static bool executeInsertHorizontalRule(Frame& frame, Event*, EditorCommandSource, const String& value)
@@ -480,7 +481,7 @@ static bool executeInsertLineBreak(Frame& frame, Event* event, EditorCommandSour
 {
     switch (source) {
     case CommandFromMenuOrKeyBinding:
-        return targetFrame(frame, event)->eventHandler().handleTextInputEvent(ASCIILiteral("\n"), event, TextEventInputLineBreak);
+        return targetFrame(frame, event)->eventHandler().handleTextInputEvent("\n"_s, event, TextEventInputLineBreak);
     case CommandFromDOM:
     case CommandFromDOMWithUserInterface:
         // Doesn't scroll to make the selection visible, or modify the kill ring.
@@ -496,7 +497,7 @@ static bool executeInsertLineBreak(Frame& frame, Event* event, EditorCommandSour
 static bool executeInsertNewline(Frame& frame, Event* event, EditorCommandSource, const String&)
 {
     Frame* targetFrame = WebCore::targetFrame(frame, event);
-    return targetFrame->eventHandler().handleTextInputEvent(ASCIILiteral("\n"), event, targetFrame->editor().canEditRichly() ? TextEventInputKeyboard : TextEventInputLineBreak);
+    return targetFrame->eventHandler().handleTextInputEvent("\n"_s, event, targetFrame->editor().canEditRichly() ? TextEventInputKeyboard : TextEventInputLineBreak);
 }
 
 static bool executeInsertNewlineInQuotedContent(Frame& frame, Event*, EditorCommandSource, const String&)
@@ -520,7 +521,7 @@ static bool executeInsertParagraph(Frame& frame, Event*, EditorCommandSource, co
 
 static bool executeInsertTab(Frame& frame, Event* event, EditorCommandSource, const String&)
 {
-    return targetFrame(frame, event)->eventHandler().handleTextInputEvent(ASCIILiteral("\t"), event);
+    return targetFrame(frame, event)->eventHandler().handleTextInputEvent("\t"_s, event);
 }
 
 static bool executeInsertText(Frame& frame, Event*, EditorCommandSource, const String& value)
@@ -538,22 +539,22 @@ static bool executeInsertUnorderedList(Frame& frame, Event*, EditorCommandSource
 
 static bool executeJustifyCenter(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeApplyParagraphStyle(frame, source, EditActionCenter, CSSPropertyTextAlign, ASCIILiteral("center"));
+    return executeApplyParagraphStyle(frame, source, EditAction::Center, CSSPropertyTextAlign, "center"_s);
 }
 
 static bool executeJustifyFull(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeApplyParagraphStyle(frame, source, EditActionJustify, CSSPropertyTextAlign, ASCIILiteral("justify"));
+    return executeApplyParagraphStyle(frame, source, EditAction::Justify, CSSPropertyTextAlign, "justify"_s);
 }
 
 static bool executeJustifyLeft(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeApplyParagraphStyle(frame, source, EditActionAlignLeft, CSSPropertyTextAlign, ASCIILiteral("left"));
+    return executeApplyParagraphStyle(frame, source, EditAction::AlignLeft, CSSPropertyTextAlign, "left"_s);
 }
 
 static bool executeJustifyRight(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeApplyParagraphStyle(frame, source, EditActionAlignRight, CSSPropertyTextAlign, ASCIILiteral("right"));
+    return executeApplyParagraphStyle(frame, source, EditAction::AlignRight, CSSPropertyTextAlign, "right"_s);
 }
 
 static bool executeMakeTextWritingDirectionLeftToRight(Frame& frame, Event*, EditorCommandSource, const String&)
@@ -561,7 +562,7 @@ static bool executeMakeTextWritingDirectionLeftToRight(Frame& frame, Event*, Edi
     RefPtr<MutableStyleProperties> style = MutableStyleProperties::create();
     style->setProperty(CSSPropertyUnicodeBidi, CSSValueEmbed);
     style->setProperty(CSSPropertyDirection, CSSValueLtr);
-    frame.editor().applyStyle(style.get(), EditActionSetWritingDirection);
+    frame.editor().applyStyle(style.get(), EditAction::SetWritingDirection);
     return true;
 }
 
@@ -569,7 +570,7 @@ static bool executeMakeTextWritingDirectionNatural(Frame& frame, Event*, EditorC
 {
     RefPtr<MutableStyleProperties> style = MutableStyleProperties::create();
     style->setProperty(CSSPropertyUnicodeBidi, CSSValueNormal);
-    frame.editor().applyStyle(style.get(), EditActionSetWritingDirection);
+    frame.editor().applyStyle(style.get(), EditAction::SetWritingDirection);
     return true;
 }
 
@@ -578,7 +579,7 @@ static bool executeMakeTextWritingDirectionRightToLeft(Frame& frame, Event*, Edi
     RefPtr<MutableStyleProperties> style = MutableStyleProperties::create();
     style->setProperty(CSSPropertyUnicodeBidi, CSSValueEmbed);
     style->setProperty(CSSPropertyDirection, CSSValueRtl);
-    frame.editor().applyStyle(style.get(), EditActionSetWritingDirection);
+    frame.editor().applyStyle(style.get(), EditAction::SetWritingDirection);
     return true;
 }
 
@@ -925,6 +926,16 @@ static bool executePasteAsPlainText(Frame& frame, Event*, EditorCommandSource so
     return true;
 }
 
+static bool executePasteAsQuotation(Frame& frame, Event*, EditorCommandSource source, const String&)
+{
+    if (source == CommandFromMenuOrKeyBinding) {
+        UserTypingGestureIndicator typingGestureIndicator(frame);
+        frame.editor().pasteAsQuotation();
+    } else
+        frame.editor().pasteAsQuotation();
+    return true;
+}
+
 static bool executePrint(Frame& frame, Event*, EditorCommandSource, const String&)
 {
     Page* page = frame.page();
@@ -1027,9 +1038,9 @@ static TextDecorationChange textDecorationChangeForToggling(Editor& editor, CSSP
 static bool executeStrikethrough(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
     Ref<EditingStyle> style = EditingStyle::create();
-    style->setStrikeThroughChange(textDecorationChangeForToggling(frame.editor(), CSSPropertyWebkitTextDecorationsInEffect, ASCIILiteral("line-through")));
+    style->setStrikeThroughChange(textDecorationChangeForToggling(frame.editor(), CSSPropertyWebkitTextDecorationsInEffect, "line-through"_s));
     // FIXME: Needs a new EditAction!
-    return applyCommandToFrame(frame, source, EditActionUnderline, WTFMove(style));
+    return applyCommandToFrame(frame, source, EditAction::Underline, WTFMove(style));
 }
 
 static bool executeStyleWithCSS(Frame& frame, Event*, EditorCommandSource, const String& value)
@@ -1046,12 +1057,12 @@ static bool executeUseCSS(Frame& frame, Event*, EditorCommandSource, const Strin
 
 static bool executeSubscript(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeToggleStyle(frame, source, EditActionSubscript, CSSPropertyVerticalAlign, ASCIILiteral("baseline"), ASCIILiteral("sub"));
+    return executeToggleStyle(frame, source, EditAction::Subscript, CSSPropertyVerticalAlign, "baseline"_s, "sub"_s);
 }
 
 static bool executeSuperscript(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeToggleStyle(frame, source, EditActionSuperscript, CSSPropertyVerticalAlign, ASCIILiteral("baseline"), ASCIILiteral("super"));
+    return executeToggleStyle(frame, source, EditAction::Superscript, CSSPropertyVerticalAlign, "baseline"_s, "super"_s);
 }
 
 static bool executeSwapWithMark(Frame& frame, Event*, EditorCommandSource, const String&)
@@ -1078,12 +1089,12 @@ static bool executeTakeFindStringFromSelection(Frame& frame, Event*, EditorComma
 
 static bool executeToggleBold(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeToggleStyle(frame, source, EditActionBold, CSSPropertyFontWeight, ASCIILiteral("normal"), ASCIILiteral("bold"));
+    return executeToggleStyle(frame, source, EditAction::Bold, CSSPropertyFontWeight, "normal"_s, "bold"_s);
 }
 
 static bool executeToggleItalic(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeToggleStyle(frame, source, EditActionItalics, CSSPropertyFontStyle, ASCIILiteral("normal"), ASCIILiteral("italic"));
+    return executeToggleStyle(frame, source, EditAction::Italics, CSSPropertyFontStyle, "normal"_s, "italic"_s);
 }
 
 static bool executeTranspose(Frame& frame, Event*, EditorCommandSource, const String&)
@@ -1095,9 +1106,9 @@ static bool executeTranspose(Frame& frame, Event*, EditorCommandSource, const St
 static bool executeUnderline(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
     Ref<EditingStyle> style = EditingStyle::create();
-    TextDecorationChange change = textDecorationChangeForToggling(frame.editor(), CSSPropertyWebkitTextDecorationsInEffect, ASCIILiteral("underline"));
+    TextDecorationChange change = textDecorationChangeForToggling(frame.editor(), CSSPropertyWebkitTextDecorationsInEffect, "underline"_s);
     style->setUnderlineChange(change);
-    return applyCommandToFrame(frame, source, EditActionUnderline, WTFMove(style));
+    return applyCommandToFrame(frame, source, EditAction::Underline, WTFMove(style));
 }
 
 static bool executeUndo(Frame& frame, Event*, EditorCommandSource, const String&)
@@ -1115,7 +1126,7 @@ static bool executeUnlink(Frame& frame, Event*, EditorCommandSource, const Strin
 
 static bool executeUnscript(Frame& frame, Event*, EditorCommandSource source, const String&)
 {
-    return executeApplyStyle(frame, source, EditActionUnscript, CSSPropertyVerticalAlign, ASCIILiteral("baseline"));
+    return executeApplyStyle(frame, source, EditAction::Unscript, CSSPropertyVerticalAlign, "baseline"_s);
 }
 
 static bool executeUnselect(Frame& frame, Event*, EditorCommandSource, const String&)
@@ -1354,12 +1365,12 @@ static TriState stateNone(Frame&, Event*)
 
 static TriState stateBold(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyFontWeight, ASCIILiteral("bold"));
+    return stateStyle(frame, CSSPropertyFontWeight, "bold"_s);
 }
 
 static TriState stateItalic(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyFontStyle, ASCIILiteral("italic"));
+    return stateStyle(frame, CSSPropertyFontStyle, "italic"_s);
 }
 
 static TriState stateOrderedList(Frame& frame, Event*)
@@ -1369,7 +1380,7 @@ static TriState stateOrderedList(Frame& frame, Event*)
 
 static TriState stateStrikethrough(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyWebkitTextDecorationsInEffect, ASCIILiteral("line-through"));
+    return stateStyle(frame, CSSPropertyWebkitTextDecorationsInEffect, "line-through"_s);
 }
 
 static TriState stateStyleWithCSS(Frame& frame, Event*)
@@ -1379,12 +1390,12 @@ static TriState stateStyleWithCSS(Frame& frame, Event*)
 
 static TriState stateSubscript(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyVerticalAlign, ASCIILiteral("sub"));
+    return stateStyle(frame, CSSPropertyVerticalAlign, "sub"_s);
 }
 
 static TriState stateSuperscript(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyVerticalAlign, ASCIILiteral("super"));
+    return stateStyle(frame, CSSPropertyVerticalAlign, "super"_s);
 }
 
 static TriState stateTextWritingDirectionLeftToRight(Frame& frame, Event*)
@@ -1404,7 +1415,7 @@ static TriState stateTextWritingDirectionRightToLeft(Frame& frame, Event*)
 
 static TriState stateUnderline(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyWebkitTextDecorationsInEffect, ASCIILiteral("underline"));
+    return stateStyle(frame, CSSPropertyWebkitTextDecorationsInEffect, "underline"_s);
 }
 
 static TriState stateUnorderedList(Frame& frame, Event*)
@@ -1414,22 +1425,22 @@ static TriState stateUnorderedList(Frame& frame, Event*)
 
 static TriState stateJustifyCenter(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyTextAlign, ASCIILiteral("center"));
+    return stateStyle(frame, CSSPropertyTextAlign, "center"_s);
 }
 
 static TriState stateJustifyFull(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyTextAlign, ASCIILiteral("justify"));
+    return stateStyle(frame, CSSPropertyTextAlign, "justify"_s);
 }
 
 static TriState stateJustifyLeft(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyTextAlign, ASCIILiteral("left"));
+    return stateStyle(frame, CSSPropertyTextAlign, "left"_s);
 }
 
 static TriState stateJustifyRight(Frame& frame, Event*)
 {
-    return stateStyle(frame, CSSPropertyTextAlign, ASCIILiteral("right"));
+    return stateStyle(frame, CSSPropertyTextAlign, "right"_s);
 }
 
 // Value functions
@@ -1635,6 +1646,7 @@ static const CommandMap& createCommandMap()
         { "Paste", { executePaste, supportedPaste, enabledPaste, stateNone, valueNull, notTextInsertion, allowExecutionWhenDisabledPaste } },
         { "PasteAndMatchStyle", { executePasteAndMatchStyle, supportedPaste, enabledPaste, stateNone, valueNull, notTextInsertion, allowExecutionWhenDisabledPaste } },
         { "PasteAsPlainText", { executePasteAsPlainText, supportedPaste, enabledPaste, stateNone, valueNull, notTextInsertion, allowExecutionWhenDisabledPaste } },
+        { "PasteAsQuotation", { executePasteAsQuotation, supportedPaste, enabledPaste, stateNone, valueNull, notTextInsertion, allowExecutionWhenDisabledPaste } },
         { "Print", { executePrint, supported, enabled, stateNone, valueNull, notTextInsertion, doNotAllowExecutionWhenDisabled } },
         { "Redo", { executeRedo, supported, enabledRedo, stateNone, valueNull, notTextInsertion, doNotAllowExecutionWhenDisabled } },
         { "RemoveFormat", { executeRemoveFormat, supported, enabledRangeInEditableText, stateNone, valueNull, notTextInsertion, doNotAllowExecutionWhenDisabled } },
@@ -1821,7 +1833,7 @@ String Editor::Command::value(Event* triggeringEvent) const
     if (!isSupported() || !m_frame)
         return String();
     if (m_command->value == valueNull && m_command->state != stateNone)
-        return m_command->state(*m_frame, triggeringEvent) == TrueTriState ? ASCIILiteral("true") : ASCIILiteral("false");
+        return m_command->state(*m_frame, triggeringEvent) == TrueTriState ? "true"_s : "false"_s;
     return m_command->value(*m_frame, triggeringEvent);
 }
 

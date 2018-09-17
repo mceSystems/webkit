@@ -72,7 +72,19 @@ void WebCoreAVFResourceLoader::startLoading()
 
     // FIXME: Skip Content Security Policy check if the element that inititated this request
     // is in a user-agent shadow tree. See <https://bugs.webkit.org/show_bug.cgi?id=173498>.
-    CachedResourceRequest request(WTFMove(resourceRequest), ResourceLoaderOptions(SendCallbacks, DoNotSniffContent, BufferData, StoredCredentialsPolicy::DoNotUse, ClientCredentialPolicy::CannotAskClientForCredentials, FetchOptions::Credentials::Omit, DoSecurityCheck, FetchOptions::Mode::NoCors, DoNotIncludeCertificateInfo, ContentSecurityPolicyImposition::DoPolicyCheck, DefersLoadingPolicy::AllowDefersLoading, CachingPolicy::DisallowCaching));
+    CachedResourceRequest request(WTFMove(resourceRequest), ResourceLoaderOptions(
+        SendCallbackPolicy::SendCallbacks,
+        ContentSniffingPolicy::DoNotSniffContent,
+        DataBufferingPolicy::BufferData,
+        StoredCredentialsPolicy::DoNotUse,
+        ClientCredentialPolicy::CannotAskClientForCredentials,
+        FetchOptions::Credentials::Omit,
+        SecurityCheckPolicy::DoSecurityCheck,
+        FetchOptions::Mode::NoCors,
+        CertificateInfoPolicy::DoNotIncludeCertificateInfo,
+        ContentSecurityPolicyImposition::DoPolicyCheck,
+        DefersLoadingPolicy::AllowDefersLoading,
+        CachingPolicy::DisallowCaching));
     if (auto* loader = m_parent->player()->cachedResourceLoader())
         m_resource = loader->requestMedia(WTFMove(request)).value_or(nullptr);
 
@@ -124,7 +136,7 @@ void WebCoreAVFResourceLoader::responseReceived(CachedResource& resource, const 
 
         [contentInfo setContentType:uti];
 
-        ParsedContentRange& contentRange = m_resource->response().contentRange();
+        const ParsedContentRange& contentRange = m_resource->response().contentRange();
         [contentInfo setContentLength:contentRange.isValid() ? contentRange.instanceLength() : response.expectedContentLength()];
         [contentInfo setByteRangeAccessSupported:YES];
 
@@ -169,7 +181,7 @@ void WebCoreAVFResourceLoader::fulfillRequestWithResource(CachedResource& resour
         return;
 
     NSUInteger responseOffset = 0;
-    ParsedContentRange contentRange = m_resource->response().contentRange();
+    const ParsedContentRange& contentRange = m_resource->response().contentRange();
     if (contentRange.isValid())
         responseOffset = static_cast<NSUInteger>(contentRange.firstBytePosition());
 

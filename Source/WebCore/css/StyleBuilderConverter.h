@@ -118,7 +118,7 @@ public:
     static FontFeatureSettings convertFontFeatureSettings(StyleResolver&, const CSSValue&);
     static FontSelectionValue convertFontWeightFromValue(const CSSValue&);
     static FontSelectionValue convertFontStretchFromValue(const CSSValue&);
-    static FontSelectionValue convertFontStyleFromValue(const CSSValue&);
+    static std::optional<FontSelectionValue> convertFontStyleFromValue(const CSSValue&);
     static FontSelectionValue convertFontWeight(StyleResolver&, const CSSValue&);
     static FontSelectionValue convertFontStretch(StyleResolver&, const CSSValue&);
     static FontSelectionValue convertFontStyle(StyleResolver&, const CSSValue&);
@@ -326,7 +326,7 @@ inline Length StyleBuilderConverter::convertTo100PercentMinusLength(const Length
     lengths.reserveInitialCapacity(2);
     lengths.uncheckedAppend(std::make_unique<CalcExpressionLength>(Length(100, Percent)));
     lengths.uncheckedAppend(std::make_unique<CalcExpressionLength>(length));
-    auto op = std::make_unique<CalcExpressionOperation>(WTFMove(lengths), CalcSubtract);
+    auto op = std::make_unique<CalcExpressionOperation>(WTFMove(lengths), CalcOperator::Subtract);
     return Length(CalculationValue::create(WTFMove(op), ValueRangeAll));
 }
 
@@ -394,7 +394,7 @@ inline OptionSet<TextDecoration> StyleBuilderConverter::convertTextDecoration(St
     auto result = RenderStyle::initialTextDecoration();
     if (is<CSSValueList>(value)) {
         for (auto& currentValue : downcast<CSSValueList>(value))
-            result |= downcast<CSSPrimitiveValue>(currentValue.get());
+            result.add(downcast<CSSPrimitiveValue>(currentValue.get()));
     }
     return result;
 }
@@ -498,7 +498,7 @@ inline OptionSet<TextEmphasisPosition> StyleBuilderConverter::convertTextEmphasi
 
     OptionSet<TextEmphasisPosition> position;
     for (auto& currentValue : downcast<CSSValueList>(value))
-        position |= valueToEmphasisPosition(downcast<CSSPrimitiveValue>(currentValue.get()));
+        position.add(valueToEmphasisPosition(downcast<CSSPrimitiveValue>(currentValue.get())));
     return position;
 }
 
@@ -545,8 +545,8 @@ inline RefPtr<ClipPathOperation> StyleBuilderConverter::convertClipPath(StyleRes
                 || primitiveValue.valueID() == CSSValueBorderBox
                 || primitiveValue.valueID() == CSSValuePaddingBox
                 || primitiveValue.valueID() == CSSValueMarginBox
-                || primitiveValue.valueID() == CSSValueFill
-                || primitiveValue.valueID() == CSSValueStroke
+                || primitiveValue.valueID() == CSSValueFillBox
+                || primitiveValue.valueID() == CSSValueStrokeBox
                 || primitiveValue.valueID() == CSSValueViewBox);
             ASSERT(referenceBox == CSSBoxType::BoxMissing);
             referenceBox = primitiveValue;
@@ -645,7 +645,7 @@ inline OptionSet<TextUnderlinePosition> StyleBuilderConverter::convertTextUnderl
 
     OptionSet<TextUnderlinePosition> combinedPosition;
     for (auto& currentValue : downcast<CSSValueList>(value))
-        combinedPosition |= downcast<CSSPrimitiveValue>(currentValue.get());
+        combinedPosition.add(downcast<CSSPrimitiveValue>(currentValue.get()));
     return combinedPosition;
 }
 
@@ -753,7 +753,7 @@ inline OptionSet<TextDecorationSkip> StyleBuilderConverter::convertTextDecoratio
 
     OptionSet<TextDecorationSkip> skip;
     for (auto& currentValue : downcast<CSSValueList>(value))
-        skip |= valueToDecorationSkip(downcast<CSSPrimitiveValue>(currentValue.get()));
+        skip.add(valueToDecorationSkip(downcast<CSSPrimitiveValue>(currentValue.get())));
     return skip;
 }
 
@@ -1202,14 +1202,15 @@ inline FontSelectionValue StyleBuilderConverter::convertFontStretchFromValue(con
     return normalStretchValue();
 }
 
-inline FontSelectionValue StyleBuilderConverter::convertFontStyleFromValue(const CSSValue& value)
+// The input value needs to parsed and valid, this function returns std::nullopt if the input was "normal".
+inline std::optional<FontSelectionValue> StyleBuilderConverter::convertFontStyleFromValue(const CSSValue& value)
 {
     ASSERT(is<CSSFontStyleValue>(value));
     const auto& fontStyleValue = downcast<CSSFontStyleValue>(value);
 
     auto valueID = fontStyleValue.fontStyleValue->valueID();
     if (valueID == CSSValueNormal)
-        return normalItalicValue();
+        return std::nullopt;
     if (valueID == CSSValueItalic)
         return italicValue();
     ASSERT(valueID == CSSValueOblique);
@@ -1503,7 +1504,7 @@ inline OptionSet<SpeakAs> StyleBuilderConverter::convertSpeakAs(StyleResolver&, 
     auto result = RenderStyle::initialSpeakAs();
     if (is<CSSValueList>(value)) {
         for (auto& currentValue : downcast<CSSValueList>(value))
-            result |= downcast<CSSPrimitiveValue>(currentValue.get());
+            result.add(downcast<CSSPrimitiveValue>(currentValue.get()));
     }
     return result;
 }
@@ -1513,7 +1514,7 @@ inline OptionSet<HangingPunctuation> StyleBuilderConverter::convertHangingPunctu
     auto result = RenderStyle::initialHangingPunctuation();
     if (is<CSSValueList>(value)) {
         for (auto& currentValue : downcast<CSSValueList>(value))
-            result |= downcast<CSSPrimitiveValue>(currentValue.get());
+            result.add(downcast<CSSPrimitiveValue>(currentValue.get()));
     }
     return result;
 }

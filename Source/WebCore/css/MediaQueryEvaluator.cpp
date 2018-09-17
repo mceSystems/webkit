@@ -110,7 +110,7 @@ MediaQueryEvaluator::MediaQueryEvaluator(const String& acceptedMediaType, bool m
 
 MediaQueryEvaluator::MediaQueryEvaluator(const String& acceptedMediaType, const Document& document, const RenderStyle* style)
     : m_mediaType(acceptedMediaType)
-    , m_document(const_cast<Document&>(document).createWeakPtr())
+    , m_document(makeWeakPtr(document))
     , m_style(style)
 {
 }
@@ -713,17 +713,17 @@ static bool anyPointerEvaluate(CSSValue* value, const CSSToLengthConversionData&
     return pointerEvaluate(value, cssToLengthConversionData, frame, prefix);
 }
     
-static bool defaultAppearanceEvaluate(CSSValue* value, const CSSToLengthConversionData&, Frame& frame, MediaFeaturePrefix)
+static bool prefersDarkInterfaceEvaluate(CSSValue* value, const CSSToLengthConversionData&, Frame& frame, MediaFeaturePrefix)
 {
-    bool defaultAppearance = false;
-    
-    if (!frame.page()->defaultAppearance())
-        defaultAppearance = true;
-    
+    bool prefersDarkInterface = false;
+
+    if (frame.page()->useSystemAppearance() && frame.page()->useDarkAppearance())
+        prefersDarkInterface = true;
+
     if (!value)
-        return defaultAppearance;
-    
-    return downcast<CSSPrimitiveValue>(*value).valueID() == (defaultAppearance ? CSSValuePrefers : CSSValueNoPreference);
+        return prefersDarkInterface;
+
+    return downcast<CSSPrimitiveValue>(*value).valueID() == (prefersDarkInterface ? CSSValuePrefers : CSSValueNoPreference);
 }
 
 static bool prefersReducedMotionEvaluate(CSSValue* value, const CSSToLengthConversionData&, Frame& frame, MediaFeaturePrefix)
@@ -787,7 +787,7 @@ bool MediaQueryEvaluator::evaluate(const MediaQueryExpression& expression) const
     if (!m_document)
         return m_fallbackResult;
 
-    Document& document = *m_document;
+    auto& document = *m_document;
     auto* frame = document.frame();
     if (!frame || !frame->view() || !m_style)
         return m_fallbackResult;

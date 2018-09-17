@@ -39,6 +39,7 @@
 #include <wtf/UUID.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/text/StringConcatenateNumbers.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/TextStream.h>
 
@@ -83,7 +84,7 @@ void URL::invalidate()
     m_userEnd = 0;
     m_passwordEnd = 0;
     m_hostEnd = 0;
-    m_portEnd = 0;
+    m_portLength = 0;
     m_pathEnd = 0;
     m_pathAfterLastSlash = 0;
     m_queryEnd = 0;
@@ -143,7 +144,7 @@ String URL::lastPathComponent() const
         --end;
 
     size_t start = m_string.reverseFind('/', end);
-    if (start < static_cast<unsigned>(m_portEnd))
+    if (start < static_cast<unsigned>(m_hostEnd + m_portLength))
         return String();
     ++start;
 
@@ -163,15 +164,15 @@ StringView URL::host() const
 
 std::optional<uint16_t> URL::port() const
 {
-    if (!m_portEnd || m_hostEnd >= m_portEnd - 1)
+    if (!m_portLength)
         return std::nullopt;
 
     bool ok = false;
     unsigned number;
     if (m_string.is8Bit())
-        number = charactersToUIntStrict(m_string.characters8() + m_hostEnd + 1, m_portEnd - m_hostEnd - 1, &ok);
+        number = charactersToUIntStrict(m_string.characters8() + m_hostEnd + 1, m_portLength - 1, &ok);
     else
-        number = charactersToUIntStrict(m_string.characters16() + m_hostEnd + 1, m_portEnd - m_hostEnd - 1, &ok);
+        number = charactersToUIntStrict(m_string.characters16() + m_hostEnd + 1, m_portLength - 1, &ok);
     if (!ok || number > std::numeric_limits<uint16_t>::max())
         return std::nullopt;
     return number;
@@ -180,13 +181,13 @@ std::optional<uint16_t> URL::port() const
 String URL::hostAndPort() const
 {
     if (auto port = this->port())
-        return makeString(host(), ':', String::number(port.value()));
+        return makeString(host(), ':', static_cast<unsigned>(port.value()));
     return host().toString();
 }
 
 String URL::protocolHostAndPort() const
 {
-    String result = m_string.substring(0, m_portEnd);
+    String result = m_string.substring(0, m_hostEnd + m_portLength);
 
     if (m_passwordEnd - m_userStart > 0) {
         const int allowForTrailingAtSign = 1;
@@ -369,7 +370,8 @@ String URL::query() const
 
 String URL::path() const
 {
-    return m_string.substring(m_portEnd, m_pathEnd - m_portEnd);
+    unsigned portEnd = m_hostEnd + m_portLength;
+    return m_string.substring(portEnd, m_pathEnd - portEnd);
 }
 
 bool URL::setProtocol(const String& s)
@@ -425,7 +427,12 @@ static bool appendEncodedHostname(UCharBuffer& buffer, StringView string)
     }
     return false;
 }
-    
+
+unsigned URL::hostStart() const
+{
+    return (m_passwordEnd == m_userStart) ? m_passwordEnd : m_passwordEnd + 1;
+}
+
 void URL::setHost(const String& s)
 {
     if (!m_isValid)
@@ -439,7 +446,7 @@ void URL::setHost(const String& s)
     if (!appendEncodedHostname(encodedHostName, s))
         return;
     
-    bool slashSlashNeeded = m_userStart == m_schemeEnd + 1;
+    bool slashSlashNeeded = m_userStart == static_cast<unsigned>(m_schemeEnd + 1);
     
     StringBuilder builder;
     builder.append(m_string.left(hostStart()));
@@ -454,9 +461,9 @@ void URL::setHost(const String& s)
 
 void URL::removePort()
 {
-    if (m_hostEnd == m_portEnd)
+    if (!m_portLength)
         return;
-    URLParser parser(m_string.left(m_hostEnd) + m_string.substring(m_portEnd));
+    URLParser parser(makeString(StringView(m_string).left(m_hostEnd), StringView(m_string).substring(m_hostEnd + m_portLength)));
     *this = parser.result();
 }
 
@@ -465,10 +472,10 @@ void URL::setPort(unsigned short i)
     if (!m_isValid)
         return;
 
-    bool colonNeeded = m_portEnd == m_hostEnd;
+    bool colonNeeded = !m_portLength;
     unsigned portStart = (colonNeeded ? m_hostEnd : m_hostEnd + 1);
 
-    URLParser parser(makeString(m_string.left(portStart), (colonNeeded ? ":" : ""), String::number(i), m_string.substring(m_portEnd)));
+    URLParser parser(makeString(StringView(m_string).left(portStart), (colonNeeded ? ":" : ""), String::number(i), StringView(m_string).substring(m_hostEnd + m_portLength)));
     *this = parser.result();
 }
 
@@ -497,7 +504,7 @@ void URL::setHostAndPort(const String& hostAndPort)
     if (!appendEncodedHostname(encodedHostName, hostName))
         return;
 
-    bool slashSlashNeeded = m_userStart == m_schemeEnd + 1;
+    bool slashSlashNeeded = m_userStart == static_cast<unsigned>(m_schemeEnd + 1);
 
     StringBuilder builder;
     builder.append(m_string.left(hostStart()));
@@ -508,7 +515,7 @@ void URL::setHostAndPort(const String& hostAndPort)
         builder.appendLiteral(":");
         builder.append(port);
     }
-    builder.append(m_string.substring(m_portEnd));
+    builder.append(StringView(m_string).substring(m_hostEnd + m_portLength));
 
     URLParser parser(builder.toString());
     *this = parser.result();
@@ -551,7 +558,7 @@ void URL::setUser(const String& user)
     unsigned end = m_userEnd;
     if (!user.isEmpty()) {
         String u = percentEncodeCharacters(user, URLParser::isInUserInfoEncodeSet);
-        if (m_userStart == m_schemeEnd + 1)
+        if (m_userStart == static_cast<unsigned>(m_schemeEnd + 1))
             u = "//" + u;
         // Add '@' if we didn't have one before.
         if (end == m_hostEnd || (end == m_passwordEnd && m_string[end] != '@'))
@@ -578,7 +585,7 @@ void URL::setPass(const String& password)
     unsigned end = m_passwordEnd;
     if (!password.isEmpty()) {
         String p = ":" + percentEncodeCharacters(password, URLParser::isInUserInfoEncodeSet) + "@";
-        if (m_userEnd == m_schemeEnd + 1)
+        if (m_userEnd == static_cast<unsigned>(m_schemeEnd + 1))
             p = "//" + p;
         // Eat the existing '@' since we are going to add our own.
         if (end != m_hostEnd && m_string[end] == '@')
@@ -657,7 +664,7 @@ void URL::setPath(const String& s)
     auto questionMarkOrNumberSign = [] (UChar character) {
         return character == '?' || character == '#';
     };
-    URLParser parser(makeString(StringView(m_string).left(m_portEnd), percentEncodeCharacters(path, questionMarkOrNumberSign), StringView(m_string).substring(m_pathEnd)));
+    URLParser parser(makeString(StringView(m_string).left(m_hostEnd + m_portLength), percentEncodeCharacters(path, questionMarkOrNumberSign), StringView(m_string).substring(m_pathEnd)));
     *this = parser.result();
 }
 
@@ -740,9 +747,9 @@ bool protocolHostAndPortAreEqual(const URL& a, const URL& b)
         return false;
 
     unsigned hostStartA = a.hostStart();
-    unsigned hostLengthA = a.hostEnd() - hostStartA;
+    unsigned hostLengthA = a.m_hostEnd - hostStartA;
     unsigned hostStartB = b.hostStart();
-    unsigned hostLengthB = b.hostEnd() - b.hostStart();
+    unsigned hostLengthB = b.m_hostEnd - b.hostStart();
     if (hostLengthA != hostLengthB)
         return false;
 
@@ -767,9 +774,9 @@ bool protocolHostAndPortAreEqual(const URL& a, const URL& b)
 bool hostsAreEqual(const URL& a, const URL& b)
 {
     unsigned hostStartA = a.hostStart();
-    unsigned hostLengthA = a.hostEnd() - hostStartA;
+    unsigned hostLengthA = a.m_hostEnd - hostStartA;
     unsigned hostStartB = b.hostStart();
-    unsigned hostLengthB = b.hostEnd() - hostStartB;
+    unsigned hostLengthB = b.m_hostEnd - hostStartB;
     if (hostLengthA != hostLengthB)
         return false;
 
@@ -1030,7 +1037,7 @@ String mimeTypeFromDataURL(const String& url)
         return emptyString();
     }
     if (index == 5)
-        return ASCIILiteral("text/plain");
+        return "text/plain"_s;
     ASSERT(index >= 5);
     return url.substring(5, index - 5).convertToASCIILowercase();
 }
@@ -1060,10 +1067,96 @@ TextStream& operator<<(TextStream& ts, const URL& url)
 }
 
 #if !PLATFORM(COCOA) && !USE(SOUP)
-bool URL::hostIsIPAddress(const String& host)
+static bool isIPv4Address(StringView string)
 {
-    // Assume that any host that ends with a digit is trying to be an IP address.
-    return !host.isEmpty() && isASCIIDigit(host[host.length() - 1]);
+    auto count = 0;
+
+    for (const auto octet : string.splitAllowingEmptyEntries('.')) {
+        if (count >= 4)
+            return false;
+
+        const auto length = octet.length();
+        if (!length || length > 3)
+            return false;
+
+        auto value = 0;
+        for (auto i = 0u; i < length; ++i) {
+            const auto digit = octet[i];
+
+            // Prohibit leading zeroes.
+            if (digit > '9' || digit < (!i && length > 1 ? '1' : '0'))
+                return false;
+
+            value = 10 * value + (digit - '0');
+        }
+
+        if (value > 255)
+            return false;
+
+        count++;
+    }
+
+    return (count == 4);
+}
+
+static bool isIPv6Address(StringView string)
+{
+    enum SkipState { None, WillSkip, Skipping, Skipped, Final };
+    auto skipState = None;
+    auto count = 0;
+
+    for (const auto hextet : string.splitAllowingEmptyEntries(':')) {
+        if (count >= 8 || skipState == Final)
+            return false;
+
+        const auto length = hextet.length();
+        if (!length) {
+            // :: may be used anywhere to skip 1 to 8 hextets, but only once.
+            if (skipState == Skipped)
+                return false;
+
+            if (skipState == None)
+                skipState = !count ? WillSkip : Skipping;
+            else if (skipState == WillSkip)
+                skipState = Skipping;
+            else
+                skipState = Final;
+            continue;
+        }
+
+        if (skipState == WillSkip)
+            return false;
+
+        if (skipState == Skipping)
+            skipState = Skipped;
+
+        if (length > 4) {
+            // An IPv4 address may be used in place of the final two hextets.
+            if ((skipState == None && count != 6) || (skipState == Skipped && count >= 6) || !isIPv4Address(hextet))
+                return false;
+
+            skipState = Final;
+            continue;
+        }
+
+        for (const auto codeUnit : hextet.codeUnits()) {
+            // IPv6 allows leading zeroes.
+            if (!isASCIIHexDigit(codeUnit))
+                return false;
+        }
+
+        count++;
+    }
+
+    return (count == 8 && skipState == None) || skipState == Skipped || skipState == Final;
+}
+
+bool URL::hostIsIPAddress(StringView host)
+{
+    if (host.find(':') == notFound)
+        return isIPv4Address(host);
+
+    return isIPv6Address(host);
 }
 #endif
 

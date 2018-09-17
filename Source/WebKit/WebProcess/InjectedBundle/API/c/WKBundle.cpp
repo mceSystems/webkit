@@ -34,11 +34,17 @@
 #include "WKAPICast.h"
 #include "WKBundleAPICast.h"
 #include "WKBundlePrivate.h"
+#include "WKMutableArray.h"
+#include "WKMutableDictionary.h"
+#include "WKNumber.h"
+#include "WKRetainPtr.h"
+#include "WKString.h"
 #include "WebConnection.h"
 #include "WebFrame.h"
 #include "WebPage.h"
 #include "WebPageGroupProxy.h"
 #include <WebCore/DatabaseTracker.h>
+#include <WebCore/MemoryRelease.h>
 #include <WebCore/ResourceLoadObserver.h>
 #include <WebCore/ServiceWorkerThreadProxy.h>
 
@@ -213,6 +219,30 @@ void WKBundleSetAsynchronousSpellCheckingEnabled(WKBundleRef bundleRef, WKBundle
     toImpl(bundleRef)->setAsynchronousSpellCheckingEnabled(toImpl(pageGroupRef), enabled);
 }
 
+WKArrayRef WKBundleGetLiveDocumentURLs(WKBundleRef bundleRef, WKBundlePageGroupRef pageGroupRef, bool excludeDocumentsInPageGroupPages)
+{
+    auto liveDocuments = toImpl(bundleRef)->liveDocumentURLs(toImpl(pageGroupRef), excludeDocumentsInPageGroupPages);
+
+    auto liveURLs = adoptWK(WKMutableArrayCreate());
+
+    for (const auto& it : liveDocuments) {
+        auto urlInfo = adoptWK(WKMutableDictionaryCreate());
+
+        auto documentIDKey = adoptWK(WKStringCreateWithUTF8CString("id"));
+        auto documentURLKey = adoptWK(WKStringCreateWithUTF8CString("url"));
+
+        auto documentIDValue = adoptWK(WKUInt64Create(it.key));
+        auto documentURLValue = adoptWK(toCopiedAPI(it.value));
+
+        WKDictionarySetItem(urlInfo.get(), documentIDKey.get(), documentIDValue.get());
+        WKDictionarySetItem(urlInfo.get(), documentURLKey.get(), documentURLValue.get());
+
+        WKArrayAppendItem(liveURLs.get(), urlInfo.get());
+    }
+    
+    return liveURLs.leakRef();
+}
+
 void WKBundleReportException(JSContextRef context, JSValueRef exception)
 {
     InjectedBundle::reportException(context, exception);
@@ -227,6 +257,11 @@ void WKBundleSetDatabaseQuota(WKBundleRef bundleRef, uint64_t quota)
 {
     // Historically, we've used the following (somewhat nonsensical) string for the databaseIdentifier of local files.
     DatabaseTracker::singleton().setQuota(*SecurityOriginData::fromDatabaseIdentifier("file__0"), quota);
+}
+
+void WKBundleReleaseMemory(WKBundleRef)
+{
+    WebCore::releaseMemory(WTF::Critical::Yes, WTF::Synchronous::Yes);
 }
 
 WKDataRef WKBundleCreateWKDataFromUInt8Array(WKBundleRef bundle, JSContextRef context, JSValueRef data)
@@ -292,4 +327,16 @@ void WKBundleClearResourceLoadStatistics(WKBundleRef)
 void WKBundleResourceLoadStatisticsNotifyObserver(WKBundleRef)
 {
     ResourceLoadObserver::shared().notifyObserver();
+}
+
+
+void WKBundleExtendClassesForParameterCoder(WKBundleRef bundle, WKArrayRef classes)
+{
+#if PLATFORM(COCOA) && WK_API_ENABLED
+    auto classList = WebKit::toImpl(classes);
+    if (!classList)
+        return;
+
+    toImpl(bundle)->extendClassesForParameterCoder(*classList);
+#endif
 }

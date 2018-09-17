@@ -308,7 +308,7 @@ WI.NavigationSidebarPanel = class NavigationSidebarPanel extends WI.SidebarPanel
 
     shouldFilterPopulate()
     {
-        // Overriden by subclasses if needed.
+        // Overridden by subclasses if needed.
         return this.hasCustomFilters();
     }
 
@@ -447,11 +447,6 @@ WI.NavigationSidebarPanel = class NavigationSidebarPanel extends WI.SidebarPanel
                     contentTreeOutline.removeChildAtIndex(i, true, true);
             }
         }
-    }
-
-    treeElementAddedOrChanged(treeElement)
-    {
-        // Implemented by subclasses if needed.
     }
 
     // Private
@@ -604,8 +599,6 @@ WI.NavigationSidebarPanel = class NavigationSidebarPanel extends WI.SidebarPanel
 
         if (this.selected)
             this._checkElementsForPendingViewStateCookie([treeElement]);
-
-        this.treeElementAddedOrChanged(treeElement);
     }
 
     _treeElementDisclosureDidChange(event)
@@ -640,6 +633,7 @@ WI.NavigationSidebarPanel = class NavigationSidebarPanel extends WI.SidebarPanel
             || treeElement instanceof WI.ThreadTreeElement
             || treeElement instanceof WI.IdleTreeElement
             || treeElement instanceof WI.DOMBreakpointTreeElement
+            || treeElement instanceof WI.EventBreakpointTreeElement
             || treeElement instanceof WI.XHRBreakpointTreeElement
             || treeElement instanceof WI.CSSStyleSheetTreeElement
             || typeof treeElement.representedObject === "string"

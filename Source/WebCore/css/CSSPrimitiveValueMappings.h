@@ -621,6 +621,16 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(ControlPart e)
         m_value.valueID = CSSValueApplePayButton;
         break;
 #endif
+#if ENABLE(INPUT_TYPE_COLOR)
+    case ColorWellPart:
+        m_value.valueID = CSSValueColorWell;
+        break;
+#endif
+#if ENABLE(DATALIST_ELEMENT)
+    case ListButtonPart:
+        m_value.valueID = CSSValueListButton;
+        break;
+#endif
     }
 }
 
@@ -3087,7 +3097,7 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(WordBreak e)
     case WordBreak::KeepAll:
         m_value.valueID = CSSValueKeepAll;
         break;
-    case WordBreak::Break:
+    case WordBreak::BreakWord:
         m_value.valueID = CSSValueBreakWord;
         break;
     }
@@ -3103,7 +3113,7 @@ template<> inline CSSPrimitiveValue::operator WordBreak() const
     case CSSValueKeepAll:
         return WordBreak::KeepAll;
     case CSSValueBreakWord:
-        return WordBreak::Break;
+        return WordBreak::BreakWord;
     case CSSValueNormal:
         return WordBreak::Normal;
     default:
@@ -3150,10 +3160,10 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(TextDirection e)
 {
     m_primitiveUnitType = CSS_VALUE_ID;
     switch (e) {
-    case LTR:
+    case TextDirection::LTR:
         m_value.valueID = CSSValueLtr;
         break;
-    case RTL:
+    case TextDirection::RTL:
         m_value.valueID = CSSValueRtl;
         break;
     }
@@ -3165,15 +3175,15 @@ template<> inline CSSPrimitiveValue::operator TextDirection() const
 
     switch (m_value.valueID) {
     case CSSValueLtr:
-        return LTR;
+        return TextDirection::LTR;
     case CSSValueRtl:
-        return RTL;
+        return TextDirection::RTL;
     default:
         break;
     }
 
     ASSERT_NOT_REACHED();
-    return LTR;
+    return TextDirection::LTR;
 }
 
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(WritingMode e)
@@ -3605,16 +3615,16 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(FontSmoothingMode smoothi
 {
     m_primitiveUnitType = CSS_VALUE_ID;
     switch (smoothing) {
-    case AutoSmoothing:
+    case FontSmoothingMode::AutoSmoothing:
         m_value.valueID = CSSValueAuto;
         return;
-    case NoSmoothing:
+    case FontSmoothingMode::NoSmoothing:
         m_value.valueID = CSSValueNone;
         return;
-    case Antialiased:
+    case FontSmoothingMode::Antialiased:
         m_value.valueID = CSSValueAntialiased;
         return;
-    case SubpixelAntialiased:
+    case FontSmoothingMode::SubpixelAntialiased:
         m_value.valueID = CSSValueSubpixelAntialiased;
         return;
     }
@@ -3629,19 +3639,19 @@ template<> inline CSSPrimitiveValue::operator FontSmoothingMode() const
 
     switch (m_value.valueID) {
     case CSSValueAuto:
-        return AutoSmoothing;
+        return FontSmoothingMode::AutoSmoothing;
     case CSSValueNone:
-        return NoSmoothing;
+        return FontSmoothingMode::NoSmoothing;
     case CSSValueAntialiased:
-        return Antialiased;
+        return FontSmoothingMode::Antialiased;
     case CSSValueSubpixelAntialiased:
-        return SubpixelAntialiased;
+        return FontSmoothingMode::SubpixelAntialiased;
     default:
         break;
     }
 
     ASSERT_NOT_REACHED();
-    return AutoSmoothing;
+    return FontSmoothingMode::AutoSmoothing;
 }
 
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(FontSmallCaps smallCaps)
@@ -3649,10 +3659,10 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(FontSmallCaps smallCaps)
 {
     m_primitiveUnitType = CSS_VALUE_ID;
     switch (smallCaps) {
-    case FontSmallCapsOff:
+    case FontSmallCaps::Off:
         m_value.valueID = CSSValueNormal;
         return;
-    case FontSmallCapsOn:
+    case FontSmallCaps::On:
         m_value.valueID = CSSValueSmallCaps;
         return;
     }
@@ -3667,14 +3677,14 @@ template<> inline CSSPrimitiveValue::operator FontSmallCaps() const
 
     switch (m_value.valueID) {
     case CSSValueSmallCaps:
-        return FontSmallCapsOn;
+        return FontSmallCaps::On;
     case CSSValueNormal:
-        return FontSmallCapsOff;
+        return FontSmallCaps::Off;
     default:
         break;
     }
     ASSERT_NOT_REACHED();
-    return FontSmallCapsOff;
+    return FontSmallCaps::Off;
 }
 
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(TextRenderingMode e)
@@ -3682,16 +3692,16 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(TextRenderingMode e)
 {
     m_primitiveUnitType = CSS_VALUE_ID;
     switch (e) {
-    case AutoTextRendering:
+    case TextRenderingMode::AutoTextRendering:
         m_value.valueID = CSSValueAuto;
         break;
-    case OptimizeSpeed:
+    case TextRenderingMode::OptimizeSpeed:
         m_value.valueID = CSSValueOptimizeSpeed;
         break;
-    case OptimizeLegibility:
+    case TextRenderingMode::OptimizeLegibility:
         m_value.valueID = CSSValueOptimizeLegibility;
         break;
-    case GeometricPrecision:
+    case TextRenderingMode::GeometricPrecision:
         m_value.valueID = CSSValueGeometricPrecision;
         break;
     }
@@ -3703,19 +3713,19 @@ template<> inline CSSPrimitiveValue::operator TextRenderingMode() const
 
     switch (m_value.valueID) {
     case CSSValueAuto:
-        return AutoTextRendering;
+        return TextRenderingMode::AutoTextRendering;
     case CSSValueOptimizeSpeed:
-        return OptimizeSpeed;
+        return TextRenderingMode::OptimizeSpeed;
     case CSSValueOptimizeLegibility:
-        return OptimizeLegibility;
+        return TextRenderingMode::OptimizeLegibility;
     case CSSValueGeometricPrecision:
-        return GeometricPrecision;
+        return TextRenderingMode::GeometricPrecision;
     default:
         break;
     }
 
     ASSERT_NOT_REACHED();
-    return AutoTextRendering;
+    return TextRenderingMode::AutoTextRendering;
 }
 
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(Hyphens hyphens)
@@ -3903,58 +3913,58 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(BlendMode blendMode)
 {
     m_primitiveUnitType = CSS_VALUE_ID;
     switch (blendMode) {
-    case BlendModeNormal:
+    case BlendMode::Normal:
         m_value.valueID = CSSValueNormal;
         break;
-    case BlendModeMultiply:
+    case BlendMode::Multiply:
         m_value.valueID = CSSValueMultiply;
         break;
-    case BlendModeScreen:
+    case BlendMode::Screen:
         m_value.valueID = CSSValueScreen;
         break;
-    case BlendModeOverlay:
+    case BlendMode::Overlay:
         m_value.valueID = CSSValueOverlay;
         break;
-    case BlendModeDarken:
+    case BlendMode::Darken:
         m_value.valueID = CSSValueDarken;
         break;
-    case BlendModeLighten:
+    case BlendMode::Lighten:
         m_value.valueID = CSSValueLighten;
         break;
-    case BlendModeColorDodge:
+    case BlendMode::ColorDodge:
         m_value.valueID = CSSValueColorDodge;
         break;
-    case BlendModeColorBurn:
+    case BlendMode::ColorBurn:
         m_value.valueID = CSSValueColorBurn;
         break;
-    case BlendModeHardLight:
+    case BlendMode::HardLight:
         m_value.valueID = CSSValueHardLight;
         break;
-    case BlendModeSoftLight:
+    case BlendMode::SoftLight:
         m_value.valueID = CSSValueSoftLight;
         break;
-    case BlendModeDifference:
+    case BlendMode::Difference:
         m_value.valueID = CSSValueDifference;
         break;
-    case BlendModeExclusion:
+    case BlendMode::Exclusion:
         m_value.valueID = CSSValueExclusion;
         break;
-    case BlendModeHue:
+    case BlendMode::Hue:
         m_value.valueID = CSSValueHue;
         break;
-    case BlendModeSaturation:
+    case BlendMode::Saturation:
         m_value.valueID = CSSValueSaturation;
         break;
-    case BlendModeColor:
+    case BlendMode::Color:
         m_value.valueID = CSSValueColor;
         break;
-    case BlendModeLuminosity:
+    case BlendMode::Luminosity:
         m_value.valueID = CSSValueLuminosity;
         break;
-    case BlendModePlusDarker:
+    case BlendMode::PlusDarker:
         m_value.valueID = CSSValuePlusDarker;
         break;
-    case BlendModePlusLighter:
+    case BlendMode::PlusLighter:
         m_value.valueID = CSSValuePlusLighter;
         break;
     }
@@ -3966,47 +3976,47 @@ template<> inline CSSPrimitiveValue::operator BlendMode() const
 
     switch (m_value.valueID) {
     case CSSValueNormal:
-        return BlendModeNormal;
+        return BlendMode::Normal;
     case CSSValueMultiply:
-        return BlendModeMultiply;
+        return BlendMode::Multiply;
     case CSSValueScreen:
-        return BlendModeScreen;
+        return BlendMode::Screen;
     case CSSValueOverlay:
-        return BlendModeOverlay;
+        return BlendMode::Overlay;
     case CSSValueDarken:
-        return BlendModeDarken;
+        return BlendMode::Darken;
     case CSSValueLighten:
-        return BlendModeLighten;
+        return BlendMode::Lighten;
     case CSSValueColorDodge:
-        return BlendModeColorDodge;
+        return BlendMode::ColorDodge;
     case CSSValueColorBurn:
-        return BlendModeColorBurn;
+        return BlendMode::ColorBurn;
     case CSSValueHardLight:
-        return BlendModeHardLight;
+        return BlendMode::HardLight;
     case CSSValueSoftLight:
-        return BlendModeSoftLight;
+        return BlendMode::SoftLight;
     case CSSValueDifference:
-        return BlendModeDifference;
+        return BlendMode::Difference;
     case CSSValueExclusion:
-        return BlendModeExclusion;
+        return BlendMode::Exclusion;
     case CSSValueHue:
-        return BlendModeHue;
+        return BlendMode::Hue;
     case CSSValueSaturation:
-        return BlendModeSaturation;
+        return BlendMode::Saturation;
     case CSSValueColor:
-        return BlendModeColor;
+        return BlendMode::Color;
     case CSSValueLuminosity:
-        return BlendModeLuminosity;
+        return BlendMode::Luminosity;
     case CSSValuePlusDarker:
-        return BlendModePlusDarker;
+        return BlendMode::PlusDarker;
     case CSSValuePlusLighter:
-        return BlendModePlusLighter;
+        return BlendMode::PlusLighter;
     default:
         break;
     }
 
     ASSERT_NOT_REACHED();
-    return BlendModeNormal;
+    return BlendMode::Normal;
 }
 
 template<> inline CSSPrimitiveValue::CSSPrimitiveValue(Isolation isolation)
@@ -4918,11 +4928,11 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(CSSBoxType cssBox)
     case CSSBoxType::ContentBox:
         m_value.valueID = CSSValueContentBox;
         break;
-    case CSSBoxType::Fill:
-        m_value.valueID = CSSValueFill;
+    case CSSBoxType::FillBox:
+        m_value.valueID = CSSValueFillBox;
         break;
-    case CSSBoxType::Stroke:
-        m_value.valueID = CSSValueStroke;
+    case CSSBoxType::StrokeBox:
+        m_value.valueID = CSSValueStrokeBox;
         break;
     case CSSBoxType::ViewBox:
         m_value.valueID = CSSValueViewBox;
@@ -4946,10 +4956,10 @@ template<> inline CSSPrimitiveValue::operator CSSBoxType() const
     case CSSValueContentBox:
         return CSSBoxType::ContentBox;
     // The following are used in an SVG context.
-    case CSSValueFill:
-        return CSSBoxType::Fill;
-    case CSSValueStroke:
-        return CSSBoxType::Stroke;
+    case CSSValueFillBox:
+        return CSSBoxType::FillBox;
+    case CSSValueStrokeBox:
+        return CSSBoxType::StrokeBox;
     case CSSValueViewBox:
         return CSSBoxType::ViewBox;
     default:
@@ -5465,9 +5475,23 @@ template<> inline CSSPrimitiveValue::CSSPrimitiveValue(ApplePayButtonType e)
     case ApplePayButtonType::SetUp:
         m_value.valueID = CSSValueSetUp;
         break;
+    case ApplePayButtonType::InStore:
+        m_value.valueID = CSSValueInStore;
+        break;
     case ApplePayButtonType::Donate:
         m_value.valueID = CSSValueDonate;
         break;
+#if ENABLE(APPLE_PAY_SESSION_V4)
+    case ApplePayButtonType::CheckOut:
+        m_value.valueID = CSSValueCheckOut;
+        break;
+    case ApplePayButtonType::Book:
+        m_value.valueID = CSSValueBook;
+        break;
+    case ApplePayButtonType::Subscribe:
+        m_value.valueID = CSSValueSubscribe;
+        break;
+#endif
 
     default:
         ASSERT_NOT_REACHED();
@@ -5485,8 +5509,18 @@ template<> inline CSSPrimitiveValue::operator ApplePayButtonType() const
         return ApplePayButtonType::Buy;
     case CSSValueSetUp:
         return ApplePayButtonType::SetUp;
+    case CSSValueInStore:
+        return ApplePayButtonType::InStore;
     case CSSValueDonate:
         return ApplePayButtonType::Donate;
+#if ENABLE(APPLE_PAY_SESSION_V4)
+    case CSSValueCheckOut:
+        return ApplePayButtonType::CheckOut;
+    case CSSValueBook:
+        return ApplePayButtonType::Book;
+    case CSSValueSubscribe:
+        return ApplePayButtonType::Subscribe;
+#endif
     default:
         break;
     }

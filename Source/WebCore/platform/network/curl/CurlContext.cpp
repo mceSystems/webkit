@@ -28,7 +28,10 @@
 #include "CurlContext.h"
 
 #if USE(CURL)
+#include "CertificateInfo.h"
 #include "CurlRequestScheduler.h"
+#include "CurlSSLHandle.h"
+#include "CurlSSLVerifier.h"
 #include "HTTPHeaderMap.h"
 #include <NetworkLoadMetrics.h>
 #include <mutex>
@@ -73,6 +76,11 @@ constexpr const char* EnvironmentVariableReader::sscanTemplate<signed>() { retur
 
 template<>
 constexpr const char* EnvironmentVariableReader::sscanTemplate<unsigned>() { return "%u"; }
+
+// ALPN Protocol ID (RFC7301) https://tools.ietf.org/html/rfc7301
+static const ASCIILiteral httpVersion10 { "http/1.0"_s };
+static const ASCIILiteral httpVersion11 { "http/1.1"_s };
+static const ASCIILiteral httpVersion2 { "h2"_s };
 
 // CurlContext -------------------------------------------------------------------
 
@@ -261,6 +269,21 @@ CURLMsg* CurlMultiHandle::readInfo(int& messagesInQueue)
 CurlHandle::CurlHandle()
 {
     m_handle = curl_easy_init();
+    curl_easy_setopt(m_handle, CURLOPT_ERRORBUFFER, m_errorBuffer);
+
+    enableShareHandle();
+    enableAllowedProtocols();
+    enableAcceptEncoding();
+
+    setDnsCacheTimeout(CurlContext::singleton().dnsCacheTimeout());
+    setConnectTimeout(CurlContext::singleton().connectTimeout());
+
+    enableProxyIfExists();
+
+#ifndef NDEBUG
+    enableVerboseIfUsed();
+    enableStdErrIfUsed();
+#endif
 }
 
 CurlHandle::~CurlHandle()
@@ -274,9 +297,52 @@ const String CurlHandle::errorDescription(CURLcode errorCode)
     return String(curl_easy_strerror(errorCode));
 }
 
-void CurlHandle::initialize()
+void CurlHandle::enableSSLForHost(const String& host)
 {
-    curl_easy_setopt(m_handle, CURLOPT_ERRORBUFFER, m_errorBuffer);
+    auto& sslHandle = CurlContext::singleton().sslHandle();
+    if (auto sslClientCertificate = sslHandle.getSSLClientCertificate(host)) {
+        setSslCert(sslClientCertificate->first.utf8().data());
+        setSslCertType("P12");
+        setSslKeyPassword(sslClientCertificate->second.utf8().data());
+    }
+
+    if (sslHandle.canIgnoreAnyHTTPSCertificatesForHost(host) || sslHandle.shouldIgnoreSSLErrors()) {
+        setSslVerifyPeer(CurlHandle::VerifyPeer::Disable);
+        setSslVerifyHost(CurlHandle::VerifyHost::LooseNameCheck);
+    } else {
+        setSslVerifyPeer(CurlHandle::VerifyPeer::Enable);
+        setSslVerifyHost(CurlHandle::VerifyHost::StrictNameCheck);
+    }
+
+    const auto& cipherList = sslHandle.getCipherList();
+    if (!cipherList.isEmpty())
+        setSslCipherList(cipherList.utf8().data());
+
+    setSslCtxCallbackFunction(willSetupSslCtxCallback, this);
+
+    if (auto* path = WTF::get_if<String>(sslHandle.getCACertInfo()))
+        setCACertPath(path->utf8().data());
+}
+
+CURLcode CurlHandle::willSetupSslCtx(void* sslCtx)
+{
+    if (!sslCtx)
+        return CURLE_ABORTED_BY_CALLBACK;
+
+    if (!m_sslVerifier)
+        m_sslVerifier = std::make_unique<CurlSSLVerifier>(*this, sslCtx);
+
+    return CURLE_OK;
+}
+
+CURLcode CurlHandle::willSetupSslCtxCallback(CURL*, void* sslCtx, void* userData)
+{
+    return static_cast<CurlHandle*>(userData)->willSetupSslCtx(sslCtx);
+}
+
+int CurlHandle::sslErrors() const
+{
+    return m_sslVerifier ? m_sslVerifier->sslErrors() : 0;
 }
 
 CURLcode CurlHandle::perform()
@@ -296,6 +362,8 @@ void CurlHandle::enableShareHandle()
 
 void CurlHandle::setUrl(const URL& url)
 {
+    m_url = url.isolatedCopy();
+
     URL curlUrl = url;
 
     // Remove any fragment part, otherwise curl will send it as part of the request.
@@ -310,6 +378,9 @@ void CurlHandle::setUrl(const URL& url)
 
     // url is in ASCII so latin1() will only convert it to char* without character translation.
     curl_easy_setopt(m_handle, CURLOPT_URL, curlUrl.string().latin1().data());
+
+    if (url.protocolIs("https"))
+        enableSSLForHost(m_url.host().toString());
 }
 
 void CurlHandle::appendRequestHeaders(const HTTPHeaderMap& headers)
@@ -367,7 +438,7 @@ void CurlHandle::enableRequestHeaders()
 
 void CurlHandle::enableHttp()
 {
-    if (CurlContext::singleton().isHttp2Enabled()) {
+    if (m_url.protocolIs("https") && CurlContext::singleton().isHttp2Enabled()) {
         curl_easy_setopt(m_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
         curl_easy_setopt(m_handle, CURLOPT_PIPEWAIT, 1L);
         curl_easy_setopt(m_handle, CURLOPT_SSL_ENABLE_ALPN, 1L);
@@ -501,7 +572,7 @@ void CurlHandle::enableProxyIfExists()
             curl_easy_setopt(m_handle, CURLOPT_PROXYUSERNAME, proxy.user().utf8().data());
         if (!proxy.password().isEmpty())
             curl_easy_setopt(m_handle, CURLOPT_PROXYPASSWORD, proxy.password().utf8().data());
-        curl_easy_setopt(m_handle, CURLOPT_PROXYAUTH, CURLAUTH_ANY);
+        curl_easy_setopt(m_handle, CURLOPT_PROXYAUTH, proxy.authMethod());
         break;
     case CurlProxySettings::Mode::NoProxy :
         // Disable the use of a proxy, even if there is an environment variable set for it.
@@ -510,7 +581,7 @@ void CurlHandle::enableProxyIfExists()
     case CurlProxySettings::Mode::Custom :
         curl_easy_setopt(m_handle, CURLOPT_PROXY, proxy.url().utf8().data());
         curl_easy_setopt(m_handle, CURLOPT_NOPROXY, proxy.ignoreHosts().utf8().data());
-        curl_easy_setopt(m_handle, CURLOPT_PROXYAUTH, CURLAUTH_ANY);
+        curl_easy_setopt(m_handle, CURLOPT_PROXYAUTH, proxy.authMethod());
         break;
     }
 }
@@ -533,7 +604,14 @@ void CurlHandle::setConnectTimeout(Seconds timeout)
 
 void CurlHandle::setTimeout(Seconds timeout)
 {
-    curl_easy_setopt(m_handle, CURLOPT_TIMEOUT_MS, safeTimeValue(timeout.milliseconds()));
+    // Originally CURLOPT_TIMEOUT_MS was used here, but that is not the
+    // idle timeout, but entire duration time limit. It's not safe to specify
+    // such a time limit for communications, such as downloading.
+    // CURLOPT_LOW_SPEED_LIMIT is used instead. It enables the speed watcher
+    // and if the speed is below specified limit and last for specified duration,
+    // it invokes timeout error.
+    curl_easy_setopt(m_handle, CURLOPT_LOW_SPEED_LIMIT, 1L);
+    curl_easy_setopt(m_handle, CURLOPT_LOW_SPEED_TIME, safeTimeValue(timeout.seconds()));
 }
 
 void CurlHandle::setHeaderCallbackFunction(curl_write_callback callbackFunc, void* userData)
@@ -560,21 +638,18 @@ void CurlHandle::setSslCtxCallbackFunction(curl_ssl_ctx_callback callbackFunc, v
     curl_easy_setopt(m_handle, CURLOPT_SSL_CTX_FUNCTION, callbackFunc);
 }
 
-std::optional<uint16_t> CurlHandle::getPrimaryPort()
+void CurlHandle::enableConnectionOnly()
 {
-    if (!m_handle)
+    curl_easy_setopt(m_handle, CURLOPT_CONNECT_ONLY, 1L);
+}
+
+std::optional<String> CurlHandle::getProxyUrl()
+{
+    auto& proxy = CurlContext::singleton().proxySettings();
+    if (proxy.mode() == CurlProxySettings::Mode::Default)
         return std::nullopt;
 
-    long port;
-    CURLcode errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_PORT, &port);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
-    /*
-     * https://github.com/curl/curl/blob/master/lib/connect.c#L612-L660
-     * confirmed that `port` is originally unsigned short.
-     */
-    return static_cast<uint16_t>(port);
+    return proxy.url();
 }
 
 std::optional<long> CurlHandle::getResponseCode()
@@ -630,6 +705,19 @@ std::optional<long> CurlHandle::getHttpAuthAvail()
     return httpAuthAvailable;
 }
 
+std::optional<long> CurlHandle::getProxyAuthAvail()
+{
+    if (!m_handle)
+        return std::nullopt;
+
+    long proxyAuthAvailable;
+    CURLcode errorCode = curl_easy_getinfo(m_handle, CURLINFO_PROXYAUTH_AVAIL, &proxyAuthAvailable);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    return proxyAuthAvailable;
+}
+
 std::optional<long> CurlHandle::getHttpVersion()
 {
     if (!m_handle)
@@ -643,12 +731,19 @@ std::optional<long> CurlHandle::getHttpVersion()
     return version;
 }
 
-std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics()
+std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(const WTF::Seconds& domainLookupStart)
 {
     double nameLookup = 0.0;
     double connect = 0.0;
     double appConnect = 0.0;
     double startTransfer = 0.0;
+    long requestHeaderSize = 0;
+    curl_off_t requestBodySize = 0;
+    long responseHeaderSize = 0;
+    curl_off_t responseBodySize = 0;
+    long version = 0;
+    char* ip = nullptr;
+    long port = 0;
 
     if (!m_handle)
         return std::nullopt;
@@ -669,22 +764,77 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics()
     if (errorCode != CURLE_OK)
         return std::nullopt;
 
+    // FIXME: Gets total request size not just headers https://bugs.webkit.org/show_bug.cgi?id=188363
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_REQUEST_SIZE, &requestHeaderSize);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_UPLOAD_T, &requestBodySize);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_HEADER_SIZE, &responseHeaderSize);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_DOWNLOAD_T, &responseBodySize);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_IP, &ip);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_PORT, &port);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_HTTP_VERSION, &version);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
     NetworkLoadMetrics networkLoadMetrics;
 
-    networkLoadMetrics.domainLookupStart = Seconds(0);
-    networkLoadMetrics.domainLookupEnd = Seconds(nameLookup);
-    networkLoadMetrics.connectStart = Seconds(nameLookup);
-    networkLoadMetrics.connectEnd = Seconds(connect);
+    networkLoadMetrics.domainLookupStart = domainLookupStart;
+    networkLoadMetrics.domainLookupEnd = domainLookupStart + Seconds(nameLookup);
+    networkLoadMetrics.connectStart = domainLookupStart + Seconds(nameLookup);
+    networkLoadMetrics.connectEnd = domainLookupStart + Seconds(connect);
 
     if (appConnect > 0.0) {
-        networkLoadMetrics.secureConnectionStart = Seconds(connect);
-        networkLoadMetrics.connectEnd = Seconds(appConnect);
+        networkLoadMetrics.secureConnectionStart = domainLookupStart + Seconds(connect);
+        networkLoadMetrics.connectEnd = domainLookupStart + Seconds(appConnect);
     }
 
     networkLoadMetrics.requestStart = networkLoadMetrics.connectEnd;
-    networkLoadMetrics.responseStart = Seconds(startTransfer);
+    networkLoadMetrics.responseStart = domainLookupStart + Seconds(startTransfer);
+
+    networkLoadMetrics.requestHeaderBytesSent = requestHeaderSize;
+    networkLoadMetrics.requestBodyBytesSent = requestBodySize;
+    networkLoadMetrics.responseHeaderBytesReceived = responseHeaderSize;
+    networkLoadMetrics.responseBodyBytesReceived = responseBodySize;
+
+    if (ip) {
+        networkLoadMetrics.remoteAddress = String(ip);
+        if (port)
+            networkLoadMetrics.remoteAddress.append(":" + String::number(port));
+    }
+
+    if (version == CURL_HTTP_VERSION_1_0)
+        networkLoadMetrics.protocol = httpVersion10;
+    else if (version == CURL_HTTP_VERSION_1_1)
+        networkLoadMetrics.protocol = httpVersion11;
+    else if (version == CURL_HTTP_VERSION_2)
+        networkLoadMetrics.protocol = httpVersion2;
 
     return networkLoadMetrics;
+}
+
+std::optional<CertificateInfo> CurlHandle::certificateInfo() const
+{
+    if (!m_sslVerifier)
+        return std::nullopt;
+
+    return m_sslVerifier->certificateInfo();
 }
 
 long long CurlHandle::maxCurlOffT()
@@ -720,11 +870,121 @@ void CurlHandle::enableVerboseIfUsed()
 
 void CurlHandle::enableStdErrIfUsed()
 {
-    if (CurlContext::singleton().getLogFile())
-        curl_easy_setopt(m_handle, CURLOPT_VERBOSE, 1);
+    if (auto log = CurlContext::singleton().getLogFile())
+        curl_easy_setopt(m_handle, CURLOPT_STDERR, log);
 }
 
 #endif
+
+// CurlSocketHandle
+
+CurlSocketHandle::CurlSocketHandle(const URL& url, Function<void(CURLcode)>&& errorHandler)
+    : m_errorHandler(WTFMove(errorHandler))
+{
+    // Libcurl is not responsible for the protocol handling. It just handles connection.
+    // Only scheme, host and port is required.
+    URL urlForConnection;
+    urlForConnection.setProtocol(url.protocolIs("wss") ? "https" : "http");
+    urlForConnection.setHostAndPort(url.hostAndPort());
+    setUrl(urlForConnection);
+
+    enableConnectionOnly();
+}
+
+bool CurlSocketHandle::connect()
+{
+    CURLcode errorCode = perform();
+    if (errorCode != CURLE_OK) {
+        m_errorHandler(errorCode);
+        return false;
+    }
+
+    return true;
+}
+
+size_t CurlSocketHandle::send(const uint8_t* buffer, size_t size)
+{
+    size_t totalBytesSent = 0;
+
+    while (totalBytesSent < size) {
+        size_t bytesSent = 0;
+        CURLcode errorCode = curl_easy_send(handle(), buffer + totalBytesSent, size - totalBytesSent, &bytesSent);
+        if (errorCode != CURLE_OK) {
+            if (errorCode != CURLE_AGAIN)
+                m_errorHandler(errorCode);
+            break;
+        }
+
+        totalBytesSent += bytesSent;
+    }
+
+    return totalBytesSent;
+}
+
+std::optional<size_t> CurlSocketHandle::receive(uint8_t* buffer, size_t bufferSize)
+{
+    size_t bytesRead = 0;
+
+    CURLcode errorCode = curl_easy_recv(handle(), buffer, bufferSize, &bytesRead);
+    if (errorCode != CURLE_OK) {
+        if (errorCode != CURLE_AGAIN)
+            m_errorHandler(errorCode);
+
+        return std::nullopt;
+    }
+
+    return bytesRead;
+}
+
+std::optional<CurlSocketHandle::WaitResult> CurlSocketHandle::wait(const Seconds& timeout, bool alsoWaitForWrite)
+{
+    curl_socket_t socket;
+    CURLcode errorCode = curl_easy_getinfo(handle(), CURLINFO_ACTIVESOCKET, &socket);
+    if (errorCode != CURLE_OK) {
+        m_errorHandler(errorCode);
+        return std::nullopt;
+    }
+
+    int64_t usec = timeout.microsecondsAs<int64_t>();
+
+    struct timeval selectTimeout;
+    if (usec <= 0) {
+        selectTimeout.tv_sec = 0;
+        selectTimeout.tv_usec = 0;
+    } else {
+        selectTimeout.tv_sec = usec / 1000000;
+        selectTimeout.tv_usec = usec % 1000000;
+    }
+
+    int rc = 0;
+    int maxfd = static_cast<int>(socket) + 1;
+    fd_set fdread;
+    fd_set fdwrite;
+    fd_set fderr;
+
+    // Retry 'select' if it was interrupted by a process signal.
+    do {
+        FD_ZERO(&fdread);
+        FD_SET(socket, &fdread);
+
+        FD_ZERO(&fdwrite);
+        if (alsoWaitForWrite)
+            FD_SET(socket, &fdwrite);
+
+        FD_ZERO(&fderr);
+        FD_SET(socket, &fderr);
+
+        rc = ::select(maxfd, &fdread, &fdwrite, &fderr, &selectTimeout);
+    } while (rc == -1 && errno == EINTR);
+
+    if (rc <= 0)
+        return std::nullopt;
+
+    WaitResult result;
+    result.readable = FD_ISSET(socket, &fdread) || FD_ISSET(socket, &fderr);
+    result.writable = FD_ISSET(socket, &fdwrite);
+    return result;
+}
 
 }
 

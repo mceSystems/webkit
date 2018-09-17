@@ -145,7 +145,11 @@
 
 /* ASAN_ENABLED and SUPPRESS_ASAN */
 
+#ifdef __SANITIZE_ADDRESS__
+#define ASAN_ENABLED 1
+#else
 #define ASAN_ENABLED COMPILER_HAS_CLANG_FEATURE(address_sanitizer)
+#endif
 
 #if ASAN_ENABLED
 #define SUPPRESS_ASAN __attribute__((no_sanitize_address))
@@ -157,7 +161,9 @@
 
 /* ALWAYS_INLINE */
 
-#if !defined(ALWAYS_INLINE) && COMPILER(GCC_OR_CLANG) && defined(NDEBUG) && !COMPILER(MINGW)
+/* In GCC functions marked with no_sanitize_address cannot call functions that are marked with always_inline and not marked with no_sanitize_address.
+ * Therefore we need to give up on the enforcement of ALWAYS_INLINE when bulding with ASAN. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=67368 */
+#if !defined(ALWAYS_INLINE) && COMPILER(GCC_OR_CLANG) && defined(NDEBUG) && !COMPILER(MINGW) && !(COMPILER(GCC) && ASAN_ENABLED)
 #define ALWAYS_INLINE inline __attribute__((__always_inline__))
 #endif
 
@@ -290,6 +296,18 @@
 #define OBJC_CLASS class
 #endif
 
+/* OBJC_PROTOCOL */
+
+#if !defined(OBJC_PROTOCOL) && defined(__OBJC__)
+/* This forward-declares a protocol, then also creates a type of the same name based on NSObject.
+ * This allows us to use "NSObject<MyProtocol> *" or "MyProtocol *" more-or-less interchangably. */
+#define OBJC_PROTOCOL(protocolName) @protocol protocolName; using protocolName = NSObject<protocolName>
+#endif
+
+#if !defined(OBJC_PROTOCOL)
+#define OBJC_PROTOCOL(protocolName) class protocolName
+#endif
+
 /* PURE_FUNCTION */
 
 #if !defined(PURE_FUNCTION) && COMPILER(GCC_OR_CLANG)
@@ -366,5 +384,84 @@
 #if !defined(__has_include) && COMPILER(MSVC)
 #define __has_include(path) 0
 #endif
+
+/* IGNORE_WARNINGS.* */
+
+// Can't use WTF_CONCAT() and STRINGIZE() because they are defined in
+// StdLibExtras.h which includes us
+#define _COMPILER_CONCAT_I(a, b) a ## b
+#define _COMPILER_CONCAT(a, b) _COMPILER_CONCAT_I(a, b)
+
+#define _COMPILER_STRINGIZE(exp) #exp
+
+#define _COMPILER_WARNING_NAME(warning) "-W" warning
+
+#if COMPILER(GCC_OR_CLANG)
+#define IGNORE_WARNINGS_BEGIN_COND(cond, compiler, warning) \
+    _Pragma(_COMPILER_STRINGIZE(compiler diagnostic push)) \
+    _COMPILER_CONCAT(IGNORE_WARNINGS_BEGIN_IMPL_, cond)(compiler, warning)
+
+#define IGNORE_WARNINGS_BEGIN_IMPL_1(compiler, warning) \
+    _Pragma(_COMPILER_STRINGIZE(compiler diagnostic ignored warning))
+#define IGNORE_WARNINGS_BEGIN_IMPL_0(compiler, warning)
+#define IGNORE_WARNINGS_BEGIN_IMPL_(compiler, warning)
+
+
+#define IGNORE_WARNINGS_END_IMPL(compiler) _Pragma(_COMPILER_STRINGIZE(compiler diagnostic pop))
+
+#if defined(__has_warning)
+#define _IGNORE_WARNINGS_BEGIN_IMPL(compiler, warning) \
+    IGNORE_WARNINGS_BEGIN_COND(__has_warning(warning), compiler, warning)
+#else
+#define _IGNORE_WARNINGS_BEGIN_IMPL(compiler, warning) IGNORE_WARNINGS_BEGIN_COND(1, compiler, warning)
+#endif
+
+#define IGNORE_WARNINGS_BEGIN_IMPL(compiler, warning) \
+    _IGNORE_WARNINGS_BEGIN_IMPL(compiler, _COMPILER_WARNING_NAME(warning))
+
+#endif // COMPILER(GCC_OR_CLANG)
+
+
+#if COMPILER(GCC)
+#define IGNORE_GCC_WARNINGS_BEGIN(warning) IGNORE_WARNINGS_BEGIN_IMPL(GCC, warning)
+#define IGNORE_GCC_WARNINGS_END IGNORE_WARNINGS_END_IMPL(GCC)
+#else
+#define IGNORE_GCC_WARNINGS_BEGIN(warning)
+#define IGNORE_GCC_WARNINGS_END
+#endif
+
+#if COMPILER(CLANG)
+#define IGNORE_CLANG_WARNINGS_BEGIN(warning) IGNORE_WARNINGS_BEGIN_IMPL(clang, warning)
+#define IGNORE_CLANG_WARNINGS_END IGNORE_WARNINGS_END_IMPL(clang)
+#else
+#define IGNORE_CLANG_WARNINGS_BEGIN(warning)
+#define IGNORE_CLANG_WARNINGS_END
+#endif
+
+#if COMPILER(GCC_OR_CLANG)
+#define IGNORE_WARNINGS_BEGIN(warning) IGNORE_WARNINGS_BEGIN_IMPL(GCC, warning)
+#define IGNORE_WARNINGS_END IGNORE_WARNINGS_END_IMPL(GCC)
+#else
+#define IGNORE_WARNINGS_BEGIN(warning)
+#define IGNORE_WARNINGS_END
+#endif
+
+#define ALLOW_DEPRECATED_DECLARATIONS_BEGIN IGNORE_WARNINGS_BEGIN("deprecated-declarations")
+#define ALLOW_DEPRECATED_DECLARATIONS_END IGNORE_WARNINGS_END
+
+#define ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN IGNORE_CLANG_WARNINGS_BEGIN("unguarded-availability-new")
+#define ALLOW_NEW_API_WITHOUT_GUARDS_END IGNORE_CLANG_WARNINGS_END
+
+#define ALLOW_UNUSED_PARAMETERS_BEGIN IGNORE_WARNINGS_BEGIN("unused-parameter")
+#define ALLOW_UNUSED_PARAMETERS_END IGNORE_WARNINGS_END
+
+#define ALLOW_NONLITERAL_FORMAT_BEGIN IGNORE_WARNINGS_BEGIN("format-nonliteral")
+#define ALLOW_NONLITERAL_FORMAT_END IGNORE_WARNINGS_END
+
+#define IGNORE_RETURN_TYPE_WARNINGS_BEGIN IGNORE_WARNINGS_BEGIN("return-type")
+#define IGNORE_RETURN_TYPE_WARNINGS_END IGNORE_WARNINGS_END
+
+#define IGNORE_NULL_CHECK_WARNINGS_BEGIN IGNORE_WARNINGS_BEGIN("nonnull")
+#define IGNORE_NULL_CHECK_WARNINGS_END IGNORE_WARNINGS_END
 
 #endif /* WTF_Compiler_h */

@@ -55,10 +55,9 @@ void AccessibilityObject::overrideAttachmentParent(AccessibilityObject* parent)
         parentWrapper = parent->wrapper();
     }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [[wrapper() attachmentView] accessibilitySetOverrideValue:parentWrapper forAttribute:NSAccessibilityParentAttribute];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
     
 bool AccessibilityObject::accessibilityIgnoreAttachment() const
@@ -69,11 +68,10 @@ bool AccessibilityObject::accessibilityIgnoreAttachment() const
     if (isAttachment() && (widget = widgetForAttachmentView()) && widget->isFrameView())
         return true;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if ([wrapper() attachmentView])
         return [[wrapper() attachmentView] accessibilityIsIgnored];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     // Attachments are ignored by default (unless we determine that we should expose them).
     return true;
@@ -84,7 +82,7 @@ AccessibilityObjectInclusion AccessibilityObject::accessibilityPlatformIncludesO
     if (isMenuListPopup() || isMenuListOption())
         return AccessibilityObjectInclusion::IgnoreObject;
 
-    if (roleValue() == AccessibilityRole::Caption)
+    if (roleValue() == AccessibilityRole::Caption && ariaRoleAttribute() == AccessibilityRole::Unknown)
         return AccessibilityObjectInclusion::IgnoreObject;
     
     if (roleValue() == AccessibilityRole::Mark)

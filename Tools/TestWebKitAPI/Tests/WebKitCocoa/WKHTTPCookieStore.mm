@@ -367,12 +367,14 @@ TEST(WebKit, WKHTTPCookieStoreCreationTime)
 
     globalCookieStore = dataStore.httpCookieStore;
 
-    RetainPtr<NSHTTPCookie> cookie = [NSHTTPCookie cookieWithProperties:@{
-        NSHTTPCookiePath: @"/path",
-        NSHTTPCookieName: @"CookieName",
-        NSHTTPCookieValue: @"CookieValue",
-        NSHTTPCookieDomain: @".www.webkit.org",
-    }];
+    NSMutableDictionary *cookieProperties = [[NSMutableDictionary alloc] init];
+    [cookieProperties setObject:@"cookieName" forKey:NSHTTPCookieName];
+    [cookieProperties setObject:@"cookieValue" forKey:NSHTTPCookieValue];
+    [cookieProperties setObject:@".www.webkit.org" forKey:NSHTTPCookieDomain];
+    [cookieProperties setObject:@"/path" forKey:NSHTTPCookiePath];
+    RetainPtr<NSNumber> creationTime = [NSNumber numberWithDouble:100000];
+    [cookieProperties setObject:creationTime.get() forKey:@"Created"];
+    RetainPtr<NSHTTPCookie> cookie = [NSHTTPCookie cookieWithProperties:cookieProperties];
 
     [globalCookieStore setCookie:cookie.get() completionHandler:[]() {
         gotFlag = true;
@@ -380,10 +382,10 @@ TEST(WebKit, WKHTTPCookieStoreCreationTime)
     TestWebKitAPI::Util::run(&gotFlag);
     gotFlag = false;
 
-    RetainPtr<NSNumber> creationTime = nil;
     [globalCookieStore getAllCookies:[&](NSArray<NSHTTPCookie *> *cookies) {
         ASSERT_EQ(1u, cookies.count);
-        creationTime = [cookies objectAtIndex:0].properties[@"Created"];
+        NSNumber* createdTime = [cookies objectAtIndex:0].properties[@"Created"];
+        EXPECT_TRUE([creationTime.get() isEqual:createdTime]);
         gotFlag = true;
     }];
     TestWebKitAPI::Util::run(&gotFlag);
@@ -393,8 +395,8 @@ TEST(WebKit, WKHTTPCookieStoreCreationTime)
 
     [globalCookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
         ASSERT_EQ(1u, cookies.count);
-        NSNumber* creationTime2 = [cookies objectAtIndex:0].properties[@"Created"];
-        EXPECT_TRUE([creationTime.get() isEqual:creationTime2]);
+        NSNumber* createdTime = [cookies objectAtIndex:0].properties[@"Created"];
+        EXPECT_TRUE([creationTime.get() isEqual:createdTime]);
         gotFlag = true;
     }];
     TestWebKitAPI::Util::run(&gotFlag);
@@ -468,13 +470,14 @@ static bool finished;
 @implementation CookieUIDelegate
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
 {
-    auto cookies = String(message.UTF8String);
-    EXPECT_TRUE(cookies == "PersistentCookieName=CookieValue; SessionCookieName=CookieValue" || cookies == "SessionCookieName=CookieValue; PersistentCookieName=CookieValue");
+    EXPECT_STREQ("PersistentCookieName=CookieValue; SessionCookieName=CookieValue", message.UTF8String);
     finished = true;
     completionHandler();
 }
 @end
 
+// FIXME: on iOS, UI process should be using the same cookie file as the network process for default session.
+#if PLATFORM(MAC)
 TEST(WebKit, WKHTTPCookieStoreWithoutProcessPool)
 {
     RetainPtr<NSHTTPCookie> sessionCookie = [NSHTTPCookie cookieWithProperties:@{
@@ -490,7 +493,7 @@ TEST(WebKit, WKHTTPCookieStoreWithoutProcessPool)
         NSHTTPCookieDomain: @"127.0.0.1",
         NSHTTPCookieExpires: [NSDate distantFuture],
     }];
-    NSString *alertCookieHTML = @"<script>alert(document.cookie);</script>";
+    NSString *alertCookieHTML = @"<script>var cookies = document.cookie.split(';'); for (let i = 0; i < cookies.length; i ++) { cookies[i] = cookies[i].trim(); } cookies.sort(); alert(cookies.join('; '));</script>";
 
     // NonPersistentDataStore
     RetainPtr<WKWebsiteDataStore> ephemeralStoreWithCookies = [WKWebsiteDataStore nonPersistentDataStore];
@@ -566,4 +569,5 @@ TEST(WebKit, WKHTTPCookieStoreWithoutProcessPool)
     [webView loadHTMLString:alertCookieHTML baseURL:[NSURL URLWithString:@"http://127.0.0.1"]];
     TestWebKitAPI::Util::run(&finished);
 }
+#endif // PLATFORM(MAC)
 #endif

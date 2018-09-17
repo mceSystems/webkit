@@ -108,7 +108,9 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, co
         return;
 
     m_response = ResourceResponse(receivedResponse);
-    m_response.setDeprecatedNetworkLoadMetrics(request.getNetworkLoadMetrics());
+
+    m_response.setCertificateInfo(request.certificateInfo().isolatedCopy());
+    m_response.setDeprecatedNetworkLoadMetrics(request.networkLoadMetrics().isolatedCopy());
 
     handleCookieHeaders(receivedResponse);
 
@@ -117,7 +119,7 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, co
         return;
     }
 
-    if (m_response.isUnauthorized()) {
+    if (m_response.isUnauthorized() && receivedResponse.availableHttpAuth) {
         AuthenticationChallenge challenge(receivedResponse, d()->m_authFailureCount, m_response, &m_handle);
         m_handle.didReceiveAuthenticationChallenge(challenge);
         d()->m_authFailureCount++;
@@ -162,7 +164,7 @@ void CurlResourceHandleDelegate::curlDidComplete(CurlRequest& request)
     if (cancelledOrClientless())
         return;
 
-    m_response.setDeprecatedNetworkLoadMetrics(request.getNetworkLoadMetrics());
+    m_response.setDeprecatedNetworkLoadMetrics(request.networkLoadMetrics().isolatedCopy());
 
     CurlCacheManager::singleton().didFinishLoading(m_handle);
     client()->didFinishLoading(&m_handle);

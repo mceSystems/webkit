@@ -1,0 +1,5 @@
+
+PASS Use text/xml as fallback MIME type 
+PASS Use text/xml as fallback MIME type, 2 
+FAIL Loading data… promise_test: Unhandled rejection with value: object "TypeError: undefined is not a function (near '...tests.forEach...')"
+

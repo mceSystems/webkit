@@ -40,7 +40,6 @@ class DragData;
 class Element;
 class Frame;
 class FrameSelection;
-class HTMLAttachmentElement;
 class HTMLInputElement;
 class IntRect;
 class Page;
@@ -48,7 +47,7 @@ class PlatformMouseEvent;
 
 struct DragItem;
 struct DragState;
-struct PromisedBlobInfo;
+struct PromisedAttachmentInfo;
 
     class DragController {
         WTF_MAKE_NONCOPYABLE(DragController); WTF_MAKE_FAST_ALLOCATED;
@@ -115,8 +114,8 @@ struct PromisedBlobInfo;
         void mouseMovedIntoDocument(Document*);
         bool shouldUseCachedImageForDragImage(const Image&) const;
 
-        void doImageDrag(Element&, const IntPoint&, const IntRect&, Frame&, IntPoint&, const DragState&);
-        void doSystemDrag(DragImage, const IntPoint&, const IntPoint&, Frame&, const DragState&, PromisedBlobInfo&&);
+        void doImageDrag(Element&, const IntPoint&, const IntRect&, Frame&, IntPoint&, const DragState&, PromisedAttachmentInfo&&);
+        void doSystemDrag(DragImage, const IntPoint&, const IntPoint&, Frame&, const DragState&, PromisedAttachmentInfo&&);
 
         void beginDrag(DragItem, Frame&, const IntPoint& mouseDownPoint, const IntPoint& mouseDraggedPoint, DataTransfer&, DragSourceAction);
 
@@ -135,7 +134,7 @@ struct PromisedBlobInfo;
         void declareAndWriteDragImage(DataTransfer&, Element&, const URL&, const String& label);
 
 #if ENABLE(ATTACHMENT_ELEMENT)
-        PromisedBlobInfo promisedBlobInfo(Frame&, HTMLAttachmentElement&);
+        PromisedAttachmentInfo promisedAttachmentInfo(Frame&, Element&);
 #endif
         Page& m_page;
         DragClient& m_client;

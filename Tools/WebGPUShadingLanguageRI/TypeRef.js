@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,28 +25,24 @@
 "use strict";
 
 class TypeRef extends Type {
-    constructor(origin, name, typeArguments)
+    constructor(origin, name, typeArguments = [])
     {
         super();
         this._origin = origin;
         this._name = name;
-        this.type = null;
+        this._type = null;
         this._typeArguments = typeArguments;
     }
     
     static wrap(type)
     {
-        if (type instanceof TypeRef && !type.typeArguments)
+        if (type instanceof TypeRef)
             return type;
-        let name = type.name;
-        let result = new TypeRef(type.origin, name, []);
-        result.type = type;
-        return result;
-    }
-    
-    static instantiate(type, typeArguments)
-    {
-        let result = new TypeRef(type.origin, type.name, typeArguments);
+        let result;
+        if (type instanceof NativeType)
+            result = new TypeRef(type.origin, type.name, type.typeArguments);
+        else
+            result = new TypeRef(type.origin, type.name);
         result.type = type;
         return result;
     }
@@ -55,39 +51,69 @@ class TypeRef extends Type {
     get name() { return this._name; }
     get typeArguments() { return this._typeArguments; }
     
+    get type()
+    {
+        return this._type;
+    }
+
+    set type(newType)
+    {
+        this._type = newType;
+    }
+
+    resolve(possibleOverloads)
+    {
+        if (!possibleOverloads)
+            throw new WTypeError(this.origin.originString, "Did not find any types named " + this.name);
+
+        let failures = [];
+        let overload = resolveTypeOverloadImpl(possibleOverloads, this.typeArguments);
+
+        if (!overload.type) {
+            failures.push(...overload.failures);
+            let message = "Did not find type named " + this.name + " for type arguments ";
+            message += "(" + this.typeArguments + ")";
+            if (failures.length)
+                message += ", but considered:\n" + failures.join("\n")
+            throw new WTypeError(this.origin.originString, message);
+        }
+
+        for (let i = 0; i < this.typeArguments.length; ++i) {
+            let typeArgument = this.typeArguments[i];
+            let resolvedTypeArgument = overload.type.typeArguments[i];
+            let result = typeArgument.equalsWithCommit(resolvedTypeArgument);
+            if (!result)
+                throw new Error("At " + this.origin.originString + " argument types for Type and TypeRef not equal: argument type = " + typeArgument + ", resolved type argument = " + resolvedTypeArgument);
+            if (resolvedTypeArgument.constructor.name == "GenericLiteral") {
+                result = typeArgument.type.equalsWithCommit(resolvedTypeArgument.type);
+                if (!result)
+                    throw new Error("At " + this.origin.originString + " argument types for Type and TypeRef not equal: argument type = " + typeArgument + ", resolved type argument = " + resolvedTypeArgument);
+            }
+                
+        }
+        this.type = overload.type;
+    }
+
     get unifyNode()
     {
-        if (!this.typeArguments.length)
-            return this.type.unifyNode;
-        return this;
+        if (!this.type)
+            throw new Error(`No type when evaluating ${this} unifyNode`);
+        return this.type.unifyNode;
     }
     
     populateDefaultValue(buffer, offset)
     {
-        if (!this.typeArguments.length)
-            return this.type.populateDefaultValue(buffer, offset);
-        throw new Error("Cannot get default value of a type instantiation");
+        return this.type.populateDefaultValue(buffer, offset);
     }
     
     get size()
     {
-        if (!this.typeArguments.length)
-            return this.type.size;
-        throw new Error("Cannot get size of a type instantiation");
+        return this.type.size;
     }
     
     get isPrimitive()
     {
-        if (!this.typeArguments.length)
-            return this.type.isPrimitive;
-        throw new Error("Cannot determine if an uninstantiated type is primitive: " + this);
-    }
-    
-    setTypeAndArguments(type, typeArguments)
-    {
-        this._name = null;
-        this.type = type;
-        this._typeArguments = typeArguments;
+        return this.type.isPrimitive;
     }
     
     unifyImpl(unificationContext, other)
@@ -96,12 +122,6 @@ class TypeRef extends Type {
             return false;
         if (!this.type.unify(unificationContext, other.type))
             return false;
-        if (this.typeArguments.length != other.typeArguments.length)
-            return false;
-        for (let i = 0; i < this.typeArguments.length; ++i) {
-            if (!this.typeArguments[i].unify(unificationContext, other.typeArguments[i]))
-                return false;
-        }
         return true;
     }
     
@@ -109,9 +129,10 @@ class TypeRef extends Type {
     {
         if (!this.name)
             return this.type.toString();
-        if (!this.typeArguments.length)
-            return this.name;
-        return this.name + "<" + this.typeArguments + ">";
+        let result = this.name;
+        if (this.typeArguments.length > 0)
+            result += "<" + this.typeArguments.map(argument => argument.toString()).join(",") + ">";
+        return result;
     }
 }
 

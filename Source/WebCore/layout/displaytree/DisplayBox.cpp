@@ -36,8 +36,45 @@ namespace Display {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(Box);
 
+Box::Rect::Rect(LayoutUnit top, LayoutUnit left, LayoutUnit width, LayoutUnit height)
+    : m_rect(left, top, width, height)
+{
+#if !ASSERT_DISABLED
+    m_hasValidTop = true;
+    m_hasValidLeft = true;
+    m_hasValidWidth = true;
+    m_hasValidHeight = true;
+#endif
+}
+
 Box::Box(const RenderStyle& style)
     : m_style(style)
+{
+}
+
+Box::Box(const Box& other)
+    : m_style(other.m_style)
+    , m_topLeft(other.m_topLeft)
+    , m_contentWidth(other.m_contentWidth)
+    , m_contentHeight(other.m_contentHeight)
+    , m_margin(other.m_margin)
+    , m_verticalNonCollapsedMargin(other.m_verticalNonCollapsedMargin)
+    , m_horizontalNonComputedMargin(other.m_horizontalNonComputedMargin)
+    , m_estimatedMarginTop(other.m_estimatedMarginTop)
+    , m_border(other.m_border)
+    , m_padding(other.m_padding)
+#if !ASSERT_DISABLED
+    , m_hasValidTop(other.m_hasValidTop)
+    , m_hasValidLeft(other.m_hasValidLeft)
+    , m_hasValidHorizontalMargin(other.m_hasValidHorizontalMargin)
+    , m_hasValidVerticalMargin(other.m_hasValidVerticalMargin)
+    , m_hasValidVerticalNonCollapsedMargin(other.m_hasValidVerticalNonCollapsedMargin)
+    , m_hasValidHorizontalNonComputedMargin(other.m_hasValidHorizontalNonComputedMargin)
+    , m_hasValidBorder(other.m_hasValidBorder)
+    , m_hasValidPadding(other.m_hasValidPadding)
+    , m_hasValidContentHeight(other.m_hasValidContentHeight)
+    , m_hasValidContentWidth(other.m_hasValidContentWidth)
+#endif
 {
 }
 
@@ -48,62 +85,59 @@ Box::~Box()
 Box::Style::Style(const RenderStyle& style)
     : boxSizing(style.boxSizing())
 {
-
 }
 
 Box::Rect Box::marginBox() const
 {
-    ASSERT(m_hasValidMargin);
-    auto marginBox = borderBox();
+    auto borderBox = this->borderBox();
 
-    marginBox.shiftLeftTo(marginBox.left() + m_margin.left);
-    marginBox.shiftBottomTo(marginBox.top() + m_margin.top);
-    marginBox.shiftRightTo(marginBox.right() - m_margin.right);
-    marginBox.shiftBottomTo(marginBox.bottom() - m_margin.bottom);
+    Rect marginBox;
+    marginBox.setTop(borderBox.top() - marginTop());
+    marginBox.setLeft(borderBox.left() - marginLeft());
+    marginBox.setHeight(borderBox.height() + marginTop() + marginBottom());
+    marginBox.setWidth(borderBox.width() + marginLeft() + marginRight());
+    return marginBox;
+}
 
+Box::Rect Box::nonCollapsedMarginBox() const
+{
+    auto borderBox = this->borderBox();
+
+    Rect marginBox;
+    marginBox.setTop(borderBox.top() - nonCollapsedMarginTop());
+    marginBox.setLeft(borderBox.left() - marginLeft());
+    marginBox.setHeight(borderBox.height() + nonCollapsedMarginTop() + nonCollapsedMarginBottom());
+    marginBox.setWidth(borderBox.width() + marginLeft() + marginRight());
     return marginBox;
 }
 
 Box::Rect Box::borderBox() const
 {
-    if (m_style.boxSizing == BoxSizing::BorderBox)
-        return Box::Rect( { }, size());
-
-    // Width is content box.
-    ASSERT(m_hasValidBorder);
-    ASSERT(m_hasValidPadding);
-    auto borderBoxSize = size();
-    borderBoxSize.expand(borderLeft() + paddingLeft() + paddingRight() + borderRight(), borderTop() + paddingTop() + paddingBottom() + borderBottom());
-    return Box::Rect( { }, borderBoxSize);
+    Rect borderBox;
+    borderBox.setTopLeft({ });
+    borderBox.setSize({ width(), height() });
+    return borderBox;
 }
 
 Box::Rect Box::paddingBox() const
 {
-    ASSERT(m_hasValidBorder);
-    auto paddingBox = borderBox();
+    auto borderBox = this->borderBox();
 
-    paddingBox.shiftLeftTo(paddingBox.left() + m_border.left);
-    paddingBox.shiftTopTo(paddingBox.top() + m_border.top);
-    paddingBox.shiftRightTo(paddingBox.left() - m_border.right);
-    paddingBox.shiftBottomTo(paddingBox.bottom() - m_border.bottom);
-
+    Rect paddingBox;
+    paddingBox.setTop(borderBox.top() + borderTop());
+    paddingBox.setLeft(borderBox.left() + borderLeft());
+    paddingBox.setHeight(borderBox.bottom() - borderTop() - borderBottom());
+    paddingBox.setWidth(borderBox.width() - borderLeft() - borderRight());
     return paddingBox;
 }
 
 Box::Rect Box::contentBox() const
 {
-    if (m_style.boxSizing == BoxSizing::ContentBox)
-        return Box::Rect(LayoutPoint(0, 0), size());
-
-    // Width is border box.
-    ASSERT(m_hasValidPadding);
-    auto contentBox = paddingBox();
-
-    contentBox.shiftLeftTo(contentBox.left() + m_padding.left);
-    contentBox.shiftTopTo(contentBox.top() + m_padding.top);
-    contentBox.shiftBottomTo(contentBox.bottom() - m_padding.bottom);
-    contentBox.shiftRightTo(contentBox.right() - m_padding.right);
-
+    Rect contentBox;
+    contentBox.setTop(contentBoxTop());
+    contentBox.setLeft(contentBoxLeft());
+    contentBox.setWidth(contentBoxWidth());
+    contentBox.setHeight(contentBoxHeight());
     return contentBox;
 }
 

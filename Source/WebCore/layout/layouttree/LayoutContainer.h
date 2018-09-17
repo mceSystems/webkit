@@ -53,19 +53,19 @@ public:
     bool hasInFlowChild() const { return firstInFlowChild(); }
     bool hasInFlowOrFloatingChild() const { return firstInFlowOrFloatingChild(); }
 
-    const Vector<WeakPtr<Box>>& outOfFlowDescendants() { return m_outOfFlowDescendants; }
+    const Vector<WeakPtr<const Box>>& outOfFlowDescendants() const { return m_outOfFlowDescendants; }
 
 protected:
-    Container(RenderStyle&&, BaseTypeFlags);
+    Container(std::optional<ElementAttributes>, RenderStyle&&, BaseTypeFlags);
 
 private:
     void setFirstChild(Box&);
     void setLastChild(Box&);
-    void setOutOfFlowDescendants(Vector<WeakPtr<Box>>&&);
+    void addOutOfFlowDescendant(const Box&);
 
     Box* m_firstChild { nullptr };
     Box* m_lastChild { nullptr };
-    Vector<WeakPtr<Box>> m_outOfFlowDescendants;
+    Vector<WeakPtr<const Box>> m_outOfFlowDescendants;
 };
 
 }

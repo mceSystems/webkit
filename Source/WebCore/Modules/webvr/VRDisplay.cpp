@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Igalia S.L. All rights reserved.
+ * Copyright (C) 2017-2018 Igalia S.L. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,10 +29,13 @@
 #include "CanvasRenderingContext.h"
 #include "Chrome.h"
 #include "DOMException.h"
+#include "DOMWindow.h"
+#include "EventNames.h"
 #include "Page.h"
 #include "ScriptedAnimationController.h"
 #include "UserGestureIndicator.h"
 #include "VRDisplayCapabilities.h"
+#include "VRDisplayEvent.h"
 #include "VREyeParameters.h"
 #include "VRFrameData.h"
 #include "VRLayerInit.h"
@@ -44,9 +47,7 @@ namespace WebCore {
 
 Ref<VRDisplay> VRDisplay::create(ScriptExecutionContext& context, WeakPtr<VRPlatformDisplay>&& platformDisplay)
 {
-    auto display = adoptRef(*new VRDisplay(context, WTFMove(platformDisplay)));
-    display->suspendIfNeeded();
-    return display;
+    return adoptRef(*new VRDisplay(context, WTFMove(platformDisplay)));
 }
 
 VRDisplay::VRDisplay(ScriptExecutionContext& context, WeakPtr<VRPlatformDisplay>&& platformDisplay)
@@ -59,9 +60,15 @@ VRDisplay::VRDisplay(ScriptExecutionContext& context, WeakPtr<VRPlatformDisplay>
     m_rightEyeParameters = VREyeParameters::create(displayInfo.eyeTranslation(VRPlatformDisplayInfo::EyeRight), displayInfo.eyeFieldOfView(VRPlatformDisplayInfo::EyeRight), displayInfo.renderSize());
     m_displayId = displayInfo.displayIdentifier();
     m_displayName = displayInfo.displayName();
+
+    m_display->setClient(this);
+    suspendIfNeeded();
 }
 
-VRDisplay::~VRDisplay() = default;
+VRDisplay::~VRDisplay()
+{
+    m_display->setClient(nullptr);
+}
 
 bool VRDisplay::isConnected() const
 {
@@ -110,13 +117,7 @@ uint32_t VRDisplay::requestAnimationFrame(Ref<RequestAnimationFrameCallback>&& c
 {
     if (!m_scriptedAnimationController) {
         auto* document = downcast<Document>(scriptExecutionContext());
-#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-        // FIXME: Get the display id of the HMD as it should use the HMD native refresh rate.
-        PlatformDisplayID displayID = document->page() ? document->page()->chrome().displayID() : 0;
-        m_scriptedAnimationController = ScriptedAnimationController::create(*document, displayID);
-#else
-        m_scriptedAnimationController = ScriptedAnimationController::create(*document, 0);
-#endif
+        m_scriptedAnimationController = ScriptedAnimationController::create(*document);
     }
 
     return m_scriptedAnimationController->registerCallback(WTFMove(callback));
@@ -139,17 +140,17 @@ void VRDisplay::requestPresent(const Vector<VRLayerInit>& layers, Ref<DeferredPr
     };
 
     if (!m_capabilities->canPresent()) {
-        rejectRequestAndStopPresenting(NotSupportedError, ASCIILiteral("VRDisplay cannot present"));
+        rejectRequestAndStopPresenting(NotSupportedError, "VRDisplay cannot present"_s);
         return;
     }
 
     if (!layers.size() || layers.size() > m_capabilities->maxLayers()) {
-        rejectRequestAndStopPresenting(InvalidStateError, ASCIILiteral(layers.size() ? "Too many layers" : "Not enough layers"));
+        rejectRequestAndStopPresenting(InvalidStateError, layers.size() ? "Too many layers"_s : "Not enough layers"_s);
         return;
     }
 
     if (!m_presentingLayer && !UserGestureIndicator::processingUserGesture()) {
-        rejectRequestAndStopPresenting(InvalidAccessError, ASCIILiteral("Must request presentation from a user gesture handler."));
+        rejectRequestAndStopPresenting(InvalidAccessError, "Must request presentation from a user gesture handler."_s);
         return;
     }
 
@@ -157,19 +158,19 @@ void VRDisplay::requestPresent(const Vector<VRLayerInit>& layers, Ref<DeferredPr
     auto layer = layers[0];
 
     if (!layer.source) {
-        rejectRequestAndStopPresenting(InvalidStateError, ASCIILiteral("Layer does not contain any source"));
+        rejectRequestAndStopPresenting(InvalidStateError, "Layer does not contain any source"_s);
         return;
     }
 
     auto* canvasContext = layer.source->getContext("webgl");
     if (!canvasContext || !canvasContext->isWebGL()) {
-        rejectRequestAndStopPresenting(NotSupportedError, ASCIILiteral("WebVR requires VRLayerInit with WebGL context."));
+        rejectRequestAndStopPresenting(NotSupportedError, "WebVR requires VRLayerInit with WebGL context."_s);
         return;
     }
 
     if ((layer.leftBounds.size() && layer.leftBounds.size() != 4)
         || (layer.rightBounds.size() && layer.rightBounds.size() != 4)) {
-        rejectRequestAndStopPresenting(InvalidStateError, ASCIILiteral("Layer bounds must be either 0 or 4"));
+        rejectRequestAndStopPresenting(InvalidStateError, "Layer bounds must be either 0 or 4"_s);
         return;
     }
 
@@ -185,7 +186,7 @@ void VRDisplay::stopPresenting()
 void VRDisplay::exitPresent(Ref<DeferredPromise>&& promise)
 {
     if (!m_presentingLayer) {
-        promise->reject(Exception { InvalidStateError, ASCIILiteral("VRDisplay is not presenting") });
+        promise->reject(Exception { InvalidStateError, "VRDisplay is not presenting"_s });
         return;
     }
 
@@ -202,6 +203,26 @@ Vector<VRLayerInit> VRDisplay::getLayers() const
 
 void VRDisplay::submitFrame()
 {
+}
+
+void VRDisplay::platformDisplayConnected()
+{
+    document()->domWindow()->dispatchEvent(VRDisplayEvent::create(eventNames().vrdisplayconnectEvent, makeRefPtr(this), std::nullopt));
+}
+
+void VRDisplay::platformDisplayDisconnected()
+{
+    document()->domWindow()->dispatchEvent(VRDisplayEvent::create(eventNames().vrdisplaydisconnectEvent, makeRefPtr(this), std::nullopt));
+}
+
+void VRDisplay::platformDisplayMounted()
+{
+    document()->domWindow()->dispatchEvent(VRDisplayEvent::create(eventNames().vrdisplayactivateEvent, makeRefPtr(this), VRDisplayEventReason::Mounted));
+}
+
+void VRDisplay::platformDisplayUnmounted()
+{
+    document()->domWindow()->dispatchEvent(VRDisplayEvent::create(eventNames().vrdisplaydeactivateEvent, makeRefPtr(this), VRDisplayEventReason::Unmounted));
 }
 
 bool VRDisplay::hasPendingActivity() const

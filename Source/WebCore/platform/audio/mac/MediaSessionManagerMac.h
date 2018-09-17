@@ -28,11 +28,11 @@
 #if PLATFORM(MAC)
 
 #include "GenericTaskQueue.h"
-#include "PlatformMediaSessionManager.h"
+#include "MediaSessionManagerCocoa.h"
 
 namespace WebCore {
 
-class MediaSessionManagerMac : public PlatformMediaSessionManager {
+class MediaSessionManagerMac : public MediaSessionManagerCocoa {
 public:
     virtual ~MediaSessionManagerMac();
 
@@ -55,6 +55,7 @@ private:
     void sessionWillEndPlayback(PlatformMediaSession&) override;
     void sessionDidEndRemoteScrubbing(const PlatformMediaSession&) override;
     void clientCharacteristicsChanged(PlatformMediaSession&) override;
+    void sessionCanProduceAudioChanged(PlatformMediaSession&) override;
 
     void updateNowPlayingInfo();
 

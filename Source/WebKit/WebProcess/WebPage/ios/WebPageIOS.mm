@@ -84,8 +84,10 @@
 #import <WebCore/HTMLParserIdioms.h>
 #import <WebCore/HTMLSelectElement.h>
 #import <WebCore/HTMLTextAreaElement.h>
+#import <WebCore/HTMLTextFormControlElement.h>
 #import <WebCore/HistoryItem.h>
 #import <WebCore/HitTestResult.h>
+#import <WebCore/InputMode.h>
 #import <WebCore/KeyboardEvent.h>
 #import <WebCore/LibWebRTCProvider.h>
 #import <WebCore/MediaSessionManagerIOS.h>
@@ -113,6 +115,7 @@
 #import <wtf/MemoryPressureHandler.h>
 #import <wtf/SetForScope.h>
 #import <wtf/SoftLinking.h>
+#import <wtf/cocoa/Entitlements.h>
 #import <wtf/text/TextStream.h>
 
 #if ENABLE(MEDIA_STREAM)
@@ -122,9 +125,8 @@ SOFT_LINK_CLASS_OPTIONAL(Celestial, AVSystemController)
 SOFT_LINK_CONSTANT_MAY_FAIL(Celestial, AVSystemController_PIDToInheritApplicationStateFrom, NSString *)
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 const int blockSelectionStartWidth = 100;
 const int blockSelectionStartHeight = 100;
@@ -299,13 +301,15 @@ static FloatPoint relativeCenterAfterContentSizeChange(const FloatRect& original
 
 static inline FloatRect adjustExposedRectForNewScale(const FloatRect& exposedRect, double exposedRectScale, double newScale)
 {
-    double overscaledWidth = exposedRect.width();
-    double missingHorizonalMargin = exposedRect.width() * exposedRectScale / newScale - overscaledWidth;
+    if (exposedRectScale == newScale)
+        return exposedRect;
 
-    double overscaledHeight = exposedRect.height();
-    double missingVerticalMargin = exposedRect.height() * exposedRectScale / newScale - overscaledHeight;
+    float horizontalChange = exposedRect.width() * exposedRectScale / newScale - exposedRect.width();
+    float verticalChange = exposedRect.height() * exposedRectScale / newScale - exposedRect.height();
 
-    return FloatRect(exposedRect.x() - missingHorizonalMargin / 2, exposedRect.y() - missingVerticalMargin / 2, exposedRect.width() + missingHorizonalMargin, exposedRect.height() + missingVerticalMargin);
+    auto adjustedRect = exposedRect;
+    adjustedRect.inflate({ horizontalChange / 2, verticalChange / 2 });
+    return adjustedRect;
 }
 
 void WebPage::restorePageState(const HistoryItem& historyItem)
@@ -397,7 +401,7 @@ bool WebPage::handleEditingKeyboardEvent(KeyboardEvent* event)
 
 bool WebPage::parentProcessHasServiceWorkerEntitlement() const
 {
-    static bool hasEntitlement = connectedProcessHasEntitlement(WebProcess::singleton().parentProcessConnection()->xpcConnection(), "com.apple.developer.WebKit.ServiceWorkers");
+    static bool hasEntitlement = WTF::hasEntitlement(WebProcess::singleton().parentProcessConnection()->xpcConnection(), "com.apple.developer.WebKit.ServiceWorkers");
     return hasEntitlement;
 }
 
@@ -1117,7 +1121,7 @@ void WebPage::selectWithGesture(const IntPoint& point, uint32_t granularity, uin
         if (position.rootEditableElement())
             range = Range::create(*frame.document(), position, position);
         else
-#if !ENABLE(MINIMAL_SIMULATOR)
+#if !PLATFORM(IOSMAC)
             range = wordRangeFromPosition(position);
 #else
             switch (wkGestureState) {
@@ -1212,31 +1216,51 @@ void WebPage::selectWithGesture(const IntPoint& point, uint32_t granularity, uin
     send(Messages::WebPageProxy::GestureCallback(point, gestureType, gestureState, static_cast<uint32_t>(flags), callbackID));
 }
 
-static RefPtr<Range> rangeForPosition(Frame* frame, const VisiblePosition& position, bool baseIsStart)
+static RefPtr<Range> rangeForPointInRootViewCoordinates(Frame& frame, const IntPoint& pointInRootViewCoordinates, bool baseIsStart)
 {
-    RefPtr<Range> range;
-    VisiblePosition result = position;
+    VisibleSelection existingSelection = frame.selection().selection();
+    VisiblePosition selectionStart = existingSelection.visibleStart();
+    VisiblePosition selectionEnd = existingSelection.visibleEnd();
+
+    auto pointInDocument = frame.view()->rootViewToContents(pointInRootViewCoordinates);
 
     if (baseIsStart) {
-        VisiblePosition selectionStart = frame->selection().selection().visibleStart();
-        bool wouldFlip = position <= selectionStart;
-
-        if (wouldFlip)
-            result = selectionStart.next();
-
-        if (result.isNotNull())
-            range = Range::create(*frame->document(), selectionStart, result);
+        int startY = selectionStart.absoluteCaretBounds().center().y();
+        if (pointInDocument.y() < startY)
+            pointInDocument.setY(startY);
     } else {
-        VisiblePosition selectionEnd = frame->selection().selection().visibleEnd();
-        bool wouldFlip = position >= selectionEnd;
-
-        if (wouldFlip)
-            result = selectionEnd.previous();
-
-        if (result.isNotNull())
-            range = Range::create(*frame->document(), result, selectionEnd);
+        int endY = selectionEnd.absoluteCaretBounds().center().y();
+        if (pointInDocument.y() > endY)
+            pointInDocument.setY(endY);
     }
-
+    
+    VisiblePosition result;
+    RefPtr<Range> range;
+    
+    HitTestResult hitTest = frame.eventHandler().hitTestResultAtPoint(pointInDocument, HitTestRequest::ReadOnly | HitTestRequest::Active | HitTestRequest::AllowChildFrameContent);
+    if (hitTest.targetNode())
+        result = frame.eventHandler().selectionExtentRespectingEditingBoundary(frame.selection().selection(), hitTest.localPoint(), hitTest.targetNode()).deepEquivalent();
+    else
+        result = frame.visiblePositionForPoint(pointInDocument).deepEquivalent();
+    
+    if (baseIsStart) {
+        if (comparePositions(result, selectionStart) <= 0)
+            result = selectionStart.next();
+        else if (&selectionStart.deepEquivalent().anchorNode()->treeScope() != &hitTest.targetNode()->treeScope())
+            result = VisibleSelection::adjustPositionForEnd(result.deepEquivalent(), selectionStart.deepEquivalent().containerNode());
+        
+        if (result.isNotNull())
+            range = Range::create(*frame.document(), selectionStart, result);
+    } else {
+        if (comparePositions(selectionEnd, result) <= 0)
+            result = selectionEnd.previous();
+        else if (&hitTest.targetNode()->treeScope() != &selectionEnd.deepEquivalent().anchorNode()->treeScope())
+            result = VisibleSelection::adjustPositionForStart(result.deepEquivalent(), selectionEnd.deepEquivalent().containerNode());
+        
+        if (result.isNotNull())
+            range = Range::create(*frame.document(), result.deepEquivalent(), selectionEnd);
+    }
+    
     return range;
 }
 
@@ -1321,7 +1345,7 @@ void WebPage::updateSelectionWithTouches(const IntPoint& point, uint32_t touches
             if (result.isNotNull())
                 range = Range::create(*frame.document(), result, result);
         } else
-            range = rangeForPosition(&frame, position, baseIsStart);
+            range = rangeForPointInRootViewCoordinates(frame, point, baseIsStart);
         break;
 
     case SelectionTouch::EndedMovingForward:
@@ -1333,7 +1357,7 @@ void WebPage::updateSelectionWithTouches(const IntPoint& point, uint32_t touches
         break;
 
     case SelectionTouch::Moved:
-        range = rangeForPosition(&frame, position, baseIsStart);
+        range = rangeForPointInRootViewCoordinates(frame, point, baseIsStart);
         break;
     }
     if (range)
@@ -1959,7 +1983,7 @@ static void computeAutocorrectionContext(Frame& frame, String& contextBefore, St
             if (currentPosition.isNotNull() && currentPosition != startPosition) {
                 contextBefore = plainTextReplacingNoBreakSpace(Range::create(*frame.document(), currentPosition, startPosition).ptr());
                 if (atBoundaryOfGranularity(currentPosition, ParagraphGranularity, DirectionBackward))
-                    contextBefore = ASCIILiteral("\n ") + contextBefore;
+                    contextBefore = makeString("\n "_s, contextBefore);
             }
         }
 
@@ -2010,6 +2034,10 @@ static inline bool isAssistableElement(Element& node)
     if (is<HTMLInputElement>(node)) {
         HTMLInputElement& inputElement = downcast<HTMLInputElement>(node);
         // FIXME: This laundry list of types is not a good way to factor this. Need a suitable function on HTMLInputElement itself.
+#if ENABLE(INPUT_TYPE_COLOR)
+        if (inputElement.isColorControl())
+            return true;
+#endif
         return inputElement.isTextField() || inputElement.isDateField() || inputElement.isDateTimeLocalField() || inputElement.isMonthField() || inputElement.isTimeField();
     }
     return node.isContentEditable();
@@ -2170,8 +2198,25 @@ void WebPage::getPositionInformation(const InteractionInformationRequest& reques
                 if (info.isSelectable && !hitNode->isTextNode())
                     info.isSelectable = !isAssistableElement(*downcast<Element>(hitNode)) && !rectIsTooBigForSelection(info.bounds, *result.innerNodeFrame());
             }
+#if PLATFORM(IOSMAC)
+            bool isInsideFixedPosition;
+            VisiblePosition caretPosition(renderer->positionForPoint(request.point, nullptr));
+            info.caretRect = caretPosition.absoluteCaretBounds(&isInsideFixedPosition);
+#endif
         }
     }
+
+    // Prevent the callout bar from showing when tapping on the datalist button.
+#if ENABLE(DATALIST_ELEMENT)
+    if (is<HTMLInputElement>(*hitNode)) {
+        const HTMLInputElement& input = downcast<HTMLInputElement>(*hitNode);
+        if (input.list()) {
+            HitTestResult result = m_page->mainFrame().eventHandler().hitTestResultAtPoint(request.point, HitTestRequest::ReadOnly | HitTestRequest::Active);
+            if (result.innerNode() == input.dataListButtonElement())
+                info.preventTextInteraction = true;
+        }
+    }
+#endif
 
 #if ENABLE(DATA_INTERACTION)
     info.hasSelectionAtPosition = m_page->hasSelectionAtPosition(adjustedPoint);
@@ -2294,7 +2339,7 @@ void WebPage::getAssistedNodeInformation(AssistedNodeInformation& information)
         bool inFixed = false;
         renderer->localToContainerPoint(FloatPoint(), nullptr, UseTransforms, &inFixed);
         information.insideFixedPosition = inFixed;
-        information.isRTL = renderer->style().direction() == RTL;
+        information.isRTL = renderer->style().direction() == TextDirection::RTL;
 
         FrameView* frameView = elementFrame.view();
         if (inFixed && elementFrame.isMainFrame() && !frameView->frame().settings().visualViewportEnabled()) {
@@ -2383,12 +2428,16 @@ void WebPage::getAssistedNodeInformation(AssistedNodeInformation& information)
         information.value = element.value();
         information.autofillFieldName = WebCore::toAutofillFieldName(element.autofillData().fieldName);
         information.placeholder = element.attributeWithoutSynchronization(HTMLNames::placeholderAttr);
+        information.inputMode = element.canonicalInputMode();
     } else if (is<HTMLInputElement>(*m_assistedNode)) {
         HTMLInputElement& element = downcast<HTMLInputElement>(*m_assistedNode);
         HTMLFormElement* form = element.form();
         if (form)
             information.formAction = form->getURLAttribute(WebCore::HTMLNames::actionAttr);
-        information.acceptsAutofilledLoginCredentials = !!WebCore::AutofillElements::computeAutofillElements(element);
+        if (auto autofillElements = WebCore::AutofillElements::computeAutofillElements(element)) {
+            information.acceptsAutofilledLoginCredentials = true;
+            information.isAutofillableUsernameField = autofillElements->username() == m_assistedNode;
+        }
         information.representingPageURL = element.document().urlForBindings();
         information.autocapitalizeType = element.autocapitalizeType();
         information.isAutocorrect = element.shouldAutocorrect();
@@ -2428,7 +2477,19 @@ void WebPage::getAssistedNodeInformation(AssistedNodeInformation& information)
                     information.elementType = InputType::Search;
             }
         }
+#if ENABLE(INPUT_TYPE_COLOR)
+        else if (element.isColorControl()) {
+            information.elementType = InputType::Color;
+#if ENABLE(DATALIST_ELEMENT)
+            information.suggestedColors = element.suggestedColors();
+#endif
+        }
+#endif
 
+#if ENABLE(DATALIST_ELEMENT)
+        information.hasSuggestions = !!element.list();
+#endif
+        information.inputMode = element.canonicalInputMode();
         information.isReadOnly = element.isReadOnly();
         information.value = element.value();
         information.valueAsNumber = element.valueAsNumber();
@@ -2439,6 +2500,7 @@ void WebPage::getAssistedNodeInformation(AssistedNodeInformation& information)
             auto& assistedElement = downcast<HTMLElement>(*m_assistedNode);
             information.isAutocorrect = assistedElement.shouldAutocorrect();
             information.autocapitalizeType = assistedElement.autocapitalizeType();
+            information.inputMode = assistedElement.canonicalInputMode();
         } else {
             information.isAutocorrect = true;
             information.autocapitalizeType = AutocapitalizeTypeDefault;
@@ -2449,7 +2511,7 @@ void WebPage::getAssistedNodeInformation(AssistedNodeInformation& information)
 
 void WebPage::autofillLoginCredentials(const String& username, const String& password)
 {
-    if (is<HTMLInputElement>(*m_assistedNode)) {
+    if (is<HTMLInputElement>(m_assistedNode.get())) {
         if (auto autofillElements = AutofillElements::computeAutofillElements(downcast<HTMLInputElement>(*m_assistedNode)))
             autofillElements->autofill(username, password);
     }
@@ -2476,6 +2538,12 @@ void WebPage::setDeviceOrientation(int32_t deviceOrientation)
     m_page->mainFrame().orientationChanged();
 }
 
+void WebPage::setOverrideViewportArguments(const std::optional<WebCore::ViewportArguments>& arguments)
+{
+    if (auto* document = m_page->mainFrame().document())
+        document->setOverrideViewportArguments(arguments);
+}
+
 // WebCore stores the page scale factor as float instead of double. When we get a scale from WebCore,
 // we need to ignore differences that are within a small rounding error on floats.
 static inline bool areEssentiallyEqualAsFloat(float a, float b)
@@ -2493,7 +2561,7 @@ void WebPage::resetTextAutosizing()
     }
 }
 
-void WebPage::dynamicViewportSizeUpdate(const FloatSize& viewLayoutSize, const WebCore::FloatSize& maximumUnobscuredSize, const FloatRect& targetExposedContentRect, const FloatRect& targetUnobscuredRect, const WebCore::FloatRect& targetUnobscuredRectInScrollViewCoordinates, const WebCore::FloatBoxExtent& targetUnobscuredSafeAreaInsets, double targetScale, int32_t deviceOrientation, uint64_t dynamicViewportSizeUpdateID)
+void WebPage::dynamicViewportSizeUpdate(const FloatSize& viewLayoutSize, const WebCore::FloatSize& maximumUnobscuredSize, const FloatRect& targetExposedContentRect, const FloatRect& targetUnobscuredRect, const WebCore::FloatRect& targetUnobscuredRectInScrollViewCoordinates, const WebCore::FloatBoxExtent& targetUnobscuredSafeAreaInsets, double targetScale, int32_t deviceOrientation, DynamicViewportSizeUpdateID dynamicViewportSizeUpdateID)
 {
     SetForScope<bool> dynamicSizeUpdateGuard(m_inDynamicSizeUpdate, true);
     // FIXME: this does not handle the cases where the content would change the content size or scroll position from JavaScript.
@@ -2670,14 +2738,7 @@ void WebPage::dynamicViewportSizeUpdate(const FloatSize& viewLayoutSize, const W
 
     m_drawingArea->scheduleCompositingLayerFlush();
 
-    send(Messages::WebPageProxy::DynamicViewportUpdateChangedTarget(pageScaleFactor(), frameView.scrollPosition(), dynamicViewportSizeUpdateID));
-}
-
-void WebPage::synchronizeDynamicViewportUpdate(double& newTargetScale, FloatPoint& newScrollPosition, uint64_t& nextValidLayerTreeTransactionID)
-{
-    newTargetScale = pageScaleFactor();
-    newScrollPosition = m_page->mainFrame().view()->scrollPosition();
-    nextValidLayerTreeTransactionID = downcast<RemoteLayerTreeDrawingArea>(*m_drawingArea).nextTransactionID();
+    m_pendingDynamicViewportSizeUpdateID = dynamicViewportSizeUpdateID;
 }
 
 void WebPage::resetViewportDefaultConfiguration(WebFrame* frame, bool hasMobileDocType)
@@ -2762,7 +2823,8 @@ void WebPage::updateViewportSizeForCSSViewportUnits()
 void WebPage::applicationWillResignActive()
 {
     [[NSNotificationCenter defaultCenter] postNotificationName:WebUIApplicationWillResignActiveNotification object:nil];
-    m_page->applicationWillResignActive();
+    if (m_page)
+        m_page->applicationWillResignActive();
 }
 
 void WebPage::applicationDidEnterBackground(bool isSuspendedUnderLock)
@@ -2772,7 +2834,8 @@ void WebPage::applicationDidEnterBackground(bool isSuspendedUnderLock)
     m_isSuspendedUnderLock = isSuspendedUnderLock;
     setLayerTreeStateIsFrozen(true);
 
-    m_page->applicationDidEnterBackground();
+    if (m_page)
+        m_page->applicationDidEnterBackground();
 }
 
 void WebPage::applicationDidFinishSnapshottingAfterEnteringBackground()
@@ -2788,13 +2851,15 @@ void WebPage::applicationWillEnterForeground(bool isSuspendedUnderLock)
 
     [[NSNotificationCenter defaultCenter] postNotificationName:WebUIApplicationWillEnterForegroundNotification object:nil userInfo:@{@"isSuspendedUnderLock": @(isSuspendedUnderLock)}];
 
-    m_page->applicationWillEnterForeground();
+    if (m_page)
+        m_page->applicationWillEnterForeground();
 }
 
 void WebPage::applicationDidBecomeActive()
 {
     [[NSNotificationCenter defaultCenter] postNotificationName:WebUIApplicationDidBecomeActiveNotification object:nil];
-    m_page->applicationDidBecomeActive();
+    if (m_page)
+        m_page->applicationDidBecomeActive();
 }
 
 static inline void adjustVelocityDataForBoundedScale(double& horizontalVelocity, double& verticalVelocity, double& scaleChangeRate, double exposedRectScale, double minimumScale, double maximumScale)
@@ -2808,19 +2873,10 @@ static inline void adjustVelocityDataForBoundedScale(double& horizontalVelocity,
         scaleChangeRate = 0;
 }
 
-static inline FloatRect adjustExposedRectForBoundedScale(const FloatRect& exposedRect, double exposedRectScale, double newScale)
-{
-    if (exposedRectScale < newScale)
-        return exposedRect;
-
-    return adjustExposedRectForNewScale(exposedRect, exposedRectScale, newScale);
-}
-
 std::optional<float> WebPage::scaleFromUIProcess(const VisibleContentRectUpdateInfo& visibleContentRectUpdateInfo) const
 {
-    auto transactionIDForLastScaleSentToUIProcess = downcast<RemoteLayerTreeDrawingArea>(*m_drawingArea).lastCommittedTransactionID();
     auto transactionIDForLastScaleFromUIProcess = visibleContentRectUpdateInfo.lastLayerTreeTransactionID();
-    if (transactionIDForLastScaleSentToUIProcess != transactionIDForLastScaleFromUIProcess)
+    if (m_lastTransactionIDWithScaleChange > transactionIDForLastScaleFromUIProcess)
         return std::nullopt;
 
     float scaleFromUIProcess = visibleContentRectUpdateInfo.scale();
@@ -2886,7 +2942,7 @@ void WebPage::updateVisibleContentRects(const VisibleContentRectUpdateInfo& visi
 
     float scaleToUse = scaleFromUIProcess.value_or(m_page->pageScaleFactor());
     FloatRect exposedContentRect = visibleContentRectUpdateInfo.exposedContentRect();
-    FloatRect adjustedExposedContentRect = adjustExposedRectForBoundedScale(exposedContentRect, visibleContentRectUpdateInfo.scale(), scaleToUse);
+    FloatRect adjustedExposedContentRect = adjustExposedRectForNewScale(exposedContentRect, visibleContentRectUpdateInfo.scale(), scaleToUse);
     m_drawingArea->setExposedContentRect(adjustedExposedContentRect);
 
     IntPoint scrollPosition = roundedIntPoint(visibleContentRectUpdateInfo.unobscuredContentRect().location());
@@ -2970,18 +3026,6 @@ void WebPage::willStartUserTriggeredZooming()
     m_userHasChangedPageScaleFactor = true;
 }
 
-#if ENABLE(WEBGL)
-WebCore::WebGLLoadPolicy WebPage::webGLPolicyForURL(WebFrame*, const URL&)
-{
-    return WebGLAllowCreation;
-}
-
-WebCore::WebGLLoadPolicy WebPage::resolveWebGLPolicyForURL(WebFrame*, const URL&)
-{
-    return WebGLAllowCreation;
-}
-#endif
-
 #if ENABLE(IOS_TOUCH_EVENTS)
 void WebPage::dispatchAsynchronousTouchEvents(const Vector<WebTouchEvent, 1>& queue)
 {
@@ -3038,7 +3082,7 @@ void WebPage::didReceivePasswordForQuickLookDocument(const String& password)
 
 bool WebPage::platformPrefersTextLegibilityBasedZoomScaling() const
 {
-#if ENABLE(EXTRA_ZOOM_MODE)
+#if PLATFORM(WATCHOS)
     return true;
 #else
     return false;

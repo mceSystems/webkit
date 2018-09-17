@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011 Ericsson AB. All rights reserved.
  * Copyright (C) 2012 Google Inc. All rights reserved.
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -71,8 +71,8 @@ public:
     
     const RealtimeMediaSourceSupportedConstraints& supportedConstraints() { return m_supportedConstraints; }
 
-    WEBCORE_EXPORT virtual void setAudioFactory(RealtimeMediaSource::AudioCaptureFactory&) { }
-    WEBCORE_EXPORT virtual void unsetAudioFactory(RealtimeMediaSource::AudioCaptureFactory&) { }
+    virtual void setAudioFactory(RealtimeMediaSource::AudioCaptureFactory&) { }
+    virtual void unsetAudioFactory(RealtimeMediaSource::AudioCaptureFactory&) { }
     WEBCORE_EXPORT virtual RealtimeMediaSource::AudioCaptureFactory& audioFactory() = 0;
 
     virtual RealtimeMediaSource::VideoCaptureFactory& videoFactory() = 0;
@@ -85,12 +85,11 @@ public:
     WEBCORE_EXPORT CaptureDevice captureDeviceWithUniqueID(const String& id, const String& hashSalt);
     WEBCORE_EXPORT ExceptionOr<void> setDeviceEnabled(const String&, bool);
 
-    using DevicesChangedObserverToken = unsigned;
-    DevicesChangedObserverToken addDevicesChangedObserver(std::function<void()>&&);
-    void removeDevicesChangedObserver(DevicesChangedObserverToken);
-    void captureDevicesChanged();
+    WEBCORE_EXPORT void setDevicesChangedObserver(std::function<void()>&&);
 
     void setVideoCapturePageState(bool, bool);
+
+    void captureDevicesChanged();
 
 protected:
     RealtimeMediaSourceCenter();
@@ -100,6 +99,8 @@ protected:
 
     CaptureDeviceManager* m_audioCaptureDeviceManager { nullptr };
     CaptureDeviceManager* m_videoCaptureDeviceManager { nullptr };
+
+    WTF::Function<void()> m_deviceChangedObserver;
 };
 
 } // namespace WebCore

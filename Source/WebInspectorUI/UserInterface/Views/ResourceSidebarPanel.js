@@ -311,11 +311,13 @@ WI.ResourceSidebarPanel = class ResourceSidebarPanel extends WI.NavigationSideba
             return;
 
         // Target main resource.
-        if (script.target !== WI.pageTarget) {
-            if (script.isMainResource())
-                this._addTargetWithMainResource(script.target);
-            this.contentTreeOutline.disclosureButtons = true;
-            return;
+        if (WI.sharedApp.debuggableType !== WI.DebuggableType.JavaScript) {
+            if (script.target !== WI.pageTarget) {
+                if (script.isMainResource())
+                    this._addTargetWithMainResource(script.target);
+                this.contentTreeOutline.disclosureButtons = true;
+                return;
+            }
         }
 
         // If the script URL matches a resource we can assume it is part of that resource and does not need added.
@@ -452,7 +454,7 @@ WI.ResourceSidebarPanel = class ResourceSidebarPanel extends WI.NavigationSideba
 
     _treeSelectionDidChange(event)
     {
-        if (!this.visible)
+        if (!this.selected)
             return;
 
         let treeElement = event.data.selectedElement;

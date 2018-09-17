@@ -42,9 +42,8 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
         this._pixelSize = null;
         this._pixelSizeElement = null;
         this._canvasNode = null;
-        this._recordingOptionElementMap = new WeakMap;
 
-        if (this.representedObject.contextType === WI.Canvas.ContextType.Canvas2D || this.representedObject.contextType === WI.Canvas.ContextType.WebGL) {
+        if (this.representedObject.contextType === WI.Canvas.ContextType.Canvas2D || this.representedObject.contextType === WI.Canvas.ContextType.BitmapRenderer || this.representedObject.contextType === WI.Canvas.ContextType.WebGL) {
             const toolTip = WI.UIString("Start recording canvas actions.\nShift-click to record a single frame.");
             const altToolTip = WI.UIString("Stop recording canvas actions");
             this._recordButtonNavigationItem = new WI.ToggleButtonNavigationItem("record-start-stop", toolTip, altToolTip, "Images/Record.svg", "Images/Stop.svg", 13, 13);
@@ -82,14 +81,11 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
         this.representedObject.requestContent().then((content) => {
             this._pendingContent = content;
             if (!this._pendingContent) {
-                console.error("Canvas content not available.", this.representedObject);
+                this._showError();
                 return;
             }
 
             this.needsLayout();
-        })
-        .catch(() => {
-            this._showError();
         });
     }
 
@@ -127,16 +123,20 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
         let footer = this.element.appendChild(document.createElement("footer"));
         footer.addEventListener("click", (event) => { event.stopPropagation(); });
 
-        this._recordingSelectContainer = footer.appendChild(document.createElement("div"));
-        this._recordingSelectContainer.classList.add("recordings", "hidden");
+        this._viewRelatedItemsContainer = footer.appendChild(document.createElement("div"));
+        this._viewRelatedItemsContainer.classList.add("view-related-items");
 
-        this._recordingSelectText = this._recordingSelectContainer.appendChild(document.createElement("span"));
+        this._viewShaderButton = document.createElement("img");
+        this._viewShaderButton.classList.add("view-shader");
+        this._viewShaderButton.title = WI.UIString("View Shader");
+        this._viewShaderButton.addEventListener("click", this._handleViewShaderButtonClicked.bind(this));
 
-        this._recordingSelectElement = this._recordingSelectContainer.appendChild(document.createElement("select"));
-        this._recordingSelectElement.addEventListener("change", this._handleRecordingSelectElementChange.bind(this));
+        this._viewRecordingButton = document.createElement("img");
+        this._viewRecordingButton.classList.add("view-recording");
+        this._viewRecordingButton.title = WI.UIString("View Recording");
+        this._viewRecordingButton.addEventListener("click", this._handleViewRecordingButtonClicked.bind(this));
 
-        for (let recording of this.representedObject.recordingCollection)
-            this._addRecording(recording);
+        this._updateViewRelatedItems();
 
         let flexibleSpaceElement = footer.appendChild(document.createElement("div"));
         flexibleSpaceElement.className = "flexible-space";
@@ -146,6 +146,9 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
         this._pixelSizeElement.className = "pixel-size";
         this._memoryCostElement = metrics.appendChild(document.createElement("span"));
         this._memoryCostElement.className = "memory-cost";
+
+        if (this._errorElement)
+            this._showError();
     }
 
     layout()
@@ -206,11 +209,10 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
         WI.canvasManager.addEventListener(WI.CanvasManager.Event.RecordingStarted, this._recordingStarted, this);
         WI.canvasManager.addEventListener(WI.CanvasManager.Event.RecordingProgress, this._recordingProgress, this);
         WI.canvasManager.addEventListener(WI.CanvasManager.Event.RecordingStopped, this._recordingStopped, this);
+        WI.canvasManager.addEventListener(WI.CanvasManager.Event.ShaderProgramAdded, this._shaderProgramAdded, this);
+        WI.canvasManager.addEventListener(WI.CanvasManager.Event.ShaderProgramRemoved, this._shaderProgramRemoved, this);
 
         WI.settings.showImageGrid.addEventListener(WI.Setting.Event.Changed, this._updateImageGrid, this);
-
-        if (this.didInitialLayout)
-            this._recordingSelectElement.selectedIndex = -1;
     }
 
     detached()
@@ -232,28 +234,16 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
 
     _showError()
     {
-        console.assert(!this._errorElement, "Error element already exists.");
-
         if (this._previewImageElement)
             this._previewImageElement.remove();
 
-        const isError = true;
-        this._errorElement = WI.createMessageTextView(WI.UIString("No Preview Available"), isError);
-        this._previewContainerElement.appendChild(this._errorElement);
-    }
+        if (!this._errorElement) {
+            const isError = true;
+            this._errorElement = WI.createMessageTextView(WI.UIString("No Preview Available"), isError);
+        }
 
-    _addRecording(recording)
-    {
-        let optionElement = this._recordingSelectElement.appendChild(document.createElement("option"));
-        optionElement.textContent = recording.displayName;
-
-        this._recordingOptionElementMap.set(optionElement, recording);
-
-        let recordingCount = this._recordingSelectElement.options.length;
-        this._recordingSelectText.textContent = WI.UIString("View Recordings... (%d)").format(recordingCount);
-        this._recordingSelectContainer.classList.remove("hidden");
-
-        this._recordingSelectElement.selectedIndex = -1;
+        if (this._previewContainerElement)
+            this._previewContainerElement.appendChild(this._errorElement);
     }
 
     _toggleRecording(event)
@@ -285,29 +275,31 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
     {
         this._updateRecordNavigationItem();
 
-        let {canvas, recording} = event.data;
+        let {canvas} = event.data;
         if (canvas !== this.representedObject)
             return;
 
         this._updateProgressView();
 
-        if (recording)
-            this._addRecording(recording);
+        this._updateViewRelatedItems();
     }
 
-    _handleRecordingSelectElementChange(event)
+    _shaderProgramAdded(event)
     {
-        let selectedOption = this._recordingSelectElement.options[this._recordingSelectElement.selectedIndex];
-        console.assert(selectedOption, "An option should have been selected.");
-        if (!selectedOption)
+        let {shaderProgram} = event.data;
+        if (!shaderProgram || shaderProgram.canvas !== this.representedObject)
             return;
 
-        let representedObject = this._recordingOptionElementMap.get(selectedOption);
-        console.assert(representedObject, "Missing map entry for option.");
-        if (!representedObject)
+        this._updateViewRelatedItems();
+    }
+
+    _shaderProgramRemoved(event)
+    {
+        let {shaderProgram} = event.data;
+        if (!shaderProgram || shaderProgram.canvas !== this.representedObject)
             return;
 
-        WI.showRepresentedObject(representedObject);
+        this._updateViewRelatedItems();
     }
 
     _refreshPixelSize()
@@ -420,9 +412,66 @@ WI.CanvasContentView = class CanvasContentView extends WI.ContentView
             let formatString = frameCount === 1 ? WI.UIString("%d Frame") : WI.UIString("%d Frames");
             title = formatString.format(frameCount);
         } else
-            title = WI.UIString("Waiting for frames…")
+            title = WI.UIString("Waiting for frames…");
 
         this._progressView.title = title;
         this._progressView.subtitle = bufferUsed ? Number.bytesToString(bufferUsed) : "";
+    }
+
+    _updateViewRelatedItems()
+    {
+        this._viewRelatedItemsContainer.removeChildren();
+
+        if (this.representedObject.shaderProgramCollection.size)
+            this._viewRelatedItemsContainer.appendChild(this._viewShaderButton);
+
+        if (this.representedObject.recordingCollection.size)
+            this._viewRelatedItemsContainer.appendChild(this._viewRecordingButton);
+    }
+
+    _handleViewShaderButtonClicked(event)
+    {
+        let shaderPrograms = this.representedObject.shaderProgramCollection;
+        console.assert(shaderPrograms.size);
+        if (!shaderPrograms.size)
+            return;
+
+        if (shaderPrograms.size === 1) {
+            WI.showRepresentedObject(Array.from(shaderPrograms)[0]);
+            return;
+        }
+
+        let contextMenu = WI.ContextMenu.createFromEvent(event);
+
+        for (let shaderProgram of shaderPrograms) {
+            contextMenu.appendItem(shaderProgram.displayName, (event) => {
+                WI.showRepresentedObject(shaderProgram);
+            });
+        }
+
+        contextMenu.show();
+    }
+
+    _handleViewRecordingButtonClicked(event)
+    {
+        let recordings = this.representedObject.recordingCollection;
+        console.assert(recordings.size);
+        if (!recordings.size)
+            return;
+
+        if (recordings.size === 1) {
+            WI.showRepresentedObject(Array.from(recordings)[0]);
+            return;
+        }
+
+        let contextMenu = WI.ContextMenu.createFromEvent(event);
+
+        for (let recording of recordings) {
+            contextMenu.appendItem(recording.displayName, (event) => {
+                WI.showRepresentedObject(recording);
+            });
+        }
+
+        contextMenu.show();
     }
 };

@@ -57,7 +57,7 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << mediaCacheDirectoryExtensionHandle;
     encoder << javaScriptConfigurationDirectory;
     encoder << javaScriptConfigurationDirectoryExtensionHandle;
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     encoder << uiProcessCookieStorageIdentifier;
 #endif
 #if PLATFORM(IOS)
@@ -103,6 +103,7 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << defaultRequestTimeoutInterval;
 #if PLATFORM(COCOA)
     encoder << uiProcessBundleIdentifier;
+    encoder << uiProcessSDKVersion;
 #endif
     encoder << presentingApplicationPID;
 #if PLATFORM(COCOA)
@@ -124,6 +125,7 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << plugInAutoStartOriginHashes;
     encoder << plugInAutoStartOrigins;
     encoder << memoryCacheDisabled;
+    encoder << attrStyleEnabled;
 
 #if ENABLE(SERVICE_CONTROLS)
     encoder << hasImageServices;
@@ -153,6 +155,11 @@ void WebProcessCreationParameters::encode(IPC::Encoder& encoder) const
 
 #if PLATFORM(COCOA)
     encoder << mediaMIMETypes;
+#endif
+
+#if PLATFORM(MAC)
+    encoder << screenProperties;
+    encoder << useOverlayScrollbars;
 #endif
 }
 
@@ -209,7 +216,7 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     parameters.javaScriptConfigurationDirectoryExtensionHandle = WTFMove(*javaScriptConfigurationDirectoryExtensionHandle);
 
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     if (!decoder.decode(parameters.uiProcessCookieStorageIdentifier))
         return false;
 #endif
@@ -315,6 +322,8 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
 #if PLATFORM(COCOA)
     if (!decoder.decode(parameters.uiProcessBundleIdentifier))
         return false;
+    if (!decoder.decode(parameters.uiProcessSDKVersion))
+        return false;
 #endif
     if (!decoder.decode(parameters.presentingApplicationPID))
         return false;
@@ -361,6 +370,8 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
         return false;
     if (!decoder.decode(parameters.memoryCacheDisabled))
         return false;
+    if (!decoder.decode(parameters.attrStyleEnabled))
+        return false;
 
 #if ENABLE(SERVICE_CONTROLS)
     if (!decoder.decode(parameters.hasImageServices))
@@ -398,6 +409,16 @@ bool WebProcessCreationParameters::decode(IPC::Decoder& decoder, WebProcessCreat
 
 #if PLATFORM(COCOA)
     if (!decoder.decode(parameters.mediaMIMETypes))
+        return false;
+#endif
+
+#if PLATFORM(MAC)
+    std::optional<WebCore::ScreenProperties> screenProperties;
+    decoder >> screenProperties;
+    if (!screenProperties)
+        return false;
+    parameters.screenProperties = WTFMove(*screenProperties);
+    if (!decoder.decode(parameters.useOverlayScrollbars))
         return false;
 #endif
 

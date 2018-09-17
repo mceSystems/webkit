@@ -66,9 +66,6 @@ bool ResourceHandle::start()
 
     CurlContext::singleton();
 
-    if (!d->m_delegate.get())
-        d->m_delegate = std::make_unique<CurlResourceHandleDelegate>(*this);
-
     // The frame could be null if the ResourceHandle is not associated to any
     // Frame, e.g. if we are downloading a file.
     // If the frame is not null but the page is null this must be an attempted
@@ -78,17 +75,20 @@ bool ResourceHandle::start()
         return false;
 
     // Only allow the POST and GET methods for non-HTTP requests.
-    const ResourceRequest& request = firstRequest();
+    auto request = firstRequest();
     if (!request.url().protocolIsInHTTPFamily() && request.httpMethod() != "GET" && request.httpMethod() != "POST") {
         scheduleFailure(InvalidURLFailure); // Error must not be reported immediately
         return true;
     }
 
-    d->m_curlRequest = createCurlRequest(d->m_firstRequest);
+    d->m_startTime = MonotonicTime::now();
+
+    d->m_curlRequest = createCurlRequest(WTFMove(request));
 
     if (auto credential = getCredential(d->m_firstRequest, false))
         d->m_curlRequest->setUserPass(credential->first, credential->second);
 
+    d->m_curlRequest->setStartTime(d->m_startTime);
     d->m_curlRequest->start();
 
     return true;
@@ -100,7 +100,7 @@ void ResourceHandle::cancel()
 
     d->m_cancelled = true;
 
-    if (!d->m_curlRequest)
+    if (d->m_curlRequest)
         d->m_curlRequest->cancel();
 }
 
@@ -136,7 +136,7 @@ void ResourceHandle::addCacheValidationHeaders(ResourceRequest& request)
     }
 }
 
-Ref<CurlRequest> ResourceHandle::createCurlRequest(ResourceRequest& request, RequestStatus status)
+Ref<CurlRequest> ResourceHandle::createCurlRequest(ResourceRequest&& request, RequestStatus status)
 {
     ASSERT(isMainThread());
 
@@ -152,14 +152,16 @@ Ref<CurlRequest> ResourceHandle::createCurlRequest(ResourceRequest& request, Req
     }
 
     CurlRequest::ShouldSuspend shouldSuspend = d->m_defersLoading ? CurlRequest::ShouldSuspend::Yes : CurlRequest::ShouldSuspend::No;
-    auto curlRequest = CurlRequest::create(request, *delegate(), shouldSuspend, CurlRequest::EnableMultipart::Yes);
+    auto curlRequest = CurlRequest::create(request, *delegate(), shouldSuspend, CurlRequest::EnableMultipart::Yes, d->m_messageQueue);
     
     return curlRequest;
 }
 
 CurlResourceHandleDelegate* ResourceHandle::delegate()
 {
-    ASSERT(d->m_delegate);
+    if (!d->m_delegate)
+        d->m_delegate = std::make_unique<CurlResourceHandleDelegate>(*this);
+
     return d->m_delegate.get();
 }
 
@@ -169,7 +171,7 @@ void ResourceHandle::setHostAllowsAnyHTTPSCertificate(const String& host)
 {
     ASSERT(isMainThread());
 
-    CurlContext::singleton().sslHandle().setHostAllowsAnyHTTPSCertificate(host);
+    CurlContext::singleton().sslHandle().allowAnyHTTPSCertificatesForHost(host);
 }
 
 void ResourceHandle::setClientCertificateInfo(const String& host, const String& certificate, const String& key)
@@ -371,38 +373,41 @@ void ResourceHandle::restartRequestWithCredential(const String& user, const Stri
     if (!d->m_curlRequest)
         return;
     
-    auto wasSyncRequest = d->m_curlRequest->isSyncRequest();
     auto previousRequest = d->m_curlRequest->resourceRequest();
     d->m_curlRequest->cancel();
 
-    d->m_curlRequest = createCurlRequest(previousRequest, RequestStatus::ReusedRequest);
+    d->m_curlRequest = createCurlRequest(WTFMove(previousRequest), RequestStatus::ReusedRequest);
     d->m_curlRequest->setUserPass(user, password);
-    d->m_curlRequest->start(wasSyncRequest);
+    d->m_curlRequest->setStartTime(d->m_startTime);
+    d->m_curlRequest->start();
 }
 
-void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy, ResourceError& error, ResourceResponse& response, Vector<char>& data)
+void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy storedCredentialsPolicy, ResourceError& error, ResourceResponse& response, Vector<char>& data)
 {
     ASSERT(isMainThread());
 
-    auto localRequest = request;
     SynchronousLoaderClient client;
     bool defersLoading = false;
     bool shouldContentSniff = true;
     bool shouldContentEncodingSniff = true;
     RefPtr<ResourceHandle> handle = adoptRef(new ResourceHandle(context, request, &client, defersLoading, shouldContentSniff, shouldContentEncodingSniff));
+    handle->d->m_messageQueue = &client.messageQueue();
+    handle->d->m_startTime = MonotonicTime::now();
 
-    if (localRequest.url().protocolIsData()) {
+    if (request.url().protocolIsData()) {
         handle->handleDataURL();
         return;
     }
 
-    // If defersLoading is true and we call curl_easy_perform
-    // on a paused handle, libcURL would do the transfer anyway
-    // and we would assert so force defersLoading to be false.
-    handle->d->m_defersLoading = false;
+    auto requestCopy = handle->firstRequest();
+    handle->d->m_curlRequest = handle->createCurlRequest(WTFMove(requestCopy));
+    handle->d->m_curlRequest->setStartTime(handle->d->m_startTime);
+    handle->d->m_curlRequest->start();
 
-    handle->d->m_curlRequest = handle->createCurlRequest(localRequest);
-    handle->d->m_curlRequest->start(true);
+    do {
+        if (auto task = client.messageQueue().waitForMessage())
+            (*task)();
+    } while (!client.messageQueue().killed() && !handle->cancelledOrClientless());
 
     error = client.error();
     data.swap(client.mutableData());
@@ -484,6 +489,7 @@ void ResourceHandle::willSendRequest()
         // in a cross-origin redirect, we want to clear those headers here. 
         newRequest.clearHTTPAuthorization();
         newRequest.clearHTTPOrigin();
+        d->m_startTime = WTF::MonotonicTime::now();
     }
 
     ResourceResponse responseCopy = delegate()->response();
@@ -500,17 +506,22 @@ void ResourceHandle::continueAfterWillSendRequest(ResourceRequest&& request)
     if (cancelledOrClientless() || !d->m_curlRequest)
         return;
 
-    auto wasSyncRequest = d->m_curlRequest->isSyncRequest();
-    d->m_curlRequest->cancel();
-
-    d->m_curlRequest = createCurlRequest(request);
-
-    if (protocolHostAndPortAreEqual(request.url(), delegate()->response().url())) {
-        if (auto credential = getCredential(request, true))
-            d->m_curlRequest->setUserPass(credential->first, credential->second);
+    if (request.isNull()) {
+        cancel();
+        return;
     }
 
-    d->m_curlRequest->start(wasSyncRequest);
+    auto shouldForwardCredential = protocolHostAndPortAreEqual(request.url(), delegate()->response().url());
+    auto credential = getCredential(request, true);
+
+    d->m_curlRequest->cancel();
+    d->m_curlRequest = createCurlRequest(WTFMove(request));
+
+    if (shouldForwardCredential && credential)
+        d->m_curlRequest->setUserPass(credential->first, credential->second);
+
+    d->m_curlRequest->setStartTime(d->m_startTime);
+    d->m_curlRequest->start();
 }
 
 void ResourceHandle::handleDataURL()
@@ -535,13 +546,13 @@ void ResourceHandle::handleDataURL()
         mediaType = mediaType.left(mediaType.length() - 7);
 
     if (mediaType.isEmpty())
-        mediaType = ASCIILiteral("text/plain");
+        mediaType = "text/plain"_s;
 
     String mimeType = extractMIMETypeFromMediaType(mediaType);
     String charset = extractCharsetFromMediaType(mediaType);
 
     if (charset.isEmpty())
-        charset = ASCIILiteral("US-ASCII");
+        charset = "US-ASCII"_s;
 
     ResourceResponse response;
     response.setMimeType(mimeType);

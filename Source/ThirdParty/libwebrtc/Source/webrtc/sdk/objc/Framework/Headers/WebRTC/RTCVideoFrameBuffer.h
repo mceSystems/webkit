@@ -38,6 +38,11 @@ RTC_EXPORT
 @property(nonatomic, readonly) int strideU;
 @property(nonatomic, readonly) int strideV;
 
+- (instancetype)initWithWidth:(int)width
+                       height:(int)height
+                        dataY:(const uint8_t *)dataY
+                        dataU:(const uint8_t *)dataU
+                        dataV:(const uint8_t *)dataV;
 - (instancetype)initWithWidth:(int)width height:(int)height;
 - (instancetype)initWithWidth:(int)width
                        height:(int)height
@@ -66,11 +71,14 @@ RTC_EXPORT
 
 /** RTCVideoFrameBuffer containing a CVPixelBufferRef */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCCVPixelBuffer")))
 @interface RTCCVPixelBuffer : NSObject <RTCVideoFrameBuffer>
 
 @property(nonatomic, readonly) CVPixelBufferRef pixelBuffer;
 @property(nonatomic, readonly) int cropX;
 @property(nonatomic, readonly) int cropY;
+@property(nonatomic, readonly) int cropWidth;
+@property(nonatomic, readonly) int cropHeight;
 
 + (NSSet<NSNumber *> *)supportedPixelFormats;
 
@@ -86,20 +94,25 @@ RTC_EXPORT
 - (BOOL)requiresCropping;
 - (BOOL)requiresScalingToWidth:(int)width height:(int)height;
 - (int)bufferSizeForCroppingAndScalingToWidth:(int)width height:(int)height;
+
 /** The minimum size of the |tmpBuffer| must be the number of bytes returned from the
  * bufferSizeForCroppingAndScalingToWidth:height: method.
+ * If that size is 0, the |tmpBuffer| may be nil.
  */
-- (BOOL)cropAndScaleTo:(CVPixelBufferRef)outputPixelBuffer withTempBuffer:(uint8_t *)tmpBuffer;
+- (BOOL)cropAndScaleTo:(CVPixelBufferRef)outputPixelBuffer
+        withTempBuffer:(nullable uint8_t *)tmpBuffer;
 
 @end
 
 /** RTCI420Buffer implements the RTCI420Buffer protocol */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCI420Buffer")))
 @interface RTCI420Buffer : NSObject <RTCI420Buffer>
 @end
 
 /** Mutable version of RTCI420Buffer */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCMutableI420Buffer")))
 @interface RTCMutableI420Buffer : RTCI420Buffer <RTCMutableI420Buffer>
 @end
 

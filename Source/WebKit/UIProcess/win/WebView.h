@@ -59,9 +59,11 @@ public:
     bool isFocused();
     bool isVisible();
     bool isInWindow();
+    void setCursor(const WebCore::Cursor&);
     void setOverrideCursor(HCURSOR);
     void setScrollOffsetOnNextResize(const WebCore::IntSize&);
     void initialize();
+    void setToolTip(const String&);
 
     void setViewNeedsDisplay(const WebCore::Region&);
 
@@ -90,6 +92,7 @@ private:
     LRESULT onTimerEvent(HWND hWnd, UINT message, WPARAM, LPARAM, bool& handled);
     LRESULT onShowWindowEvent(HWND hWnd, UINT message, WPARAM, LPARAM, bool& handled);
     LRESULT onSetCursor(HWND hWnd, UINT message, WPARAM, LPARAM, bool& handled);
+    LRESULT onMenuCommand(HWND hWnd, UINT message, WPARAM, LPARAM, bool& handled);
 
     void paint(HDC, const WebCore::IntRect& dirtyRect);
     void setWasActivatedByMouseEvent(bool flag) { m_wasActivatedByMouseEvent = flag; }
@@ -127,6 +130,7 @@ private:
     HWND m_window { nullptr };
     HWND m_topLevelParentWindow { nullptr };
     HWND m_toolTipWindow { nullptr };
+    WTF::String m_toolTip;
 
     WebCore::IntSize m_nextResizeScrollOffset;
 

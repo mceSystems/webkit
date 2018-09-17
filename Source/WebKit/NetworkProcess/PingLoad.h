@@ -31,6 +31,7 @@
 #include <WebCore/ResourceResponse.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/UniqueRef.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 class ContentSecurityPolicy;
@@ -43,9 +44,9 @@ namespace WebKit {
 class NetworkConnectionToWebProcess;
 class NetworkLoadChecker;
 
-class PingLoad final : private NetworkDataTaskClient {
+class PingLoad final : public CanMakeWeakPtr<PingLoad>, private NetworkDataTaskClient {
 public:
-    PingLoad(NetworkResourceLoadParameters&&, NetworkConnectionToWebProcess&, WTF::CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&&);
+    PingLoad(NetworkResourceLoadParameters&&, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&&);
     
 private:
     ~PingLoad();
@@ -54,7 +55,7 @@ private:
     WebCore::ContentSecurityPolicy* contentSecurityPolicy() const;
 
     void willPerformHTTPRedirection(WebCore::ResourceResponse&&, WebCore::ResourceRequest&&, RedirectCompletionHandler&&) final;
-    void didReceiveChallenge(const WebCore::AuthenticationChallenge&, ChallengeCompletionHandler&&) final;
+    void didReceiveChallenge(WebCore::AuthenticationChallenge&&, ChallengeCompletionHandler&&) final;
     void didReceiveResponseNetworkSession(WebCore::ResourceResponse&&, ResponseCompletionHandler&&) final;
     void didReceiveData(Ref<WebCore::SharedBuffer>&&) final;
     void didCompleteWithError(const WebCore::ResourceError&, const WebCore::NetworkLoadMetrics&) final;

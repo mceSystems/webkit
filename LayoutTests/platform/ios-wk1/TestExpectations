@@ -13,11 +13,15 @@ imported/w3c/web-platform-tests/server-timing/service_worker_idl.html [ Skip ]
 http/wpt/service-workers [ Skip ]
 http/wpt/cache-storage [ Skip ]
 http/tests/cache-storage [ Skip ]
+imported/w3c/web-platform-tests/fetch/api/request/destination [ Skip ]
+imported/w3c/web-platform-tests/fetch/cross-origin-resource-policy [ Skip ]
 
 # Skip WebRTC for now in WK1
 imported/w3c/web-platform-tests/webrtc [ Skip ]
 webrtc [ Skip ]
-fast/events/constructors/media-stream-event-constructor.html
+
+# Not supported on WK1
+media/no-fullscreen-when-hidden.html [ Skip ]
 
 # <rdar://problem/6501130> LayoutTests: Enable editing tests after we support editing
 editing/deleting/4922367.html
@@ -684,7 +688,6 @@ css3/filters/backdrop/backdrop-filter-with-border-radius-and-reflection-add.html
 css3/filters/backdrop/backdrop-filter-with-border-radius-and-reflection.html [ ImageOnlyFailure ]
 css3/filters/backdrop/backdrop-filter-with-clip-path.html [ ImageOnlyFailure ]
 css3/flexbox/content-height-with-scrollbars.html [ ImageOnlyFailure ]
-css3/masking/mask-repeat-space-border.html [ ImageOnlyFailure ]
 
 # CSS tests that pass:
 css3/flexbox/csswg/ttwf-reftest-flex-wrap-reverse.html [ Pass ]
@@ -1378,6 +1381,7 @@ webkit.org/b/156069 http/tests/download/anchor-download-no-value.html [ Skip ]
 # testRunner.setShouldDownloadUndisplayableMIMETypes() is not supported on WK1.
 fast/dom/HTMLAnchorElement/anchor-file-blob-convert-to-download.html [ Skip ]
 fast/dom/HTMLAnchorElement/anchor-file-blob-convert-to-download-async-delegate.html [ Skip ]
+http/tests/download/convert-cached-load-to-download.html [ Skip ]
 
 webkit.org/b/137572 scrollbars/scrollbar-iframe-click-does-not-blur-content.html [ Failure ]
 
@@ -1967,3 +1971,5 @@ http/tests/webauthn/ [ Skip ]
 http/wpt/credential-management/ [ Skip ]
 http/wpt/webauthn/ [ Skip ]
 imported/w3c/web-platform-tests/credential-management/ [ Skip ]
+
+webkit.org/b/189594 imported/w3c/web-platform-tests/css/css-animations/pending-style-changes-001.html [ Pass Failure ]

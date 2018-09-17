@@ -41,7 +41,7 @@
 
 namespace WebKit {
 
-class ProcessLauncher : public ThreadSafeRefCounted<ProcessLauncher> {
+class ProcessLauncher : public ThreadSafeRefCounted<ProcessLauncher>, public CanMakeWeakPtr<ProcessLauncher> {
 public:
     class Client {
     public:
@@ -66,6 +66,7 @@ public:
         HashMap<String, String> extraInitializationData;
         bool nonValidInjectedCodeAllowed { false };
         bool shouldMakeProcessLaunchFailForTesting { false };
+        CString customWebContentServiceBundleIdentifier;
 
 #if ENABLE(DEVELOPER_MODE) && (PLATFORM(GTK) || PLATFORM(WPE))
         String processCmdPrefix;
@@ -101,7 +102,6 @@ private:
     WTF::Win32Handle m_hProcess;
 #endif
 
-    WeakPtrFactory<ProcessLauncher> m_weakPtrFactory;
     const LaunchOptions m_launchOptions;
     bool m_isLaunching;
     ProcessID m_processIdentifier;

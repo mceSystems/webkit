@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TestController_h
-#define TestController_h
+#pragma once
 
 #include "GeolocationProviderMock.h"
 #include "WebNotificationProvider.h"
@@ -34,6 +33,7 @@
 #include <string>
 #include <vector>
 #include <wtf/HashMap.h>
+#include <wtf/Seconds.h>
 #include <wtf/Vector.h>
 #include <wtf/text/StringHash.h>
 
@@ -48,6 +48,33 @@ class EventSenderProxy;
 struct TestCommand;
 struct TestOptions;
 
+class AsyncTask {
+public:
+    AsyncTask(WTF::Function<void ()>&& task, WTF::Seconds timeout)
+        : m_task(WTFMove(task))
+        , m_timeout(timeout)
+    {
+        ASSERT(!currentTask());
+    }
+
+    // Returns false on timeout.
+    bool run();
+
+    void taskComplete()
+    {
+        m_taskDone = true;
+    }
+
+    static AsyncTask* currentTask();
+
+private:
+    static AsyncTask* m_currentTask;
+
+    WTF::Function<void ()> m_task;
+    WTF::Seconds m_timeout;
+    bool m_taskDone { false };
+};
+
 // FIXME: Rename this TestRunner?
 class TestController {
 public:
@@ -59,8 +86,8 @@ public:
     static const unsigned w3cSVGViewWidth;
     static const unsigned w3cSVGViewHeight;
 
-    static const double defaultShortTimeout;
-    static const double noTimeout;
+    static const WTF::Seconds defaultShortTimeout;
+    static const WTF::Seconds noTimeout;
 
     TestController(int argc, const char* argv[]);
     ~TestController();
@@ -79,7 +106,7 @@ public:
     
     // Runs the run loop until `done` is true or the timeout elapses.
     bool useWaitToDumpWatchdogTimer() { return m_useWaitToDumpWatchdogTimer; }
-    void runUntil(bool& done, double timeoutSeconds);
+    void runUntil(bool& done, WTF::Seconds timeout);
     void notifyDone();
 
     bool shouldShowWebView() const { return m_shouldShowWebView; }
@@ -121,8 +148,11 @@ public:
 
     unsigned imageCountInGeneralPasteboard() const;
 
-    bool resetStateToConsistentValues(const TestOptions&);
+    enum class ResetStage { BeforeTest, AfterTest };
+    bool resetStateToConsistentValues(const TestOptions&, ResetStage);
     void resetPreferencesToConsistentValues(const TestOptions&);
+
+    void willDestroyWebView();
 
     void terminateWebContentProcess();
     void reattachPageToWebProcess();
@@ -139,7 +169,7 @@ public:
     void setAuthenticationPassword(String password) { m_authenticationPassword = password; }
     void setAllowsAnySSLCertificate(bool);
 
-    void setBlockAllPlugins(bool shouldBlock) { m_shouldBlockAllPlugins = shouldBlock; }
+    void setBlockAllPlugins(bool shouldBlock);
     void setPluginSupportedMode(const String&);
 
     void setShouldLogHistoryClientCallbacks(bool shouldLog) { m_shouldLogHistoryClientCallbacks = shouldLog; }
@@ -156,15 +186,18 @@ public:
 
     void setShouldDownloadUndisplayableMIMETypes(bool value) { m_shouldDownloadUndisplayableMIMETypes = value; }
 
+    void setStatisticsDebugMode(bool value);
+    void setStatisticsPrevalentResourceForDebugMode(WKStringRef hostName);
     void setStatisticsLastSeen(WKStringRef hostName, double seconds);
     void setStatisticsPrevalentResource(WKStringRef hostName, bool value);
     void setStatisticsVeryPrevalentResource(WKStringRef hostName, bool value);
+    String dumpResourceLoadStatistics();
     bool isStatisticsPrevalentResource(WKStringRef hostName);
     bool isStatisticsVeryPrevalentResource(WKStringRef hostName);
+    bool isStatisticsRegisteredAsSubresourceUnder(WKStringRef subresourceHost, WKStringRef topFrameHost);
     bool isStatisticsRegisteredAsSubFrameUnder(WKStringRef subFrameHost, WKStringRef topFrameHost);
     bool isStatisticsRegisteredAsRedirectingTo(WKStringRef hostRedirectedFrom, WKStringRef hostRedirectedTo);
     void setStatisticsHasHadUserInteraction(WKStringRef hostName, bool value);
-    void setStatisticsHasHadNonRecentUserInteraction(WKStringRef hostName);
     bool isStatisticsHasHadUserInteraction(WKStringRef hostName);
     void setStatisticsGrandfathered(WKStringRef hostName, bool value);
     bool isStatisticsGrandfathered(WKStringRef hostName);
@@ -175,10 +208,8 @@ public:
     void setStatisticsTopFrameUniqueRedirectTo(WKStringRef host, WKStringRef hostRedirectedTo);
     void setStatisticsTopFrameUniqueRedirectFrom(WKStringRef host, WKStringRef hostRedirectedFrom);
     void setStatisticsTimeToLiveUserInteraction(double seconds);
-    void setStatisticsTimeToLiveCookiePartitionFree(double seconds);
     void statisticsProcessStatisticsAndDataRecords();
-    void statisticsUpdateCookiePartitioning();
-    void statisticsSetShouldPartitionCookiesForHost(WKStringRef hostName, bool value);
+    void statisticsUpdateCookieBlocking();
     void statisticsSubmitTelemetry();
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
@@ -199,6 +230,7 @@ public:
 
     void terminateNetworkProcess();
     void terminateServiceWorkerProcess();
+    void terminateStorageProcess();
 
     void removeAllSessionCredentials();
 
@@ -212,6 +244,15 @@ public:
     bool didReceiveServerRedirectForProvisionalNavigation() const { return m_didReceiveServerRedirectForProvisionalNavigation; }
     void clearDidReceiveServerRedirectForProvisionalNavigation() { m_didReceiveServerRedirectForProvisionalNavigation = false; }
 
+    void addMockMediaDevice(WKStringRef persistentID, WKStringRef label, WKStringRef type);
+    void clearMockMediaDevices();
+    void removeMockMediaDevice(WKStringRef persistentID);
+    void resetMockMediaDevices();
+
+    void injectUserScript(WKStringRef);
+    
+    void sendDisplayConfigurationChangedMessageForTesting();
+
 private:
     WKRetainPtr<WKPageConfigurationRef> generatePageConfiguration(WKContextConfigurationRef);
     WKRetainPtr<WKContextConfigurationRef> generateContextConfiguration() const;
@@ -221,11 +262,17 @@ private:
 
     void runTestingServerLoop();
     bool runTest(const char* pathOrURL);
+    
+    // Returns false if timed out.
+    bool waitForCompletion(const WTF::Function<void ()>&, WTF::Seconds timeout);
+
+    bool handleControlCommand(const char* command);
 
     void platformInitialize();
     void platformDestroy();
     WKContextRef platformAdjustContext(WKContextRef, WKContextConfigurationRef);
     void platformInitializeContext();
+    void platformAddTestOptions(TestOptions&) const;
     void platformCreateWebView(WKPageConfigurationRef, const TestOptions&);
     static PlatformWebView* platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions&);
     void platformResetPreferencesToConsistentValues();
@@ -236,7 +283,7 @@ private:
 #endif
     void platformConfigureViewForTest(const TestInvocation&);
     void platformWillRunTest(const TestInvocation&);
-    void platformRunUntil(bool& done, double timeout);
+    void platformRunUntil(bool& done, WTF::Seconds timeout);
     void platformDidCommitLoadForFrame(WKPageRef, WKFrameRef);
     WKContextRef platformContext();
     WKPreferencesRef platformPreferences();
@@ -249,6 +296,12 @@ private:
 
     void updateWebViewSizeForTest(const TestInvocation&);
     void updateWindowScaleForTest(PlatformWebView*, const TestInvocation&);
+
+    void updateLiveDocumentsAfterTest();
+    void checkForWorldLeaks();
+
+    void didReceiveLiveDocumentsList(WKArrayRef);
+    void findAndDumpWorldLeaks();
 
     void decidePolicyForGeolocationPermissionRequestIfPossible();
     void decidePolicyForUserMediaPermissionRequestIfPossible();
@@ -280,7 +333,6 @@ private:
     static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef userData, const void*);
     void didFinishNavigation(WKPageRef, WKNavigationRef);
 
-    
     // WKContextDownloadClient
     static void downloadDidStart(WKContextRef, WKDownloadRef, const void*);
     void downloadDidStart(WKContextRef, WKDownloadRef);
@@ -421,6 +473,7 @@ private:
     bool m_shouldShowWebView { false };
     
     bool m_shouldShowTouches { false };
+    bool m_checkForWorldLeaks { false };
 
     bool m_allowAnyHTTPSCertificateForAllowedHosts { false };
     
@@ -434,17 +487,27 @@ private:
     std::unique_ptr<EventSenderProxy> m_eventSenderProxy;
 
     WorkQueueManager m_workQueueManager;
+
+    struct AbandonedDocumentInfo {
+        String testURL;
+        String abandonedDocumentURL;
+
+        AbandonedDocumentInfo() = default;
+        AbandonedDocumentInfo(String inTestURL, String inAbandonedDocumentURL)
+            : testURL(inTestURL)
+            , abandonedDocumentURL(inAbandonedDocumentURL)
+        { }
+    };
+    HashMap<uint64_t, AbandonedDocumentInfo> m_abandonedDocumentInfo;
 };
 
 struct TestCommand {
     std::string pathOrURL;
     std::string absolutePath;
-    bool shouldDumpPixels { false };
     std::string expectedPixelHash;
-    int timeout { 0 };
+    WTF::Seconds timeout;
+    bool shouldDumpPixels { false };
     bool dumpJSConsoleLogInStdErr { false };
 };
 
 } // namespace WTR
-
-#endif // TestController_h

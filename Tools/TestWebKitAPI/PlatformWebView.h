@@ -48,14 +48,17 @@ typedef NSWindow *PlatformWindow;
 typedef WKViewRef PlatformWKView;
 typedef GtkWidget *PlatformWindow;
 #elif PLATFORM(WPE)
+namespace WPEToolingBackends {
 class HeadlessViewBackend;
+}
 struct wpe_view_backend;
 typedef WKViewRef PlatformWKView;
-typedef HeadlessViewBackend *PlatformWindow;
+typedef WPEToolingBackends::HeadlessViewBackend *PlatformWindow;
 #elif PLATFORM(WIN)
 typedef WKViewRef PlatformWKView;
 typedef HWND PlatformWindow;
 #endif
+typedef uint32_t WKEventModifiers;
 
 namespace TestWebKitAPI {
 

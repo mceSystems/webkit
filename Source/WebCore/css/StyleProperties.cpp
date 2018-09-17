@@ -157,6 +157,14 @@ String StyleProperties::getPropertyValue(CSSPropertyID propertyID) const
         return getShorthandValue(borderBottomShorthand());
     case CSSPropertyBorderLeft:
         return getShorthandValue(borderLeftShorthand());
+    case CSSPropertyBorderBlockStart:
+        return getShorthandValue(borderBlockStartShorthand());
+    case CSSPropertyBorderBlockEnd:
+        return getShorthandValue(borderBlockEndShorthand());
+    case CSSPropertyBorderInlineStart:
+        return getShorthandValue(borderInlineStartShorthand());
+    case CSSPropertyBorderInlineEnd:
+        return getShorthandValue(borderInlineEndShorthand());
     case CSSPropertyOutline:
         return getShorthandValue(outlineShorthand());
     case CSSPropertyBorderColor:
@@ -366,6 +374,10 @@ String StyleProperties::get4Values(const StylePropertyShorthand& shorthand) cons
     if (!top.value() || !right.value() || !bottom.value() || !left.value())
         return String();
 
+    // Important flags must be the same
+    if (top.isImportant() != right.isImportant() || right.isImportant() != bottom.isImportant() || bottom.isImportant() != left.isImportant())
+        return String();
+
     if (top.isInherited() && right.isInherited() && bottom.isInherited() && left.isInherited())
         return getValueName(CSSValueInherit);
 
@@ -376,8 +388,6 @@ String StyleProperties::get4Values(const StylePropertyShorthand& shorthand) cons
         }
         return String();
     }
-    if (top.isImportant() != right.isImportant() || right.isImportant() != bottom.isImportant() || bottom.isImportant() != left.isImportant())
-        return String();
 
     bool showLeft = !right.value()->equals(*left.value());
     bool showBottom = !top.value()->equals(*bottom.value()) || showLeft;

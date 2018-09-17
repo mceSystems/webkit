@@ -83,6 +83,7 @@
 #include <WebCore/PolicyChecker.h>
 #include <WebCore/ProgressTracker.h>
 #include <WebCore/ResourceError.h>
+#include <WebCore/ResourceRequest.h>
 #include <WebCore/ScriptController.h>
 #include <WebCore/SecurityOriginData.h>
 #include <WebCore/Settings.h>
@@ -94,9 +95,8 @@
 #include <wtf/ProcessID.h>
 #include <wtf/ProcessPrivilege.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 WebFrameLoaderClient::WebFrameLoaderClient()
     : m_frame(0)
@@ -384,7 +384,7 @@ void WebFrameLoaderClient::dispatchDidChangeMainDocument()
     webPage->send(Messages::WebPageProxy::DidChangeMainDocument(m_frame->frameID()));
 }
 
-void WebFrameLoaderClient::dispatchWillChangeDocument()
+void WebFrameLoaderClient::dispatchWillChangeDocument(const URL& currentUrl, const URL& newUrl)
 {
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
     if (m_frame->isMainFrame())
@@ -394,7 +394,7 @@ void WebFrameLoaderClient::dispatchWillChangeDocument()
     if (!webPage)
         return;
 
-    if (m_hasFrameSpecificStorageAccess) {
+    if (m_hasFrameSpecificStorageAccess && !WebCore::registrableDomainsAreEqual(currentUrl, newUrl)) {
         WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::RemoveStorageAccessForFrame(sessionID(), frameID().value(), pageID().value()), 0);
         m_hasFrameSpecificStorageAccess = false;
     }
@@ -813,7 +813,7 @@ void WebFrameLoaderClient::applyToDocumentLoader(WebsitePoliciesData&& websitePo
     WebsitePoliciesData::applyToDocumentLoader(WTFMove(websitePolicies), *documentLoader);
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& navigationAction, const ResourceRequest& request, bool didReceiveRedirectResponse, FormState* formState, PolicyDecisionMode policyDecisionMode, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& navigationAction, const ResourceRequest& request, const ResourceResponse& redirectResponse, FormState* formState, PolicyDecisionMode policyDecisionMode, ShouldSkipSafeBrowsingCheck shouldSkipSafeBrowsingCheck, FramePolicyFunction&& function)
 {
     WebPage* webPage = m_frame ? m_frame->page() : nullptr;
     if (!webPage) {
@@ -864,9 +864,11 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const Navigat
     navigationActionData.canHandleRequest = webPage->canHandleRequest(request);
     navigationActionData.shouldOpenExternalURLsPolicy = navigationAction.shouldOpenExternalURLsPolicy();
     navigationActionData.downloadAttribute = navigationAction.downloadAttribute();
-    navigationActionData.isRedirect = didReceiveRedirectResponse;
+    navigationActionData.isRedirect = !redirectResponse.isNull();
     navigationActionData.treatAsSameOriginNavigation = navigationAction.treatAsSameOriginNavigation();
     navigationActionData.isCrossOriginWindowOpenNavigation = navigationAction.isCrossOriginWindowOpenNavigation();
+    navigationActionData.hasOpenedFrames = navigationAction.hasOpenedFrames();
+    navigationActionData.openedViaWindowOpenWithOpener = navigationAction.openedViaWindowOpenWithOpener();
     navigationActionData.opener = navigationAction.opener();
     navigationActionData.targetBackForwardItemIdentifier = navigationAction.targetBackForwardItemIdentifier();
 
@@ -891,7 +893,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const Navigat
         DownloadID downloadID;
         std::optional<WebsitePoliciesData> websitePolicies;
 
-        if (!webPage->sendSync(Messages::WebPageProxy::DecidePolicyForNavigationActionSync(m_frame->frameID(), SecurityOriginData::fromFrame(coreFrame), documentLoader->navigationID(), navigationActionData, originatingFrameInfoData, originatingPageID, navigationAction.resourceRequest(), request, listenerID, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get())), Messages::WebPageProxy::DecidePolicyForNavigationActionSync::Reply(newNavigationID, policyAction, downloadID, websitePolicies))) {
+        if (!webPage->sendSync(Messages::WebPageProxy::DecidePolicyForNavigationActionSync(m_frame->frameID(), SecurityOriginData::fromFrame(coreFrame), documentLoader->navigationID(), navigationActionData, originatingFrameInfoData, originatingPageID, navigationAction.resourceRequest(), request, redirectResponse, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get()), shouldSkipSafeBrowsingCheck), Messages::WebPageProxy::DecidePolicyForNavigationActionSync::Reply(policyAction, newNavigationID, downloadID, websitePolicies))) {
             m_frame->didReceivePolicyDecision(listenerID, PolicyAction::Ignore, 0, { }, { });
             return;
         }
@@ -901,7 +903,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const Navigat
     }
 
     ASSERT(policyDecisionMode == PolicyDecisionMode::Asynchronous);
-    if (!webPage->send(Messages::WebPageProxy::DecidePolicyForNavigationAction(m_frame->frameID(), SecurityOriginData::fromFrame(coreFrame), documentLoader->navigationID(), navigationActionData, originatingFrameInfoData, originatingPageID, navigationAction.resourceRequest(), request, listenerID, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get()))))
+    if (!webPage->send(Messages::WebPageProxy::DecidePolicyForNavigationActionAsync(m_frame->frameID(), SecurityOriginData::fromFrame(coreFrame), documentLoader->navigationID(), navigationActionData, originatingFrameInfoData, originatingPageID, navigationAction.resourceRequest(), request, redirectResponse, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get()), shouldSkipSafeBrowsingCheck, listenerID)))
         m_frame->didReceivePolicyDecision(listenerID, PolicyAction::Ignore, 0, { }, { });
 }
 
@@ -940,11 +942,13 @@ void WebFrameLoaderClient::dispatchWillSendSubmitEvent(Ref<FormState>&& formStat
     webPage->injectedBundleFormClient().willSendSubmitEvent(webPage, &form, m_frame, sourceFrame, formState->textFieldValues());
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Function<void(void)>&& function)
+void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, CompletionHandler<void()>&& completionHandler)
 {
     WebPage* webPage = m_frame->page();
-    if (!webPage)
+    if (!webPage) {
+        completionHandler();
         return;
+    }
 
     auto& form = formState.form();
 
@@ -958,7 +962,7 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Fun
     RefPtr<API::Object> userData;
     webPage->injectedBundleFormClient().willSubmitForm(webPage, &form, m_frame, sourceFrame, values, userData);
 
-    uint64_t listenerID = m_frame->setUpWillSubmitFormListener(WTFMove(function));
+    uint64_t listenerID = m_frame->setUpWillSubmitFormListener(WTFMove(completionHandler));
 
     webPage->send(Messages::WebPageProxy::WillSubmitForm(m_frame->frameID(), sourceFrame->frameID(), values, listenerID, UserData(WebProcess::singleton().transformObjectsToHandles(userData.get()).get())));
 }
@@ -1690,7 +1694,6 @@ void WebFrameLoaderClient::dispatchDidClearWindowObjectInWorld(DOMWrapperWorld& 
 #endif
 }
 
-
 void WebFrameLoaderClient::dispatchGlobalObjectAvailable(DOMWrapperWorld& world)
 {
     WebPage* webPage = m_frame->page();
@@ -1698,6 +1701,15 @@ void WebFrameLoaderClient::dispatchGlobalObjectAvailable(DOMWrapperWorld& world)
         return;
     
     webPage->injectedBundleLoaderClient().globalObjectIsAvailableForFrame(*webPage, *m_frame, world);
+}
+
+void WebFrameLoaderClient::willInjectUserScript(DOMWrapperWorld& world)
+{
+    WebPage* webPage = m_frame->page();
+    if (!webPage)
+        return;
+
+    webPage->injectedBundleLoaderClient().willInjectUserScriptForFrame(*webPage, *m_frame, world);
 }
 
 void WebFrameLoaderClient::dispatchWillDisconnectDOMWindowExtensionFromGlobalObject(WebCore::DOMWindowExtension* extension)

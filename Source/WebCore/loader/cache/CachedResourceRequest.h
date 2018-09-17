@@ -44,7 +44,7 @@ struct BlockedStatus;
 class Document;
 class FrameLoader;
 struct ServiceWorkerRegistrationData;
-enum class ReferrerPolicy;
+enum class ReferrerPolicy : uint8_t;
 
 bool isRequestCrossOrigin(SecurityOrigin*, const URL& requestURL, const ResourceLoaderOptions&);
 
@@ -55,14 +55,20 @@ public:
     ResourceRequest&& releaseResourceRequest() { return WTFMove(m_resourceRequest); }
     const ResourceRequest& resourceRequest() const { return m_resourceRequest; }
     ResourceRequest& resourceRequest() { return m_resourceRequest; }
+
     const String& charset() const { return m_charset; }
     void setCharset(const String& charset) { m_charset = charset; }
+
     const ResourceLoaderOptions& options() const { return m_options; }
     void setOptions(const ResourceLoaderOptions& options) { m_options = options; }
+
     const std::optional<ResourceLoadPriority>& priority() const { return m_priority; }
+    void setPriority(std::optional<ResourceLoadPriority>&& priority) { m_priority = WTFMove(priority); }
+
     void setInitiator(Element&);
     void setInitiator(const AtomicString& name);
     const AtomicString& initiatorName() const;
+
     bool allowsCaching() const { return m_options.cachingPolicy == CachingPolicy::AllowCaching; }
     void setCachingPolicy(CachingPolicy policy) { m_options.cachingPolicy = policy;  }
 
@@ -72,7 +78,8 @@ public:
 
     void setDestinationIfNotSet(FetchOptions::Destination);
 
-    void setAsPotentiallyCrossOrigin(const String&, Document&);
+    void deprecatedSetAsPotentiallyCrossOrigin(const String&, Document&); // Use WebCore::createPotentialAccessControlRequest() instead.
+
     void updateForAccessControl(Document&);
 
     void updateReferrerPolicy(ReferrerPolicy);
@@ -80,6 +87,8 @@ public:
     void upgradeInsecureRequestIfNeeded(Document&);
     void setAcceptHeaderIfNone(CachedResource::Type);
     void updateAccordingCacheMode();
+    void updateAcceptEncodingHeader();
+
     void removeFragmentIdentifierIfNeeded();
 #if ENABLE(CONTENT_EXTENSIONS)
     void applyBlockedStatus(const ContentExtensions::BlockedStatus&, Page*);

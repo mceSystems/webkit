@@ -55,10 +55,8 @@
 #import "UIKitSPI.h"
 #endif
 
-using namespace WebCore;
-using namespace WebKit;
-
 namespace WebKit {
+using namespace WebCore;
 
 #if PLATFORM(MAC)
 
@@ -74,10 +72,9 @@ static RefPtr<ShareableBitmap> convertImageToBitmap(NSImage *image, const IntSiz
 
     RetainPtr<NSGraphicsContext> savedContext = [NSGraphicsContext currentContext];
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:graphicsContext->platformContext() flipped:YES]];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     [image drawInRect:NSMakeRect(0, 0, bitmap->size().width(), bitmap->size().height()) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
 
     [NSGraphicsContext setCurrentContext:savedContext.get()];
@@ -115,10 +112,9 @@ static WebCore::CachedImage* cachedImage(Element& element)
 
 void WebDragClient::declareAndWriteDragImage(const String& pasteboardName, Element& element, const URL& url, const String& label, Frame*)
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     ASSERT(pasteboardName == String(NSDragPboard));
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     WebCore::CachedImage* image = cachedImage(element);
 
@@ -154,7 +150,7 @@ void WebDragClient::declareAndWriteDragImage(const String& pasteboardName, Eleme
     SharedMemory::Handle archiveHandle;
     size_t archiveSize = 0;
     if (data) {
-        RefPtr<SharedBuffer> archiveBuffer = SharedBuffer::create((NSData *)data.get());
+        auto archiveBuffer = SharedBuffer::create((__bridge NSData *)data.get());
         RefPtr<SharedMemory> archiveSharedMemoryBuffer = SharedMemory::allocate(archiveBuffer->size());
         if (!archiveSharedMemoryBuffer)
             return;

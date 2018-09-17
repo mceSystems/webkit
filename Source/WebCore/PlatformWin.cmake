@@ -10,11 +10,11 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/graphics/opengl"
     "${WEBCORE_DIR}/platform/graphics/opentype"
     "${WEBCORE_DIR}/platform/graphics/win"
+    "${WEBCORE_DIR}/platform/mediacapabilities"
     "${WEBCORE_DIR}/platform/network/win"
     "${WEBCORE_DIR}/platform/win"
     "${THIRDPARTY_DIR}/ANGLE/include"
     "${THIRDPARTY_DIR}/ANGLE/include/egl"
-    "${DERIVED_SOURCES_PAL_DIR}"
 )
 
 list(APPEND WebCore_SOURCES
@@ -193,6 +193,7 @@ set(WebCore_FORWARDING_HEADERS_DIRECTORIES
     platform/animation
     platform/audio
     platform/graphics
+    platform/mediacapabilities
     platform/mock
     platform/network
     platform/sql
@@ -232,6 +233,7 @@ if (ENABLE_WEBKIT)
 
         inspector/agents
 
+        platform/mediacapabilities
         platform/mediastream
 
         workers/service/context
@@ -314,7 +316,7 @@ endif ()
 
 WEBKIT_MAKE_FORWARDING_HEADERS(WebCore
     DIRECTORIES ${WebCore_FORWARDING_HEADERS_DIRECTORIES}
-    DERIVED_SOURCE_DIRECTORIES ${DERIVED_SOURCES_WEBCORE_DIR} ${DERIVED_SOURCES_PAL_DIR}
+    DERIVED_SOURCE_DIRECTORIES ${DERIVED_SOURCES_WEBCORE_DIR}
     FLATTENED
 )
 

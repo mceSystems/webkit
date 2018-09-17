@@ -53,7 +53,7 @@ inline EventSource::EventSource(ScriptExecutionContext& context, const URL& url,
     : ActiveDOMObject(&context)
     , m_url(url)
     , m_withCredentials(eventSourceInit.withCredentials)
-    , m_decoder(TextResourceDecoder::create(ASCIILiteral("text/plain"), "UTF-8"))
+    , m_decoder(TextResourceDecoder::create("text/plain"_s, "UTF-8"))
     , m_connectTimer(*this, &EventSource::connect)
 {
 }
@@ -99,12 +99,12 @@ void EventSource::connect()
         request.setHTTPHeaderField(HTTPHeaderName::LastEventID, m_lastEventId);
 
     ThreadableLoaderOptions options;
-    options.sendLoadCallbacks = SendCallbacks;
+    options.sendLoadCallbacks = SendCallbackPolicy::SendCallbacks;
     options.credentials = m_withCredentials ? FetchOptions::Credentials::Include : FetchOptions::Credentials::SameOrigin;
     options.preflightPolicy = PreflightPolicy::Prevent;
     options.mode = FetchOptions::Mode::Cors;
     options.cache = FetchOptions::Cache::NoStore;
-    options.dataBufferingPolicy = DoNotBufferData;
+    options.dataBufferingPolicy = DataBufferingPolicy::DoNotBufferData;
     options.contentSecurityPolicyEnforcement = scriptExecutionContext()->shouldBypassMainWorldContentSecurityPolicy() ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceConnectSrcDirective;
     options.initiator = cachedResourceRequestInitiators().eventsource;
 
@@ -140,7 +140,7 @@ void EventSource::scheduleReconnect()
 {
     m_state = CONNECTING;
     m_connectTimer.startOneShot(1_ms * m_reconnectDelay);
-    dispatchEvent(Event::create(eventNames().errorEvent, false, false));
+    dispatchEvent(Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
 void EventSource::close()
@@ -196,13 +196,13 @@ void EventSource::didReceiveResponse(unsigned long, const ResourceResponse& resp
 
     if (!responseIsValid(response)) {
         m_loader->cancel();
-        dispatchEvent(Event::create(eventNames().errorEvent, false, false));
+        dispatchEvent(Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
         return;
     }
 
     m_eventStreamOrigin = SecurityOriginData::fromURL(response.url()).toString();
     m_state = OPEN;
-    dispatchEvent(Event::create(eventNames().openEvent, false, false));
+    dispatchEvent(Event::create(eventNames().openEvent, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
 void EventSource::didReceiveData(const char* data, int length)
@@ -264,7 +264,7 @@ void EventSource::abortConnectionAttempt()
     }
 
     ASSERT(m_state == CLOSED);
-    dispatchEvent(Event::create(eventNames().errorEvent, false, false));
+    dispatchEvent(Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
 }
 
 void EventSource::parseEventStream()

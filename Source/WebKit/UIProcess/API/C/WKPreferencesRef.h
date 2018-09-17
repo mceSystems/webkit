@@ -268,7 +268,8 @@ WK_EXPORT bool WKPreferencesGetMediaDevicesEnabled(WKPreferencesRef preferencesR
 WK_EXPORT void WKPreferencesSetPeerConnectionEnabled(WKPreferencesRef preferencesRef, bool enabled);
 WK_EXPORT bool WKPreferencesGetPeerConnectionEnabled(WKPreferencesRef preferencesRef);
 
-// Should default to false
+// This is for backward compatibility with external SDK builds (https://webkit.org/b/189188).
+// FIXME: Remove these API functions.
 WK_EXPORT void WKPreferencesSetWebRTCLegacyAPIEnabled(WKPreferencesRef preferencesRef, bool enabled);
 WK_EXPORT bool WKPreferencesGetWebRTCLegacyAPIEnabled(WKPreferencesRef preferencesRef);
 
@@ -320,8 +321,16 @@ WK_EXPORT bool WKPreferencesGetRestrictedHTTPResponseAccess(WKPreferencesRef pre
 WK_EXPORT void WKPreferencesSetRestrictedHTTPResponseAccess(WKPreferencesRef preferencesRef, bool allow);
 
 // Defaults to false.
-WK_EXPORT bool WKPreferencesGetFromOriginResponseHeaderEnabled(WKPreferencesRef preferencesRef);
-WK_EXPORT void WKPreferencesSetFromOriginResponseHeaderEnabled(WKPreferencesRef preferencesRef, bool allow);
+WK_EXPORT bool WKPreferencesGetCrossOriginResourcePolicyEnabled(WKPreferencesRef preferencesRef);
+WK_EXPORT void WKPreferencesSetCrossOriginResourcePolicyEnabled(WKPreferencesRef preferencesRef, bool allow);
+
+// Defaults to false.
+WK_EXPORT bool WKPreferencesGetCrossOriginWindowPolicyEnabled(WKPreferencesRef preferencesRef);
+WK_EXPORT void WKPreferencesSetCrossOriginWindowPolicyEnabled(WKPreferencesRef preferencesRef, bool enabled);
+
+// Defaults to false.
+WK_EXPORT bool WKPreferencesGetProcessSwapOnNavigationEnabled(WKPreferencesRef preferencesRef);
+WK_EXPORT void WKPreferencesSetProcessSwapOnNavigationEnabled(WKPreferencesRef preferencesRef, bool enabled);
 
 #ifdef __cplusplus
 }

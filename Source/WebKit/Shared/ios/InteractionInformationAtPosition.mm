@@ -61,6 +61,9 @@ void InteractionInformationAtPosition::encode(IPC::Encoder& encoder) const
     encoder << title;
     encoder << idAttribute;
     encoder << bounds;
+#if PLATFORM(IOSMAC)
+    encoder << caretRect;
+#endif
     encoder << textBefore;
     encoder << textAfter;
     encoder << linkIndicator;
@@ -78,6 +81,9 @@ void InteractionInformationAtPosition::encode(IPC::Encoder& encoder) const
 
         IPC::encode(encoder, reinterpret_cast<CFDataRef>(archiver.get().encodedData));
     }
+#endif
+#if ENABLE(DATALIST_ELEMENT)
+    encoder << preventTextInteraction;
 #endif
 }
 
@@ -135,6 +141,11 @@ bool InteractionInformationAtPosition::decode(IPC::Decoder& decoder, Interaction
     
     if (!decoder.decode(result.bounds))
         return false;
+    
+#if PLATFORM(IOSMAC)
+    if (!decoder.decode(result.caretRect))
+        return false;
+#endif
 
     if (!decoder.decode(result.textBefore))
         return false;
@@ -176,6 +187,11 @@ bool InteractionInformationAtPosition::decode(IPC::Decoder& decoder, Interaction
         
         [unarchiver finishDecoding];
     }
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+    if (!decoder.decode(result.preventTextInteraction))
+        return false;
 #endif
 
     return true;

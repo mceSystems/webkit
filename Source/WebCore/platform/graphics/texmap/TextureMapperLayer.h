@@ -34,13 +34,12 @@ class Region;
 class TextureMapperPaintOptions;
 class TextureMapperPlatformLayer;
 
-class WEBCORE_EXPORT TextureMapperLayer {
+class WEBCORE_EXPORT TextureMapperLayer : public CanMakeWeakPtr<TextureMapperLayer> {
     WTF_MAKE_NONCOPYABLE(TextureMapperLayer);
     WTF_MAKE_FAST_ALLOCATED;
 public:
     TextureMapperLayer();
     virtual ~TextureMapperLayer();
-    WeakPtr<TextureMapperLayer> createWeakPtr() { return m_weakFactory.createWeakPtr(*this); }
 
     void setID(uint32_t id) { m_id = id; }
     uint32_t id() { return m_id; }
@@ -84,12 +83,10 @@ public:
         return !m_currentFilters.isEmpty();
     }
 
-    void setDebugVisuals(bool showDebugBorders, const Color& debugBorderColor, float debugBorderWidth, bool showRepaintCounter);
-    bool isShowingRepaintCounter() const { return m_state.showRepaintCounter; }
-    void setRepaintCount(int);
+    void setDebugVisuals(bool showDebugBorders, const Color& debugBorderColor, float debugBorderWidth);
+    void setRepaintCounter(bool showRepaintCounter, int repaintCount);
     void setContentsLayer(TextureMapperPlatformLayer*);
     void setAnimations(const TextureMapperAnimations&);
-    const TextureMapperAnimations& animations() const { return m_animations; }
     void setBackingStore(TextureMapperBackingStore*);
 
     bool applyAnimationsRecursively(MonotonicTime);
@@ -141,7 +138,6 @@ private:
         return FloatRect(FloatPoint::zero(), m_state.size);
     }
 
-    WeakPtrFactory<TextureMapperLayer> m_weakFactory;
     Vector<TextureMapperLayer*> m_children;
     TextureMapperLayer* m_parent { nullptr };
     WeakPtr<TextureMapperLayer> m_effectTarget;

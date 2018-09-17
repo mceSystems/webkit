@@ -263,6 +263,32 @@ static Ref<SharedBuffer> extractKeyidsFromCencInitData(const SharedBuffer& initD
     return keyIds;
 }
 
+static Ref<SharedBuffer> extractKeyIdFromWebMInitData(const SharedBuffer& initData)
+{
+    Ref<SharedBuffer> keyIds = SharedBuffer::create();
+
+    // Check if initData is a valid WebM initData.
+    if (initData.isEmpty() || initData.size() > std::numeric_limits<unsigned>::max())
+        return keyIds;
+
+    auto object = JSON::Object::create();
+    auto keyIdsArray = JSON::Array::create();
+
+    // Read the KeyId
+    // 9.1.3 License Request Format
+    // This section describes the format of the license request provided to the application via the message attribute of the message event.
+    // The format is a JSON object containing the following members:
+    // "kids"
+    // An array of key IDs. Each element of the array is the base64url encoding of the octet sequence containing the key ID value.
+    String keyId = WTF::base64URLEncode(initData.data(), initData.size());
+    keyIdsArray->pushString(keyId);
+
+    object->setArray("kids", WTFMove(keyIdsArray));
+    CString jsonData = object->toJSONString().utf8();
+    keyIds->append(jsonData.data(), jsonData.length());
+    return keyIds;
+}
+
 CDMFactoryClearKey& CDMFactoryClearKey::singleton()
 {
     static NeverDestroyed<CDMFactoryClearKey> s_factory;
@@ -294,7 +320,7 @@ CDMPrivateClearKey::~CDMPrivateClearKey() = default;
 bool CDMPrivateClearKey::supportsInitDataType(const AtomicString& initDataType) const
 {
     // `keyids` and 'cenc' are the only supported init data type.
-    return (equalLettersIgnoringASCIICase(initDataType, "keyids") || equalLettersIgnoringASCIICase(initDataType, "cenc"));
+    return (equalLettersIgnoringASCIICase(initDataType, "keyids") || equalLettersIgnoringASCIICase(initDataType, "cenc") || equalLettersIgnoringASCIICase(initDataType, "webm"));
 }
 
 static bool containsPersistentLicenseType(const Vector<CDMSessionType>& types)
@@ -405,6 +431,10 @@ bool CDMPrivateClearKey::supportsInitData(const AtomicString& initDataType, cons
     if (equalLettersIgnoringASCIICase(initDataType, "cenc") && isCencInitData(initData))
         return true;
 
+    // Validate the initData buffer as WebM initData.
+    if (equalLettersIgnoringASCIICase(initDataType, "webm") && !initData.isEmpty())
+        return true;
+
     return false;
 }
 
@@ -471,8 +501,11 @@ void CDMInstanceClearKey::requestLicense(LicenseType, const AtomicString& initDa
     if (equalLettersIgnoringASCIICase(initDataType, "cenc"))
         initData = extractKeyidsFromCencInitData(initData.get());
 
+    if (equalLettersIgnoringASCIICase(initDataType, "webm"))
+        initData = extractKeyIdFromWebMInitData(initData.get());
+
     callOnMainThread(
-        [weakThis = m_weakPtrFactory.createWeakPtr(*this), callback = WTFMove(callback), initData = WTFMove(initData), sessionIdValue = s_sessionIdValue]() mutable {
+        [weakThis = makeWeakPtr(*this), callback = WTFMove(callback), initData = WTFMove(initData), sessionIdValue = s_sessionIdValue]() mutable {
             if (!weakThis)
                 return;
 
@@ -497,7 +530,7 @@ void CDMInstanceClearKey::updateLicense(const String& sessionId, LicenseType, co
     auto dispatchCallback =
         [this, &callback](bool sessionWasClosed, std::optional<KeyStatusVector>&& changedKeys, SuccessValue succeeded) {
             callOnMainThread(
-                [weakThis = m_weakPtrFactory.createWeakPtr(*this), callback = WTFMove(callback), sessionWasClosed, changedKeys = WTFMove(changedKeys), succeeded] () mutable {
+                [weakThis = makeWeakPtr(*this), callback = WTFMove(callback), sessionWasClosed, changedKeys = WTFMove(changedKeys), succeeded] () mutable {
                     if (!weakThis)
                         return;
 
@@ -597,7 +630,7 @@ void CDMInstanceClearKey::loadSession(LicenseType, const String& sessionId, cons
     auto dispatchCallback =
         [this, &callback](std::optional<KeyStatusVector>&& existingKeys, SuccessValue success, SessionLoadFailure loadFailure) {
             callOnMainThread(
-                [weakThis = m_weakPtrFactory.createWeakPtr(*this), callback = WTFMove(callback), existingKeys = WTFMove(existingKeys), success, loadFailure]() mutable {
+                [weakThis = makeWeakPtr(*this), callback = WTFMove(callback), existingKeys = WTFMove(existingKeys), success, loadFailure]() mutable {
                     if (!weakThis)
                         return;
 
@@ -627,7 +660,7 @@ void CDMInstanceClearKey::loadSession(LicenseType, const String& sessionId, cons
 void CDMInstanceClearKey::closeSession(const String&, CloseSessionCallback callback)
 {
     callOnMainThread(
-        [weakThis = m_weakPtrFactory.createWeakPtr(*this), callback = WTFMove(callback)] {
+        [weakThis = makeWeakPtr(*this), callback = WTFMove(callback)] {
             if (!weakThis)
                 return;
 
@@ -641,7 +674,7 @@ void CDMInstanceClearKey::removeSessionData(const String& sessionId, LicenseType
     auto dispatchCallback =
         [this, &callback](KeyStatusVector&& keyStatusVector, std::optional<Ref<SharedBuffer>>&& message, SuccessValue success) {
             callOnMainThread(
-                [weakThis = m_weakPtrFactory.createWeakPtr(*this), callback = WTFMove(callback), keyStatusVector = WTFMove(keyStatusVector), message = WTFMove(message), success]() mutable {
+                [weakThis = makeWeakPtr(*this), callback = WTFMove(callback), keyStatusVector = WTFMove(keyStatusVector), message = WTFMove(message), success]() mutable {
                     if (!weakThis)
                         return;
 

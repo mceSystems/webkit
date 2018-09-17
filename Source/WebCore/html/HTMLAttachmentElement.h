@@ -27,17 +27,12 @@
 
 #if ENABLE(ATTACHMENT_ELEMENT)
 
-#include "AttachmentTypes.h"
 #include "HTMLElement.h"
 
 namespace WebCore {
 
-class AttachmentDataReader;
 class File;
-class HTMLImageElement;
-class HTMLVideoElement;
 class RenderAttachment;
-class SharedBuffer;
 
 class HTMLAttachmentElement final : public HTMLElement {
     WTF_MAKE_ISO_ALLOCATED(HTMLAttachmentElement);
@@ -50,45 +45,27 @@ public:
     enum class UpdateDisplayAttributes { No, Yes };
     void setFile(RefPtr<File>&&, UpdateDisplayAttributes = UpdateDisplayAttributes::No);
 
-    String uniqueIdentifier() const { return m_uniqueIdentifier; }
+    const String& uniqueIdentifier() const { return m_uniqueIdentifier; }
     void setUniqueIdentifier(const String& uniqueIdentifier) { m_uniqueIdentifier = uniqueIdentifier; }
 
-    WEBCORE_EXPORT void updateDisplayMode(AttachmentDisplayMode);
-    WEBCORE_EXPORT void updateFileWithData(Ref<SharedBuffer>&& data, std::optional<String>&& newContentType = std::nullopt, std::optional<String>&& newFilename = std::nullopt);
+    WEBCORE_EXPORT void updateAttributes(std::optional<uint64_t>&& newFileSize, const String& newContentType, const String& newFilename);
 
     InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
     void removedFromAncestor(RemovalType, ContainerNode&) final;
+
+    String ensureUniqueIdentifier();
 
     WEBCORE_EXPORT String attachmentTitle() const;
     String attachmentType() const;
     String attachmentPath() const;
 
-    RenderAttachment* attachmentRenderer() const;
-
-    WEBCORE_EXPORT void requestInfo(Function<void(const AttachmentInfo&)>&& callback);
-    void destroyReader(AttachmentDataReader&);
+    RenderAttachment* renderer() const;
 
 private:
     HTMLAttachmentElement(const QualifiedName&, Document&);
     virtual ~HTMLAttachmentElement();
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
-    Ref<HTMLImageElement> ensureInnerImage();
-    Ref<HTMLVideoElement> ensureInnerVideo();
-    RefPtr<HTMLImageElement> innerImage() const;
-    RefPtr<HTMLVideoElement> innerVideo() const;
-
-    void populateShadowRootIfNecessary();
-    void invalidateShadowRootChildrenIfNecessary();
-
-    AttachmentDisplayMode defaultDisplayMode() const
-    {
-        // FIXME: For now, all attachment elements automatically display using a file icon.
-        // In a followup patch, we'll change the default behavior to use in-place presentation
-        // for certain image MIME types.
-        return AttachmentDisplayMode::AsIcon;
-    }
-
     bool shouldSelectOnMouseDown() final {
 #if PLATFORM(IOS)
         return false;
@@ -100,7 +77,6 @@ private:
     void parseAttribute(const QualifiedName&, const AtomicString&) final;
     
     RefPtr<File> m_file;
-    Vector<std::unique_ptr<AttachmentDataReader>> m_attachmentReaders;
     String m_uniqueIdentifier;
 };
 

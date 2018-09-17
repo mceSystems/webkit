@@ -128,7 +128,7 @@ std::unique_ptr<RenderStyle> TreeResolver::styleForElement(Element& element, con
     if (auto style = scope().sharingResolver.resolve(element, *m_update))
         return style;
 
-    auto elementStyle = scope().styleResolver.styleForElement(element, &inheritedStyle, parentBoxStyle(), MatchAllRules, &scope().selectorFilter);
+    auto elementStyle = scope().styleResolver.styleForElement(element, &inheritedStyle, parentBoxStyle(), RuleMatchingBehavior::MatchAllRules, &scope().selectorFilter);
 
     if (elementStyle.relations)
         commitRelations(WTFMove(elementStyle.relations), *m_update);
@@ -145,11 +145,10 @@ static void resetStyleForNonRenderedDescendants(Element& current)
             child.setHasValidStyle();
         }
 
-        if (child.childNeedsStyleRecalc()) {
+        if (child.childNeedsStyleRecalc())
             resetStyleForNonRenderedDescendants(child);
-            child.clearChildNeedsStyleRecalc();
-        }
     }
+    current.clearChildNeedsStyleRecalc();
 }
 
 static bool affectsRenderedSubtree(Element& element, const RenderStyle& newStyle)
@@ -287,31 +286,29 @@ ElementUpdate TreeResolver::createAnimatedElementUpdate(std::unique_ptr<RenderSt
 {
     auto* oldStyle = renderOrDisplayContentsStyle(element);
 
+    bool shouldRecompositeLayer = false;
+
     // New code path for CSS Animations and CSS Transitions.
     if (RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
         // First, we need to make sure that any new CSS animation occuring on this element has a matching WebAnimation
         // on the document timeline. Note that we get timeline() on the Document here because we need a timeline created
         // in case no Web Animations have been created through the JS API.
-        if ((oldStyle && oldStyle->hasTransitions()) || newStyle->hasTransitions())
-            m_document.timeline().updateCSSTransitionsForElement(element, *newStyle, oldStyle);
+        if (element.document().pageCacheState() == Document::NotInPageCache && !element.document().renderView()->printing()) {
+            if (oldStyle && (oldStyle->hasTransitions() || newStyle->hasTransitions()))
+                m_document.timeline().updateCSSTransitionsForElement(element, *oldStyle, *newStyle);
 
-        if ((oldStyle && oldStyle->hasAnimations()) || newStyle->hasAnimations())
-            m_document.timeline().updateCSSAnimationsForElement(element, *newStyle, oldStyle);
+            if ((oldStyle && oldStyle->hasAnimations()) || newStyle->hasAnimations())
+                m_document.timeline().updateCSSAnimationsForElement(element, oldStyle, *newStyle);
+        }
     }
 
     if (auto timeline = m_document.existingTimeline()) {
         // Now we can update all Web animations, which will include CSS Animations as well
         // as animations created via the JS API.
-        auto webAnimations = timeline->animationsForElement(element);
-        if (!webAnimations.isEmpty()) {
-            auto animatedStyle = RenderStyle::clonePtr(*newStyle);
-            for (const auto& animation : webAnimations)
-                animation->resolve(*animatedStyle);
-            newStyle = WTFMove(animatedStyle);
-        }
+        auto animatedStyle = RenderStyle::clonePtr(*newStyle);
+        shouldRecompositeLayer = timeline->resolveAnimationsForElement(element, *animatedStyle);
+        newStyle = WTFMove(animatedStyle);
     }
-
-    bool shouldRecompositeLayer = false;
 
     // Old code path for CSS Animations and CSS Transitions.
     if (!RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
@@ -481,7 +478,6 @@ void TreeResolver::resolveComposedTree()
 
         if (it.depth() > Settings::defaultMaximumRenderTreeDepth) {
             resetStyleForNonRenderedDescendants(element);
-            element.clearChildNeedsStyleRecalc();
             it.traverseNextSkippingChildren();
             continue;
         }
@@ -514,10 +510,8 @@ void TreeResolver::resolveComposedTree()
             clearNeedsStyleResolution(element);
         }
 
-        if (!style) {
+        if (!style)
             resetStyleForNonRenderedDescendants(element);
-            element.clearChildNeedsStyleRecalc();
-        }
 
         bool shouldIterateChildren = style && (element.childNeedsStyleRecalc() || descendantsToResolve != DescendantsToResolve::None);
 
@@ -581,6 +575,12 @@ static Vector<Function<void ()>>& postResolutionCallbackQueue()
     return vector;
 }
 
+static Vector<RefPtr<Frame>>& memoryCacheClientCallsResumeQueue()
+{
+    static NeverDestroyed<Vector<RefPtr<Frame>>> vector;
+    return vector;
+}
+
 void queuePostResolutionCallback(Function<void ()>&& callback)
 {
     postResolutionCallbackQueue().append(WTFMove(callback));
@@ -594,15 +594,13 @@ static void suspendMemoryCacheClientCalls(Document& document)
 
     page->setMemoryCacheClientCallsEnabled(false);
 
-    postResolutionCallbackQueue().append([protectedMainFrame = makeRef(page->mainFrame())] {
-        if (Page* page = protectedMainFrame->page())
-            page->setMemoryCacheClientCallsEnabled(true);
-    });
+    memoryCacheClientCallsResumeQueue().append(&page->mainFrame());
 }
 
 static unsigned resolutionNestingDepth;
 
-PostResolutionCallbackDisabler::PostResolutionCallbackDisabler(Document& document)
+PostResolutionCallbackDisabler::PostResolutionCallbackDisabler(Document& document, DrainCallbacks drainCallbacks)
+    : m_drainCallbacks(drainCallbacks)
 {
     ++resolutionNestingDepth;
 
@@ -616,10 +614,19 @@ PostResolutionCallbackDisabler::PostResolutionCallbackDisabler(Document& documen
 PostResolutionCallbackDisabler::~PostResolutionCallbackDisabler()
 {
     if (resolutionNestingDepth == 1) {
-        // Get size each time through the loop because a callback can add more callbacks to the end of the queue.
-        auto& queue = postResolutionCallbackQueue();
-        for (size_t i = 0; i < queue.size(); ++i)
-            queue[i]();
+        if (m_drainCallbacks == DrainCallbacks::Yes) {
+            // Get size each time through the loop because a callback can add more callbacks to the end of the queue.
+            auto& queue = postResolutionCallbackQueue();
+            for (size_t i = 0; i < queue.size(); ++i)
+                queue[i]();
+            queue.clear();
+        }
+
+        auto& queue = memoryCacheClientCallsResumeQueue();
+        for (size_t i = 0; i < queue.size(); ++i) {
+            if (auto* page = queue[i]->page())
+                page->setMemoryCacheClientCallsEnabled(true);
+        }
         queue.clear();
 
         platformStrategies()->loaderStrategy()->resumePendingRequests();

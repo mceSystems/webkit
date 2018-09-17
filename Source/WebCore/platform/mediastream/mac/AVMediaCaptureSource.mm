@@ -69,9 +69,9 @@ SOFT_LINK_CLASS(AVFoundation, AVCaptureVideoDataOutput)
 #define AVCaptureSession getAVCaptureSessionClass()
 #define AVCaptureVideoDataOutput getAVCaptureVideoDataOutputClass()
 
-SOFT_LINK_POINTER(AVFoundation, AVMediaTypeAudio, NSString *)
-SOFT_LINK_POINTER(AVFoundation, AVMediaTypeMuxed, NSString *)
-SOFT_LINK_POINTER(AVFoundation, AVMediaTypeVideo, NSString *)
+SOFT_LINK_CONSTANT(AVFoundation, AVMediaTypeAudio, NSString *)
+SOFT_LINK_CONSTANT(AVFoundation, AVMediaTypeMuxed, NSString *)
+SOFT_LINK_CONSTANT(AVFoundation, AVMediaTypeVideo, NSString *)
 
 #define AVMediaTypeAudio getAVMediaTypeAudio()
 #define AVMediaTypeMuxed getAVMediaTypeMuxed()
@@ -213,7 +213,6 @@ void AVMediaCaptureSource::initializeSettings()
         m_currentSettings.setSupportedConstraints(supportedConstraints());
 
     m_currentSettings.setDeviceId(id());
-    m_currentSettings.setLabel(name());
     updateSettings(m_currentSettings);
 }
 

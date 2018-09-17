@@ -74,6 +74,12 @@ OBJC_CLASS WebGLLayer;
 typedef struct __IOSurface* IOSurfaceRef;
 #endif // PLATFORM(COCOA)
 
+#if USE(NICOSIA)
+namespace Nicosia {
+class GC3DLayer;
+}
+#endif
+
 #if !PLATFORM(COCOA)
 typedef unsigned GLuint;
 typedef void* PlatformGraphicsContext3D;
@@ -975,6 +981,9 @@ public:
     GC3Dboolean unmapBuffer(GC3Denum target);
     void copyBufferSubData(GC3Denum readTarget, GC3Denum writeTarget, GC3Dintptr readOffset, GC3Dintptr writeOffset, GC3Dsizeiptr);
 
+    void getInternalformativ(GC3Denum target, GC3Denum internalformat, GC3Denum pname, GC3Dsizei bufSize, GC3Dint* params);
+    void renderbufferStorageMultisample(GC3Denum target, GC3Dsizei samples, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height);
+
     void texStorage2D(GC3Denum target, GC3Dsizei levels, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height);
     void texStorage3D(GC3Denum target, GC3Dsizei levels, GC3Denum internalformat, GC3Dsizei width, GC3Dsizei height, GC3Dsizei depth);
 
@@ -1282,9 +1291,9 @@ public:
     GC3Denum currentBoundTarget() const { return m_state.currentBoundTarget(); }
     unsigned textureSeed(GC3Duint texture) { return m_state.textureSeedCount.count(texture); }
 
-#if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
-    WEBCORE_EXPORT static void setOpenGLDisplayMask(CGOpenGLDisplayMask);
-    WEBCORE_EXPORT static CGOpenGLDisplayMask getOpenGLDisplayMask();
+#if PLATFORM(MAC)
+    using PlatformDisplayID = uint32_t;
+    void screenDidChange(PlatformDisplayID);
 #endif
 
 private:
@@ -1481,7 +1490,10 @@ private:
     // Errors raised by synthesizeGLError().
     ListHashSet<GC3Denum> m_syntheticErrors;
 
-#if USE(TEXTURE_MAPPER)
+#if USE(NICOSIA) && USE(TEXTURE_MAPPER)
+    friend class Nicosia::GC3DLayer;
+    std::unique_ptr<Nicosia::GC3DLayer> m_nicosiaLayer;
+#elif USE(TEXTURE_MAPPER)
     friend class TextureMapperGC3DPlatformLayer;
     std::unique_ptr<TextureMapperGC3DPlatformLayer> m_texmapLayer;
 #else
@@ -1500,10 +1512,6 @@ private:
 
 #if USE(CAIRO)
     Platform3DObject m_vao { 0 };
-#endif
-
-#if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
-    static std::optional<CGOpenGLDisplayMask> m_displayMask;
 #endif
 };
 

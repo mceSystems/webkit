@@ -28,8 +28,8 @@
 #include "NetworkContentRuleListManager.h"
 #include "NetworkResourceLoadParameters.h"
 #include <WebCore/ContentSecurityPolicyClient.h>
+#include <WebCore/NetworkLoadInformation.h>
 #include <WebCore/ResourceError.h>
-#include <WebCore/ResourceResponse.h>
 #include <WebCore/SecurityPolicyViolationEvent.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/Expected.h>
@@ -37,6 +37,7 @@
 
 namespace WebCore {
 class ContentSecurityPolicy;
+struct ContentSecurityPolicyClient;
 }
 
 namespace WebKit {
@@ -44,15 +45,24 @@ namespace WebKit {
 class NetworkConnectionToWebProcess;
 class NetworkCORSPreflightChecker;
 
-class NetworkLoadChecker : public WebCore::ContentSecurityPolicyClient {
+class NetworkLoadChecker : public CanMakeWeakPtr<NetworkLoadChecker> {
 public:
-    NetworkLoadChecker(NetworkConnectionToWebProcess&, uint64_t webPageID, uint64_t webFrameID, ResourceLoadIdentifier, WebCore::FetchOptions&&, PAL::SessionID, WebCore::HTTPHeaderMap&&, WebCore::URL&&, RefPtr<WebCore::SecurityOrigin>&&, WebCore::PreflightPolicy, String&& referrer);
+    NetworkLoadChecker(WebCore::FetchOptions&&, PAL::SessionID, uint64_t pageID, uint64_t frameID, WebCore::HTTPHeaderMap&&, WebCore::URL&&, RefPtr<WebCore::SecurityOrigin>&&, WebCore::PreflightPolicy, String&& referrer, bool shouldCaptureExtraNetworkLoadMetrics = false);
     ~NetworkLoadChecker();
 
     using RequestOrError = Expected<WebCore::ResourceRequest, WebCore::ResourceError>;
     using ValidationHandler = CompletionHandler<void(RequestOrError&&)>;
-    void check(WebCore::ResourceRequest&&, ValidationHandler&&);
-    void checkRedirection(WebCore::ResourceResponse&, WebCore::ResourceRequest&&, ValidationHandler&&);
+    void check(WebCore::ResourceRequest&&, WebCore::ContentSecurityPolicyClient*, ValidationHandler&&);
+
+    struct RedirectionTriplet {
+        WebCore::ResourceRequest request;
+        WebCore::ResourceRequest redirectRequest;
+        WebCore::ResourceResponse redirectResponse;
+    };
+    using RedirectionRequestOrError = Expected<RedirectionTriplet, WebCore::ResourceError>;
+    using RedirectionValidationHandler = CompletionHandler<void(RedirectionRequestOrError&&)>;
+    void checkRedirection(WebCore::ResourceRequest&& request, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&& redirectResponse, WebCore::ContentSecurityPolicyClient*, RedirectionValidationHandler&&);
+
     void prepareRedirectedRequest(WebCore::ResourceRequest&);
 
     WebCore::ResourceError validateResponse(WebCore::ResourceResponse&);
@@ -69,16 +79,19 @@ public:
     const WebCore::URL& url() const { return m_url; }
     WebCore::StoredCredentialsPolicy storedCredentialsPolicy() const { return m_storedCredentialsPolicy; }
 
-    WeakPtrFactory<NetworkLoadChecker>& weakPtrFactory() { return m_weakFactory; }
+    WebCore::NetworkLoadInformation takeNetworkLoadInformation() { return WTFMove(m_loadInformation); }
+    void storeRedirectionIfNeeded(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
+
+    void enableContentExtensionsCheck() { m_checkContentExtensions = true; }
 
 private:
     WebCore::ContentSecurityPolicy* contentSecurityPolicy();
     bool isChecking() const { return !!m_corsPreflightChecker; }
     bool isRedirected() const { return m_redirectCount; }
 
-    void checkRequest(WebCore::ResourceRequest&&, ValidationHandler&&);
+    void checkRequest(WebCore::ResourceRequest&&, WebCore::ContentSecurityPolicyClient*, ValidationHandler&&);
 
-    bool isAllowedByContentSecurityPolicy(const WebCore::ResourceRequest&);
+    bool isAllowedByContentSecurityPolicy(const WebCore::ResourceRequest&, WebCore::ContentSecurityPolicyClient*);
 
     void continueCheckingRequest(WebCore::ResourceRequest&&, ValidationHandler&&);
 
@@ -98,23 +111,11 @@ private:
     using ContentExtensionCallback = CompletionHandler<void(ContentExtensionResultOrError)>;
     void processContentExtensionRulesForLoad(WebCore::ResourceRequest&&, ContentExtensionCallback&&);
 #endif
-
-    // ContentSecurityPolicyClient
-    void addConsoleMessage(MessageSource, MessageLevel, const String&, unsigned long) final;
-    void sendCSPViolationReport(WebCore::URL&&, Ref<WebCore::FormData>&&) final;
-    void enqueueSecurityPolicyViolationEvent(WebCore::SecurityPolicyViolationEvent::Init&&) final;
-
-    // The connection, web page ID, web frame ID and load identifier are used for CSP reporting.
-    Ref<NetworkConnectionToWebProcess> m_connection;
-    uint64_t m_webPageID;
-    uint64_t m_webFrameID;
-    ResourceLoadIdentifier m_loadIdentifier;
-
-    bool shouldCrossOriginResourcePolicyPolicyCancelLoad(const WebCore::ResourceResponse&);
-
     WebCore::FetchOptions m_options;
     WebCore::StoredCredentialsPolicy m_storedCredentialsPolicy;
     PAL::SessionID m_sessionID;
+    uint64_t m_pageID;
+    uint64_t m_frameID;
     WebCore::HTTPHeaderMap m_originalRequestHeaders; // Needed for CORS checks.
     WebCore::HTTPHeaderMap m_firstRequestHeaders; // Needed for CORS checks.
     WebCore::URL m_url;
@@ -134,7 +135,9 @@ private:
     WebCore::PreflightPolicy m_preflightPolicy;
     String m_dntHeaderValue;
     String m_referrer;
-    WeakPtrFactory<NetworkLoadChecker> m_weakFactory;
+    bool m_checkContentExtensions { false };
+    bool m_shouldCaptureExtraNetworkLoadMetrics { false };
+    WebCore::NetworkLoadInformation m_loadInformation;
 };
 
 }

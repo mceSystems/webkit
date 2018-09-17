@@ -28,6 +28,8 @@
 #include "ArgumentCoders.h"
 #include <WebCore/AutocapitalizeTypes.h>
 #include <WebCore/Autofill.h>
+#include <WebCore/Color.h>
+#include <WebCore/InputMode.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/URL.h>
 #include <wtf/text/WTFString.h>
@@ -52,7 +54,10 @@ enum class InputType {
     Month,
     Week,
     Time,
-    Select
+    Select,
+#if ENABLE(INPUT_TYPE_COLOR)
+    Color
+#endif
 };
 
 #if PLATFORM(IOS)
@@ -106,6 +111,7 @@ struct AssistedNodeInformation {
     bool insideFixedPosition { false };
     AutocapitalizeType autocapitalizeType { AutocapitalizeTypeDefault };
     InputType elementType { InputType::None };
+    WebCore::InputMode inputMode { WebCore::InputMode::Unspecified };
     String formAction;
     Vector<OptionItem> selectOptions;
     int selectedIndex { -1 };
@@ -113,11 +119,18 @@ struct AssistedNodeInformation {
     double valueAsNumber { 0 };
     String title;
     bool acceptsAutofilledLoginCredentials { false };
+    bool isAutofillableUsernameField { false };
     WebCore::URL representingPageURL;
     WebCore::AutofillFieldName autofillFieldName { WebCore::AutofillFieldName::None };
     String placeholder;
     String label;
     String ariaLabel;
+#if ENABLE(DATALIST_ELEMENT)
+    bool hasSuggestions { false };
+#if ENABLE(INPUT_TYPE_COLOR)
+    Vector<WebCore::Color> suggestedColors;
+#endif
+#endif
 
     uint64_t assistedNodeIdentifier { 0 };
 

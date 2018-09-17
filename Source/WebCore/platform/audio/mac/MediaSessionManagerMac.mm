@@ -55,7 +55,7 @@ PlatformMediaSessionManager* PlatformMediaSessionManager::sharedManagerIfExists(
 }
 
 MediaSessionManagerMac::MediaSessionManagerMac()
-    : PlatformMediaSessionManager()
+    : MediaSessionManagerCocoa()
 {
     resetRestrictions();
 }
@@ -102,6 +102,12 @@ void MediaSessionManagerMac::sessionWillEndPlayback(PlatformMediaSession& sessio
 void MediaSessionManagerMac::clientCharacteristicsChanged(PlatformMediaSession&)
 {
     LOG(Media, "MediaSessionManagerMac::clientCharacteristicsChanged");
+    scheduleUpdateNowPlayingInfo();
+}
+    
+void MediaSessionManagerMac::sessionCanProduceAudioChanged(PlatformMediaSession& session)
+{
+    PlatformMediaSessionManager::sessionCanProduceAudioChanged(session);
     scheduleUpdateNowPlayingInfo();
 }
 

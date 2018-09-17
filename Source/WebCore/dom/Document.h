@@ -103,6 +103,7 @@ class DOMWrapperWorld;
 class Database;
 class DatabaseThread;
 class DeferredPromise;
+class DocumentAnimationScheduler;
 class DocumentFragment;
 class DocumentLoader;
 class DocumentMarkerController;
@@ -234,6 +235,10 @@ class MediaSession;
 class HTMLAttachmentElement;
 #endif
 
+#if ENABLE(INTERSECTION_OBSERVER)
+class IntersectionObserver;
+#endif
+
 namespace Style {
 class Scope;
 };
@@ -316,11 +321,21 @@ using RenderingContext = Variant<
     RefPtr<CanvasRenderingContext2D>
 >;
 
+class DocumentParserYieldToken {
+public:
+    WEBCORE_EXPORT DocumentParserYieldToken(Document&);
+    WEBCORE_EXPORT ~DocumentParserYieldToken();
+
+private:
+    WeakPtr<Document> m_document;
+};
+
 class Document
     : public ContainerNode
     , public TreeScope
     , public ScriptExecutionContext
     , public FontSelectorClient
+    , public CanMakeWeakPtr<Document>
     , public FrameDestructionObserver
     , public Supplementable<Document>
     , public Logger::Observer {
@@ -390,13 +405,16 @@ public:
 
     void setViewportArguments(const ViewportArguments& viewportArguments) { m_viewportArguments = viewportArguments; }
     ViewportArguments viewportArguments() const { return m_viewportArguments; }
+
+    WEBCORE_EXPORT void setOverrideViewportArguments(const std::optional<ViewportArguments>&);
+
     OptionSet<DisabledAdaptations> disabledAdaptations() const { return m_disabledAdaptations; }
 #ifndef NDEBUG
     bool didDispatchViewportPropertiesChanged() const { return m_didDispatchViewportPropertiesChanged; }
 #endif
 
-    void setReferrerPolicy(ReferrerPolicy referrerPolicy) { m_referrerPolicy = referrerPolicy; }
-    ReferrerPolicy referrerPolicy() const { return m_referrerPolicy; }
+    void setReferrerPolicy(ReferrerPolicy);
+    ReferrerPolicy referrerPolicy() const { return m_referrerPolicy.value_or(ReferrerPolicy::NoReferrerWhenDowngrade); }
 
     WEBCORE_EXPORT DocumentType* doctype() const;
 
@@ -430,7 +448,8 @@ public:
     WEBCORE_EXPORT RefPtr<Range> caretRangeFromPoint(int x, int y);
     RefPtr<Range> caretRangeFromPoint(const LayoutPoint& clientPoint);
 
-    WEBCORE_EXPORT Element* scrollingElement();
+    WEBCORE_EXPORT Element* scrollingElementForAPI();
+    Element* scrollingElement();
 
     enum ReadyState {
         Loading,
@@ -461,8 +480,8 @@ public:
 
     String xmlEncoding() const { return m_xmlEncoding; }
     String xmlVersion() const { return m_xmlVersion; }
-    enum StandaloneStatus { StandaloneUnspecified, Standalone, NotStandalone };
-    bool xmlStandalone() const { return m_xmlStandalone == Standalone; }
+    enum class StandaloneStatus : uint8_t { Unspecified, Standalone, NotStandalone };
+    bool xmlStandalone() const { return m_xmlStandalone == StandaloneStatus::Standalone; }
     StandaloneStatus xmlStandaloneStatus() const { return m_xmlStandalone; }
     bool hasXMLDeclaration() const { return m_hasXMLDeclaration; }
 
@@ -548,7 +567,8 @@ public:
     float deviceScaleFactor() const;
 
     bool useSystemAppearance() const;
-    bool useDefaultAppearance() const;
+    bool useDarkAppearance() const;
+
     OptionSet<StyleColor::Options> styleColorOptions() const;
 
     WEBCORE_EXPORT Ref<Range> createRange();
@@ -598,8 +618,8 @@ public:
 
     // Override ScriptExecutionContext methods to do additional work
     WEBCORE_EXPORT bool shouldBypassMainWorldContentSecurityPolicy() const final;
-    void suspendActiveDOMObjects(ActiveDOMObject::ReasonForSuspension) final;
-    void resumeActiveDOMObjects(ActiveDOMObject::ReasonForSuspension) final;
+    void suspendActiveDOMObjects(ReasonForSuspension) final;
+    void resumeActiveDOMObjects(ReasonForSuspension) final;
     void stopActiveDOMObjects() final;
 
     void suspendDeviceMotionAndOrientationUpdates();
@@ -622,7 +642,7 @@ public:
     
     WEBCORE_EXPORT DocumentLoader* loader() const;
 
-    WEBCORE_EXPORT ExceptionOr<RefPtr<WindowProxy>> openForBindings(DOMWindow& activeWindow, DOMWindow& firstWindow, const String& url, const AtomicString& name, const String& features);
+    WEBCORE_EXPORT ExceptionOr<RefPtr<WindowProxy>> openForBindings(DOMWindow& activeWindow, DOMWindow& firstDOMWindow, const String& url, const AtomicString& name, const String& features);
     WEBCORE_EXPORT ExceptionOr<Document&> openForBindings(Document* responsibleDocument, const String& type, const String& replace);
 
     // FIXME: We should rename this at some point and give back the name 'open' to the HTML specified ones.
@@ -737,7 +757,10 @@ public:
     void setFocusNavigationStartingNode(Node*);
     Element* focusNavigationStartingNode(FocusDirection) const;
 
-    void removeFocusedNodeOfSubtree(Node&, bool amongChildrenOnly = false);
+    enum class NodeRemoval { Node, ChildrenOfNode };
+    void adjustFocusedNodeOnNodeRemoval(Node&, NodeRemoval = NodeRemoval::Node);
+    void adjustFocusNavigationNodeOnNodeRemoval(Node&, NodeRemoval = NodeRemoval::Node);
+
     void hoveredElementDidDetach(Element*);
     void elementInActiveChainDidDetach(Element*);
 
@@ -782,7 +805,7 @@ public:
     void nodeChildrenWillBeRemoved(ContainerNode&);
     // nodeWillBeRemoved is only safe when removing one node at a time.
     void nodeWillBeRemoved(Node&);
-    void removeFocusNavigationNodeOfSubtree(Node&, bool amongChildrenOnly = false);
+
     enum class AcceptChildOperation { Replace, InsertOrAdd };
     bool canAcceptChild(const Node& newChild, const Node* refChild, AcceptChildOperation) const;
 
@@ -798,8 +821,10 @@ public:
     // In DOM Level 2, the Document's DOMWindow is called the defaultView.
     WEBCORE_EXPORT WindowProxy* windowProxy() const;
 
+    bool hasBrowsingContext() const { return !!frame(); }
+
     Document& contextDocument() const;
-    void setContextDocument(Document& document) { m_contextDocument = document.createWeakPtr(); }
+    void setContextDocument(Document& document) { m_contextDocument = makeWeakPtr(document); }
 
     // Helper functions for forwarding DOMWindow event related tasks to the DOMWindow if it exists.
     void setWindowAttributeEventListener(const AtomicString& eventType, const QualifiedName& attributeName, const AtomicString& value, DOMWrapperWorld&);
@@ -862,7 +887,7 @@ public:
     void processViewport(const String& features, ViewportArguments::Type origin);
     void processDisabledAdaptations(const String& adaptations);
     void updateViewportArguments();
-    void processReferrerPolicy(const String& policy);
+    void processReferrerPolicy(const String& policy, ReferrerPolicySource);
 
     // Returns the owning element in the parent document.
     // Returns 0 if this is the top level document.
@@ -922,8 +947,8 @@ public:
     // the URL of the top-level document or the null URL depending on whether the registrable
     // domain of this document's URL matches the registrable domain of its parent's/opener's
     // URL. For the top-level document, it is set to the document's URL.
-    const URL& firstPartyForSameSiteCookies() const { return m_firstPartyForSameSiteCookies; }
-    void setFirstPartyForSameSiteCookies(const URL& url) { m_firstPartyForSameSiteCookies = url; }
+    const URL& siteForCookies() const { return m_siteForCookies; }
+    void setSiteForCookies(const URL& url) { m_siteForCookies = url; }
     
     // The following implements the rule from HTML 4 for what valid names are.
     // To get this right for all the XML cases, we probably have to improve this or move it
@@ -939,7 +964,12 @@ public:
     static bool hasValidNamespaceForElements(const QualifiedName&);
     static bool hasValidNamespaceForAttributes(const QualifiedName&);
 
+    // This is the "HTML body element" as defined by CSSOM View spec, the first body child of the
+    // document element. See http://dev.w3.org/csswg/cssom-view/#the-html-body-element.
     WEBCORE_EXPORT HTMLBodyElement* body() const;
+
+    // This is the "body element" as defined by HTML5, the first body or frameset child of the
+    // document element. See https://html.spec.whatwg.org/multipage/dom.html#the-body-element-2.
     WEBCORE_EXPORT HTMLElement* bodyOrFrameset() const;
     WEBCORE_EXPORT ExceptionOr<void> setBodyOrFrameset(RefPtr<HTMLElement>&&);
 
@@ -974,6 +1004,8 @@ public:
     void pushCurrentScript(HTMLScriptElement*);
     void popCurrentScript();
 
+    bool shouldDeferAsynchronousScriptsUntilParsingFinishes() const;
+
 #if ENABLE(XSLT)
     void scheduleToApplyXSLTransforms();
     void applyPendingXSLTransformsNowIfScheduled();
@@ -987,7 +1019,7 @@ public:
     void incDOMTreeVersion() { m_domTreeVersion = ++s_globalTreeVersion; }
     uint64_t domTreeVersion() const { return m_domTreeVersion; }
 
-    String originIdentifierForPasteboard();
+    WEBCORE_EXPORT String originIdentifierForPasteboard();
 
     // XPathEvaluator methods
     WEBCORE_EXPORT ExceptionOr<Ref<XPathExpression>> createExpression(const String& expression, RefPtr<XPathNSResolver>&&);
@@ -1007,7 +1039,7 @@ public:
     bool isDNSPrefetchEnabled() const { return m_isDNSPrefetchEnabled; }
     void parseDNSPrefetchControlHeader(const String&);
 
-    void postTask(Task&&) final; // Executes the task on context's thread asynchronously.
+    WEBCORE_EXPORT void postTask(Task&&) final; // Executes the task on context's thread asynchronously.
 
     ScriptedAnimationController* scriptedAnimationController() { return m_scriptedAnimationController.get(); }
     void suspendScriptedAnimationControllerCallbacks();
@@ -1028,8 +1060,8 @@ public:
     void unregisterForDocumentSuspensionCallbacks(Element*);
 
     void documentWillBecomeInactive();
-    void suspend(ActiveDOMObject::ReasonForSuspension);
-    void resume(ActiveDOMObject::ReasonForSuspension);
+    void suspend(ReasonForSuspension);
+    void resume(ReasonForSuspension);
 
     void registerForMediaVolumeCallbacks(Element*);
     void unregisterForMediaVolumeCallbacks(Element*);
@@ -1148,9 +1180,13 @@ public:
     void dispatchFullScreenChangeEvents();
     bool fullScreenIsAllowedForElement(Element*) const;
     void fullScreenElementRemoved();
-    void removeFullScreenElementOfSubtree(Node&, bool amongChildrenOnly = false);
-    bool isAnimatingFullScreen() const;
+    void adjustFullScreenElementOnNodeRemoval(Node&, NodeRemoval = NodeRemoval::Node);
+
+    WEBCORE_EXPORT bool isAnimatingFullScreen() const;
     WEBCORE_EXPORT void setAnimatingFullScreen(bool);
+
+    WEBCORE_EXPORT bool areFullscreenControlsHidden() const;
+    WEBCORE_EXPORT void setFullscreenControlsHidden(bool);
 
     WEBCORE_EXPORT bool webkitFullscreenEnabled() const;
     Element* webkitFullscreenElement() const { return !m_fullScreenElementStack.isEmpty() ? m_fullScreenElementStack.last().get() : nullptr; }
@@ -1240,8 +1276,8 @@ public:
 
     bool isInDocumentWrite() { return m_writeRecursionDepth > 0; }
 
-    void suspendScheduledTasks(ActiveDOMObject::ReasonForSuspension);
-    void resumeScheduledTasks(ActiveDOMObject::ReasonForSuspension);
+    void suspendScheduledTasks(ReasonForSuspension);
+    void resumeScheduledTasks(ReasonForSuspension);
 
 #if ENABLE(CSS_DEVICE_ADAPTATION)
     IntSize initialViewportSize() const;
@@ -1254,6 +1290,13 @@ public:
     bool hasActiveParser();
     void incrementActiveParserCount() { ++m_activeParserCount; }
     void decrementActiveParserCount();
+
+    std::unique_ptr<DocumentParserYieldToken> createParserYieldToken()
+    {
+        return std::make_unique<DocumentParserYieldToken>(*this);
+    }
+
+    bool hasActiveParserYieldToken() const { return m_parserYieldTokenCount; }
 
     DocumentSharedObjectPool* sharedObjectPool() { return m_sharedObjectPool.get(); }
 
@@ -1311,7 +1354,6 @@ public:
     bool isCapturing() const { return MediaProducer::isCapturing(m_mediaState); }
     WEBCORE_EXPORT void updateIsPlayingMedia(uint64_t = HTMLMediaElementInvalidID);
     void pageMutedStateDidChange();
-    WeakPtr<Document> createWeakPtr() { return m_weakFactory.createWeakPtr(*this); }
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     void addPlaybackTargetPickerClient(MediaPlaybackTargetClient&);
@@ -1331,9 +1373,17 @@ public:
     void addViewportDependentPicture(HTMLPictureElement&);
     void removeViewportDependentPicture(HTMLPictureElement&);
 
+#if ENABLE(INTERSECTION_OBSERVER)
+    void addIntersectionObserver(IntersectionObserver&);
+    void removeIntersectionObserver(IntersectionObserver&);
+    unsigned numberOfIntersectionObservers() const { return m_intersectionObservers.size(); }
+    void updateIntersectionObservations();
+    void scheduleIntersectionObservationUpdate();
+#endif
+
 #if ENABLE(MEDIA_STREAM)
-    void setHasActiveMediaStreamTrack() { m_hasHadActiveMediaStreamTrack = true; }
-    bool hasHadActiveMediaStreamTrack() const { return m_hasHadActiveMediaStreamTrack; }
+    void setHasCaptureMediaStreamTrack() { m_hasHadCaptureMediaStreamTrack = true; }
+    bool hasHadCaptureMediaStreamTrack() const { return m_hasHadCaptureMediaStreamTrack; }
     void setDeviceIDHashSalt(const String& salt) { m_idHashSalt = salt; }
     String deviceIDHashSalt() const { return m_idHashSalt; }
     void stopMediaCapture();
@@ -1400,6 +1450,10 @@ public:
 
     WEBCORE_EXPORT void setConsoleMessageListener(RefPtr<StringCallback>&&); // For testing.
 
+#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
+    DocumentAnimationScheduler& animationScheduler();
+#endif
+
     WEBCORE_EXPORT DocumentTimeline& timeline();
     DocumentTimeline* existingTimeline() const { return m_timeline.get(); }
     Vector<RefPtr<WebAnimation>> getAnimations();
@@ -1432,6 +1486,14 @@ public:
 
     void consumeTemporaryTimeUserGesture();
 
+    void registerArticleElement(Element&);
+    void unregisterArticleElement(Element&);
+    void updateMainArticleElementAfterLayout();
+    bool hasMainArticleElement() const { return !!m_mainArticleElement; }
+
+    void setAsRunningUserScripts() { m_isRunningUserScripts = true; }
+    bool isRunningUserScripts() const { return m_isRunningUserScripts; }
+
 protected:
     enum ConstructionFlags { Synthesized = 1, NonRenderedPlaceholder = 1 << 1 };
     Document(Frame*, const URL&, unsigned = DefaultDocumentClass, unsigned constructionFlags = 0);
@@ -1441,9 +1503,11 @@ protected:
     virtual Ref<Document> cloneDocumentWithoutChildren() const;
 
 private:
+    friend class DocumentParserYieldToken;
     friend class Node;
-    friend class IgnoreDestructiveWriteCountIncrementer;
+    friend class ThrowOnDynamicMarkupInsertionCountIncrementer;
     friend class IgnoreOpensDuringUnloadCountIncrementer;
+    friend class IgnoreDestructiveWriteCountIncrementer;
 
     bool shouldInheritContentSecurityPolicyFromOwner() const;
 
@@ -1536,6 +1600,10 @@ private:
 
     void checkViewportDependentPictures();
 
+#if ENABLE(INTERSECTION_OBSERVER)
+    void notifyIntersectionObserversTimerFired();
+#endif
+
 #if USE(QUICK_LOOK)
     bool shouldEnforceQuickLookSandbox() const;
     void applyQuickLookSandbox();
@@ -1549,6 +1617,8 @@ private:
 
     void enableTemporaryTimeUserGesture();
 
+    bool isBodyPotentiallyScrollable(HTMLBodyElement&);
+
     const Ref<Settings> m_settings;
 
     std::unique_ptr<StyleResolver> m_userAgentShadowTreeStyleResolver;
@@ -1559,6 +1629,8 @@ private:
     Ref<CachedResourceLoader> m_cachedResourceLoader;
     RefPtr<DocumentParser> m_parser;
 
+    unsigned m_parserYieldTokenCount { 0 };
+
     // Document URLs.
     URL m_url; // Document.URL: The URL from which this document was retrieved.
     URL m_baseURL; // Node.baseURI: The URL to use when resolving relative URLs.
@@ -1566,7 +1638,7 @@ private:
     URL m_baseElementURL; // The URL set by the <base> element.
     URL m_cookieURL; // The URL to use for cookie access.
     URL m_firstPartyForCookies; // The policy URL for third-party cookie blocking.
-    URL m_firstPartyForSameSiteCookies; // The policy URL for Same-Site cookies.
+    URL m_siteForCookies; // The policy URL for Same-Site cookies.
 
     // Document.documentURI:
     // Although URL-like, Document.documentURI can actually be set to any
@@ -1642,7 +1714,7 @@ private:
 
     String m_xmlEncoding;
     String m_xmlVersion;
-    StandaloneStatus m_xmlStandalone { StandaloneUnspecified };
+    StandaloneStatus m_xmlStandalone { StandaloneStatus::Unspecified };
     bool m_hasXMLDeclaration { false };
 
     String m_contentLanguage;
@@ -1673,6 +1745,9 @@ private:
     HashSet<Element*> m_captionPreferencesChangedElements;
 #endif
 
+    Element* m_mainArticleElement { nullptr };
+    HashSet<Element*> m_articleElements;
+
 #if ENABLE(MEDIA_CONTROLS_SCRIPT)
     HashSet<HTMLMediaElement*> m_pageScaleFactorChangedElements;
     HashSet<HTMLMediaElement*> m_userInterfaceLayoutDirectionChangedElements;
@@ -1694,8 +1769,6 @@ private:
     RenderPtr<RenderView> m_renderView;
     mutable DocumentEventQueue m_eventQueue;
 
-    WeakPtrFactory<Document> m_weakFactory;
-
     HashSet<MediaCanStartListener*> m_mediaCanStartListeners;
 
 #if ENABLE(FULLSCREEN_API)
@@ -1710,13 +1783,25 @@ private:
 
     bool m_areKeysEnabledInFullScreen { false };
     bool m_isAnimatingFullScreen { false };
+    bool m_areFullscreenControlsHidden { false };
 #endif
 
     HashSet<HTMLPictureElement*> m_viewportDependentPictures;
 
+#if ENABLE(INTERSECTION_OBSERVER)
+    Vector<WeakPtr<IntersectionObserver>> m_intersectionObservers;
+    Vector<WeakPtr<IntersectionObserver>> m_intersectionObserversWithPendingNotifications;
+
+    // FIXME: Schedule intersection observation updates in a way that fits into the HTML
+    // EventLoop. See https://bugs.webkit.org/show_bug.cgi?id=160711.
+    Timer m_intersectionObservationUpdateTimer;
+    Timer m_intersectionObserversNotifyTimer;
+#endif
+
     Timer m_loadEventDelayTimer;
 
     ViewportArguments m_viewportArguments;
+    std::optional<ViewportArguments> m_overrideViewportArguments;
     OptionSet<DisabledAdaptations> m_disabledAdaptations;
 
     DocumentTiming m_documentTiming;
@@ -1811,11 +1896,14 @@ private:
     int m_loadEventDelayCount { 0 };
     unsigned m_lastStyleUpdateSizeForTesting { 0 };
 
-    // https://html.spec.whatwg.org/multipage/webappapis.html#ignore-destructive-writes-counter
-    unsigned m_ignoreDestructiveWriteCount { 0 };
+    // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#throw-on-dynamic-markup-insertion-counter
+    unsigned m_throwOnDynamicMarkupInsertionCount { 0 };
 
-    // https://html.spec.whatwg.org/multipage/webappapis.html#ignore-opens-during-unload-counter
+    // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-opens-during-unload-counter
     unsigned m_ignoreOpensDuringUnloadCount { 0 };
+
+    // https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
+    unsigned m_ignoreDestructiveWriteCount { 0 };
 
     unsigned m_activeParserCount { 0 };
     unsigned m_styleRecalcCount { 0 };
@@ -1826,7 +1914,7 @@ private:
     MediaProducer::MediaStateFlags m_mediaState { MediaProducer::IsNotPlaying };
     bool m_userHasInteractedWithMediaElement { false };
     PageCacheState m_pageCacheState { NotInPageCache };
-    ReferrerPolicy m_referrerPolicy { ReferrerPolicy::NoReferrerWhenDowngrade };
+    std::optional<ReferrerPolicy> m_referrerPolicy;
     ReadyState m_readyState { Complete };
 
     MutationObserverOptions m_mutationObserverTypes { 0 };
@@ -1894,10 +1982,14 @@ private:
     bool m_isTelephoneNumberParsingAllowed { true };
 #endif
 
+#if ENABLE(INTERSECTION_OBSERVER)
+    bool m_needsIntersectionObservationUpdate { false };
+#endif
+
 #if ENABLE(MEDIA_STREAM)
     HashSet<HTMLMediaElement*> m_mediaStreamStateChangeElements;
     String m_idHashSalt;
-    bool m_hasHadActiveMediaStreamTrack { false };
+    bool m_hasHadCaptureMediaStreamTrack { false };
 #endif
 
 #ifndef NDEBUG
@@ -1911,9 +2003,11 @@ private:
 
     static bool hasEverCreatedAnAXObjectCache;
 
-    bool m_hasFrameSpecificStorageAccess { false };
     bool m_grantStorageAccessOverride { false };
 
+#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
+    RefPtr<DocumentAnimationScheduler> m_animationScheduler;
+#endif
     RefPtr<DocumentTimeline> m_timeline;
     DocumentIdentifier m_identifier;
 
@@ -1928,6 +2022,8 @@ private:
 #endif
     
     std::unique_ptr<UserGestureIndicator> m_temporaryUserGesture;
+
+    bool m_isRunningUserScripts { false };
 };
 
 Element* eventTargetElementForDocument(Document*);

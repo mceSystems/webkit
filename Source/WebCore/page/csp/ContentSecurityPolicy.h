@@ -70,6 +70,7 @@ public:
 
     void copyStateFrom(const ContentSecurityPolicy*);
     void copyUpgradeInsecureRequestStateFrom(const ContentSecurityPolicy&);
+    void createPolicyForPluginDocumentFrom(const ContentSecurityPolicy&);
 
     void didCreateWindowProxy(JSWindowProxy&) const;
 
@@ -78,6 +79,7 @@ public:
         HTTPEquivMeta,
         HTTPHeader,
         Inherited,
+        InheritedForPluginDocument,
     };
     WEBCORE_EXPORT ContentSecurityPolicyResponseHeaders responseHeaders() const;
     enum ReportParsingErrors { No, Yes };
@@ -149,11 +151,11 @@ public:
     void enforceSandboxFlags(SandboxFlags sandboxFlags) { m_sandboxFlags |= sandboxFlags; }
     void addHashAlgorithmsForInlineScripts(OptionSet<ContentSecurityPolicyHashAlgorithm> hashAlgorithmsForInlineScripts)
     {
-        m_hashAlgorithmsForInlineScripts |= hashAlgorithmsForInlineScripts;
+        m_hashAlgorithmsForInlineScripts.add(hashAlgorithmsForInlineScripts);
     }
     void addHashAlgorithmsForInlineStylesheets(OptionSet<ContentSecurityPolicyHashAlgorithm> hashAlgorithmsForInlineStylesheets)
     {
-        m_hashAlgorithmsForInlineStylesheets |= hashAlgorithmsForInlineStylesheets;
+        m_hashAlgorithmsForInlineStylesheets.add(hashAlgorithmsForInlineStylesheets);
     }
 
     // Used by ContentSecurityPolicySource
@@ -162,12 +164,14 @@ public:
     void setUpgradeInsecureRequests(bool);
     bool upgradeInsecureRequests() const { return m_upgradeInsecureRequests; }
     enum class InsecureRequestType { Load, FormSubmission, Navigation };
-    void upgradeInsecureRequestIfNeeded(ResourceRequest&, InsecureRequestType) const;
+    WEBCORE_EXPORT void upgradeInsecureRequestIfNeeded(ResourceRequest&, InsecureRequestType) const;
     WEBCORE_EXPORT void upgradeInsecureRequestIfNeeded(URL&, InsecureRequestType) const;
 
     HashSet<SecurityOriginData> takeNavigationRequestsToUpgrade();
     void inheritInsecureNavigationRequestsToUpgradeFromOpener(const ContentSecurityPolicy&);
     void setInsecureNavigationRequestsToUpgrade(HashSet<SecurityOriginData>&&);
+
+    void setClient(ContentSecurityPolicyClient* client) { m_client = client; }
 
 private:
     void logToConsole(const String& message, const String& contextURL = String(), const WTF::OrdinalNumber& contextLine = WTF::OrdinalNumber::beforeFirst(), JSC::ExecState* = nullptr) const;

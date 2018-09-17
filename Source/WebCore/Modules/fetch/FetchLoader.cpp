@@ -60,7 +60,7 @@ void FetchLoader::startLoadingBlobURL(ScriptExecutionContext& context, const URL
 {
     m_urlForReading = BlobURL::createPublicURL(context.securityOrigin());
     if (m_urlForReading.isEmpty()) {
-        m_client.didFail({ errorDomainWebKitInternal, 0, URL(), ASCIILiteral("Could not create URL for Blob") });
+        m_client.didFail({ errorDomainWebKitInternal, 0, URL(), "Could not create URL for Blob"_s });
         return;
     }
 
@@ -71,8 +71,8 @@ void FetchLoader::startLoadingBlobURL(ScriptExecutionContext& context, const URL
     request.setHTTPMethod("GET");
 
     ThreadableLoaderOptions options;
-    options.sendLoadCallbacks = SendCallbacks;
-    options.dataBufferingPolicy = DoNotBufferData;
+    options.sendLoadCallbacks = SendCallbackPolicy::SendCallbacks;
+    options.dataBufferingPolicy = DataBufferingPolicy::DoNotBufferData;
     options.preflightPolicy = PreflightPolicy::Consider;
     options.credentials = FetchOptions::Credentials::Include;
     options.mode = FetchOptions::Mode::SameOrigin;
@@ -90,8 +90,8 @@ void FetchLoader::start(ScriptExecutionContext& context, const FetchRequest& req
         context.shouldBypassMainWorldContentSecurityPolicy() ? ContentSecurityPolicyEnforcement::DoNotEnforce : ContentSecurityPolicyEnforcement::EnforceConnectSrcDirective,
         String(cachedResourceRequestInitiators().fetch),
         ResponseFilteringPolicy::Disable);
-    options.sendLoadCallbacks = SendCallbacks;
-    options.dataBufferingPolicy = DoNotBufferData;
+    options.sendLoadCallbacks = SendCallbackPolicy::SendCallbacks;
+    options.dataBufferingPolicy = DataBufferingPolicy::DoNotBufferData;
     options.sameOriginDataURLFlag = SameOriginDataURLFlag::Set;
 
     ResourceRequest fetchRequest = request.resourceRequest();
@@ -102,7 +102,7 @@ void FetchLoader::start(ScriptExecutionContext& context, const FetchRequest& req
     contentSecurityPolicy.upgradeInsecureRequestIfNeeded(fetchRequest, ContentSecurityPolicy::InsecureRequestType::Load);
 
     if (!context.shouldBypassMainWorldContentSecurityPolicy() && !contentSecurityPolicy.allowConnectToSource(fetchRequest.url())) {
-        m_client.didFail({ errorDomainWebKitInternal, 0, fetchRequest.url(), ASCIILiteral("Not allowed by ContentSecurityPolicy"), ResourceError::Type::AccessControl });
+        m_client.didFail({ errorDomainWebKitInternal, 0, fetchRequest.url(), "Not allowed by ContentSecurityPolicy"_s, ResourceError::Type::AccessControl });
         return;
     }
 

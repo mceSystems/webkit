@@ -486,7 +486,7 @@ void ApplicationCacheGroup::abort(Frame& frame)
     if (m_completionType != None)
         return;
 
-    frame.document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Debug, ASCIILiteral("Application Cache download process was aborted."));
+    frame.document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Debug, "Application Cache download process was aborted."_s);
     cacheUpdateFailed();
 }
 
@@ -529,7 +529,7 @@ void ApplicationCacheGroup::didFinishLoadingEntry(const URL& entryURL)
     // FIXME: Should we break earlier and prevent redownloading on later page loads?
     if (m_originQuotaExceededPreviously && m_availableSpaceInQuota < m_cacheBeingUpdated->estimatedSizeInStorage()) {
         m_currentResource = nullptr;
-        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, ASCIILiteral("Application Cache update failed, because size quota was exceeded."));
+        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, "Application Cache update failed, because size quota was exceeded."_s);
         cacheUpdateFailed();
         return;
     }
@@ -538,14 +538,13 @@ void ApplicationCacheGroup::didFinishLoadingEntry(const URL& entryURL)
     startLoadingEntry();
 }
 
-void ApplicationCacheGroup::didFailLoadingEntry(ApplicationCacheResourceLoader::Error error, const URL& entryURL)
+void ApplicationCacheGroup::didFailLoadingEntry(ApplicationCacheResourceLoader::Error error, const URL& entryURL, unsigned type)
 {
     // FIXME: We should get back the error from ApplicationCacheResourceLoader level.
     ResourceError resourceError { error == ApplicationCacheResourceLoader::Error::CannotCreateResource ? ResourceError::Type::AccessControl : ResourceError::Type::General };
 
     InspectorInstrumentation::didFailLoading(m_frame, m_frame->loader().documentLoader(), m_currentResourceIdentifier, resourceError);
 
-    unsigned type = m_entryLoader->type();
     URL url(entryURL);
     url.removeFragmentIdentifier();
 
@@ -554,7 +553,7 @@ void ApplicationCacheGroup::didFailLoadingEntry(ApplicationCacheResourceLoader::
     m_pendingEntries.remove(url);
 
     if ((type & ApplicationCacheResource::Explicit) || (type & ApplicationCacheResource::Fallback)) {
-        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, "Application Cache update failed, because " + url.stringCenterEllipsizedToLength() + (m_entryLoader->hasRedirection() ? " was redirected." : " could not be fetched."));
+        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, makeString("Application Cache update failed, because ", url.stringCenterEllipsizedToLength(), (m_entryLoader && m_entryLoader->hasRedirection() ? " was redirected." : " could not be fetched.")));
         // Note that cacheUpdateFailed() can cause the cache group to be deleted.
         cacheUpdateFailed();
         return;
@@ -583,7 +582,7 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
 
     if (!isUpgradeAttempt && !m_manifestResource) {
         // The server returned 304 Not Modified even though we didn't send a conditional request.
-        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, ASCIILiteral("Application Cache manifest could not be fetched because of an unexpected 304 Not Modified server response."));
+        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, "Application Cache manifest could not be fetched because of an unexpected 304 Not Modified server response."_s);
         cacheUpdateFailed();
         return;
     }
@@ -609,7 +608,7 @@ void ApplicationCacheGroup::didFinishLoadingManifest()
     Manifest manifest;
     if (!parseManifest(m_manifestURL, m_manifestResource->response().mimeType(), m_manifestResource->data().data(), m_manifestResource->data().size(), manifest)) {
         // At the time of this writing, lack of "CACHE MANIFEST" signature is the only reason for parseManifest to fail.
-        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, ASCIILiteral("Application Cache manifest could not be parsed. Does it start with CACHE MANIFEST?"));
+        m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, "Application Cache manifest could not be parsed. Does it start with CACHE MANIFEST?"_s);
         cacheUpdateFailed();
         return;
     }
@@ -826,7 +825,7 @@ void ApplicationCacheGroup::checkIfLoadIsComplete()
                 // We ran out of space for this origin. Fall down to the normal error handling
                 // after recording this state.
                 m_originQuotaExceededPreviously = true;
-                m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, ASCIILiteral("Application Cache update failed, because size quota was exceeded."));
+                m_frame->document()->addConsoleMessage(MessageSource::AppCache, MessageLevel::Error, "Application Cache update failed, because size quota was exceeded."_s);
             }
 
             if (failureReason == ApplicationCacheStorage::TotalQuotaReached && !m_calledReachedMaxAppCacheSize) {
@@ -903,17 +902,19 @@ void ApplicationCacheGroup::startLoadingEntry()
     InspectorInstrumentation::willSendRequest(m_frame, m_currentResourceIdentifier, m_frame->loader().documentLoader(), request, ResourceResponse { });
 
     auto& documentLoader = *m_frame->loader().documentLoader();
-    m_entryLoader = ApplicationCacheResourceLoader::create(m_pendingEntries.begin()->value, documentLoader.cachedResourceLoader(), WTFMove(request), [this] (auto&& resourceOrError) {
+    auto requestURL = request.url();
+    unsigned type = m_pendingEntries.begin()->value;
+    m_entryLoader = ApplicationCacheResourceLoader::create(type, documentLoader.cachedResourceLoader(), WTFMove(request), [this, requestURL = WTFMove(requestURL), type] (auto&& resourceOrError) {
         if (!resourceOrError.has_value()) {
             auto error = resourceOrError.error();
             if (error == ApplicationCacheResourceLoader::Error::Abort)
                 return;
-            this->didFailLoadingEntry(error, m_entryLoader->resource()->url());
+            this->didFailLoadingEntry(error, requestURL, type);
             return;
         }
 
         m_currentResource = WTFMove(resourceOrError.value());
-        this->didFinishLoadingEntry(m_entryLoader->resource()->url());
+        this->didFinishLoadingEntry(requestURL);
     });
 }
 

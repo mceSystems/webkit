@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,10 +33,12 @@ class Evaluator extends Visitor {
     }
     
     // You must snapshot if you use a value in rvalue context. For example, a call expression will
-    // snapshot all of its arguments immedaitely upon executing them. In general, it should not be
+    // snapshot all of its arguments immediately upon executing them. In general, it should not be
     // possible for a pointer returned from a visit method in rvalue context to live across any effects.
     _snapshot(type, dstPtr, srcPtr)
     {
+        if (!srcPtr)
+            return null;
         let size = type.size;
         if (size == null)
             throw new Error("Cannot get size of type: " + type + " (size = " + size + ", constructor = " + type.constructor.name + ")");
@@ -71,16 +73,34 @@ class Evaluator extends Visitor {
             throw e;
         }
     }
-    
+
+    _evaluateArguments(argumentList, parameterList)
+    {
+        const callArguments = [];
+        for (let i = argumentList.length; i--;) {
+            const argument = argumentList[i];
+            const type = parameterList[i].type;
+            if (!type || !argument)
+                throw new Error("Cannot get type or argument; i = " + i + ", argument = " + argument + ", type = " + type);
+            let argumentValue = argument.visit(this);
+            if (!argumentValue)
+                throw new Error("Null argument value, i = " + i + ", node = " + node);
+            callArguments.unshift(EBuffer.allowAllocation(() => this._snapshot(type, null, argumentValue)));
+        }
+        return callArguments;
+    }
+
+    _evaluateFunction(node, argumentList, parameterList, funcBody, returnType, returnEPtr)
+    {
+        const argumentValues = this._evaluateArguments(argumentList, parameterList);
+        for (let i = 0; i < node.argumentList.length; ++i)
+            parameterList[i].ePtr.copyFrom(argumentValues[i], parameterList[i].type.size);
+        return EBuffer.allowAllocation(() => this._runBody(returnType, returnEPtr, funcBody));
+    }
+
     visitFunctionLikeBlock(node)
     {
-        for (let i = 0; i < node.argumentList.length; ++i) {
-            node.parameters[i].ePtr.copyFrom(
-                node.argumentList[i].visit(this),
-                node.parameters[i].type.size);
-        }
-        let result = this._runBody(node.returnType, node.returnEPtr, node.body);
-        return result;
+        return this._evaluateFunction(node, node.argumentList, node.parameters, node.body, node.returnType, node.returnEPtr);
     }
     
     visitReturn(node)
@@ -142,6 +162,13 @@ class Evaluator extends Visitor {
         // This should almost snapshot, except that tail-returning a pointer is totally OK.
         return result;
     }
+
+    visitTernaryExpression(node)
+    {
+        if (node.predicate.visit(this).loadValue())
+            return node.bodyExpression.visit(this);
+        return node.elseExpression.visit(this);
+    }
     
     visitVariableRef(node)
     {
@@ -177,14 +204,13 @@ class Evaluator extends Visitor {
     visitLogicalExpression(node)
     {
         let lhs = node.left.visit(this).loadValue();
-        let rhs = node.right.visit(this).loadValue();
         let result;
         switch (node.text) {
         case "&&":
-            result = lhs && rhs;
+            result = lhs && node.right.visit(this).loadValue();
             break;
         case "||":
-            result = lhs || rhs;
+            result = lhs || node.right.visit(this).loadValue();
             break;
         default:
             throw new Error("Unknown type of logical expression");
@@ -304,29 +330,11 @@ class Evaluator extends Visitor {
     
     visitCallExpression(node)
     {
-        // We evaluate inlined ASTs, so this can only be a native call.
-        let callArguments = [];
-        for (let i = 0; i < node.argumentList.length; ++i) {
-            let argument = node.argumentList[i];
-            let type = node.nativeFuncInstance.parameterTypes[i];
-            if (!type || !argument)
-                throw new Error("Cannot get type or argument; i = " + i + ", argument = " + argument + ", type = " + type + "; in " + node);
-            let argumentValue = argument.visit(this);
-            if (!argumentValue)
-                throw new Error("Null argument value, i = " + i + ", node = " + node);
-            callArguments.push(() => {
-                let result = this._snapshot(type, null, argumentValue);
-                return result;
-            });
-        }
-        
-        // For simplicity, we allow intrinsics to just allocate new buffers, and we allocate new
-        // buffers when snapshotting their arguments. This is not observable to the user, so it's OK.
-        let result = EBuffer.allowAllocation(
-            () => node.func.implementation(callArguments.map(thunk => thunk()), node));
-        
-        result = this._snapshot(node.nativeFuncInstance.returnType, node.resultEPtr, result);
-        return result;
+        if (node.func instanceof NativeFunc) {
+            const callArguments = this._evaluateArguments(node.argumentList, node.func.parameters);
+            return EBuffer.allowAllocation(() => this._snapshot(node.func.returnType, node.resultEPtr, node.func.implementation(callArguments, node)));
+        } else
+            return this._evaluateFunction(node, node.argumentList, node.func.parameters, node.func.body, node.func.returnType, node.resultEPtr);
     }
 }
 

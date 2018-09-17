@@ -116,11 +116,21 @@ void Connection::platformInvalidate()
 {
     if (!m_isConnected) {
         if (m_sendPort) {
+            ASSERT(!m_isServer);
             deallocateSendRightSafely(m_sendPort);
             m_sendPort = MACH_PORT_NULL;
         }
 
+        if (m_receiveSource) {
+            // For a short period of time, when m_isServer is true and open() has been called, m_receiveSource has been initialized
+            // but m_isConnected has not been set to true yet. In this case, we need to cancel m_receiveSource instead of destroying
+            // m_receivePort ourselves.
+            ASSERT(m_isServer);
+            cancelReceiveSource();
+        }
+
         if (m_receivePort) {
+            ASSERT(m_isServer);
 #if !PLATFORM(WATCHOS)
             mach_port_unguard(mach_task_self(), m_receivePort, reinterpret_cast<mach_port_context_t>(this));
 #endif
@@ -144,6 +154,11 @@ void Connection::platformInvalidate()
     m_sendSource = nullptr;
     m_sendPort = MACH_PORT_NULL;
 
+    cancelReceiveSource();
+}
+
+void Connection::cancelReceiveSource()
+{
     dispatch_source_cancel(m_receiveSource);
     dispatch_release(m_receiveSource);
     m_receiveSource = nullptr;
@@ -268,7 +283,7 @@ bool Connection::sendMessage(std::unique_ptr<MachMessage> message)
         return false;
 
     default:
-        WebKit::setCrashReportApplicationSpecificInformation((CFStringRef)[NSString stringWithFormat:@"Unhandled error code %x, message '%s::%s'", kr, message->messageReceiverName().data(), message->messageName().data()]);
+        WebKit::setCrashReportApplicationSpecificInformation((__bridge CFStringRef)[NSString stringWithFormat:@"Unhandled error code %x, message '%s::%s'", kr, message->messageReceiverName().data(), message->messageName().data()]);
         CRASH();
     }
 }
@@ -472,7 +487,7 @@ static std::unique_ptr<Decoder> createMessageDecoder(mach_msg_header_t* header)
     uint8_t* messageBody = descriptorData;
     size_t messageBodySize = header->msgh_size - (descriptorData - reinterpret_cast<uint8_t*>(header));
 
-    return std::make_unique<Decoder>(messageBody, messageBodySize, nullptr, attachments);
+    return std::make_unique<Decoder>(messageBody, messageBodySize, nullptr, WTFMove(attachments));
 }
 
 // The receive buffer size should always include the maximum trailer size.
@@ -501,7 +516,7 @@ static mach_msg_header_t* readFromMachPort(mach_port_t machPort, ReceiveBuffer& 
 
     if (kr != MACH_MSG_SUCCESS) {
 #if !ASSERT_DISABLED
-        WebKit::setCrashReportApplicationSpecificInformation((CFStringRef)[NSString stringWithFormat:@"Unhandled error code %x from mach_msg, receive port is %x", kr, machPort]);
+        WebKit::setCrashReportApplicationSpecificInformation((__bridge CFStringRef)[NSString stringWithFormat:@"Unhandled error code %x from mach_msg, receive port is %x", kr, machPort]);
 #endif
         ASSERT_NOT_REACHED();
         return nullptr;
@@ -582,7 +597,7 @@ void Connection::receiveSourceEventHandler()
 #if !PLATFORM(IOS)
     if (decoder->messageReceiverName() == "IPC" && decoder->messageName() == "SetExceptionPort") {
         if (m_isServer) {
-            // Server connections aren't supposed to have their exception ports overriden. Treat this as an invalid message.
+            // Server connections aren't supposed to have their exception ports overridden. Treat this as an invalid message.
             StringReference messageReceiverNameReference = decoder->messageReceiverName();
             String messageReceiverName(String(messageReceiverNameReference.data(), messageReceiverNameReference.size()));
             StringReference messageNameReference = decoder->messageName();
@@ -623,6 +638,7 @@ bool Connection::kill()
 {
     if (m_xpcConnection) {
         xpc_connection_kill(m_xpcConnection.get(), SIGKILL);
+        m_wasKilled = true;
         return true;
     }
 

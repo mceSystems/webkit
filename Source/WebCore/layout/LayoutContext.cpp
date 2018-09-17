@@ -51,49 +51,47 @@ LayoutContext::LayoutContext()
 
 void LayoutContext::initializeRoot(const Container& root, const LayoutSize& containerSize)
 {
-    m_root = makeWeakPtr(const_cast<Container&>(root));
-    auto& displayBox = createDisplayBox(root);
-    // Root is always at 0 0 with no margin 
+    ASSERT(root.establishesFormattingContext());
+
+    m_root = makeWeakPtr(root);
+    auto& displayBox = displayBoxForLayoutBox(root);
+
+    // FIXME: m_root could very well be a formatting context root with ancestors and resolvable border and padding (as opposed to the topmost root)
+    displayBox.setHorizontalMargin({ });
+    displayBox.setHorizontalNonComputedMargin({ });
+    displayBox.setVerticalMargin({ });
+    displayBox.setVerticalNonCollapsedMargin({ });
+    displayBox.setBorder({ });
+    displayBox.setPadding({ });
+    displayBox.setContentBoxHeight(containerSize.height());
+    displayBox.setContentBoxWidth(containerSize.width());
     displayBox.setTopLeft({ });
-    displayBox.setWidth(containerSize.width());
-    displayBox.setHeight(containerSize.height());
-    displayBox.setMargin({ });
 
-    auto& style = root.style();
-    // FIXME: m_root could very well be a formatting context root with ancestors and resolvable border and padding (as opposed to the topmost root)  
-    displayBox.setBorder({
-        style.borderTop().width(),
-        style.borderLeft().width(),
-        style.borderBottom().width(),
-        style.borderRight().width()
-
-    });
-    displayBox.setPadding({
-        valueForLength(style.paddingTop(), containerSize.width()),
-        valueForLength(style.paddingLeft(), containerSize.width()),
-        valueForLength(style.paddingBottom(), containerSize.width()),
-        valueForLength(style.paddingRight(), containerSize.width())
-    });
+    m_formattingContextRootListForLayout.add(&root);
 }
 
 void LayoutContext::updateLayout()
 {
     ASSERT(!m_formattingContextRootListForLayout.isEmpty());
-    for (auto* layoutRoot : m_formattingContextRootListForLayout) {
-        RELEASE_ASSERT(layoutRoot->establishesFormattingContext());
-        auto context = formattingContext(*layoutRoot);
-        auto& state = establishedFormattingState(*layoutRoot, *context);
-        context->layout(*this, state);
-    }
+    for (auto* layoutRoot : m_formattingContextRootListForLayout)
+        layoutFormattingContextSubtree(*layoutRoot);
     m_formattingContextRootListForLayout.clear();
 }
 
-Display::Box& LayoutContext::createDisplayBox(const Box& layoutBox)
+void LayoutContext::layoutFormattingContextSubtree(const Box& layoutRoot)
 {
-    std::unique_ptr<Display::Box> displayBox(new Display::Box(layoutBox.style()));
-    auto* displayBoxPtr = displayBox.get();
-    m_layoutToDisplayBox.add(&layoutBox, WTFMove(displayBox));
-    return *displayBoxPtr;
+    RELEASE_ASSERT(layoutRoot.establishesFormattingContext());
+    auto formattingContext = this->formattingContext(layoutRoot);
+    auto& formattingState = createFormattingStateForFormattingRootIfNeeded(layoutRoot);
+    formattingContext->layout(*this, formattingState);
+    formattingContext->layoutOutOfFlowDescendants(*this, layoutRoot);
+}
+
+Display::Box& LayoutContext::displayBoxForLayoutBox(const Box& layoutBox) const
+{
+    return *m_layoutToDisplayBox.ensure(&layoutBox, [&layoutBox] {
+        return std::make_unique<Display::Box>(layoutBox.style());
+    }).iterator->value;
 }
 
 void LayoutContext::styleChanged(const Box& layoutBox, StyleDiff styleDiff)
@@ -121,14 +119,44 @@ FormattingState& LayoutContext::formattingStateForBox(const Box& layoutBox) cons
     return *m_formattingStates.get(&root);
 }
 
-FormattingState& LayoutContext::establishedFormattingState(const Box& formattingContextRoot, const FormattingContext& context)
+FormattingState& LayoutContext::establishedFormattingState(const Box& formattingRoot) const
 {
-    return *m_formattingStates.ensure(&formattingContextRoot, [this, &context] {
-        return context.createFormattingState(context.createOrFindFloatingState(*this));
-    }).iterator->value;
+    ASSERT(formattingRoot.establishesFormattingContext());
+    RELEASE_ASSERT(m_formattingStates.contains(&formattingRoot));
+    return *m_formattingStates.get(&formattingRoot);
 }
 
-std::unique_ptr<FormattingContext> LayoutContext::formattingContext(const Box& formattingContextRoot)
+FormattingState& LayoutContext::createFormattingStateForFormattingRootIfNeeded(const Box& formattingRoot)
+{
+    ASSERT(formattingRoot.establishesFormattingContext());
+
+    if (formattingRoot.establishesInlineFormattingContext()) {
+        return *m_formattingStates.ensure(&formattingRoot, [&] {
+
+            // If the block container box that initiates this inline formatting context also establishes a block context, the floats outside of the formatting root
+            // should not interfere with the content inside.
+            // <div style="float: left"></div><div style="overflow: hidden"> <- is a non-intrusive float, because overflow: hidden triggers new block formatting context.</div>
+            if (formattingRoot.establishesBlockFormattingContext())
+                return std::make_unique<InlineFormattingState>(FloatingState::create(*this, formattingRoot), *this);
+
+            // Otherwise, the formatting context inherits the floats from the parent formatting context.
+            // Find the formatting state in which this formatting root lives, not the one it creates and use its floating state.
+            return std::make_unique<InlineFormattingState>(formattingStateForBox(formattingRoot).floatingState(), *this);
+        }).iterator->value;
+    }
+
+    if (formattingRoot.establishesBlockFormattingContext()) {
+        return *m_formattingStates.ensure(&formattingRoot, [&] {
+
+            // Block formatting context always establishes a new floating state.
+            return std::make_unique<BlockFormattingState>(FloatingState::create(*this, formattingRoot), *this);
+        }).iterator->value;
+    }
+
+    CRASH();
+}
+
+std::unique_ptr<FormattingContext> LayoutContext::formattingContext(const Box& formattingContextRoot) const
 {
     if (formattingContextRoot.establishesBlockFormattingContext())
         return std::make_unique<BlockFormattingContext>(formattingContextRoot);

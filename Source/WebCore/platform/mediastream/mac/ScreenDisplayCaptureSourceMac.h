@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,7 +33,6 @@
 #include <CoreGraphics/CGDisplayStream.h>
 #include <wtf/Lock.h>
 #include <wtf/OSObjectPtr.h>
-#include <wtf/WeakPtr.h>
 
 typedef struct __CVBuffer *CVPixelBufferRef;
 typedef struct opaqueCMSampleBuffer *CMSampleBufferRef;
@@ -44,9 +43,8 @@ class ScreenDisplayCaptureSourceMac : public DisplayCaptureSourceCocoa {
 public:
     static CaptureSourceOrError create(const String&, const MediaConstraints*);
 
-    WEBCORE_EXPORT static VideoCaptureFactory& factory();
-
-    WEBCORE_EXPORT static std::optional<CGDirectDisplayID> updateDisplayID(CGDirectDisplayID);
+    static std::optional<CaptureDevice> screenCaptureDeviceWithPersistentID(const String&);
+    static void screenCaptureDevices(Vector<CaptureDevice>&);
 
 private:
     ScreenDisplayCaptureSourceMac(uint32_t);
@@ -61,12 +59,9 @@ private:
     void generateFrame() final;
     void startProducingData() final;
     void stopProducingData() final;
-    bool applySize(const IntSize&) final;
-    bool applyFrameRate(double) final;
+    void settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag>) final;
     void commitConfiguration() final;
 
-    RetainPtr<CMSampleBufferRef> sampleBufferFromPixelBuffer(CVPixelBufferRef);
-    RetainPtr<CVPixelBufferRef> pixelBufferFromIOSurface(IOSurfaceRef);
     bool createDisplayStream();
     void startDisplayStream();
     
@@ -98,15 +93,10 @@ private:
     mutable Lock m_currentFrameMutex;
     DisplaySurface m_currentFrame;
     RetainPtr<CGDisplayStreamRef> m_displayStream;
-    RetainPtr<CFMutableDictionaryRef> m_bufferAttributes;
     CGDisplayStreamFrameAvailableHandler m_frameAvailableBlock;
-    WeakPtrFactory<ScreenDisplayCaptureSourceMac> m_weakFactory;
-    MediaTime m_presentationTimeStamp;
-    MediaTime m_frameDuration;
 
     OSObjectPtr<dispatch_queue_t> m_captureQueue;
 
-    MonotonicTime m_lastFrameTime { MonotonicTime::nan() };
     uint32_t m_displayID { 0 };
     bool m_isRunning { false };
     bool m_observingDisplayChanges { false };

@@ -1,4 +1,4 @@
-# Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+# Copyright (C) 2012-2018 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -39,15 +39,33 @@ def __lldb_init_module(debugger, dict):
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFStringImpl_SummaryProvider WTF::StringImpl')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFStringView_SummaryProvider WTF::StringView')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFAtomicString_SummaryProvider WTF::AtomicString')
-    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFVector_SummaryProvider -x "WTF::Vector<.+>$"')
-    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFHashTable_SummaryProvider -x "WTF::HashTable<.+>$"')
+    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFVector_SummaryProvider -x "^WTF::Vector<.+>$"')
+    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFHashTable_SummaryProvider -x "^WTF::HashTable<.+>$"')
+    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFHashMap_SummaryProvider -x "^WTF::HashMap<.+>$"')
+    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFHashSet_SummaryProvider -x "^WTF::HashSet<.+>$"')
     debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFMediaTime_SummaryProvider WTF::MediaTime')
-    debugger.HandleCommand('type synthetic add -x "WTF::Vector<.+>$" --python-class lldb_webkit.WTFVectorProvider')
-    debugger.HandleCommand('type synthetic add -x "WTF::HashTable<.+>$" --python-class lldb_webkit.WTFHashTableProvider')
+    debugger.HandleCommand('type summary add --expand -F lldb_webkit.WTFOptionSet_SummaryProvider -x "^WTF::OptionSet<.+>$"')
+
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreURL_SummaryProvider WebCore::URL')
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreColor_SummaryProvider WebCore::Color')
+
     debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreLayoutUnit_SummaryProvider WebCore::LayoutUnit')
     debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreLayoutSize_SummaryProvider WebCore::LayoutSize')
     debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreLayoutPoint_SummaryProvider WebCore::LayoutPoint')
-    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreURL_SummaryProvider WebCore::URL')
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreLayoutRect_SummaryProvider WebCore::LayoutRect')
+
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreIntSize_SummaryProvider WebCore::IntSize')
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreIntPoint_SummaryProvider WebCore::IntPoint')
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreIntRect_SummaryProvider WebCore::IntRect')
+
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreFloatSize_SummaryProvider WebCore::FloatSize')
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreFloatPoint_SummaryProvider WebCore::FloatPoint')
+    debugger.HandleCommand('type summary add -F lldb_webkit.WebCoreFloatRect_SummaryProvider WebCore::FloatRect')
+
+    # synthetic types (see <https://lldb.llvm.org/varformats.html>)
+    debugger.HandleCommand('type synthetic add -x "^WTF::Vector<.+>$" --python-class lldb_webkit.WTFVectorProvider')
+    debugger.HandleCommand('type synthetic add -x "^WTF::HashTable<.+>$" --python-class lldb_webkit.WTFHashTableProvider')
+    debugger.HandleCommand('type synthetic add -x "^WTF::OptionSet<.+>$" --python-class lldb_webkit.WTFOptionSetProvider')
 
 
 def WTFString_SummaryProvider(valobj, dict):
@@ -81,6 +99,21 @@ def WTFHashTable_SummaryProvider(valobj, dict):
     return "{ tableSize = %d, keyCount = %d }" % (provider.tableSize(), provider.keyCount())
 
 
+def WTFHashMap_SummaryProvider(valobj, dict):
+    provider = WTFHashMapProvider(valobj, dict)
+    return "{ tableSize = %d, keyCount = %d }" % (provider.tableSize(), provider.keyCount())
+
+
+def WTFHashSet_SummaryProvider(valobj, dict):
+    provider = WTFHashSetProvider(valobj, dict)
+    return "{ tableSize = %d, keyCount = %d }" % (provider.tableSize(), provider.keyCount())
+
+
+def WTFOptionSet_SummaryProvider(valobj, dict):
+    provider = WTFOptionSetProvider(valobj, dict)
+    return "{ size = %d }" % provider.size
+
+
 def WTFMediaTime_SummaryProvider(valobj, dict):
     provider = WTFMediaTimeProvider(valobj, dict)
     if provider.isInvalid():
@@ -94,6 +127,11 @@ def WTFMediaTime_SummaryProvider(valobj, dict):
     if provider.hasDoubleValue():
         return "{ %f }" % (provider.timeValueAsDouble())
     return "{ %d/%d, %f }" % (provider.timeValue(), provider.timeScale(), float(provider.timeValue()) / provider.timeScale())
+
+
+def WebCoreColor_SummaryProvider(valobj, dict):
+    provider = WebCoreColorProvider(valobj, dict)
+    return "{ %s }" % provider.to_string()
 
 
 def WebCoreURL_SummaryProvider(valobj, dict):
@@ -114,6 +152,43 @@ def WebCoreLayoutSize_SummaryProvider(valobj, dict):
 def WebCoreLayoutPoint_SummaryProvider(valobj, dict):
     provider = WebCoreLayoutPointProvider(valobj, dict)
     return "{ x = %s, y = %s }" % (provider.get_x(), provider.get_y())
+
+
+def WebCoreLayoutRect_SummaryProvider(valobj, dict):
+    provider = WebCoreLayoutRectProvider(valobj, dict)
+    return "{ x = %s, y = %s, width = %s, height = %s }" % (provider.get_x(), provider.get_y(), provider.get_width(), provider.get_height())
+
+
+def WebCoreIntSize_SummaryProvider(valobj, dict):
+    provider = WebCoreIntSizeProvider(valobj, dict)
+    return "{ width = %s, height = %s }" % (provider.get_width(), provider.get_height())
+
+
+def WebCoreIntPoint_SummaryProvider(valobj, dict):
+    provider = WebCoreIntPointProvider(valobj, dict)
+    return "{ x = %s, y = %s }" % (provider.get_x(), provider.get_y())
+
+
+def WebCoreFloatSize_SummaryProvider(valobj, dict):
+    provider = WebCoreFloatSizeProvider(valobj, dict)
+    return "{ width = %s, height = %s }" % (provider.get_width(), provider.get_height())
+
+
+def WebCoreFloatPoint_SummaryProvider(valobj, dict):
+    provider = WebCoreFloatPointProvider(valobj, dict)
+    return "{ x = %s, y = %s }" % (provider.get_x(), provider.get_y())
+
+
+def WebCoreIntRect_SummaryProvider(valobj, dict):
+    provider = WebCoreIntRectProvider(valobj, dict)
+    return "{ x = %s, y = %s, width = %s, height = %s }" % (provider.get_x(), provider.get_y(), provider.get_width(), provider.get_height())
+
+
+def WebCoreFloatRect_SummaryProvider(valobj, dict):
+    provider = WebCoreFloatRectProvider(valobj, dict)
+    return "{ x = %s, y = %s, width = %s, height = %s }" % (provider.get_x(), provider.get_y(), provider.get_width(), provider.get_height())
+
+
 
 
 def btjs(debugger, command, result, internal_dict):
@@ -231,16 +306,19 @@ def lstring_to_string(valobj, error, length=None):
 
 class WTFStringImplProvider:
     def __init__(self, valobj, dict):
-        self.valobj = valobj
+        # FIXME: For some reason lldb(1) sometimes has an issue accessing members of WTF::StringImplShape
+        # via a WTF::StringImpl pointer (why?). As a workaround we explicitly cast to WTF::StringImplShape*.
+        string_impl_shape_ptr_type = valobj.GetTarget().FindFirstType('WTF::StringImplShape').GetPointerType()
+        self.valobj = valobj.Cast(string_impl_shape_ptr_type)
 
     def get_length(self):
         return self.valobj.GetChildMemberWithName('m_length').GetValueAsUnsigned(0)
 
     def get_data8(self):
-        return self.valobj.GetChildAtIndex(0).GetChildAtIndex(2).GetChildMemberWithName('m_data8')
+        return self.valobj.GetChildAtIndex(2).GetChildMemberWithName('m_data8')
 
     def get_data16(self):
-        return self.valobj.GetChildAtIndex(0).GetChildAtIndex(2).GetChildMemberWithName('m_data16')
+        return self.valobj.GetChildAtIndex(2).GetChildMemberWithName('m_data16')
 
     def to_string(self):
         error = lldb.SBError()
@@ -306,6 +384,58 @@ class WTFStringProvider:
         return impl.to_string()
 
 
+class WebCoreColorProvider:
+    "Print a WebCore::Color"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def _is_extended(self, rgba_and_flags):
+        return not bool(rgba_and_flags & 0x1)
+
+    def _is_valid(self, rgba_and_flags):
+        # Assumes not extended.
+        return bool(rgba_and_flags & 0x2)
+
+    def _is_semantic(self, rgba_and_flags):
+        # Assumes not extended.
+        return bool(rgba_and_flags & 0x4)
+
+    def _to_string_extended(self):
+        extended_color = self.valobj.GetChildMemberWithName('m_colorData').GetChildMemberWithName('extendedColor').Dereference()
+        profile = extended_color.GetChildMemberWithName('m_colorSpace').GetValue()
+        if profile == 'ColorSpaceSRGB':
+            profile = 'srgb'
+        elif profile == 'ColorSpaceDisplayP3':
+            profile = 'display-p3'
+        else:
+            profile = 'unknown'
+        red = float(extended_color.GetChildMemberWithName('m_red').GetValue())
+        green = float(extended_color.GetChildMemberWithName('m_green').GetValue())
+        blue = float(extended_color.GetChildMemberWithName('m_blue').GetValue())
+        alpha = float(extended_color.GetChildMemberWithName('m_alpha').GetValue())
+        return "color(%s %1.2f %1.2f %1.2f / %1.2f)" % (profile, red, green, blue, alpha)
+
+    def to_string(self):
+        rgba_and_flags = self.valobj.GetChildMemberWithName('m_colorData').GetChildMemberWithName('rgbaAndFlags').GetValueAsUnsigned(0)
+
+        if self._is_extended(rgba_and_flags):
+            return self._to_string_extended()
+
+        if not self._is_valid(rgba_and_flags):
+            return 'invalid'
+
+        color = rgba_and_flags >> 32
+        red = (color >> 16) & 0xFF
+        green = (color >> 8) & 0xFF
+        blue = color & 0xFF
+        alpha = ((color >> 24) & 0xFF) / 255.0
+
+        semantic = ' semantic' if self._is_semantic(rgba_and_flags) else ""
+
+        result = 'rgba(%d, %d, %d, %1.2f)%s' % (red, green, blue, alpha, semantic)
+        return result
+
+
 class WebCoreLayoutUnitProvider:
     "Print a WebCore::LayoutUnit"
     def __init__(self, valobj, dict):
@@ -340,6 +470,108 @@ class WebCoreLayoutPointProvider:
         return WebCoreLayoutUnitProvider(self.valobj.GetChildMemberWithName('m_y'), dict).to_string()
 
 
+class WebCoreLayoutRectProvider:
+    "Print a WebCore::LayoutRect"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def get_x(self):
+        return WebCoreLayoutPointProvider(self.valobj.GetChildMemberWithName('m_location'), dict).get_x()
+
+    def get_y(self):
+        return WebCoreLayoutPointProvider(self.valobj.GetChildMemberWithName('m_location'), dict).get_y()
+
+    def get_width(self):
+        return WebCoreLayoutSizeProvider(self.valobj.GetChildMemberWithName('m_size'), dict).get_width()
+
+    def get_height(self):
+        return WebCoreLayoutSizeProvider(self.valobj.GetChildMemberWithName('m_size'), dict).get_height()
+
+
+class WebCoreIntPointProvider:
+    "Print a WebCore::IntPoint"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def get_x(self):
+        return self.valobj.GetChildMemberWithName('m_x').GetValueAsSigned()
+
+    def get_y(self):
+        return self.valobj.GetChildMemberWithName('m_y').GetValueAsSigned()
+
+
+class WebCoreIntSizeProvider:
+    "Print a WebCore::IntSize"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def get_width(self):
+        return self.valobj.GetChildMemberWithName('m_width').GetValueAsSigned()
+
+    def get_height(self):
+        return self.valobj.GetChildMemberWithName('m_height').GetValueAsSigned()
+
+
+class WebCoreIntRectProvider:
+    "Print a WebCore::IntRect"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def get_x(self):
+        return WebCoreIntPointProvider(self.valobj.GetChildMemberWithName('m_location'), dict).get_x()
+
+    def get_y(self):
+        return WebCoreIntPointProvider(self.valobj.GetChildMemberWithName('m_location'), dict).get_y()
+
+    def get_width(self):
+        return WebCoreIntSizeProvider(self.valobj.GetChildMemberWithName('m_size'), dict).get_width()
+
+    def get_height(self):
+        return WebCoreIntSizeProvider(self.valobj.GetChildMemberWithName('m_size'), dict).get_height()
+
+
+class WebCoreFloatPointProvider:
+    "Print a WebCore::FloatPoint"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def get_x(self):
+        return float(self.valobj.GetChildMemberWithName('m_x').GetValue())
+
+    def get_y(self):
+        return float(self.valobj.GetChildMemberWithName('m_y').GetValue())
+
+
+class WebCoreFloatSizeProvider:
+    "Print a WebCore::FloatSize"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def get_width(self):
+        return float(self.valobj.GetChildMemberWithName('m_width').GetValue())
+
+    def get_height(self):
+        return float(self.valobj.GetChildMemberWithName('m_height').GetValue())
+
+
+class WebCoreFloatRectProvider:
+    "Print a WebCore::FloatRect"
+    def __init__(self, valobj, dict):
+        self.valobj = valobj
+
+    def get_x(self):
+        return WebCoreFloatPointProvider(self.valobj.GetChildMemberWithName('m_location'), dict).get_x()
+
+    def get_y(self):
+        return WebCoreFloatPointProvider(self.valobj.GetChildMemberWithName('m_location'), dict).get_y()
+
+    def get_width(self):
+        return WebCoreFloatSizeProvider(self.valobj.GetChildMemberWithName('m_size'), dict).get_width()
+
+    def get_height(self):
+        return WebCoreFloatSizeProvider(self.valobj.GetChildMemberWithName('m_size'), dict).get_height()
+
+
 class WebCoreURLProvider:
     "Print a WebCore::URL"
     def __init__(self, valobj, dict):
@@ -347,6 +579,63 @@ class WebCoreURLProvider:
 
     def to_string(self):
         return WTFStringProvider(self.valobj.GetChildMemberWithName('m_string'), dict).to_string()
+
+
+class WTFOptionSetProvider:
+    def __init__(self, valobj, internal_dict):
+        self.valobj = valobj
+        self.update()
+
+    def has_children(self):
+        return bool(self._elements)
+
+    #  Metadata is stored at indices greater than or equal to the number of elements in the set.
+    def num_children(self):
+        return len(self._elements) + 1
+
+    def get_child_index(self, name):
+        if name == 'm_storage':
+            return self.num_children()
+        try:
+            return int(name.lstrip('[').rstrip(']'))
+        except:
+            return None
+
+    def get_child_at_index(self, index):
+        if index < 0 or not self.valobj.IsValid():
+            return None
+        if index == self.num_children():
+            return self.storage
+        if index < len(self._elements):
+            (name, value) = self._elements[index]
+            return self.valobj.CreateValueFromExpression(name, str(value))
+        return None
+
+    def update(self):
+        self.storage = self.valobj.GetChildMemberWithName('m_storage')  # May be an invalid value.
+        self._elements = []
+        self.size = 0
+
+        template_argument_sbType = self.valobj.GetType().GetTemplateArgumentType(0)
+        enumerator_value_to_name_map = {sbTypeEnumMember.GetValueAsUnsigned(): sbTypeEnumMember.GetName() for sbTypeEnumMember in template_argument_sbType.get_enum_members_array()}
+        if not enumerator_value_to_name_map:
+            return
+
+        bitmask_with_all_options_set = sum(enumerator_value_to_name_map)
+        bitmask = self.storage.GetValueAsUnsigned(0)
+        if bitmask > bitmask_with_all_options_set:
+            return  # Since this is an invalid value, return so the raw hex form is written out.
+
+        # self.valobj looks like it contains a valid value.
+        # Iterate from least significant bit to most significant bit.
+        elements = []
+        while bitmask > 0:
+            current = bitmask & -bitmask  # Isolate the rightmost set bit.
+            elements.append((enumerator_value_to_name_map[current], current))  # e.g. ('Spelling', 4)
+            bitmask = bitmask & (bitmask - 1)  # Turn off the rightmost set bit.
+        self._elements = elements
+        self.size = len(elements)
+
 
 class WTFVectorProvider:
     def __init__(self, valobj, internal_dict):
@@ -383,7 +672,7 @@ class WTFVectorProvider:
     def update(self):
         self.buffer = self.valobj.GetChildMemberWithName('m_buffer')
         self.size = self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned(0)
-        self.capacity = self.buffer.GetChildMemberWithName('m_capacity').GetValueAsUnsigned(0)
+        self.capacity = self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned(0)
         self.data_type = self.buffer.GetType().GetPointeeType()
         self.data_size = self.data_type.GetByteSize()
 
@@ -391,11 +680,44 @@ class WTFVectorProvider:
         return True
 
 
+class WTFHashMapProvider:
+    def __init__(self, valobj, internal_dict):
+        self.valobj = valobj
+        impl_ptr = self.valobj.GetChildMemberWithName('m_impl')
+        self._hash_table_provider = WTFHashTableProvider(impl_ptr, dict)
+
+    def tableSize(self):
+        return self._hash_table_provider.tableSize()
+
+    def keyCount(self):
+        return self._hash_table_provider.keyCount()
+
+
+class WTFHashSetProvider:
+    def __init__(self, valobj, internal_dict):
+        self.valobj = valobj
+        impl_ptr = self.valobj.GetChildMemberWithName('m_impl')
+        self._hash_table_provider = WTFHashTableProvider(impl_ptr, dict)
+
+    def tableSize(self):
+        return self._hash_table_provider.tableSize()
+
+    def keyCount(self):
+        return self._hash_table_provider.keyCount()
+
+
 class WTFHashTableProvider:
     def __init__(self, valobj, internal_dict):
         self.valobj = valobj
         self.update()
 
+    def tableSize(self):
+        return self.valobj.GetChildMemberWithName('m_tableSize').GetValueAsUnsigned(0)
+
+    def keyCount(self):
+        return self.valobj.GetChildMemberWithName('m_keyCount').GetValueAsUnsigned(0)
+
+    # Synthetic children provider methods.
     def num_children(self):
         return self.tableSize() + 5
 
@@ -430,14 +752,8 @@ class WTFHashTableProvider:
         else:
             return None
 
-    def tableSize(self):
-        return self.valobj.GetChildMemberWithName('m_tableSize').GetValueAsUnsigned(0)
-
-    def keyCount(self):
-        return self.valobj.GetChildMemberWithName('m_keyCount').GetValueAsUnsigned(0)
-
     def update(self):
-        self.data_type = self.valobj.GetType().GetTemplateArgumentType(0)
+        self.data_type = self.valobj.GetType().GetTemplateArgumentType(1)
         self.data_size = self.data_type.GetByteSize()
 
     def has_children(self):

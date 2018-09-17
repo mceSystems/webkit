@@ -100,6 +100,7 @@ struct DragState;
 extern const int LinkDragHysteresis;
 extern const int ImageDragHysteresis;
 extern const int TextDragHysteresis;
+extern const int ColorDragHystersis;
 extern const int GeneralDragHysteresis;
 #endif
 
@@ -128,6 +129,8 @@ public:
 
     void clear();
     void nodeWillBeRemoved(Node&);
+
+    WEBCORE_EXPORT VisiblePosition selectionExtentRespectingEditingBoundary(const VisibleSelection&, const LayoutPoint&, Node*);
 
 #if ENABLE(DRAG_SUPPORT)
     void updateSelectionForMouseDrag();

@@ -31,6 +31,7 @@
 #include "NetworkCacheIOChannel.h"
 #include "NetworkCacheKey.h"
 #include "NetworkProcess.h"
+#include "WebCoreArgumentCoders.h"
 #include <WebCore/CacheQueryOptions.h>
 #include <WebCore/HTTPParsers.h>
 #include <pal/SessionID.h>
@@ -43,14 +44,13 @@
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/StringHash.h>
 
-
-using namespace WebCore;
-using namespace WebCore::DOMCacheEngine;
-using namespace WebKit::NetworkCache;
-
 namespace WebKit {
 
 namespace CacheStorage {
+
+using namespace WebCore;
+using namespace WebCore::DOMCacheEngine;
+using namespace NetworkCache;
 
 static inline String computeKeyURL(const URL& url)
 {
@@ -84,7 +84,7 @@ static inline void updateVaryInformation(RecordInformation& recordInformation, c
         return;
     }
 
-    varyValue.split(',', false, [&](StringView view) {
+    varyValue.split(',', [&](StringView view) {
         if (!recordInformation.hasVaryStar && stripLeadingAndTrailingHTTPSpaces(view) == "*")
             recordInformation.hasVaryStar = true;
         String headerName = view.toString();
@@ -97,7 +97,7 @@ static inline void updateVaryInformation(RecordInformation& recordInformation, c
 
 RecordInformation Cache::toRecordInformation(const Record& record)
 {
-    Key key { ASCIILiteral("record"), m_uniqueName, { }, createCanonicalUUIDString(), m_caches.salt() };
+    Key key { "record"_s, m_uniqueName, { }, createCanonicalUUIDString(), m_caches.salt() };
     RecordInformation recordInformation { WTFMove(key), MonotonicTime::now().secondsSinceEpoch().milliseconds(), record.identifier, 0 , record.responseBodySize, record.request.url(), false, { } };
 
     updateVaryInformation(recordInformation, record.request, record.response);

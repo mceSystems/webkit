@@ -226,6 +226,34 @@ TEST(WebKit, ShowWebView)
     ASSERT_EQ(webViewFromDelegateCallback, createdWebView);
 }
 
+@interface PointerLockDelegate : NSObject <WKUIDelegatePrivate>
+@end
+
+@implementation PointerLockDelegate
+
+- (void)_webViewDidRequestPointerLock:(WKWebView *)webView completionHandler:(void (^)(BOOL))completionHandler
+{
+    completionHandler(YES);
+    done = true;
+}
+
+@end
+
+TEST(WebKit, PointerLock)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600)]);
+    auto delegate = adoptNS([[PointerLockDelegate alloc] init]);
+    [webView setUIDelegate:delegate.get()];
+    [webView synchronouslyLoadHTMLString:
+        @"<canvas width='800' height='600'></canvas><script>"
+        @"var canvas = document.querySelector('canvas');"
+        @"canvas.onclick = ()=>{canvas.requestPointerLock()};"
+        @"</script>"
+    ];
+    [webView sendClicksAtPoint:NSMakePoint(200, 200) numberOfClicks:1];
+    TestWebKitAPI::Util::run(&done);
+}
+
 static bool resizableSet;
 
 @interface ModalDelegate : NSObject <WKUIDelegatePrivate>
@@ -523,9 +551,9 @@ static bool readyForClick;
 
 - (void)_webView:(WKWebView *)webView didClickAutoFillButtonWithUserInfo:(id <NSSecureCoding>)userInfo
 {
+    done = true;
     ASSERT_TRUE([(id<NSObject>)userInfo isKindOfClass:[NSString class]]);
     ASSERT_STREQ([(NSString*)userInfo UTF8String], "user data string");
-    done = true;
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
@@ -560,9 +588,9 @@ static bool readytoResign;
 
 - (void)_webView:(WKWebView *)webView didResignInputElementStrongPasswordAppearanceWithUserInfo:(id <NSSecureCoding>)userInfo
 {
+    done = true;
     ASSERT_TRUE([(id<NSObject>)userInfo isKindOfClass:[NSString class]]);
     ASSERT_STREQ([(NSString*)userInfo UTF8String], "user data string");
-    done = true;
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
@@ -611,8 +639,8 @@ TEST(WebKit, DidResignInputElementStrongPasswordAppearanceWhenFormIsReset)
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)())completionHandler
 {
     completionHandler();
-    ASSERT_STREQ(message.UTF8String, "autofill available");
     done = true;
+    ASSERT_STREQ(message.UTF8String, "autofill available");
 }
 
 @end
@@ -635,8 +663,8 @@ TEST(WebKit, AutoFillAvailable)
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)())completionHandler
 {
     completionHandler();
-    ASSERT_STREQ(message.UTF8String, "isTextField success");
     done = true;
+    ASSERT_STREQ(message.UTF8String, "isTextField success");
 }
 
 @end

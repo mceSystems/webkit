@@ -47,13 +47,12 @@
 #include <WebCore/ScriptController.h>
 #include <WebCore/WindowFeatures.h>
 
-using namespace WebCore;
-
 static const float minimumAttachedHeight = 250;
 static const float maximumAttachedHeightRatio = 0.75;
 static const float minimumAttachedWidth = 500;
 
 namespace WebKit {
+using namespace WebCore;
 
 Ref<WebInspector> WebInspector::create(WebPage* page)
 {
@@ -88,13 +87,16 @@ void WebInspector::openFrontendConnection(bool underTest)
 
     IPC::Connection::Identifier connectionIdentifier(listeningPort);
     IPC::Attachment connectionClientPort(listeningPort, MACH_MSG_TYPE_MOVE_SEND);
-
+#elif PLATFORM(WIN)
+    IPC::Connection::Identifier connectionIdentifier, connClient;
+    IPC::Connection::createServerAndClientIdentifiers(connectionIdentifier, connClient);
+    IPC::Attachment connectionClientPort(connClient);
 #else
     notImplemented();
     return;
 #endif
 
-#if USE(UNIX_DOMAIN_SOCKETS) || OS(DARWIN)
+#if USE(UNIX_DOMAIN_SOCKETS) || OS(DARWIN) || PLATFORM(WIN)
     m_frontendConnection = IPC::Connection::createServerConnection(connectionIdentifier, *this);
     m_frontendConnection->open();
 
@@ -152,7 +154,7 @@ void WebInspector::openInNewTab(const String& urlString)
         return;
 
     Frame& inspectedMainFrame = inspectedPage->mainFrame();
-    FrameLoadRequest frameLoadRequest { *inspectedMainFrame.document(), inspectedMainFrame.document()->securityOrigin(), { urlString }, ASCIILiteral("_blank"), LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow, InitiatedByMainFrame::Unknown };
+    FrameLoadRequest frameLoadRequest { *inspectedMainFrame.document(), inspectedMainFrame.document()->securityOrigin(), { urlString }, "_blank"_s, LockHistory::No, LockBackForwardList::No, MaybeSendReferrer, AllowNavigationToInvalidURL::Yes, NewFrameOpenerPolicy::Allow, ShouldOpenExternalURLsPolicy::ShouldNotAllow, InitiatedByMainFrame::Unknown };
 
     NavigationAction action { *inspectedMainFrame.document(), frameLoadRequest.resourceRequest(), frameLoadRequest.initiatedByMainFrame(), NavigationType::LinkClicked };
     Page* newPage = inspectedPage->chrome().createWindow(inspectedMainFrame, frameLoadRequest, { }, action);

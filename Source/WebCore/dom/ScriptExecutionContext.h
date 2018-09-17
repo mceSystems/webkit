@@ -132,8 +132,8 @@ public:
 
     // Active objects can be asked to suspend even if canSuspendActiveDOMObjectsForDocumentSuspension() returns 'false' -
     // step-by-step JS debugging is one example.
-    virtual void suspendActiveDOMObjects(ActiveDOMObject::ReasonForSuspension);
-    virtual void resumeActiveDOMObjects(ActiveDOMObject::ReasonForSuspension);
+    virtual void suspendActiveDOMObjects(ReasonForSuspension);
+    virtual void resumeActiveDOMObjects(ReasonForSuspension);
     virtual void stopActiveDOMObjects();
 
     bool activeDOMObjectsAreSuspended() const { return m_activeDOMObjectsAreSuspended; }
@@ -279,10 +279,11 @@ protected:
         }
     };
 
-    ActiveDOMObject::ReasonForSuspension reasonForSuspendingActiveDOMObjects() const { return m_reasonForSuspendingActiveDOMObjects; }
+    ReasonForSuspension reasonForSuspendingActiveDOMObjects() const { return m_reasonForSuspendingActiveDOMObjects; }
 
     bool hasPendingActivity() const;
     void removeFromContextsMap();
+    void removeRejectedPromiseTracker();
 
 private:
     // The following addMessage function is deprecated.
@@ -293,6 +294,9 @@ private:
 
     virtual void refScriptExecutionContext() = 0;
     virtual void derefScriptExecutionContext() = 0;
+
+    enum class ShouldContinue { No, Yes };
+    void forEachActiveDOMObject(const Function<ShouldContinue(ActiveDOMObject&)>&) const;
 
     RejectedPromiseTracker& ensureRejectedPromiseTrackerSlow();
 
@@ -308,7 +312,7 @@ private:
     std::unique_ptr<Vector<std::unique_ptr<PendingException>>> m_pendingExceptions;
     std::unique_ptr<RejectedPromiseTracker> m_rejectedPromiseTracker;
 
-    ActiveDOMObject::ReasonForSuspension m_reasonForSuspendingActiveDOMObjects { static_cast<ActiveDOMObject::ReasonForSuspension>(-1) };
+    ReasonForSuspension m_reasonForSuspendingActiveDOMObjects { static_cast<ReasonForSuspension>(-1) };
 
     std::unique_ptr<PublicURLManager> m_publicURLManager;
 
@@ -320,14 +324,11 @@ private:
     bool m_activeDOMObjectsAreSuspended { false };
     bool m_activeDOMObjectsAreStopped { false };
     bool m_inDispatchErrorEvent { false };
-    bool m_activeDOMObjectAdditionForbidden { false };
+    mutable bool m_activeDOMObjectAdditionForbidden { false };
     bool m_willprocessMessageWithMessagePortsSoon { false };
 
 #if !ASSERT_DISABLED
     bool m_inScriptExecutionContextDestructor { false };
-#endif
-#if !ASSERT_DISABLED || ENABLE(SECURITY_ASSERTIONS)
-    bool m_activeDOMObjectRemovalForbidden { false };
 #endif
 
 #if ENABLE(SERVICE_WORKER)

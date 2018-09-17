@@ -117,12 +117,11 @@ static NSString *preferredBundleLocalizationName()
     LangCode languageCode;
     RegionCode regionCode;
 
-    Boolean success = CFLocaleGetLanguageRegionEncodingForLocaleIdentifier((CFStringRef)language, &languageCode, &regionCode, nullptr, nullptr);
+    Boolean success = CFLocaleGetLanguageRegionEncodingForLocaleIdentifier((__bridge CFStringRef)language, &languageCode, &regionCode, nullptr, nullptr);
     if (!success)
         return @"en_US";
 
-    auto code = adoptCF(CFLocaleCreateCanonicalLocaleIdentifierFromScriptManagerCodes(0, languageCode, regionCode));
-    return (NSString *)code.autorelease();
+    return CFBridgingRelease(CFLocaleCreateCanonicalLocaleIdentifierFromScriptManagerCodes(0, languageCode, regionCode));
 }
 
 bool NetscapePluginHostManager::spawnPluginHost(const String& pluginPath, cpu_type_t pluginArchitecture, mach_port_t clientPort, mach_port_t& pluginHostPort, ProcessSerialNumber& pluginHostPSN)
@@ -188,10 +187,9 @@ bool NetscapePluginHostManager::spawnPluginHost(const String& pluginPath, cpu_ty
 
     ProcessSerialNumber psn;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     GetCurrentProcess(&psn);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     ASSERT(MACH_PORT_VALID(clientPort));
     kr = _WKPHCheckInWithPluginHost(pluginHostPort, static_cast<uint8_t*>(const_cast<void*>([data bytes])), [data length], clientPort, psn.highLongOfPSN, psn.lowLongOfPSN, renderServerPort,
@@ -323,11 +321,10 @@ void NetscapePluginHostManager::didCreateWindow()
         if (!hostProxy->isMenuBarVisible()) {
             // Make ourselves the front process.
             ProcessSerialNumber psn;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             GetCurrentProcess(&psn);
             SetFrontProcess(&psn);
-#pragma clang diagnostic pop
+            ALLOW_DEPRECATED_DECLARATIONS_END
             return;
         }
     }

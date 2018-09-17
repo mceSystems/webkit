@@ -105,6 +105,8 @@ allowCrossOriginSubresourcesToAskForCredentials:
   initial: false
 needsStorageAccessFromFileURLsQuirk:
   initial: true
+needsFrameNameFallbackToIdQuirk:
+  initial: false
 useAnonymousModeWhenFetchingMaskImages:
   initial: true
 javaScriptCanOpenWindowsAutomatically:
@@ -150,6 +152,8 @@ resourceUsageOverlayVisible:
   initial: false
   onChange: resourceUsageOverlayVisibleChanged
   condition: RESOURCE_USAGE
+disableScreenSizeOverride:
+  initial: false
 
 # This is a quirk we are pro-actively applying to old applications. It changes keyboard event dispatching,
 # making keyIdentifier available on keypress events, making charCode available on keydown/keyup events,
@@ -187,8 +191,6 @@ offlineWebApplicationCacheEnabled:
 enforceCSSMIMETypeInNoQuirksMode:
   initial: true
 usesEncodingDetector:
-  initial: false
-allowScriptsToCloseWindows:
   initial: false
 canvasUsesAcceleratedDrawing:
   initial: false
@@ -428,6 +430,10 @@ mediaSourceEnabled:
   initial: true
   conditional: MEDIA_SOURCE
 
+sourceBufferChangeTypeEnabled:
+  initial: true
+  conditional: MEDIA_SOURCE
+
 # FIXME: Rename to allowMultiElementImplicitFormSubmission once we upstream the iOS changes to WebView.mm.
 allowMultiElementImplicitSubmission:
   initial: false
@@ -483,9 +489,6 @@ serviceControlsEnabled:
 appleMailPaginationQuirkEnabled:
   initial: false
 
-appleMailLinesClampEnabled:
-  initial: false
-
 deferredCSSParserEnabled:
   initial: false
 
@@ -507,7 +510,7 @@ userInterfaceDirectionPolicy:
   initial: UserInterfaceDirectionPolicy::Content
 systemLayoutDirection:
   type: TextDirection
-  initial: LTR
+  initial: TextDirection::LTR
 
 allowContentSecurityPolicySourceStarToMatchAnyProtocol:
   initial: false
@@ -522,10 +525,15 @@ springTimingFunctionEnabled:
   initial: false
 
 conicGradientsEnabled:
-  initial: false
+  initial: defaultConicGradient
 
 colorFilterEnabled:
   initial: false
+  onChange: setNeedsRecalcStyleInAllFrames
+
+punchOutWhiteBackgroundsInDarkMode:
+  initial: false
+  onChange: setNeedsRecalcStyleInAllFrames
 
 treatIPAddressAsDomain:
   initial: false
@@ -544,6 +552,9 @@ visualViewportEnabled:
   onChange: setNeedsRecalcStyleInAllFrames
 
 visualViewportAPIEnabled:
+  initial: false
+
+CSSOMViewScrollingAPIEnabled:
   initial: false
 
 inputEventsEnabled:
@@ -740,9 +751,15 @@ clientCoordinatesRelativeToLayoutViewport:
   initial: false
   onChange: setNeedsRecalcStyleInAllFrames
 
-crossOriginOptionsSupportEnabled:
-  initial: true
+crossOriginWindowPolicySupportEnabled:
+  initial: false
 
 accessibilityEventsEnabled:
   initial: true
   conditional: ACCESSIBILITY_EVENTS
+
+incompleteImageBorderEnabled:
+  initial: false
+
+shouldDeferAsynchronousScriptsUntilAfterDocumentLoad:
+  initial: false

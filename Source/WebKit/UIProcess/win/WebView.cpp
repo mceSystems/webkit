@@ -37,6 +37,7 @@
 #include "WebContextMenuProxyWin.h"
 #include "WebEditCommandProxy.h"
 #include "WebEventFactory.h"
+#include "WebPageGroup.h"
 #include "WebPageProxy.h"
 #include "WebProcessPool.h"
 #include <Commctrl.h>
@@ -59,9 +60,8 @@
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static const LPCWSTR kWebKit2WebViewWindowClassName = L"WebKit2WebViewWindowClass";
 
@@ -166,6 +166,9 @@ LRESULT WebView::wndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_SETCURSOR:
         lResult = onSetCursor(hWnd, message, wParam, lParam, handled);
         break;
+    case WM_MENUCOMMAND:
+        lResult = onMenuCommand(hWnd, message, wParam, lParam, handled);
+        break;
     default:
         handled = false;
         break;
@@ -216,6 +219,16 @@ WebView::WebView(RECT rect, const API::PageConfiguration& configuration, HWND pa
     ASSERT(m_isVisible == static_cast<bool>(::GetWindowLong(m_window, GWL_STYLE) & WS_VISIBLE));
 
     auto pageConfiguration = configuration.copy();
+    auto* preferences = pageConfiguration->preferences();
+    if (!preferences && pageConfiguration->pageGroup()) {
+        preferences = &pageConfiguration->pageGroup()->preferences();
+        pageConfiguration->setPreferences(preferences);
+    }
+    if (preferences) {
+        // Disable accelerated compositing until it is supported.
+        preferences->setAcceleratedCompositingEnabled(false);
+    }
+
     WebProcessPool* processPool = pageConfiguration->processPool();
     m_page = processPool->createWebPage(*m_pageClient, WTFMove(pageConfiguration));
     m_page->initializeWebPage();
@@ -570,6 +583,35 @@ LRESULT WebView::onSetCursor(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
     return 0;
 }
 
+LRESULT WebView::onMenuCommand(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, bool& handled)
+{
+    auto hMenu = reinterpret_cast<HMENU>(lParam);
+    auto index = static_cast<unsigned>(wParam);
+
+    MENUITEMINFO menuItemInfo;
+    menuItemInfo.cbSize = sizeof(menuItemInfo);
+    menuItemInfo.cch = 0;
+    menuItemInfo.fMask = MIIM_STRING;
+    ::GetMenuItemInfo(hMenu, index, TRUE, &menuItemInfo);
+
+    menuItemInfo.cch++;
+    Vector<WCHAR> buffer(menuItemInfo.cch);
+    menuItemInfo.dwTypeData = buffer.data();
+    menuItemInfo.fMask |= MIIM_ID;
+
+    ::GetMenuItemInfo(hMenu, index, TRUE, &menuItemInfo);
+
+    String title(buffer.data(), menuItemInfo.cch);
+    ContextMenuAction action = static_cast<ContextMenuAction>(menuItemInfo.wID);
+    bool enabled = !(menuItemInfo.fState & MFS_DISABLED);
+    bool checked = menuItemInfo.fState & MFS_CHECKED;
+    WebContextMenuItemData item(ContextMenuItemType::ActionType, action, title, enabled, checked);
+    m_page->contextMenuItemSelected(item);
+
+    handled = true;
+    return 0;
+}
+
 void WebView::updateActiveState()
 {
     m_page->activityStateDidChange(ActivityState::WindowIsActive);
@@ -707,6 +749,14 @@ HCURSOR WebView::cursorToShow() const
     return m_webCoreCursor;
 }
 
+void WebView::setCursor(const WebCore::Cursor& cursor)
+{
+    if (!cursor.platformCursor()->nativeCursor())
+        return;
+    m_webCoreCursor = cursor.platformCursor()->nativeCursor();
+    updateNativeCursor();
+}
+
 void WebView::updateNativeCursor()
 {
     m_lastCursorSet = cursorToShow();
@@ -813,6 +863,24 @@ void WebView::windowReceivedMessage(HWND, UINT message, WPARAM wParam, LPARAM)
     case WM_SETTINGCHANGE:
         break;
     }
+}
+
+void WebView::setToolTip(const String& toolTip)
+{
+    if (!m_toolTipWindow)
+        return;
+
+    if (!toolTip.isEmpty()) {
+        TOOLINFO info = { 0 };
+        info.cbSize = sizeof(info);
+        info.uFlags = TTF_IDISHWND;
+        info.uId = reinterpret_cast<UINT_PTR>(nativeWindow());
+        Vector<UChar> toolTipCharacters = toolTip.charactersWithNullTermination(); // Retain buffer long enough to make the SendMessage call
+        info.lpszText = const_cast<UChar*>(toolTipCharacters.data());
+        ::SendMessage(m_toolTipWindow, TTM_UPDATETIPTEXT, 0, reinterpret_cast<LPARAM>(&info));
+    }
+
+    ::SendMessage(m_toolTipWindow, TTM_ACTIVATE, !toolTip.isEmpty(), 0);
 }
 
 } // namespace WebKit

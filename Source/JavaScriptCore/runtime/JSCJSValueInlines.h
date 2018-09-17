@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "CatchScope.h"
 #include "Error.h"
 #include "ExceptionHelpers.h"
 #include "Identifier.h"
@@ -343,13 +344,11 @@ inline JSValue::JSValue(int i)
     u.asBits.payload = i;
 }
 
-#if USE(JSVALUE32_64)
 inline JSValue::JSValue(int32_t tag, int32_t payload)
 {
     u.asBits.tag = tag;
     u.asBits.payload = payload;
 }
-#endif
 
 inline bool JSValue::isNumber() const
 {
@@ -592,7 +591,7 @@ inline bool JSValue::isSymbol() const
 
 inline bool JSValue::isPrimitive() const
 {
-    return !isCell() || asCell()->isString() || asCell()->isSymbol();
+    return !isCell() || asCell()->isString() || asCell()->isSymbol() || asCell()->isBigInt();
 }
 
 inline bool JSValue::isGetterSetter() const
@@ -655,13 +654,17 @@ ALWAYS_INLINE Identifier JSValue::toPropertyKey(ExecState* exec) const
     VM& vm = exec->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (isString())
+    if (isString()) {
+        scope.release();
         return asString(*this)->toIdentifier(exec);
+    }
 
     JSValue primitive = toPrimitive(exec, PreferString);
     RETURN_IF_EXCEPTION(scope, vm.propertyNames->emptyIdentifier);
-    if (primitive.isSymbol())
+    if (primitive.isSymbol()) {
+        scope.release();
         return Identifier::fromUid(asSymbol(primitive)->privateName());
+    }
     scope.release();
     return primitive.toString(exec)->toIdentifier(exec);
 }
@@ -677,7 +680,7 @@ inline PreferredPrimitiveType toPreferredPrimitiveType(ExecState* exec, JSValue 
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     if (!value.isString()) {
-        throwTypeError(exec, scope, ASCIILiteral("Primitive hint is not a string."));
+        throwTypeError(exec, scope, "Primitive hint is not a string."_s);
         return NoPreference;
     }
 
@@ -691,7 +694,7 @@ inline PreferredPrimitiveType toPreferredPrimitiveType(ExecState* exec, JSValue 
     if (WTF::equal(hintString, "string"))
         return PreferString;
 
-    throwTypeError(exec, scope, ASCIILiteral("Expected primitive hint to match one of 'default', 'number', 'string'."));
+    throwTypeError(exec, scope, "Expected primitive hint to match one of 'default', 'number', 'string'."_s);
     return NoPreference;
 }
 
@@ -778,22 +781,18 @@ inline bool JSValue::isCallable(VM& vm, CallType& callType, CallData& callData) 
     return asCell()->isCallable(vm, callType, callData);
 }
 
-inline bool JSValue::isConstructor() const
+inline bool JSValue::isConstructor(VM& vm) const
 {
     if (!isCell())
         return false;
-    JSCell* cell = asCell();
-    ConstructData ignored;
-    return cell->methodTable()->getConstructData(cell, ignored) != ConstructType::None;
+    return asCell()->isConstructor(vm);
 }
 
-inline bool JSValue::isConstructor(ConstructType& constructType, ConstructData& constructData) const
+inline bool JSValue::isConstructor(VM& vm, ConstructType& constructType, ConstructData& constructData) const
 {
     if (!isCell())
         return false;
-    JSCell* cell = asCell();
-    constructType = cell->methodTable()->getConstructData(cell, constructData);
-    return constructType != ConstructType::None;
+    return asCell()->isConstructor(vm, constructType, constructData);
 }
 
 // this method is here to be after the inline declaration of JSCell::inherits

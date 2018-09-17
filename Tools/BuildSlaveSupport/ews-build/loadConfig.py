@@ -22,9 +22,12 @@
 
 
 import json
+import os
 import re
 
 from buildbot.scheduler import AnyBranchScheduler, Periodic, Dependent, Triggerable, Nightly
+from buildbot.schedulers.forcesched import ForceScheduler, WorkerChoiceParameter
+from buildbot.schedulers.trysched import Try_Userpass
 from buildbot.worker import Worker
 from buildbot.util import identifiers as buildbot_identifiers
 
@@ -34,30 +37,50 @@ BUILDER_NAME_LENGTH_LIMIT = 70
 STEP_NAME_LENGTH_LIMIT = 50
 
 
-def loadBuilderConfig(c):
-    config = json.load(open('config.json'))
-    passwords = json.load(open('passwords.json'))
-    checkWorkersAndBuildersForConsistency(config['workers'], config['builders'])
+def loadBuilderConfig(c, use_localhost_worker=False, master_prefix_path='./'):
+    config = json.load(open(os.path.join(master_prefix_path, 'config.json')))
+    passwords = json.load(open(os.path.join(master_prefix_path, 'passwords.json')))
+    checkWorkersAndBuildersForConsistency(config, config['workers'], config['builders'])
+    checkValidSchedulers(config, config['schedulers'])
 
-    c['workers'] = [Worker(worker['name'], passwords.get(worker['name'], 'password')) for worker in config['workers']]
+    c['workers'] = [Worker(worker['name'], passwords.get(worker['name'], 'password'), max_builds=worker.get('max_builds', 1)) for worker in config['workers']]
+    if use_localhost_worker:
+        c['workers'].append(Worker('local-worker', 'password', max_builds=2))
+
     c['builders'] = []
     for builder in config['builders']:
         builder['tags'] = getTagsForBuilder(builder)
         factory = globals()[builder['factory']]
-        builder['factory'] = factory()
-        del builder['platform']
-        if 'configuration' in builder:
-            del builder['configuration']
+        factorykwargs = {}
+        for key in ["platform", "configuration", "architectures", "triggers", "additionalArguments"]:
+            value = builder.pop(key, None)
+            if value:
+                factorykwargs[key] = value
+
+        builder["factory"] = factory(**factorykwargs)
+
+        if use_localhost_worker:
+            builder['workernames'].append("local-worker")
+
         c['builders'].append(builder)
 
     c['schedulers'] = []
     for scheduler in config['schedulers']:
-        schedulerType = globals()[scheduler.pop('type')]
+        schedulerClassName = scheduler.pop('type')
+        schedulerClass = globals()[schedulerClassName]
         # Python 2.6 can't handle unicode keys as keyword arguments:
         # http://bugs.python.org/issue2646.  Modern versions of json return
         # unicode strings from json.load, so we map all keys to str objects.
         scheduler = dict(map(lambda key_value_pair: (str(key_value_pair[0]), key_value_pair[1]), scheduler.items()))
-        c['schedulers'].append(schedulerType(**scheduler))
+        if (schedulerClassName == 'Try_Userpass'):
+            # FIXME: Read the credentials from local file on disk.
+            scheduler['userpass'] = [('sampleuser', 'samplepass')]
+        c['schedulers'].append(schedulerClass(**scheduler))
+
+        force_scheduler = ForceScheduler(name='force-{0}'.format(scheduler['name']),
+                                         builderNames=scheduler['builderNames'],
+                                         properties=[WorkerChoiceParameter()])
+        c['schedulers'].append(force_scheduler)
 
 
 def checkValidWorker(worker):
@@ -71,7 +94,7 @@ def checkValidWorker(worker):
         raise Exception('Worker {} does not have platform defined.'.format(worker['name']))
 
 
-def checkValidBuilder(builder):
+def checkValidBuilder(config, builder):
     if not builder:
         raise Exception('Builder is None or Empty.')
 
@@ -84,7 +107,7 @@ def checkValidBuilder(builder):
     if len(builder['name']) > BUILDER_NAME_LENGTH_LIMIT:
         raise Exception('Builder name {} is longer than maximum allowed by Buildbot ({} characters).'.format(builder['name'], BUILDER_NAME_LENGTH_LIMIT))
 
-    if 'configuration' in builder and builder['configuration'] not in ['Debug', 'Production', 'Release']:
+    if 'configuration' in builder and builder['configuration'] not in ['debug', 'production', 'release']:
         raise Exception('Invalid configuration: {} for builder: {}'.format(builder.get('configuration'), builder.get('name')))
 
     if not builder.get('factory'):
@@ -93,8 +116,33 @@ def checkValidBuilder(builder):
     if not builder.get('platform'):
         raise Exception('Builder {} does not have platform defined.'.format(builder['name']))
 
+    for trigger in builder.get('triggers') or []:
+        if not doesTriggerExist(config, trigger):
+            raise Exception('Trigger: {} in builder {} does not exist in list of Trigerrable schedulers.'.format(trigger, builder['name']))
 
-def checkWorkersAndBuildersForConsistency(workers, builders):
+
+def checkValidSchedulers(config, schedulers):
+    for scheduler in config.get('schedulers') or []:
+        if scheduler.get('type') == 'Triggerable':
+            if not isTriggerUsedByAnyBuilder(config, scheduler['name']):
+                raise Exception('Trigger: {} is not used by any builder in config.json'.format(scheduler['name']))
+
+
+def doesTriggerExist(config, trigger):
+    for scheduler in config.get('schedulers') or []:
+        if scheduler['name'] == trigger:
+            return True
+    return False
+
+
+def isTriggerUsedByAnyBuilder(config, trigger):
+    for builder in config.get('builders'):
+        if trigger in (builder.get('triggers') or []):
+            return True
+    return False
+
+
+def checkWorkersAndBuildersForConsistency(config, workers, builders):
     def _find_worker_with_name(workers, worker_name):
         for worker in workers:
             if worker['name'] == worker_name:
@@ -105,7 +153,7 @@ def checkWorkersAndBuildersForConsistency(workers, builders):
         checkValidWorker(worker)
 
     for builder in builders:
-        checkValidBuilder(builder)
+        checkValidBuilder(config, builder)
         for worker_name in builder['workernames']:
             worker = _find_worker_with_name(workers, worker_name)
             if worker is None:

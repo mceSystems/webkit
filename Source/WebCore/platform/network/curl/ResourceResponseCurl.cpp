@@ -103,6 +103,7 @@ ResourceResponse::ResourceResponse(const CurlResponse& response)
     }
     setMimeType(extractMIMETypeFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)).convertToASCIILowercase());
     setTextEncodingName(extractCharsetFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)));
+    setSource(ResourceResponse::Source::Network);
 }
 
 void ResourceResponse::appendHTTPHeaderField(const String& header)
@@ -140,6 +141,16 @@ void ResourceResponse::setStatusLine(const String& header)
         auto statusText = statusLine.substring(statusCodeEndPosition + 1);
         setHTTPStatusText(statusText.stripWhiteSpace());
     }
+}
+
+void ResourceResponse::setCertificateInfo(CertificateInfo&& certificateInfo)
+{
+    m_certificateInfo = WTFMove(certificateInfo);
+}
+
+void ResourceResponse::setDeprecatedNetworkLoadMetrics(NetworkLoadMetrics&& networkLoadMetrics)
+{
+    m_networkLoadMetrics = WTFMove(networkLoadMetrics);
 }
 
 String ResourceResponse::platformSuggestedFilename() const
@@ -186,6 +197,11 @@ bool ResourceResponse::isNotModified() const
 bool ResourceResponse::isUnauthorized() const
 {
     return httpStatusCode() == 401;
+}
+
+bool ResourceResponse::isProxyAuthenticationRequired() const
+{
+    return httpStatusCode() == 407;
 }
 
 }

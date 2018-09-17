@@ -69,12 +69,10 @@ public:
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types);
     static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
     void addAudioRenderer(AVSampleBufferAudioRenderer*);
     void removeAudioRenderer(AVSampleBufferAudioRenderer*);
-#pragma clang diagnostic pop
+    ALLOW_NEW_API_WITHOUT_GUARDS_END
 
     MediaPlayer::NetworkState networkState() const override;
     MediaPlayer::ReadyState readyState() const override;
@@ -87,11 +85,9 @@ public:
     void setLoadingProgresssed(bool flag) { m_loadingProgressed = flag; }
     void setHasAvailableVideoFrame(bool);
     bool hasAvailableVideoFrame() const override;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
     void setHasAvailableAudioSample(AVSampleBufferAudioRenderer*, bool);
-#pragma clang diagnostic pop
+    ALLOW_NEW_API_WITHOUT_GUARDS_END
     bool allRenderersHaveAvailableSamples() const { return m_allRenderersHaveAvailableSamples; }
     void updateAllRenderersHaveAvailableSamples();
     void durationChanged();
@@ -153,7 +149,6 @@ private:
     void cancelLoad() override;
 
     void prepareToPlay() override;
-    PlatformMedia platformMedia() const override;
     PlatformLayer* platformLayer() const override;
 
     bool supportsPictureInPicture() const override { return true; }
@@ -227,7 +222,7 @@ private:
 
     size_t extraMemoryCost() const override;
 
-    std::optional<PlatformVideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() override;
+    std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() override;
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     bool isCurrentPlaybackTargetWireless() const override;
@@ -268,12 +263,10 @@ private:
     struct AudioRendererProperties {
         bool hasAudibleSample { false };
     };
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
-    HashMap<RetainPtr<AVSampleBufferAudioRenderer>, AudioRendererProperties> m_sampleBufferAudioRendererMap;
+    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
+    HashMap<RetainPtr<CFTypeRef>, AudioRendererProperties> m_sampleBufferAudioRendererMap;
     RetainPtr<AVSampleBufferRenderSynchronizer> m_synchronizer;
-#pragma clang diagnostic pop
+    ALLOW_NEW_API_WITHOUT_GUARDS_END
     RetainPtr<id> m_timeJumpedObserver;
     RetainPtr<id> m_durationObserver;
     RetainPtr<AVStreamSession> m_streamSession;

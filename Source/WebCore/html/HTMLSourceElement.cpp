@@ -115,7 +115,7 @@ void HTMLSourceElement::cancelPendingErrorEvent()
 void HTMLSourceElement::errorEventTimerFired()
 {
     LOG(Media, "HTMLSourceElement::errorEventTimerFired - %p", this);
-    dispatchEvent(Event::create(eventNames().errorEvent, false, true));
+    dispatchEvent(Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::Yes));
 }
 
 bool HTMLSourceElement::isURLAttribute(const Attribute& attribute) const
@@ -133,9 +133,10 @@ bool HTMLSourceElement::canSuspendForDocumentSuspension() const
     return true;
 }
 
-void HTMLSourceElement::suspend(ReasonForSuspension why)
+void HTMLSourceElement::suspend(ReasonForSuspension reason)
 {
-    if (why == PageCache) {
+    // FIXME: Shouldn't this also stop the timer for PageWillBeSuspended?
+    if (reason == ReasonForSuspension::PageCache) {
         m_shouldRescheduleErrorEventOnResume = m_errorEventTimer.isActive();
         m_errorEventTimer.stop();
     }

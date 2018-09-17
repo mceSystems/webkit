@@ -41,34 +41,30 @@
 #include <wtf/RetainPtr.h>
 #include <wtf/WeakPtr.h>
 
-#if PLATFORM(IOS)
-#include "WebSQLiteDatabaseTracker.h"
-#endif
-
 namespace PAL {
 class SessionID;
 }
 
 namespace WebCore {
-class DownloadID;
 class CertificateInfo;
+class DownloadID;
 class NetworkStorageSession;
 class ProtectionSpace;
 class SecurityOrigin;
+class URL;
+enum class StoredCredentialsPolicy;
 struct SecurityOriginData;
 struct SoupNetworkProxySettings;
-enum class StoredCredentialsPolicy;
-class URL;
 }
 
 namespace WebKit {
+
 class AuthenticationManager;
-#if ENABLE(SERVER_PRECONNECT)
-class PreconnectTask;
-#endif
 class NetworkConnectionToWebProcess;
 class NetworkProcessSupplement;
+class NetworkProximityManager;
 class NetworkResourceLoader;
+class PreconnectTask;
 enum class WebsiteDataFetchOption;
 enum class WebsiteDataType;
 struct NetworkProcessCreationParameters;
@@ -84,6 +80,7 @@ class NetworkProcess : public ChildProcess, private DownloadManager::Client {
     friend NeverDestroyed<DownloadManager>;
 public:
     static NetworkProcess& singleton();
+    static constexpr ProcessType processType = ProcessType::Network;
 
     template <typename T>
     T* supplement()
@@ -101,6 +98,9 @@ public:
 
     AuthenticationManager& authenticationManager();
     DownloadManager& downloadManager();
+#if ENABLE(PROXIMITY_NETWORKING)
+    NetworkProximityManager& proximityManager();
+#endif
 
     NetworkCache::Cache* cache() { return m_cache.get(); }
 
@@ -118,17 +118,13 @@ public:
 
 #if PLATFORM(COCOA)
     RetainPtr<CFDataRef> sourceApplicationAuditData() const;
+    void getHostNamesWithHSTSCache(WebCore::NetworkStorageSession&, HashSet<String>&);
+    void deleteHSTSCacheForHostNames(WebCore::NetworkStorageSession&, const Vector<String>&);
     void clearHSTSCache(WebCore::NetworkStorageSession&, WallTime modifiedSince);
+    bool suppressesConnectionTerminationOnSystemChange() const { return m_suppressesConnectionTerminationOnSystemChange; }
 #endif
 
     void findPendingDownloadLocation(NetworkDataTask&, ResponseCompletionHandler&&, const WebCore::ResourceResponse&);
-
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    void canAuthenticateAgainstProtectionSpace(NetworkResourceLoader&, const WebCore::ProtectionSpace&);
-#if ENABLE(SERVER_PRECONNECT)
-    void canAuthenticateAgainstProtectionSpace(PreconnectTask&, const WebCore::ProtectionSpace&);
-#endif
-#endif
 
     void prefetchDNS(const String&);
 
@@ -137,17 +133,18 @@ public:
     void grantSandboxExtensionsToStorageProcessForBlobs(const Vector<String>& filenames, Function<void ()>&& completionHandler);
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-    void updatePrevalentDomainsToPartitionOrBlockCookies(PAL::SessionID, const Vector<String>& domainsToPartition, const Vector<String>& domainsToBlock, const Vector<String>& domainsToNeitherPartitionNorBlock, bool shouldClearFirst);
+    void updatePrevalentDomainsToBlockCookiesFor(PAL::SessionID, const Vector<String>& domainsToBlock, bool shouldClearFirst, uint64_t contextId);
     void hasStorageAccessForFrame(PAL::SessionID, const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, uint64_t contextId);
     void getAllStorageAccessEntries(PAL::SessionID, uint64_t contextId);
     void grantStorageAccess(PAL::SessionID, const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, uint64_t contextId);
-    void removeAllStorageAccess(PAL::SessionID);
+    void removeAllStorageAccess(PAL::SessionID, uint64_t contextId);
     void removePrevalentDomains(PAL::SessionID, const Vector<String>& domains);
 #endif
 
     Seconds loadThrottleLatency() const { return m_loadThrottleLatency; }
-    String cacheStorageDirectory(PAL::SessionID) const;
-    uint64_t cacheStoragePerOriginQuota() const;
+
+    using CacheStorageParametersCallback = CompletionHandler<void(const String&, uint64_t quota)>;
+    void cacheStorageParameters(PAL::SessionID, CacheStorageParametersCallback&&);
 
     void preconnectTo(const WebCore::URL&, WebCore::StoredCredentialsPolicy);
 
@@ -162,8 +159,6 @@ public:
     NetworkContentRuleListManager& networkContentRuleListManager() { return m_NetworkContentRuleListManager; }
 #endif
 
-    bool tracksResourceLoadMilestones() const { return m_tracksResourceLoadMilestones; }
-
 private:
     NetworkProcess();
     ~NetworkProcess();
@@ -174,10 +169,15 @@ private:
     void platformTerminate();
 
     void lowMemoryHandler(Critical);
+    
+    void processDidTransitionToForeground();
+    void processDidTransitionToBackground();
+    void platformProcessDidTransitionToForeground();
+    void platformProcessDidTransitionToBackground();
 
     enum class ShouldAcknowledgeWhenReadyToSuspend { No, Yes };
     void actualPrepareToSuspend(ShouldAcknowledgeWhenReadyToSuspend);
-    void platformPrepareToSuspend();
+    void platformPrepareToSuspend(CompletionHandler<void()>&&);
     void platformProcessDidResume();
 
     // ChildProcess
@@ -186,10 +186,12 @@ private:
     void initializeSandbox(const ChildProcessInitializationParameters&, SandboxInitializationParameters&) override;
     void initializeConnection(IPC::Connection*) override;
     bool shouldTerminate() override;
+    bool shouldCallExitWhenConnectionIsClosed() const final { return false; } // We override didClose() and want it to be called.
 
     // IPC::Connection::Client
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) override;
+    void didClose(IPC::Connection&) override;
 
     // DownloadManager::Client
     void didCreateDownload() override;
@@ -207,9 +209,11 @@ private:
 
     void fetchWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, OptionSet<WebsiteDataFetchOption>, uint64_t callbackID);
     void deleteWebsiteData(PAL::SessionID, OptionSet<WebsiteDataType>, WallTime modifiedSince, uint64_t callbackID);
-    void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins, const Vector<String>& cookieHostNames, uint64_t callbackID);
+    void deleteWebsiteDataForOrigins(PAL::SessionID, OptionSet<WebsiteDataType>, const Vector<WebCore::SecurityOriginData>& origins, const Vector<String>& cookieHostNames, const Vector<String>& HSTSCacheHostnames, uint64_t callbackID);
 
     void clearCachedCredentials();
+
+    void setCacheStorageParameters(PAL::SessionID, uint64_t quota, String&& cacheStorageDirectory, SandboxExtension::Handle&&);
 
     // FIXME: This should take a session ID so we can identify which disk cache to delete.
     void clearDiskCache(WallTime modifiedSince, Function<void ()>&& completionHandler);
@@ -217,9 +221,6 @@ private:
     void downloadRequest(PAL::SessionID, DownloadID, const WebCore::ResourceRequest&, const String& suggestedFilename);
     void resumeDownload(PAL::SessionID, DownloadID, const IPC::DataReference& resumeData, const String& path, SandboxExtension::Handle&&);
     void cancelDownload(DownloadID);
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    void continueCanAuthenticateAgainstProtectionSpace(uint64_t resourceLoadIdentifier, bool canAuthenticate);
-#endif
     void continueWillSendRequest(DownloadID, WebCore::ResourceRequest&&);
     void continueDecidePendingDownloadDestination(DownloadID, String destination, SandboxExtension::Handle&&, bool allowOverwrite);
 
@@ -243,9 +244,11 @@ private:
     void setNetworkProxySettings(const WebCore::SoupNetworkProxySettings&);
 #endif
 
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     static void setSharedHTTPCookieStorage(const Vector<uint8_t>& identifier);
 #endif
+
+    void platformSyncAllCookies(CompletionHandler<void()>&&);
 
     void registerURLSchemeAsSecure(const String&) const;
     void registerURLSchemeAsBypassingContentSecurityPolicy(const String&) const;
@@ -258,8 +261,6 @@ private:
     // Connections to WebProcesses.
     Vector<RefPtr<NetworkConnectionToWebProcess>> m_webProcessConnections;
 
-    String m_cacheStorageDirectory;
-    uint64_t m_cacheStoragePerOriginQuota { 0 };
     String m_diskCacheDirectory;
     bool m_hasSetCacheModel;
     CacheModel m_cacheModel;
@@ -277,33 +278,26 @@ private:
     typedef HashMap<const char*, std::unique_ptr<NetworkProcessSupplement>, PtrHash<const char*>> NetworkProcessSupplementMap;
     NetworkProcessSupplementMap m_supplements;
 
-    HashMap<uint64_t, Function<void ()>> m_sandboxExtensionForBlobsCompletionHandlers;
-    HashMap<uint64_t, Ref<NetworkResourceLoader>> m_waitingNetworkResourceLoaders;
-#if ENABLE(SERVER_PRECONNECT)
-    HashMap<uint64_t, WeakPtr<PreconnectTask>> m_waitingPreconnectTasks;
-#endif
+    HashMap<uint64_t, Function<void()>> m_sandboxExtensionForBlobsCompletionHandlers;
     HashSet<PAL::SessionID> m_sessionsControlledByAutomation;
+
+    HashMap<PAL::SessionID, Vector<CacheStorageParametersCallback>> m_cacheStorageParametersCallbacks;
 
 #if PLATFORM(COCOA)
     void platformInitializeNetworkProcessCocoa(const NetworkProcessCreationParameters&);
-    void setCookieStoragePartitioningEnabled(bool);
     void setStorageAccessAPIEnabled(bool);
 
     // FIXME: We'd like to be able to do this without the #ifdef, but WorkQueue + BinarySemaphore isn't good enough since
     // multiple requests to clear the cache can come in before previous requests complete, and we need to wait for all of them.
     // In the future using WorkQueue and a counting semaphore would work, as would WorkQueue supporting the libdispatch concept of "work groups".
     dispatch_group_t m_clearCacheDispatchGroup;
-#endif
 
-#if PLATFORM(IOS)
-    WebSQLiteDatabaseTracker m_webSQLiteDatabaseTracker;
+    bool m_suppressesConnectionTerminationOnSystemChange { false };
 #endif
 
 #if ENABLE(CONTENT_EXTENSIONS)
     NetworkContentRuleListManager m_NetworkContentRuleListManager;
 #endif
-
-    bool m_tracksResourceLoadMilestones { false };
 };
 
 } // namespace WebKit

@@ -47,6 +47,7 @@
 #include "WebContentReader.h"
 #include "WebCorePasteboardFileReader.h"
 #include "markup.h"
+#include <wtf/unicode/CharacterNames.h>
 
 namespace WebCore {
 
@@ -72,8 +73,8 @@ DataTransfer::DataTransfer(StoreMode mode, std::unique_ptr<Pasteboard> pasteboar
     , m_pasteboard(WTFMove(pasteboard))
 #if ENABLE(DRAG_SUPPORT)
     , m_type(type)
-    , m_dropEffect(ASCIILiteral("uninitialized"))
-    , m_effectAllowed(ASCIILiteral("uninitialized"))
+    , m_dropEffect("uninitialized"_s)
+    , m_effectAllowed("uninitialized"_s)
     , m_shouldUpdateDragImage(false)
 #endif
 {
@@ -142,6 +143,19 @@ void DataTransfer::clearData(const String& type)
         m_itemList->didClearStringData(normalizedType);
 }
 
+static String readURLsFromPasteboardAsString(Pasteboard& pasteboard, Function<bool(const String&)>&& shouldIncludeURL)
+{
+    StringBuilder urlList;
+    for (auto urlString : pasteboard.readAllStrings("text/uri-list"_s)) {
+        if (!shouldIncludeURL(urlString))
+            continue;
+        if (!urlList.isEmpty())
+            urlList.append(newlineCharacter);
+        urlList.append(urlString);
+    }
+    return urlList.toString();
+}
+
 String DataTransfer::getDataForItem(Document& document, const String& type) const
 {
     if (!canReadData())
@@ -150,9 +164,9 @@ String DataTransfer::getDataForItem(Document& document, const String& type) cons
     auto lowercaseType = stripLeadingAndTrailingHTMLSpaces(type).convertToASCIILowercase();
     if (shouldSuppressGetAndSetDataToAvoidExposingFilePaths()) {
         if (lowercaseType == "text/uri-list") {
-            auto urlString = m_pasteboard->readString(lowercaseType);
-            if (Pasteboard::canExposeURLToDOMWhenPasteboardContainsFiles(urlString))
-                return urlString;
+            return readURLsFromPasteboardAsString(*m_pasteboard, [] (auto& urlString) {
+                return Pasteboard::canExposeURLToDOMWhenPasteboardContainsFiles(urlString);
+            });
         }
 
         if (lowercaseType == "text/html" && RuntimeEnabledFeatures::sharedFeatures().customPasteboardDataEnabled()) {
@@ -190,6 +204,12 @@ String DataTransfer::readStringFromPasteboard(Document& document, const String& 
         WebContentMarkupReader reader { *document.frame() };
         m_pasteboard->read(reader, policy);
         return reader.markup;
+    }
+
+    if (!is<StaticPasteboard>(*m_pasteboard) && lowercaseType == "text/uri-list") {
+        return readURLsFromPasteboardAsString(*m_pasteboard, [] (auto&) {
+            return true;
+        });
     }
 
     return m_pasteboard->readString(lowercaseType);
@@ -305,7 +325,7 @@ Vector<String> DataTransfer::types(AddFilesType addFilesType) const
     if (hasFileBackedItem || fileContentState != Pasteboard::FileContentState::NoFileOrImageData) {
         Vector<String> types;
         if (addFilesType == AddFilesType::Yes)
-            types.append(ASCIILiteral("Files"));
+            types.append("Files"_s);
 
         if (fileContentState != Pasteboard::FileContentState::MayContainFilePaths) {
             types.appendVector(WTFMove(safeTypes));
@@ -313,9 +333,9 @@ Vector<String> DataTransfer::types(AddFilesType addFilesType) const
         }
 
         if (safeTypes.contains("text/uri-list"))
-            types.append(ASCIILiteral("text/uri-list"));
+            types.append("text/uri-list"_s);
         if (safeTypes.contains("text/html") && RuntimeEnabledFeatures::sharedFeatures().customPasteboardDataEnabled())
-            types.append(ASCIILiteral("text/html"));
+            types.append("text/html"_s);
         return types;
     }
 
@@ -327,7 +347,7 @@ Vector<Ref<File>> DataTransfer::filesFromPasteboardAndItemList() const
 {
     bool addedFilesFromPasteboard = false;
     Vector<Ref<File>> files;
-    if (!forDrag() || forFileDrag()) {
+    if ((!forDrag() || forFileDrag()) && m_pasteboard->fileContentState() != Pasteboard::FileContentState::NoFileOrImageData) {
         WebCorePasteboardFileReader reader;
         m_pasteboard->read(reader);
         files = WTFMove(reader.files);
@@ -396,8 +416,8 @@ bool DataTransfer::hasStringOfType(const String& type)
 Ref<DataTransfer> DataTransfer::createForInputEvent(const String& plainText, const String& htmlText)
 {
     auto pasteboard = std::make_unique<StaticPasteboard>();
-    pasteboard->writeString(ASCIILiteral("text/plain"), plainText);
-    pasteboard->writeString(ASCIILiteral("text/html"), htmlText);
+    pasteboard->writeString("text/plain"_s, plainText);
+    pasteboard->writeString("text/html"_s, htmlText);
     return adoptRef(*new DataTransfer(StoreMode::Readonly, WTFMove(pasteboard), Type::InputEvent));
 }
 
@@ -421,7 +441,7 @@ void DataTransfer::commitToPasteboard(Pasteboard& nativePasteboard)
 
 String DataTransfer::dropEffect() const
 {
-    return ASCIILiteral("none");
+    return "none"_s;
 }
 
 void DataTransfer::setDropEffect(const String&)
@@ -430,7 +450,7 @@ void DataTransfer::setDropEffect(const String&)
 
 String DataTransfer::effectAllowed() const
 {
-    return ASCIILiteral("uninitialized");
+    return "uninitialized"_s;
 }
 
 void DataTransfer::setEffectAllowed(const String&)
@@ -641,7 +661,7 @@ void DataTransfer::setDestinationOperation(DragOperation operation)
 
 String DataTransfer::dropEffect() const
 {
-    return m_dropEffect == "uninitialized" ? ASCIILiteral("none") : m_dropEffect;
+    return m_dropEffect == "uninitialized" ? "none"_s : m_dropEffect;
 }
 
 void DataTransfer::setDropEffect(const String& effect)

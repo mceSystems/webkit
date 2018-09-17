@@ -63,6 +63,8 @@
 #include <WebCore/Page.h>
 #include <WebCore/PageOverlay.h>
 #include <WebCore/PageOverlayController.h>
+#include <WebCore/RenderLayerCompositor.h>
+#include <WebCore/ScriptExecutionContext.h>
 #include <WebCore/SecurityOriginData.h>
 #include <WebCore/URL.h>
 #include <WebCore/WheelEventTestTrigger.h>
@@ -618,6 +620,25 @@ void WKBundlePageRegisterScrollOperationCompletionCallback(WKBundlePageRef pageR
     });
 }
 
+void WKBundlePagePostTask(WKBundlePageRef pageRef, WKBundlePageTestNotificationCallback callback, void* context)
+{
+    if (!callback)
+        return;
+    
+    WebKit::WebPage* webPage = toImpl(pageRef);
+    WebCore::Page* page = webPage ? webPage->corePage() : nullptr;
+    if (!page)
+        return;
+
+    WebCore::Document* document = page->mainFrame().document();
+    if (!document)
+        return;
+
+    document->postTask([=] (WebCore::ScriptExecutionContext&) {
+        callback(context);
+    });
+}
+
 void WKBundlePagePostMessage(WKBundlePageRef pageRef, WKStringRef messageNameRef, WKTypeRef messageBodyRef)
 {
     toImpl(pageRef)->postMessage(toWTFString(messageNameRef), toImpl(messageBodyRef));
@@ -713,3 +734,21 @@ void WKBundlePageSetEventThrottlingBehaviorOverride(WKBundlePageRef page, WKEven
 
     toImpl(page)->corePage()->setEventThrottlingBehaviorOverride(behaviorValue);
 }
+
+void WKBundlePageSetCompositingPolicyOverride(WKBundlePageRef page, WKCompositingPolicy* policy)
+{
+    std::optional<WebCore::CompositingPolicy> policyValue;
+    if (policy) {
+        switch (*policy) {
+        case kWKCompositingPolicyNormal:
+            policyValue = WebCore::CompositingPolicy::Normal;
+            break;
+        case kWKCompositingPolicyConservative:
+            policyValue = WebCore::CompositingPolicy::Conservative;
+            break;
+        }
+    }
+
+    toImpl(page)->corePage()->setCompositingPolicyOverride(policyValue);
+}
+

@@ -967,7 +967,7 @@ void RenderDeprecatedFlexibleBox::applyLineClamp(FlexBoxIterator& iterator, bool
         if (lineCount <= numVisibleLines)
             continue;
 
-        LayoutUnit newHeight = blockChild.logicalHeightForLineCount(numVisibleLines);
+        LayoutUnit newHeight = blockChild.heightForLineCount(numVisibleLines);
         if (newHeight == child->height())
             continue;
 
@@ -976,7 +976,7 @@ void RenderDeprecatedFlexibleBox::applyLineClamp(FlexBoxIterator& iterator, bool
         child->layoutIfNeeded();
 
         // FIXME: For now don't support RTL.
-        if (style().direction() != LTR)
+        if (style().direction() != TextDirection::LTR)
             continue;
 
         // Get the last line

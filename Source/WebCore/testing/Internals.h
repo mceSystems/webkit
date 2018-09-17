@@ -40,6 +40,10 @@
 #include "MediaSessionInterruptionProvider.h"
 #endif
 
+#if ENABLE(VIDEO)
+#include "MediaElementSession.h"
+#endif
+
 namespace WebCore {
 
 class AnimationTimeline;
@@ -73,7 +77,7 @@ class MediaStreamTrack;
 class MemoryInfo;
 class MockCDMFactory;
 class MockContentFilterSettings;
-class MockCredentialsMessenger;
+class MockAuthenticatorCoordinator;
 class MockPageOverlay;
 class MockPaymentCoordinator;
 class NodeList;
@@ -241,7 +245,7 @@ public:
     bool elementShouldAutoComplete(HTMLInputElement&);
     void setEditingValue(HTMLInputElement&, const String&);
     void setAutofilled(HTMLInputElement&, bool enabled);
-    enum class AutoFillButtonType { None, Contacts, Credentials, StrongPassword, StrongConfirmationPassword };
+    enum class AutoFillButtonType { None, Contacts, Credentials, StrongPassword };
     void setShowAutoFillButton(HTMLInputElement&, AutoFillButtonType);
     AutoFillButtonType autoFillButtonType(const HTMLInputElement&);
     AutoFillButtonType lastAutoFillButtonType(const HTMLInputElement&);
@@ -249,7 +253,7 @@ public:
 
     ExceptionOr<String> autofillFieldName(Element&);
 
-    ExceptionOr<void> paintControlTints();
+    ExceptionOr<void> invalidateControlTints();
 
     RefPtr<Range> rangeFromLocationAndLength(Element& scope, int rangeLocation, int rangeLength);
     unsigned locationFromRange(Element& scope, const Range&);
@@ -282,6 +286,14 @@ public:
 
     void updateEditorUINowIfScheduled();
 
+    bool sentenceRetroCorrectionEnabled() const
+    {
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+        return true;
+#else
+        return false;
+#endif
+    }
     bool hasSpellingMarker(int from, int length);
     bool hasGrammarMarker(int from, int length);
     bool hasAutocorrectedMarker(int from, int length);
@@ -352,6 +364,15 @@ public:
     unsigned numberOfLiveDocuments() const;
     unsigned referencingNodeCount(const Document&) const;
 
+#if ENABLE(INTERSECTION_OBSERVER)
+    unsigned numberOfIntersectionObservers(const Document&) const;
+#endif
+
+    uint64_t documentIdentifier(const Document&) const;
+    bool isDocumentAlive(uint64_t documentIdentifier) const;
+
+    String serviceWorkerClientIdentifier(const Document&) const;
+
     RefPtr<WindowProxy> openDummyInspectorFrontend(const String& url);
     void closeDummyInspectorFrontend();
     ExceptionOr<void> setInspectorIsUnderTest(bool);
@@ -386,10 +407,18 @@ public:
     void webkitDidEnterFullScreenForElement(Element&);
     void webkitWillExitFullScreenForElement(Element&);
     void webkitDidExitFullScreenForElement(Element&);
+    bool isAnimatingFullScreen() const;
 #endif
 
-    void setFullscreenInsetTop(double);
-    void setFullscreenAutoHideDelay(double);
+    struct FullscreenInsets {
+        float top { 0 };
+        float left { 0 };
+        float bottom { 0 };
+        float right { 0 };
+    };
+    void setFullscreenInsets(FullscreenInsets);
+    void setFullscreenAutoHideDuration(double);
+    void setFullscreenControlsHidden(bool);
 
     WEBCORE_TESTSUPPORT_EXPORT void setApplicationCacheOriginQuota(unsigned long long);
 
@@ -416,6 +445,10 @@ public:
 
     ExceptionOr<void> startTrackingCompositingUpdates();
     ExceptionOr<unsigned> compositingUpdateCount();
+
+    enum CompositingPolicy { Normal, Conservative };
+    ExceptionOr<void> setCompositingPolicyOverride(std::optional<CompositingPolicy>);
+    ExceptionOr<std::optional<CompositingPolicy>> compositingPolicyOverride() const;
 
     ExceptionOr<void> updateLayoutIgnorePendingStylesheetsAndRunPostLayoutTasks(Node*);
     unsigned layoutCount() const;
@@ -446,6 +479,8 @@ public:
 #if ENABLE(ENCRYPTED_MEDIA)
     Ref<MockCDMFactory> registerMockCDM();
 #endif
+
+    void enableMockMediaCapabilities();
 
 #if ENABLE(SPEECH_SYNTHESIS)
     void enableMockSpeechSynthesizer();
@@ -585,7 +620,7 @@ public:
 
     RefPtr<GCObservation> observeGC(JSC::JSValue);
 
-    enum class UserInterfaceLayoutDirection { LTR, RTL };
+    enum class UserInterfaceLayoutDirection : uint8_t { LTR, RTL };
     void setUserInterfaceLayoutDirection(UserInterfaceLayoutDirection);
 
     bool userPrefersReducedMotion() const;
@@ -612,6 +647,8 @@ public:
 #endif
 
     void setPageVisibility(bool isVisible);
+    void setPageIsFocusedAndActive(bool);
+
 
 #if ENABLE(WEB_RTC)
     void setH264HardwareEncoderAllowed(bool allowed);
@@ -633,6 +670,7 @@ public:
 #endif
 
     String audioSessionCategory() const;
+    double preferredAudioBufferSize() const;
 
     void clearCacheStorageMemoryRepresentation(DOMPromiseDeferred<void>&&);
     void cacheStorageEngineRepresentation(DOMPromiseDeferred<IDLDOMString>&&);
@@ -659,14 +697,11 @@ public:
     void testIncomingSyncIPCMessageWhileWaitingForSyncReply();
 
 #if ENABLE(WEB_AUTHN)
-    MockCredentialsMessenger& mockCredentialsMessenger() const;
+    MockAuthenticatorCoordinator& mockAuthenticatorCoordinator() const;
 #endif
 
-    String systemPreviewRelType();
     bool isSystemPreviewLink(Element&) const;
     bool isSystemPreviewImage(Element&) const;
-
-    String extraZoomModeAdaptationName() const;
 
     bool usingAppleInternalSDK() const;
 
@@ -680,6 +715,27 @@ public:
     };
     ExceptionOr<NowPlayingState> nowPlayingState() const;
 
+#if ENABLE(VIDEO)
+    using PlaybackControlsPurpose = MediaElementSession::PlaybackControlsPurpose;
+    RefPtr<HTMLMediaElement> bestMediaElementForShowingPlaybackControlsManager(PlaybackControlsPurpose);
+
+    using MediaSessionState = PlatformMediaSession::State;
+    MediaSessionState mediaSessionState(HTMLMediaElement&);
+#endif
+
+    void setCaptureExtraNetworkLoadMetricsEnabled(bool);
+    String ongoingLoadsDescriptions() const;
+
+    void reloadWithoutContentExtensions();
+
+    void setUseSystemAppearance(bool);
+
+    size_t pluginCount();
+
+    void notifyResourceLoadObserver();
+
+    unsigned primaryScreenDisplayID();
+        
 private:
     explicit Internals(Document&);
     Document* contextDocument() const;
@@ -707,7 +763,7 @@ private:
 #endif
 
 #if ENABLE(WEB_AUTHN)
-    std::unique_ptr<MockCredentialsMessenger> m_mockCredentialsMessenger;
+    WeakPtr<MockAuthenticatorCoordinator> m_mockAuthenticatorCoordinator;
 #endif
 };
 

@@ -39,7 +39,9 @@
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/Lock.h>
+#include <wtf/ObjectIdentifier.h>
 #include <wtf/OptionSet.h>
+#include <wtf/RunLoop.h>
 #include <wtf/WorkQueue.h>
 #include <wtf/text/CString.h>
 
@@ -85,7 +87,7 @@ while (0)
 class MachMessage;
 class UnixMessage;
 
-class Connection : public ThreadSafeRefCounted<Connection> {
+class Connection : public ThreadSafeRefCounted<Connection, WTF::DestructionThread::Main> {
 public:
     class Client : public MessageReceiver {
     public:
@@ -150,6 +152,12 @@ public:
 
     Client& client() const { return m_client; }
 
+    enum UniqueIDType { };
+    using UniqueID = ObjectIdentifier<UniqueIDType>;
+
+    static Connection* connection(UniqueID);
+    UniqueID uniqueID() const { return m_uniqueID; }
+
     void setOnlySendMessagesAsDispatchWhenWaitingForSyncReplyWhenProcessingSuchAMessage(bool);
     void setShouldExitOnSyncMessageSendFailure(bool);
 
@@ -209,6 +217,8 @@ public:
 
     void ignoreTimeoutsForTesting() { m_ignoreTimeoutsForTesting = true; }
 
+    void enableIncomingMessagesThrottling();
+
 private:
     Connection(Identifier, bool isServer, Client&);
     void platformInitialize(Identifier);
@@ -231,7 +241,8 @@ private:
     void connectionDidClose();
     
     // Called on the listener thread.
-    void dispatchOneMessage();
+    void dispatchOneIncomingMessage();
+    void dispatchIncomingMessages();
     void dispatchMessage(std::unique_ptr<Decoder>);
     void dispatchMessage(Decoder&);
     void dispatchSyncMessage(Decoder&);
@@ -240,6 +251,7 @@ private:
 
     // Can be called on any thread.
     void enqueueIncomingMessage(std::unique_ptr<Decoder>);
+    size_t incomingMessagesDispatchingBatchSize() const;
 
     void willSendSyncMessage(OptionSet<SendSyncOption>);
     void didReceiveSyncReply(OptionSet<SendSyncOption>);
@@ -250,7 +262,23 @@ private:
     bool sendMessage(std::unique_ptr<MachMessage>);
 #endif
 
+    class MessagesThrottler {
+    public:
+        typedef void (Connection::*DispatchMessagesFunction)();
+        MessagesThrottler(Connection&, DispatchMessagesFunction);
+
+        size_t numberOfMessagesToProcess(size_t totalMessages);
+        void scheduleMessagesDispatch();
+
+    private:
+        RunLoop::Timer<Connection> m_dispatchMessagesTimer;
+        Connection& m_connection;
+        DispatchMessagesFunction m_dispatchMessages;
+        unsigned m_throttlingLevel { 0 };
+    };
+
     Client& m_client;
+    UniqueID m_uniqueID;
     bool m_isServer;
     std::atomic<bool> m_isValid { true };
     std::atomic<uint64_t> m_syncRequestID;
@@ -275,6 +303,7 @@ private:
     // Incoming messages.
     Lock m_incomingMessagesMutex;
     Deque<std::unique_ptr<Decoder>> m_incomingMessages;
+    std::unique_ptr<MessagesThrottler> m_incomingMessagesThrottler;
 
     // Outgoing messages.
     Lock m_outgoingMessagesMutex;
@@ -328,6 +357,7 @@ private:
     void receiveSourceEventHandler();
     void initializeSendSource();
     void resumeSendSource();
+    void cancelReceiveSource();
 
     mach_port_t m_sendPort { MACH_PORT_NULL };
     dispatch_source_t m_sendSource { nullptr };
@@ -339,16 +369,34 @@ private:
     bool m_isInitializingSendSource { false };
 
     OSObjectPtr<xpc_connection_t> m_xpcConnection;
+    bool m_wasKilled { false };
 #elif OS(WINDOWS)
     // Called on the connection queue.
     void readEventHandler();
     void writeEventHandler();
+    void invokeReadEventHandler();
+    void invokeWriteEventHandler();
+
+    class EventListener {
+    public:
+        void open(Function<void()>&&);
+        void close();
+
+        OVERLAPPED& state() { return m_state; }
+
+    private:
+        static void callback(void*, BOOLEAN);
+
+        OVERLAPPED m_state;
+        HANDLE m_waitHandle { INVALID_HANDLE_VALUE };
+        Function<void()> m_handler;
+    };
 
     Vector<uint8_t> m_readBuffer;
-    OVERLAPPED m_readState;
+    EventListener m_readListener;
     std::unique_ptr<Encoder> m_pendingWriteEncoder;
-    OVERLAPPED m_writeState;
-    HANDLE m_connectionPipe;
+    EventListener m_writeListener;
+    HANDLE m_connectionPipe { INVALID_HANDLE_VALUE };
 #endif
 };
 

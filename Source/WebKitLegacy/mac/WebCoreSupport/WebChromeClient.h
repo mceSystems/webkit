@@ -126,6 +126,8 @@ private:
 #endif
 
     void runOpenPanel(WebCore::Frame&, WebCore::FileChooser&) override;
+    void showShareSheet(WebCore::ShareDataWithParsedURL&, CompletionHandler<void(bool)>&&) override;
+
     void loadIconForFiles(const Vector<String>&, WebCore::FileIconLoader&) final;
     RefPtr<WebCore::Icon> createIconForFiles(const Vector<String>& filenames) override;
 
@@ -136,6 +138,10 @@ private:
 
 #if ENABLE(INPUT_TYPE_COLOR)
     std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient&, const WebCore::Color&) final;
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+    std::unique_ptr<WebCore::DataListSuggestionPicker> createDataListSuggestionPicker(WebCore::DataListSuggestionsClient&) final;
 #endif
 
 #if ENABLE(POINTER_LOCK)

@@ -23,6 +23,7 @@
 
 #include "QualifiedName.h"
 #include "RenderStyleConstants.h"
+#include <wtf/Variant.h>
 
 namespace WebCore {
     class CSSSelectorList;
@@ -148,6 +149,7 @@ namespace WebCore {
             PseudoClassFullScreenDocument,
             PseudoClassFullScreenAncestor,
             PseudoClassAnimatingFullScreenTransition,
+            PseudoClassFullScreenControlsHidden,
 #endif
             PseudoClassInRange,
             PseudoClassOutOfRange,
@@ -182,7 +184,6 @@ namespace WebCore {
             PseudoElementScrollbarTrackPiece,
             PseudoElementSelection,
             PseudoElementSlotted,
-            PseudoElementUserAgentCustom,
             PseudoElementWebKitCustom,
 
             // WebKitCustom that appeared in an old prefixed form
@@ -234,23 +235,19 @@ namespace WebCore {
         const AtomicString& serializingValue() const;
         const QualifiedName& attribute() const;
         const AtomicString& attributeCanonicalLocalName() const;
-        const AtomicString& argument() const { return m_hasRareData ? m_data.m_rareData->m_argument : nullAtom(); }
+        const AtomicString& argument() const { return WTF::holds_alternative<RefPtr<RareData>>(m_data) ? WTF::get<RefPtr<RareData>>(m_data)->m_argument : nullAtom(); }
         bool attributeValueMatchingIsCaseInsensitive() const;
-        const Vector<AtomicString>* langArgumentList() const { return m_hasRareData ? m_data.m_rareData->m_langArgumentList.get() : nullptr; }
-        const CSSSelectorList* selectorList() const { return m_hasRareData ? m_data.m_rareData->m_selectorList.get() : nullptr; }
+        const Vector<AtomicString>* langArgumentList() const { return WTF::holds_alternative<RefPtr<RareData>>(m_data) ? WTF::get<RefPtr<RareData>>(m_data)->m_langArgumentList.get() : nullptr; }
+        const CSSSelectorList* selectorList() const { return WTF::holds_alternative<RefPtr<RareData>>(m_data) ? WTF::get<RefPtr<RareData>>(m_data)->m_selectorList.get() : nullptr; }
 
         void setValue(const AtomicString&, bool matchLowerCase = false);
         
-        // FIXME-NEWPARSER: These two methods can go away once the old parser is gone.
-        void setAttribute(const QualifiedName&, bool);
-        void setAttributeValueMatchingIsCaseInsensitive(bool);
         void setAttribute(const QualifiedName&, bool convertToLowercase, AttributeMatchType);
         void setNth(int a, int b);
         void setArgument(const AtomicString&);
         void setLangArgumentList(std::unique_ptr<Vector<AtomicString>>);
         void setSelectorList(std::unique_ptr<CSSSelectorList>);
 
-        bool parseNth() const;
         bool matchNth(int count) const;
         int nthA() const;
         int nthB() const;
@@ -318,23 +315,27 @@ namespace WebCore {
         bool isLastInTagHistory() const { return m_isLastInTagHistory; }
         void setNotLastInTagHistory() { m_isLastInTagHistory = false; }
 
+#if !ASSERT_DISABLED
         bool isForPage() const { return m_isForPage; }
         void setForPage() { m_isForPage = true; }
+#endif
 
     private:
-        unsigned m_relation              : 4; // enum RelationType.
-        mutable unsigned m_match         : 4; // enum Match.
-        mutable unsigned m_pseudoType    : 8; // PseudoType.
-        mutable unsigned m_parsedNth     : 1; // Used for :nth-*.
-        unsigned m_isLastInSelectorList  : 1;
-        unsigned m_isLastInTagHistory    : 1;
-        unsigned m_hasRareData           : 1;
-        unsigned m_hasNameWithCase       : 1;
-        unsigned m_isForPage             : 1;
-        unsigned m_tagIsForNamespaceRule : 1;
-        unsigned m_caseInsensitiveAttributeValueMatching : 1;
+        struct RareData;
+        struct NameWithCase;
+        Variant<AtomicString, QualifiedName, RefPtr<RareData>, RefPtr<NameWithCase>> m_data;
+
+        unsigned char m_relation               : 3; // enum RelationType.
+        mutable unsigned char m_match          : 4; // enum Match.
+        unsigned char m_isLastInSelectorList   : 1;
+        unsigned char m_isLastInTagHistory     : 1;
+        mutable unsigned char m_pseudoType     : 7; // enum PseudoClassType.
+        unsigned char m_tagIsForNamespaceRule  : 1;
+#if !ASSERT_DISABLED
+        unsigned char m_isForPage              : 1;
+#endif
 #if !ASSERT_WITH_SECURITY_IMPLICATION_DISABLED
-        unsigned m_destructorHasBeenCalled : 1;
+        unsigned char m_destructorHasBeenCalled : 1;
 #endif
 
         unsigned simpleSelectorSpecificityForPage() const;
@@ -343,10 +344,9 @@ namespace WebCore {
         CSSSelector& operator=(const CSSSelector&);
 
         struct RareData : public RefCounted<RareData> {
-            static Ref<RareData> create(AtomicString&& value) { return adoptRef(*new RareData(WTFMove(value))); }
+            RareData(AtomicString&& value);
             ~RareData();
 
-            bool parseNth();
             bool matchNth(int count);
 
             // For quirks mode, class and id are case-insensitive. In the case where uppercase
@@ -355,16 +355,14 @@ namespace WebCore {
             AtomicString m_matchingValue;
             AtomicString m_serializingValue;
             
-            int m_a; // Used for :nth-*
-            int m_b; // Used for :nth-*
-            QualifiedName m_attribute; // used for attribute selector
+            int m_a { 0 }; // Used for :nth-*
+            int m_b { 0 }; // Used for :nth-*
+            QualifiedName m_attribute { anyQName() }; // used for attribute selector
             AtomicString m_attributeCanonicalLocalName;
-            AtomicString m_argument; // Used for :contains and :nth-*
+            AtomicString m_argument { nullAtom() }; // Used for :contains and :nth-*
             std::unique_ptr<Vector<AtomicString>> m_langArgumentList; // Used for :lang arguments.
             std::unique_ptr<CSSSelectorList> m_selectorList; // Used for :matches() and :not().
-        
-        private:
-            RareData(AtomicString&& value);
+            bool m_caseInsensitiveAttributeValueMatching { false };
         };
         void createRareData();
 
@@ -379,28 +377,20 @@ namespace WebCore {
             const QualifiedName m_originalName;
             const AtomicString m_lowercaseLocalName;
         };
-
-        union DataUnion {
-            DataUnion() : m_value(0) { }
-            AtomicStringImpl* m_value;
-            QualifiedName::QualifiedNameImpl* m_tagQName;
-            RareData* m_rareData;
-            NameWithCase* m_nameWithCase;
-        } m_data;
     };
 
 inline const QualifiedName& CSSSelector::attribute() const
 {
     ASSERT(isAttributeSelector());
-    ASSERT(m_hasRareData);
-    return m_data.m_rareData->m_attribute;
+    ASSERT(WTF::holds_alternative<RefPtr<RareData>>(m_data));
+    return WTF::get<RefPtr<RareData>>(m_data)->m_attribute;
 }
 
 inline const AtomicString& CSSSelector::attributeCanonicalLocalName() const
 {
     ASSERT(isAttributeSelector());
-    ASSERT(m_hasRareData);
-    return m_data.m_rareData->m_attributeCanonicalLocalName;
+    ASSERT(WTF::holds_alternative<RefPtr<RareData>>(m_data));
+    return WTF::get<RefPtr<RareData>>(m_data)->m_attributeCanonicalLocalName;
 }
 
 inline bool CSSSelector::matchesPseudoElement() const
@@ -416,8 +406,7 @@ inline bool CSSSelector::isUnknownPseudoElement() const
 inline bool CSSSelector::isCustomPseudoElement() const
 {
     return match() == PseudoElement
-        && (pseudoElementType() == PseudoElementUserAgentCustom
-            || pseudoElementType() == PseudoElementWebKitCustom
+        && (pseudoElementType() == PseudoElementWebKitCustom
             || pseudoElementType() == PseudoElementWebKitCustomLegacyPrefixed);
 }
 
@@ -463,34 +452,28 @@ inline void CSSSelector::setValue(const AtomicString& value, bool matchLowerCase
 {
     ASSERT(match() != Tag);
     AtomicString matchingValue = matchLowerCase ? value.convertToASCIILowercase() : value;
-    if (!m_hasRareData && matchingValue != value)
+    if (!WTF::holds_alternative<RefPtr<RareData>>(m_data) && matchingValue != value)
         createRareData();
     
-    // Need to do ref counting manually for the union.
-    if (!m_hasRareData) {
-        if (m_data.m_value)
-            m_data.m_value->deref();
-        m_data.m_value = value.impl();
-        m_data.m_value->ref();
+    if (!WTF::holds_alternative<RefPtr<RareData>>(m_data)) {
+        m_data = value;
         return;
     }
 
-    m_data.m_rareData->m_matchingValue = WTFMove(matchingValue);
-    m_data.m_rareData->m_serializingValue = value;
+    WTF::get<RefPtr<RareData>>(m_data)->m_matchingValue = WTFMove(matchingValue);
+    WTF::get<RefPtr<RareData>>(m_data)->m_serializingValue = value;
 }
 
 inline CSSSelector::CSSSelector()
     : m_relation(DescendantSpace)
     , m_match(Unknown)
-    , m_pseudoType(0)
-    , m_parsedNth(false)
     , m_isLastInSelectorList(false)
     , m_isLastInTagHistory(true)
-    , m_hasRareData(false)
-    , m_hasNameWithCase(false)
-    , m_isForPage(false)
+    , m_pseudoType(0)
     , m_tagIsForNamespaceRule(false)
-    , m_caseInsensitiveAttributeValueMatching(false)
+#if !ASSERT_DISABLED
+    , m_isForPage(false)
+#endif
 #if !ASSERT_WITH_SECURITY_IMPLICATION_DISABLED
     , m_destructorHasBeenCalled(false)
 #endif
@@ -498,34 +481,20 @@ inline CSSSelector::CSSSelector()
 }
 
 inline CSSSelector::CSSSelector(const CSSSelector& o)
-    : m_relation(o.m_relation)
+    : m_data(o.m_data)
+    , m_relation(o.m_relation)
     , m_match(o.m_match)
-    , m_pseudoType(o.m_pseudoType)
-    , m_parsedNth(o.m_parsedNth)
     , m_isLastInSelectorList(o.m_isLastInSelectorList)
     , m_isLastInTagHistory(o.m_isLastInTagHistory)
-    , m_hasRareData(o.m_hasRareData)
-    , m_hasNameWithCase(o.m_hasNameWithCase)
-    , m_isForPage(o.m_isForPage)
+    , m_pseudoType(o.m_pseudoType)
     , m_tagIsForNamespaceRule(o.m_tagIsForNamespaceRule)
-    , m_caseInsensitiveAttributeValueMatching(o.m_caseInsensitiveAttributeValueMatching)
+#if !ASSERT_DISABLED
+    , m_isForPage(o.m_isForPage)
+#endif
 #if !ASSERT_WITH_SECURITY_IMPLICATION_DISABLED
     , m_destructorHasBeenCalled(false)
 #endif
 {
-    if (o.m_hasRareData) {
-        m_data.m_rareData = o.m_data.m_rareData;
-        m_data.m_rareData->ref();
-    } else if (o.m_hasNameWithCase) {
-        m_data.m_nameWithCase = o.m_data.m_nameWithCase;
-        m_data.m_nameWithCase->ref();
-    } if (o.match() == Tag) {
-        m_data.m_tagQName = o.m_data.m_tagQName;
-        m_data.m_tagQName->ref();
-    } else if (o.m_data.m_value) {
-        m_data.m_value = o.m_data.m_value;
-        m_data.m_value->ref();
-    }
 }
 
 inline CSSSelector::~CSSSelector()
@@ -534,68 +503,44 @@ inline CSSSelector::~CSSSelector()
 #if !ASSERT_WITH_SECURITY_IMPLICATION_DISABLED
     m_destructorHasBeenCalled = true;
 #endif
-    if (m_hasRareData) {
-        m_data.m_rareData->deref();
-        m_data.m_rareData = nullptr;
-        m_hasRareData = false;
-    } else if (m_hasNameWithCase) {
-        m_data.m_nameWithCase->deref();
-        m_data.m_nameWithCase = nullptr;
-        m_hasNameWithCase = false;
-    } else if (match() == Tag) {
-        m_data.m_tagQName->deref();
-        m_data.m_tagQName = nullptr;
-        m_match = Unknown;
-    } else if (m_data.m_value) {
-        m_data.m_value->deref();
-        m_data.m_value = nullptr;
-    }
 }
 
 inline const QualifiedName& CSSSelector::tagQName() const
 {
     ASSERT(match() == Tag);
-    if (m_hasNameWithCase)
-        return m_data.m_nameWithCase->m_originalName;
-    return *reinterpret_cast<const QualifiedName*>(&m_data.m_tagQName);
+    if (WTF::holds_alternative<RefPtr<NameWithCase>>(m_data))
+        return WTF::get<RefPtr<NameWithCase>>(m_data)->m_originalName;
+    return WTF::get<QualifiedName>(m_data);
 }
 
 inline const AtomicString& CSSSelector::tagLowercaseLocalName() const
 {
-    if (m_hasNameWithCase)
-        return m_data.m_nameWithCase->m_lowercaseLocalName;
-    return m_data.m_tagQName->m_localName;
+    if (WTF::holds_alternative<RefPtr<NameWithCase>>(m_data))
+        return WTF::get<RefPtr<NameWithCase>>(m_data)->m_lowercaseLocalName;
+    return WTF::get<QualifiedName>(m_data).localName();
 }
 
 inline const AtomicString& CSSSelector::value() const
 {
     ASSERT(match() != Tag);
-    if (m_hasRareData)
-        return m_data.m_rareData->m_matchingValue;
+    if (WTF::holds_alternative<RefPtr<RareData>>(m_data))
+        return WTF::get<RefPtr<RareData>>(m_data)->m_matchingValue;
 
-    // AtomicString is really just an AtomicStringImpl* so the cast below is safe.
-    return *reinterpret_cast<const AtomicString*>(&m_data.m_value);
+    return WTF::get<AtomicString>(m_data);
 }
 
 inline const AtomicString& CSSSelector::serializingValue() const
 {
     ASSERT(match() != Tag);
-    if (m_hasRareData)
-        return m_data.m_rareData->m_serializingValue;
+    if (WTF::holds_alternative<RefPtr<RareData>>(m_data))
+        return WTF::get<RefPtr<RareData>>(m_data)->m_serializingValue;
     
-    // AtomicString is really just an AtomicStringImpl* so the cast below is safe.
-    return *reinterpret_cast<const AtomicString*>(&m_data.m_value);
-}
-
-inline void CSSSelector::setAttributeValueMatchingIsCaseInsensitive(bool isCaseInsensitive)
-{
-    ASSERT(isAttributeSelector() && match() != CSSSelector::Set);
-    m_caseInsensitiveAttributeValueMatching = isCaseInsensitive;
+    return WTF::get<AtomicString>(m_data);
 }
     
 inline bool CSSSelector::attributeValueMatchingIsCaseInsensitive() const
 {
-    return m_caseInsensitiveAttributeValueMatching;
+    return WTF::holds_alternative<RefPtr<RareData>>(m_data) && WTF::get<RefPtr<RareData>>(m_data)->m_caseInsensitiveAttributeValueMatching;
 }
 
 } // namespace WebCore

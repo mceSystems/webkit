@@ -45,9 +45,12 @@
 #include <WebCore/Settings.h>
 #include <WebCore/TypedElementDescendantIterator.h>
 
-using namespace WebCore;
+#if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+#include "PlaybackSessionManager.h"
+#endif
 
 namespace WebKit {
+using namespace WebCore;
 
 static IntRect screenRectOfContents(Element* element)
 {
@@ -79,6 +82,35 @@ WebFullScreenManager::~WebFullScreenManager()
 WebCore::Element* WebFullScreenManager::element() 
 { 
     return m_element.get(); 
+}
+
+void WebFullScreenManager::videoControlsManagerDidChange()
+{
+#if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+    auto* currentPlaybackControlsElement = m_page->playbackSessionManager().currentPlaybackControlsElement();
+    if (!m_element || !is<HTMLVideoElement>(currentPlaybackControlsElement)) {
+        setPIPStandbyElement(nullptr);
+        return;
+    }
+
+    setPIPStandbyElement(downcast<HTMLVideoElement>(currentPlaybackControlsElement));
+#endif
+}
+
+void WebFullScreenManager::setPIPStandbyElement(WebCore::HTMLVideoElement* pipStandbyElement)
+{
+#if ENABLE(VIDEO)
+    if (pipStandbyElement == m_pipStandbyElement)
+        return;
+
+    if (m_pipStandbyElement)
+        m_pipStandbyElement->setVideoFullscreenStandby(false);
+
+    m_pipStandbyElement = pipStandbyElement;
+
+    if (m_pipStandbyElement)
+        m_pipStandbyElement->setVideoFullscreenStandby(true);
+#endif
 }
 
 void WebFullScreenManager::didReceiveMessage(IPC::Connection& connection, IPC::Decoder& decoder)
@@ -125,10 +157,9 @@ void WebFullScreenManager::didEnterFullScreen()
     ASSERT(m_element);
     m_element->document().webkitDidEnterFullScreenForElement(m_element.get());
 
-#if ENABLE(VIDEO)
-    m_pipStandbyElement = descendantsOfType<HTMLVideoElement>(*m_element).first();
-    if (m_pipStandbyElement)
-        m_pipStandbyElement->setVideoFullscreenStandby(true);
+#if PLATFORM(IOS) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
+    auto* currentPlaybackControlsElement = m_page->playbackSessionManager().currentPlaybackControlsElement();
+    setPIPStandbyElement(is<HTMLVideoElement>(currentPlaybackControlsElement) ? downcast<HTMLVideoElement>(currentPlaybackControlsElement) : nullptr);
 #endif
 }
 
@@ -137,9 +168,7 @@ void WebFullScreenManager::willExitFullScreen()
     ASSERT(m_element);
 
 #if ENABLE(VIDEO)
-    if (m_pipStandbyElement)
-        m_pipStandbyElement->setVideoFullscreenStandby(false);
-    m_pipStandbyElement = nullptr;
+    setPIPStandbyElement(nullptr);
 #endif
 
     m_finalFrame = screenRectOfContents(m_element.get());
@@ -153,8 +182,8 @@ void WebFullScreenManager::willExitFullScreen()
 void WebFullScreenManager::didExitFullScreen()
 {
     ASSERT(m_element);
-    setFullscreenInsetTop(0);
-    setFullscreenAutoHideDelay(0);
+    setFullscreenInsets(FloatBoxExtent());
+    setFullscreenAutoHideDuration(0_s);
     m_element->document().webkitDidExitFullScreenForElement(m_element.get());
 }
 
@@ -185,14 +214,19 @@ void WebFullScreenManager::restoreScrollPosition()
     m_page->corePage()->mainFrame().view()->setScrollPosition(m_scrollPosition);
 }
 
-void WebFullScreenManager::setFullscreenInsetTop(double inset)
+void WebFullScreenManager::setFullscreenInsets(const WebCore::FloatBoxExtent& insets)
 {
-    m_page->corePage()->setFullscreenInsetTop(inset);
+    m_page->corePage()->setFullscreenInsets(insets);
 }
 
-void WebFullScreenManager::setFullscreenAutoHideDelay(double delay)
+void WebFullScreenManager::setFullscreenAutoHideDuration(Seconds duration)
 {
-    m_page->corePage()->setFullscreenAutoHideDelay(delay);
+    m_page->corePage()->setFullscreenAutoHideDuration(duration);
+}
+
+void WebFullScreenManager::setFullscreenControlsHidden(bool hidden)
+{
+    m_page->corePage()->setFullscreenControlsHidden(hidden);
 }
 
 } // namespace WebKit

@@ -143,10 +143,6 @@ void UIScriptController::typeCharacterUsingHardwareKeyboard(JSStringRef characte
 {
 }
 
-void UIScriptController::selectTextCandidateAtIndex(long, JSValueRef)
-{
-}
-
 void UIScriptController::keyDownUsingHardwareKeyboard(JSStringRef character, JSValueRef callback)
 {
 }
@@ -163,8 +159,17 @@ void UIScriptController::setTimePickerValue(long, long)
 {
 }
 
+void UIScriptController::invokeShareSheetWithResolution(bool)
+{
+}
+
 void UIScriptController::selectFormAccessoryPickerRow(long rowIndex)
 {
+}
+
+JSRetainPtr<JSStringRef> UIScriptController::textContentType() const
+{
+    return nullptr;
 }
 
 JSRetainPtr<JSStringRef> UIScriptController::selectFormPopoverTitle() const
@@ -359,6 +364,16 @@ void UIScriptController::beginBackSwipe(JSValueRef callback)
 
 void UIScriptController::completeBackSwipe(JSValueRef callback)
 {
+}
+
+JSObjectRef UIScriptController::selectionStartGrabberViewRect() const
+{
+    return nullptr;
+}
+
+JSObjectRef UIScriptController::selectionEndGrabberViewRect() const
+{
+    return nullptr;
 }
 
 }

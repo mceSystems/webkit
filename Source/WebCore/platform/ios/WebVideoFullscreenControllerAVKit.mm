@@ -174,6 +174,7 @@ private:
     void toggleMuted() override;
     void setMuted(bool) final;
     void setVolume(double) final;
+    void setPlayingOnSecondScreen(bool) final;
 
     // PlaybackSessionModelClient
     void durationChanged(double) override;
@@ -201,7 +202,13 @@ private:
     FloatSize videoDimensions() const override;
     bool isMuted() const override;
     double volume() const override;
+    bool isPictureInPictureSupported() const override;
     bool isPictureInPictureActive() const override;
+    void willEnterPictureInPicture() final;
+    void didEnterPictureInPicture() final;
+    void failedToEnterPictureInPicture() final;
+    void willExitPictureInPicture() final;
+    void didExitPictureInPicture() final;
 
     HashSet<PlaybackSessionModelClient*> m_playbackClients;
     HashSet<VideoFullscreenModelClient*> m_fullscreenClients;
@@ -285,7 +292,7 @@ void VideoFullscreenControllerContext::didSetupFullscreen()
 
 void VideoFullscreenControllerContext::willExitFullscreen()
 {
-#if ENABLE(EXTRA_ZOOM_MODE)
+#if PLATFORM(WATCHOS)
     ASSERT(isUIThread());
     WebThreadRun([protectedThis = makeRefPtr(this), this] () mutable {
         m_fullscreenModel->willExitFullscreen();
@@ -323,6 +330,7 @@ void VideoFullscreenControllerContext::didCleanupFullscreen()
         m_fullscreenModel->setVideoFullscreenLayer(nil);
         m_fullscreenModel->setVideoElement(nullptr);
         m_playbackModel->setMediaElement(nullptr);
+        m_playbackModel->removeClient(*this);
         m_fullscreenModel->removeClient(*this);
         m_fullscreenModel = nullptr;
         m_videoElement = nullptr;
@@ -627,6 +635,47 @@ bool VideoFullscreenControllerContext::isPictureInPictureActive() const
     return m_playbackModel ? m_playbackModel->isPictureInPictureActive() : false;
 }
 
+bool VideoFullscreenControllerContext::isPictureInPictureSupported() const
+{
+    ASSERT(isUIThread());
+    return m_playbackModel ? m_playbackModel->isPictureInPictureSupported() : false;
+}
+
+void VideoFullscreenControllerContext::willEnterPictureInPicture()
+{
+    ASSERT(isUIThread());
+    for (auto* client : m_fullscreenClients)
+        client->willEnterPictureInPicture();
+}
+
+void VideoFullscreenControllerContext::didEnterPictureInPicture()
+{
+    ASSERT(isUIThread());
+    for (auto* client : m_fullscreenClients)
+        client->didEnterPictureInPicture();
+}
+
+void VideoFullscreenControllerContext::failedToEnterPictureInPicture()
+{
+    ASSERT(isUIThread());
+    for (auto* client : m_fullscreenClients)
+        client->failedToEnterPictureInPicture();
+}
+
+void VideoFullscreenControllerContext::willExitPictureInPicture()
+{
+    ASSERT(isUIThread());
+    for (auto* client : m_fullscreenClients)
+        client->willExitPictureInPicture();
+}
+
+void VideoFullscreenControllerContext::didExitPictureInPicture()
+{
+    ASSERT(isUIThread());
+    for (auto* client : m_fullscreenClients)
+        client->didExitPictureInPicture();
+}
+
 FloatSize VideoFullscreenControllerContext::videoDimensions() const
 {
     ASSERT(isUIThread());
@@ -698,6 +747,15 @@ void VideoFullscreenControllerContext::setVolume(double volume)
     WebThreadRun([protectedThis = makeRefPtr(this), this, volume] {
         if (m_playbackModel)
             m_playbackModel->setVolume(volume);
+    });
+}
+
+void VideoFullscreenControllerContext::setPlayingOnSecondScreen(bool value)
+{
+    ASSERT(isUIThread());
+    WebThreadRun([protectedThis = makeRefPtr(this), this, value] {
+        if (m_playbackModel)
+            m_playbackModel->setPlayingOnSecondScreen(value);
     });
 }
 

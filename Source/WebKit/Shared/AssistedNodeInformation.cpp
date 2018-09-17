@@ -77,6 +77,7 @@ void AssistedNodeInformation::encode(IPC::Encoder& encoder) const
     encoder << isRTL;
     encoder.encodeEnum(autocapitalizeType);
     encoder.encodeEnum(elementType);
+    encoder.encodeEnum(inputMode);
     encoder << formAction;
     encoder << selectOptions;
     encoder << selectedIndex;
@@ -89,12 +90,19 @@ void AssistedNodeInformation::encode(IPC::Encoder& encoder) const
     encoder << valueAsNumber;
     encoder << title;
     encoder << acceptsAutofilledLoginCredentials;
+    encoder << isAutofillableUsernameField;
     encoder << representingPageURL;
     encoder.encodeEnum(autofillFieldName);
     encoder << placeholder;
     encoder << label;
     encoder << ariaLabel;
     encoder << assistedNodeIdentifier;
+#if ENABLE(DATALIST_ELEMENT)
+    encoder << hasSuggestions;
+#if ENABLE(INPUT_TYPE_COLOR)
+    encoder << suggestedColors;
+#endif
+#endif
 }
 
 bool AssistedNodeInformation::decode(IPC::Decoder& decoder, AssistedNodeInformation& result)
@@ -141,6 +149,9 @@ bool AssistedNodeInformation::decode(IPC::Decoder& decoder, AssistedNodeInformat
     if (!decoder.decodeEnum(result.elementType))
         return false;
 
+    if (!decoder.decodeEnum(result.inputMode))
+        return false;
+
     if (!decoder.decode(result.formAction))
         return false;
 
@@ -177,6 +188,9 @@ bool AssistedNodeInformation::decode(IPC::Decoder& decoder, AssistedNodeInformat
     if (!decoder.decode(result.acceptsAutofilledLoginCredentials))
         return false;
 
+    if (!decoder.decode(result.isAutofillableUsernameField))
+        return false;
+
     if (!decoder.decode(result.representingPageURL))
         return false;
 
@@ -194,6 +208,16 @@ bool AssistedNodeInformation::decode(IPC::Decoder& decoder, AssistedNodeInformat
 
     if (!decoder.decode(result.assistedNodeIdentifier))
         return false;
+
+#if ENABLE(DATALIST_ELEMENT)
+    if (!decoder.decode(result.hasSuggestions))
+        return false;
+
+#if ENABLE(INPUT_TYPE_COLOR)
+    if (!decoder.decode(result.suggestedColors))
+        return false;
+#endif
+#endif
 
     return true;
 }

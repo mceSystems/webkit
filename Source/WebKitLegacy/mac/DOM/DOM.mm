@@ -244,8 +244,7 @@ static inline WKQuad zeroQuad()
 
 @implementation DOMNode (WebCoreInternal)
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"
+IGNORE_CLANG_WARNINGS_BEGIN("objc-protocol-method-implementation")
 
 - (NSString *)description
 {
@@ -259,7 +258,7 @@ static inline WKQuad zeroQuad()
     return [NSString stringWithFormat:@"<%@ [%@]: %p>", [[self class] description], [self nodeName], _internal];
 }
 
-#pragma clang diagnostic pop
+IGNORE_CLANG_WARNINGS_END
 
 - (Bindings::RootObject*)_rootObject
 {
@@ -694,7 +693,7 @@ id <DOMEventTarget> kit(EventTarget* target)
     auto* cachedImage = downcast<RenderImage>(*renderer).cachedImage();
     if (!cachedImage || cachedImage->errorOccurred())
         return nil;
-    return (NSData *)cachedImage->imageForRenderer(renderer)->tiffRepresentation();
+    return (__bridge NSData *)cachedImage->imageForRenderer(renderer)->tiffRepresentation();
 }
 
 #endif
@@ -841,13 +840,6 @@ WebCore::NodeFilter* core(DOMNodeFilter *wrapper)
     if (_internal)
         reinterpret_cast<WebCore::NodeFilter*>(_internal)->deref();
     [super dealloc];
-}
-
-- (void)finalize
-{
-    if (_internal)
-        reinterpret_cast<WebCore::NodeFilter*>(_internal)->deref();
-    [super finalize];
 }
 
 - (short)acceptNode:(DOMNode *)node

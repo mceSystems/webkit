@@ -148,6 +148,10 @@ private:
     std::unique_ptr<WebCore::ColorChooser> createColorChooser(WebCore::ColorChooserClient&, const WebCore::Color&) final;
 #endif
 
+#if ENABLE(DATALIST_ELEMENT)
+    std::unique_ptr<WebCore::DataListSuggestionPicker> createDataListSuggestionPicker(WebCore::DataListSuggestionsClient&) final;
+#endif
+
 #if ENABLE(IOS_TOUCH_EVENTS)
     void didPreventDefaultForEvent() final;
 #endif
@@ -183,6 +187,7 @@ private:
 #endif
 
     void runOpenPanel(WebCore::Frame&, WebCore::FileChooser&) final;
+    void showShareSheet(WebCore::ShareDataWithParsedURL&, WTF::CompletionHandler<void(bool)>&&) final;
     void loadIconForFiles(const Vector<String>&, WebCore::FileIconLoader&) final;
 
 #if !PLATFORM(IOS)
@@ -362,6 +367,8 @@ private:
     void hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&&) final;
     void requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&&) final;
 #endif
+
+    bool isViewVisible() final;
 
     String m_cachedToolTip;
     mutable RefPtr<WebFrame> m_cachedFrameSetLargestFrame;

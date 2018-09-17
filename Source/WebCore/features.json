@@ -549,7 +549,7 @@
     {
         "name": "Web Animations",
         "status": {
-            "status": "Under Consideration"
+            "status": "Supported In Preview"
         },
         "url": "https://www.w3.org/TR/web-animations-1/",
         "keywords": ["web animations"],
@@ -970,6 +970,15 @@
         "description": "The \"pointer\" media defines how percise the pointing device is. The \"hover\" media defines the ability of the poiting device to hover elements."
     },
     {
+        "name": "MediaStream Recording API",
+        "status": {
+            "status": "Under Consideration"
+        },
+        "url": "https://w3c.github.io/mediacapture-record",
+        "webkit-url": "https://bugs.webkit.org/show_bug.cgi?id=85851",
+        "comment": "Allows recording of audio and/or video MediaStream."
+    },
+    {
         "name": "MicroData",
         "status": {
             "status": "Removed"
@@ -1193,10 +1202,11 @@
     {
         "name": "Web Authentication",
         "status": {
-            "status": "Under Consideration"
+            "status": "In Development"
         },
         "url": "https://w3c.github.io/webauthn/",
-        "keywords": ["authentication", "credentials"],
+        "webkit-url": "https://bugs.webkit.org/show_bug.cgi?id=181943",
+        "keywords": ["authentication", "credentials", "webauthn"],
         "description": "An API enabling the creation and use of strong, attested, cryptographic scoped credentials by web applications, for the purpose of strongly authenticating users."
     },
     {
@@ -1220,7 +1230,7 @@
     {
         "name": "Web Share",
         "status": {
-            "status": "Under Consideration"
+            "status": "In Development"
         },
         "url": "https://github.com/WICG/web-share/blob/master/docs/interface.md",
         "webkit-url": "https://bugs.webkit.org/show_bug.cgi?id=171100",

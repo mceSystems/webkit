@@ -97,7 +97,7 @@ private:
     void dispatchDidFinishDataDetection(NSArray *detectionResults) final;
 #endif
     void dispatchDidChangeMainDocument() final;
-    void dispatchWillChangeDocument() final;
+    void dispatchWillChangeDocument(const WebCore::URL& currentUrl, const WebCore::URL& newUrl) final;
 
     void dispatchDidDispatchOnloadEvents() final;
     void dispatchDidReceiveServerRedirectForProvisionalLoad() final;
@@ -125,13 +125,13 @@ private:
     
     void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::FramePolicyFunction&&) final;
     void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const String& frameName, WebCore::FramePolicyFunction&&) final;
-    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, bool didReceiveRedirectResponse, WebCore::FormState*, WebCore::PolicyDecisionMode, WebCore::FramePolicyFunction&&) final;
+    void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse, WebCore::FormState*, WebCore::PolicyDecisionMode, WebCore::ShouldSkipSafeBrowsingCheck, WebCore::FramePolicyFunction&&) final;
     void cancelPolicyCheck() final;
     
     void dispatchUnableToImplementPolicy(const WebCore::ResourceError&) final;
     
     void dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&&) final;
-    void dispatchWillSubmitForm(WebCore::FormState&, WTF::Function<void(void)>&&) final;
+    void dispatchWillSubmitForm(WebCore::FormState&, CompletionHandler<void()>&&) final;
     
     void revertToProvisionalState(WebCore::DocumentLoader*) final;
     void setMainDocumentError(WebCore::DocumentLoader*, const WebCore::ResourceError&) final;
@@ -232,7 +232,9 @@ private:
     void dispatchWillDisconnectDOMWindowExtensionFromGlobalObject(WebCore::DOMWindowExtension*) final;
     void dispatchDidReconnectDOMWindowExtensionToGlobalObject(WebCore::DOMWindowExtension*) final;
     void dispatchWillDestroyGlobalObjectForDOMWindowExtension(WebCore::DOMWindowExtension*) final;
-    
+
+    void willInjectUserScript(WebCore::DOMWrapperWorld&) final;
+
 #if PLATFORM(COCOA)
     RemoteAXObjectRef accessibilityRemoteObject() final;
     

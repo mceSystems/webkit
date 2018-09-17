@@ -40,6 +40,7 @@
 #include "UserData.h"
 #include "WebColorChooser.h"
 #include "WebCoreArgumentCoders.h"
+#include "WebDataListSuggestionPicker.h"
 #include "WebFrame.h"
 #include "WebFrameLoaderClient.h"
 #include "WebFullScreenManager.h"
@@ -57,6 +58,7 @@
 #include <WebCore/ApplicationCacheStorage.h>
 #include <WebCore/AXObjectCache.h>
 #include <WebCore/ColorChooser.h>
+#include <WebCore/DataListSuggestionPicker.h>
 #include <WebCore/DatabaseTracker.h>
 #include <WebCore/DocumentLoader.h>
 #include <WebCore/FileChooser.h>
@@ -90,10 +92,9 @@
 #include "PrinterListGtk.h"
 #endif
 
+namespace WebKit {
 using namespace WebCore;
 using namespace HTMLNames;
-
-namespace WebKit {
 
 static double area(WebFrame* frame)
 {
@@ -522,7 +523,8 @@ void WebChromeClient::invalidateContentsAndRootView(const IntRect& rect)
             return;
     }
 
-    m_page.drawingArea()->setNeedsDisplayInRect(rect);
+    if (auto* drawingArea = m_page.drawingArea())
+        drawingArea->setNeedsDisplayInRect(rect);
 }
 
 void WebChromeClient::invalidateContentsForSlowScroll(const IntRect& rect)
@@ -540,7 +542,8 @@ void WebChromeClient::invalidateContentsForSlowScroll(const IntRect& rect)
         return;
     }
 #endif
-    m_page.drawingArea()->setNeedsDisplayInRect(rect);
+    if (auto* drawingArea = m_page.drawingArea())
+        drawingArea->setNeedsDisplayInRect(rect);
 }
 
 void WebChromeClient::scroll(const IntSize& scrollDelta, const IntRect& scrollRect, const IntRect& clipRect)
@@ -789,6 +792,15 @@ std::unique_ptr<ColorChooser> WebChromeClient::createColorChooser(ColorChooserCl
 
 #endif
 
+#if ENABLE(DATALIST_ELEMENT)
+
+std::unique_ptr<DataListSuggestionPicker> WebChromeClient::createDataListSuggestionPicker(DataListSuggestionsClient& client)
+{
+    return std::make_unique<WebDataListSuggestionPicker>(&m_page, &client);
+}
+
+#endif
+
 void WebChromeClient::runOpenPanel(Frame& frame, FileChooser& fileChooser)
 {
     if (m_page.activeOpenPanelResultListener())
@@ -799,6 +811,11 @@ void WebChromeClient::runOpenPanel(Frame& frame, FileChooser& fileChooser)
     auto* webFrame = WebFrame::fromCoreFrame(frame);
     ASSERT(webFrame);
     m_page.send(Messages::WebPageProxy::RunOpenPanel(webFrame->frameID(), SecurityOriginData::fromFrame(&frame), fileChooser.settings()));
+}
+    
+void WebChromeClient::showShareSheet(ShareDataWithParsedURL& shareData, CompletionHandler<void(bool)>&& callback)
+{
+    m_page.showShareSheet(shareData, WTFMove(callback));
 }
 
 void WebChromeClient::loadIconForFiles(const Vector<String>& filenames, FileIconLoader& loader)
@@ -1299,5 +1316,12 @@ void WebChromeClient::requestStorageAccess(String&& subFrameHost, String&& topFr
     m_page.requestStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, WTFMove(callback));
 }
 #endif
+
+bool WebChromeClient::isViewVisible()
+{
+    bool isVisible = false;
+    WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebPageProxy::GetIsViewVisible(), Messages::WebPageProxy::GetIsViewVisible::Reply(isVisible), m_page.pageID());
+    return isVisible;
+}
 
 } // namespace WebKit

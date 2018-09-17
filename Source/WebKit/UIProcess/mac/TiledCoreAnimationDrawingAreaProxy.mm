@@ -38,10 +38,9 @@
 #import <wtf/BlockPtr.h>
 #import <wtf/MachSendRight.h>
 
+namespace WebKit {
 using namespace IPC;
 using namespace WebCore;
-
-namespace WebKit {
 
 TiledCoreAnimationDrawingAreaProxy::TiledCoreAnimationDrawingAreaProxy(WebPageProxy& webPageProxy)
     : DrawingAreaProxy(DrawingAreaTypeTiledCoreAnimation, webPageProxy)
@@ -120,7 +119,7 @@ void TiledCoreAnimationDrawingAreaProxy::didUpdateGeometry()
         sendUpdateGeometry();
 }
 
-void TiledCoreAnimationDrawingAreaProxy::waitForDidUpdateActivityState()
+void TiledCoreAnimationDrawingAreaProxy::waitForDidUpdateActivityState(ActivityStateChangeID)
 {
     Seconds activityStateUpdateTimeout = Seconds::fromMilliseconds(250);
     m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::DidUpdateActivityState>(m_webPageProxy.pageID(), activityStateUpdateTimeout, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);

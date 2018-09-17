@@ -187,6 +187,7 @@ private:
         bool webViewRequestNotificationPermissionForSecurityOriginDecisionHandler : 1;
 #endif
         bool webViewDecideDatabaseQuotaForSecurityOriginCurrentQuotaCurrentOriginUsageCurrentDatabaseUsageExpectedUsageDecisionHandler : 1;
+        bool webViewDecideDatabaseQuotaForSecurityOriginDatabaseNameDisplayNameCurrentQuotaCurrentOriginUsageCurrentDatabaseUsageExpectedUsageDecisionHandler : 1;
         bool webViewDecideWebApplicationCacheQuotaForSecurityOriginCurrentQuotaTotalBytesNeeded : 1;
         bool webViewPrintFrame : 1;
         bool webViewDidClose : 1;
@@ -209,6 +210,7 @@ private:
         bool webViewImageOrMediaDocumentSizeChanged : 1;
 #if ENABLE(POINTER_LOCK)
         bool webViewRequestPointerLock : 1;
+        bool webViewDidRequestPointerLockCompletionHandler : 1;
         bool webViewDidLosePointerLock : 1;
 #endif
 #if ENABLE(CONTEXT_MENUS)

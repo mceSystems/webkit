@@ -39,6 +39,7 @@ RTC_EXPORT
  *  codecs, create custom implementations of RTCVideoEncoderFactory and RTCVideoDecoderFactory.
  */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCDefaultVideoEncoderFactory")))
 @interface RTCDefaultVideoEncoderFactory : NSObject <RTCVideoEncoderFactory>
 
 @property(nonatomic, retain) RTCVideoCodecInfo *preferredCodec;
@@ -48,6 +49,7 @@ RTC_EXPORT
 @end
 
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCDefaultVideoDecoderFactory")))
 @interface RTCDefaultVideoDecoderFactory : NSObject <RTCVideoDecoderFactory>
 @end
 

@@ -930,10 +930,14 @@ sub GeneratePut
     push(@$outputArray, "{\n");
     push(@$outputArray, "    auto* thisObject = jsCast<${className}*>(cell);\n");
     push(@$outputArray, "    ASSERT_GC_OBJECT_INHERITS(thisObject, info());\n\n");
-    
-    if (($namedSetterOperation && $namedSetterOperation->extendedAttributes->{CEReactions}) || ($indexedSetterOperation && $indexedSetterOperation->extendedAttributes->{CEReactions})) {
-        push(@$outputArray, "    CustomElementReactionStack customElementReactionStack;\n\n");
-        AddToImplIncludes("CustomElementReactionQueue.h");
+
+    assert("CEReactions is not supported on having both named setters and indexed setters") if $namedSetterOperation && $namedSetterOperation->extendedAttributes->{CEReactions}
+        && $indexedSetterOperation && $indexedSetterOperation->extendedAttributes->{CEReactions};
+    if ($namedSetterOperation) {
+        GenerateCustomElementReactionsStackIfNeeded($outputArray, $namedSetterOperation, "*state");
+    }
+    if ($indexedSetterOperation) {
+        GenerateCustomElementReactionsStackIfNeeded($outputArray, $indexedSetterOperation, "*state");
     }
     
     if ($indexedSetterOperation) {
@@ -1002,10 +1006,14 @@ sub GeneratePutByIndex
     push(@$outputArray, "{\n");
     push(@$outputArray, "    auto* thisObject = jsCast<${className}*>(cell);\n");
     push(@$outputArray, "    ASSERT_GC_OBJECT_INHERITS(thisObject, info());\n\n");
-    
-    if (($namedSetterOperation && $namedSetterOperation->extendedAttributes->{CEReactions}) || ($indexedSetterOperation && $indexedSetterOperation->extendedAttributes->{CEReactions})) {
-        push(@$outputArray, "    CustomElementReactionStack customElementReactionStack;\n\n");
-        AddToImplIncludes("CustomElementReactionQueue.h");
+
+    assert("CEReactions is not supported on having both named setters and indexed setters") if $namedSetterOperation && $namedSetterOperation->extendedAttributes->{CEReactions}
+        && $indexedSetterOperation && $indexedSetterOperation->extendedAttributes->{CEReactions};
+    if ($namedSetterOperation) {
+        GenerateCustomElementReactionsStackIfNeeded($outputArray, $namedSetterOperation, "*state");
+    }
+    if ($indexedSetterOperation) {
+        GenerateCustomElementReactionsStackIfNeeded($outputArray, $indexedSetterOperation, "*state");
     }
     
     if ($indexedSetterOperation ) {
@@ -1098,10 +1106,14 @@ sub GenerateDefineOwnProperty
     push(@$outputArray, "{\n");
     push(@$outputArray, "    auto* thisObject = jsCast<${className}*>(object);\n");
     push(@$outputArray, "    ASSERT_GC_OBJECT_INHERITS(thisObject, info());\n\n");
-    
-    if (($namedSetterOperation && $namedSetterOperation->extendedAttributes->{CEReactions}) || ($indexedSetterOperation && $indexedSetterOperation->extendedAttributes->{CEReactions})) {
-        push(@$outputArray, "    CustomElementReactionStack customElementReactionStack;\n\n");
-        AddToImplIncludes("CustomElementReactionQueue.h");
+
+    assert("CEReactions is not supported on having both named setters and indexed setters") if $namedSetterOperation && $namedSetterOperation->extendedAttributes->{CEReactions}
+        && $indexedSetterOperation && $indexedSetterOperation->extendedAttributes->{CEReactions};
+    if ($namedSetterOperation) {
+        GenerateCustomElementReactionsStackIfNeeded($outputArray, $namedSetterOperation, "*state");
+    }
+    if ($indexedSetterOperation) {
+        GenerateCustomElementReactionsStackIfNeeded($outputArray, $indexedSetterOperation, "*state");
     }
     
     # 1. If O supports indexed properties and P is an array index property name, then:
@@ -1223,10 +1235,7 @@ sub GenerateDeletePropertyCommon
     my $overrideBuiltin = $codeGenerator->InheritsExtendedAttribute($interface, "OverrideBuiltins") ? "OverrideBuiltins::Yes" : "OverrideBuiltins::No";
     push(@$outputArray, "    if (isVisibleNamedProperty<${overrideBuiltin}>(*state, thisObject, propertyName)) {\n");
 
-    if ($operation->extendedAttributes->{CEReactions}) {
-        push(@$outputArray, "        CustomElementReactionStack customElementReactionStack;\n");
-        AddToImplIncludes("CustomElementReactionQueue.h", $conditional);
-    }
+    GenerateCustomElementReactionsStackIfNeeded($outputArray, $operation, "*state");
 
     # 2.1. If O does not implement an interface with a named property deleter, then return false.
     # 2.2. Let operation be the operation used to declare the named property deleter.
@@ -2181,7 +2190,7 @@ sub GenerateDefaultValue
         } elsif ($defaultValue eq "\"\"") {
             return $useAtomicString ? "emptyAtom()" : "emptyString()";
         } else {
-            return $useAtomicString ? "AtomicString(${defaultValue}, AtomicString::ConstructFromLiteral)" : "ASCIILiteral(${defaultValue})";
+            return $useAtomicString ? "AtomicString(${defaultValue}, AtomicString::ConstructFromLiteral)" : "${defaultValue}_s";
         }
     }
 
@@ -2648,9 +2657,9 @@ sub GenerateHeader
     if ($interface->extendedAttributes->{CustomPreventExtensions}) {
         push(@headerContent, "    static bool preventExtensions(JSC::JSObject*, JSC::ExecState*);\n");
     }
-    
+
     if (InstanceNeedsEstimatedSize($interface)) {
-        push(@headerContent, "    static size_t estimatedSize(JSCell*);\n");
+        push(@headerContent, "    static size_t estimatedSize(JSCell*, JSC::VM&);\n");
     }
     
     if (!$hasParent) {
@@ -2748,6 +2757,10 @@ sub GenerateHeader
             my $subspaceFunc = IsDOMGlobalObject($interface) ? "globalObjectOutputConstraintSubspaceFor" : "outputConstraintSubspaceFor";
             push(@headerContent, "    template<typename> static JSC::CompleteSubspace* subspaceFor(JSC::VM& vm) { return $subspaceFunc(vm); }\n");
         }
+    }
+
+    if (NeedsImplementationClass($interface)) {
+        push(@headerContent, "    static void heapSnapshot(JSCell*, JSC::HeapSnapshotBuilder&);\n");
     }
     
     if ($numCustomAttributes > 0) {
@@ -2858,7 +2871,7 @@ sub GenerateHeader
         }
         $headerIncludes{"<wtf/NeverDestroyed.h>"} = 1;
         push(@headerContent, "public:\n");
-        push(@headerContent, "    virtual bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::SlotVisitor&);\n");
+        push(@headerContent, "    virtual bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::SlotVisitor&, const char**);\n");
         push(@headerContent, "    virtual void finalize(JSC::Handle<JSC::Unknown>, void* context);\n");
         push(@headerContent, "};\n");
         push(@headerContent, "\n");
@@ -4505,10 +4518,24 @@ sub GenerateImplementation
     }
 
     if (InstanceNeedsEstimatedSize($interface)) {
-        push(@implContent, "size_t ${className}::estimatedSize(JSCell* cell)\n");
+        push(@implContent, "size_t ${className}::estimatedSize(JSCell* cell, VM& vm)\n");
         push(@implContent, "{\n");
         push(@implContent, "    auto* thisObject = jsCast<${className}*>(cell);\n");
-        push(@implContent, "    return Base::estimatedSize(thisObject) + thisObject->wrapped().memoryCost();\n");
+        push(@implContent, "    return Base::estimatedSize(thisObject, vm) + thisObject->wrapped().memoryCost();\n");
+        push(@implContent, "}\n\n");
+    }
+
+    if (NeedsImplementationClass($interface) && !$interface->extendedAttributes->{CustomHeapSnapshot}) {
+        AddToImplIncludes("<JavaScriptCore/HeapSnapshotBuilder.h>");
+        AddToImplIncludes("ScriptExecutionContext.h");
+        AddToImplIncludes("URL.h");
+        push(@implContent, "void ${className}::heapSnapshot(JSCell* cell, HeapSnapshotBuilder& builder)\n");
+        push(@implContent, "{\n");
+        push(@implContent, "    auto* thisObject = jsCast<${className}*>(cell);\n");
+        push(@implContent, "    builder.setWrappedObjectForCell(cell, &thisObject->wrapped());\n");
+        push(@implContent, "    if (thisObject->scriptExecutionContext())\n");
+        push(@implContent, "        builder.setLabelForCell(cell, String::format(\"url %s\", thisObject->scriptExecutionContext()->url().string().utf8().data()));\n");
+        push(@implContent, "    Base::heapSnapshot(cell, builder);\n");
         push(@implContent, "}\n\n");
     }
 
@@ -4521,7 +4548,7 @@ sub GenerateImplementation
     }
 
     if (ShouldGenerateWrapperOwnerCode($hasParent, $interface) && !GetCustomIsReachable($interface)) {
-        push(@implContent, "bool JS${interfaceName}Owner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor)\n");
+        push(@implContent, "bool JS${interfaceName}Owner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor, const char** reason)\n");
         push(@implContent, "{\n");
         # All ActiveDOMObjects implement hasPendingActivity(), but not all of them
         # increment their C++ reference counts when hasPendingActivity() becomes
@@ -4534,23 +4561,29 @@ sub GenerateImplementation
         if ($codeGenerator->InheritsExtendedAttribute($interface, "ActiveDOMObject")) {
             push(@implContent, "    auto* js${interfaceName} = jsCast<JS${interfaceName}*>(handle.slot()->asCell());\n");
             $emittedJSCast = 1;
-            push(@implContent, "    if (js${interfaceName}->wrapped().hasPendingActivity())\n");
+            push(@implContent, "    if (js${interfaceName}->wrapped().hasPendingActivity()) {\n");
+            push(@implContent, "        if (UNLIKELY(reason))\n");
+            push(@implContent, "            *reason = \"ActiveDOMObject with pending activity\";\n");
             push(@implContent, "        return true;\n");
+            push(@implContent, "     }\n");
         }
         if ($codeGenerator->InheritsInterface($interface, "EventTarget")) {
             if (!$emittedJSCast) {
                 push(@implContent, "    auto* js${interfaceName} = jsCast<JS${interfaceName}*>(handle.slot()->asCell());\n");
                 $emittedJSCast = 1;
             }
-            push(@implContent, "    if (js${interfaceName}->wrapped().isFiringEventListeners())\n");
+            push(@implContent, "    if (js${interfaceName}->wrapped().isFiringEventListeners()) {\n");
+            push(@implContent, "        if (UNLIKELY(reason))\n");
+            push(@implContent, "            *reason = \"EventTarget firing event listeners\";\n");
             push(@implContent, "        return true;\n");
+            push(@implContent, "    }\n");
         }
         if ($codeGenerator->InheritsInterface($interface, "Node")) {
             if (!$emittedJSCast) {
                 push(@implContent, "    auto* js${interfaceName} = jsCast<JS${interfaceName}*>(handle.slot()->asCell());\n");
                 $emittedJSCast = 1;
             }
-            push(@implContent, "    if (JSNodeOwner::isReachableFromOpaqueRoots(handle, 0, visitor))\n");
+            push(@implContent, "    if (JSNodeOwner::isReachableFromOpaqueRoots(handle, 0, visitor, reason))\n");
             push(@implContent, "        return true;\n");
         }
         if (GetGenerateIsReachable($interface)) {
@@ -4562,33 +4595,49 @@ sub GenerateImplementation
             my $rootString;
             if (GetGenerateIsReachable($interface) eq "Impl") {
                 $rootString  = "    ${implType}* root = &js${interfaceName}->wrapped();\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from ${interfaceName}\";\n";
             } elsif (GetGenerateIsReachable($interface) eq "ImplWebGLRenderingContext") {
                 $rootString  = "    WebGLRenderingContextBase* root = WTF::getPtr(js${interfaceName}->wrapped().context());\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from ${interfaceName}\";\n";
             } elsif (GetGenerateIsReachable($interface) eq "ImplFrame") {
                 $rootString  = "    Frame* root = WTF::getPtr(js${interfaceName}->wrapped().frame());\n";
                 $rootString .= "    if (!root)\n";
                 $rootString .= "        return false;\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from Frame\";\n";
             } elsif (GetGenerateIsReachable($interface) eq "ImplDocument") {
                 $rootString  = "    Document* root = WTF::getPtr(js${interfaceName}->wrapped().document());\n";
                 $rootString .= "    if (!root)\n";
                 $rootString .= "        return false;\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from Document\";\n";
             } elsif (GetGenerateIsReachable($interface) eq "ImplElementRoot") {
                 $implIncludes{"Element.h"} = 1;
                 $implIncludes{"JSNodeCustom.h"} = 1;
                 $rootString  = "    Element* element = WTF::getPtr(js${interfaceName}->wrapped().element());\n";
                 $rootString .= "    if (!element)\n";
                 $rootString .= "        return false;\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from ${interfaceName}Owner\";\n";
                 $rootString .= "    void* root = WebCore::root(element);\n";
             } elsif (GetGenerateIsReachable($interface) eq "ImplOwnerNodeRoot") {
                 $implIncludes{"Element.h"} = 1;
                 $implIncludes{"JSNodeCustom.h"} = 1;
                 $rootString  = "    void* root = WebCore::root(js${interfaceName}->wrapped().ownerNode());\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from ${interfaceName} ownerNode\";\n";
             } elsif (GetGenerateIsReachable($interface) eq "ImplScriptExecutionContext") {
                 $rootString  = "    ScriptExecutionContext* root = WTF::getPtr(js${interfaceName}->wrapped().scriptExecutionContext());\n";
                 $rootString .= "    if (!root)\n";
                 $rootString .= "        return false;\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from ScriptExecutionContext\";\n";
             } else {
                 $rootString  = "    void* root = WebCore::root(&js${interfaceName}->wrapped());\n";
+                $rootString .= "    if (UNLIKELY(reason))\n";
+                $rootString .= "        *reason = \"Reachable from js${interfaceName}\";\n";
             }
 
             push(@implContent, $rootString);
@@ -4598,6 +4647,7 @@ sub GenerateImplementation
                 push(@implContent, "    UNUSED_PARAM(handle);\n");
             }
             push(@implContent, "    UNUSED_PARAM(visitor);\n");
+            push(@implContent, "    UNUSED_PARAM(reason);\n");
             push(@implContent, "    return false;\n");
         }
         push(@implContent, "}\n\n");
@@ -4707,9 +4757,9 @@ sub GenerateAttributeGetterBodyDefinition
         AddToImplIncludes("JSDOMBindingSecurity.h", $conditional);
         if ($interface->type->name eq "DOMWindow") {
             if ($attribute->extendedAttributes->{DoNotCheckSecurityIf}) {
-                my $crossOriginOptions = GetCrossOriginsOptionsFromExtendedAttributeValue($attribute->extendedAttributes->{DoNotCheckSecurityIf});
+                my $crossOriginWindowPolicy = GetCrossOriginsOptionsFromExtendedAttributeValue($attribute->extendedAttributes->{DoNotCheckSecurityIf});
                 AddToImplIncludes("HTTPParsers.h", $conditional);
-                push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindowGivenMinimumCrossOriginOptions(&state, thisObject.wrapped(), $crossOriginOptions, ThrowSecurityError))\n");
+                push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindowGivenMinimumCrossOriginWindowPolicy(&state, thisObject.wrapped(), $crossOriginWindowPolicy, ThrowSecurityError))\n");
             } else {
                 push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindow(&state, thisObject.wrapped(), ThrowSecurityError))\n");
             }
@@ -4824,9 +4874,9 @@ sub GetCrossOriginsOptionsFromExtendedAttributeValue
 {
     my $extendedAttributeValue = shift;
 
-    return "CrossOriginOptions::Allow" if $extendedAttributeValue eq "CrossOriginOptionsAllow";
-    return "CrossOriginOptions::AllowPostMessage" if $extendedAttributeValue eq "CrossOriginOptionsAllowPostMessage";
-    die "Unsupported CrossOriginOptions: " + $extendedAttributeValue;
+    return "CrossOriginWindowPolicy::Allow" if $extendedAttributeValue eq "CrossOriginWindowPolicyAllow";
+    return "CrossOriginWindowPolicy::AllowPostMessage" if $extendedAttributeValue eq "CrossOriginWindowPolicyAllowPostMessage";
+    die "Unsupported CrossOriginWindowPolicy: " + $extendedAttributeValue;
 }
 
 sub GenerateAttributeSetterBodyDefinition
@@ -4842,19 +4892,16 @@ sub GenerateAttributeSetterBodyDefinition
     push(@$outputArray, "static inline bool ${attributeSetterBodyName}(" . join(", ", @signatureArguments) . ")\n");
     push(@$outputArray, "{\n");
     push(@$outputArray, "    UNUSED_PARAM(throwScope);\n");
-    
-    if ($attribute->extendedAttributes->{CEReactions}) {
-        push(@$outputArray, "    CustomElementReactionStack customElementReactionStack;\n");
-        AddToImplIncludes("CustomElementReactionQueue.h", $conditional);
-    }
-    
+
+    GenerateCustomElementReactionsStackIfNeeded($outputArray, $attribute, "state");
+
     if ($interface->extendedAttributes->{CheckSecurity} && !$attribute->extendedAttributes->{DoNotCheckSecurity} && !$attribute->extendedAttributes->{DoNotCheckSecurityOnSetter}) {
         AddToImplIncludes("JSDOMBindingSecurity.h", $conditional);
         if ($interface->type->name eq "DOMWindow") {
             if ($attribute->extendedAttributes->{DoNotCheckSecurityIf}) {
-                my $crossOriginOptions = GetCrossOriginsOptionsFromExtendedAttributeValue($attribute->extendedAttributes->{DoNotCheckSecurityIf});
+                my $crossOriginWindowPolicy = GetCrossOriginsOptionsFromExtendedAttributeValue($attribute->extendedAttributes->{DoNotCheckSecurityIf});
                 AddToImplIncludes("HTTPParsers.h", $conditional);
-                push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindowGivenMinimumCrossOriginOptions(&state, thisObject.wrapped(), $crossOriginOptions, ThrowSecurityError))\n");
+                push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindowGivenMinimumCrossOriginWindowPolicy(&state, thisObject.wrapped(), $crossOriginWindowPolicy, ThrowSecurityError))\n");
             } else {
                 push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindow(&state, thisObject.wrapped(), ThrowSecurityError))\n");
             }
@@ -5068,10 +5115,7 @@ sub GenerateOperationBodyDefinition
     push(@$outputArray, "    UNUSED_PARAM(throwScope);\n");
 
     if (!$generatingOverloadDispatcher) {
-        if ($operation->extendedAttributes->{CEReactions}) {
-            AddToImplIncludes("CustomElementReactionQueue.h", $conditional);
-            push(@$outputArray, "    CustomElementReactionStack customElementReactionStack;\n");
-        }
+        GenerateCustomElementReactionsStackIfNeeded($outputArray, $operation, "*state");
 
         if ($interface->extendedAttributes->{CheckSecurity} and !$operation->extendedAttributes->{DoNotCheckSecurity}) {
             assert("Security checks are not supported for static operations.") if $operation->isStatic;
@@ -5079,9 +5123,9 @@ sub GenerateOperationBodyDefinition
             AddToImplIncludes("JSDOMBindingSecurity.h", $conditional);
             if ($interface->type->name eq "DOMWindow") {
                 if ($operation->extendedAttributes->{DoNotCheckSecurityIf}) {
-                    my $crossOriginOptions = GetCrossOriginsOptionsFromExtendedAttributeValue($operation->extendedAttributes->{DoNotCheckSecurityIf});
+                    my $crossOriginWindowPolicy = GetCrossOriginsOptionsFromExtendedAttributeValue($operation->extendedAttributes->{DoNotCheckSecurityIf});
                     AddToImplIncludes("HTTPParsers.h", $conditional);
-                    push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindowGivenMinimumCrossOriginOptions(state, castedThis->wrapped(), $crossOriginOptions, ThrowSecurityError))\n");
+                    push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindowGivenMinimumCrossOriginWindowPolicy(state, castedThis->wrapped(), $crossOriginWindowPolicy, ThrowSecurityError))\n");
                 } else {
                     push(@$outputArray, "    if (!BindingSecurity::shouldAllowAccessToDOMWindow(state, castedThis->wrapped(), ThrowSecurityError))\n");
                 }
@@ -7191,7 +7235,7 @@ sub GenerateConstructorHelperMethods
         push(@$outputArray, "    putDirect(vm, vm.propertyNames->prototype, ${className}::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);\n");
     }
 
-    push(@$outputArray, "    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral(\"$visibleInterfaceName\"))), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);\n");
+    push(@$outputArray, "    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(\"$visibleInterfaceName\"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);\n");
     push(@$outputArray, "    putDirect(vm, vm.propertyNames->length, jsNumber(${leastConstructorLength}), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);\n") if defined $leastConstructorLength;
 
     my $classForThis = "${className}::info()";
@@ -7400,13 +7444,30 @@ sub GenerateCallTracer()
         push(@$outputArray, join("\n", @$arguments));
     }
     push(@$outputArray, "\n");
-    push(@$outputArray, $indent . "    CallTracer::" . $callTracingCallback . "(impl, ASCIILiteral(\"" . $name . "\")");
+    push(@$outputArray, $indent . "    CallTracer::" . $callTracingCallback . "(impl, \"" . $name . "\"_s");
     if ($count) {
         push(@$outputArray, ", WTFMove(callTracerParameters)");
     }
     push(@$outputArray, ");\n");
     if ($count) {
         push(@$outputArray, $indent . "}\n")
+    }
+}
+
+sub GenerateCustomElementReactionsStackIfNeeded
+{
+    my ($outputArray, $context, $stateVariable) = @_;
+
+    my $CEReactions = $context->extendedAttributes->{CEReactions};
+
+    return if !$CEReactions;
+
+    AddToImplIncludes("CustomElementReactionQueue.h");
+
+    if ($CEReactions eq "NotNeeded") {
+        push(@$outputArray, "    CustomElementReactionDisallowedScope customElementReactionDisallowedScope;\n");
+    } else {
+        push(@$outputArray, "    CustomElementReactionStack customElementReactionStack($stateVariable);\n");
     }
 }
 

@@ -25,9 +25,9 @@
 (deny default (with partial-symbolication))
 (allow system-audit file-read-metadata)
 
-(deny mach-lookup (xpc-service-name-prefix ""))
-
 (import "common.sb")
+
+(deny mach-lookup (xpc-service-name-prefix ""))
 
 (deny lsopen)
 
@@ -53,6 +53,9 @@
 ;; Any app can play audio & movies.
 (play-audio)
 (play-media)
+
+;; Access to media controls
+(media-remote)
 
 (url-translation)
 
@@ -308,10 +311,6 @@
 ;;; End UIKit-apps.sb content
 ;;;
 
-;; Access to media controls
-(play-media)
-(media-remote)
-
 (deny sysctl*)
 (allow sysctl-read
     (sysctl-name
@@ -324,13 +323,19 @@
 (deny iokit-get-properties (with partial-symbolication))
 (allow iokit-get-properties
     (iokit-property-regex #"^AAPL,(DisplayPipe|OpenCLdisabled|IOGraphics_LER(|_RegTag_1|_RegTag_0|_Busy_2)|alias-policy|boot-display|display-alias|mux-switch-state|ndrv-dev|primary-display|slot-name)")
+    (iokit-property "APTDevice")
+    (iokit-property "AVCSupported")
     (iokit-property-regex #"^AppleJPEG(NumCores|Supports(AppleInterchangeFormats|MissingEOI|RSTLogging))")
     (iokit-property "BaseAddressAlignmentRequirement")
     (iokit-property-regex #"^DisplayPipe(PlaneBaseAlignment|StrideRequirements)")
+    (iokit-property "HEVCSupported")
     (iokit-property-regex #"^IOGL(|ES(|Metal))BundleName")
     (iokit-property "IOGLESDefaultUseMetal")
+    (iokit-property "IOClassNameOverride")
     (iokit-property "IOSurfaceAcceleratorCapabilitiesDict")
     (iokit-property-regex #"^MetalPlugin(Name|ClassName)")
+    (iokit-property "artwork-device-subtype")
+    (iokit-property "device-perf-memory-class")
     (iokit-property "emu")
     (iokit-property "hdcp-hoover-protocol")
     (iokit-property "iommu-present")

@@ -33,6 +33,7 @@
 #include <WebKit/WKRetainPtr.h>
 #include <string>
 #include <wtf/Ref.h>
+#include <wtf/Seconds.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
@@ -71,7 +72,7 @@ public:
     void waitUntilDone();
     void notifyDone();
     double preciseTime();
-    double timeout() { return m_timeout; }
+    double timeout() { return m_timeout.milliseconds(); }
 
     // Other dumping.
     void dumpBackForwardList() { m_shouldDumpBackForwardListsForAllWindows = true; }
@@ -90,6 +91,7 @@ public:
     void dumpDatabaseCallbacks() { m_dumpDatabaseCallbacks = true; }
     void dumpDOMAsWebArchive() { setWhatToDump(WhatToDump::DOMAsWebArchive); }
     void dumpPolicyDelegateCallbacks() { m_dumpPolicyCallbacks = true; }
+    void dumpResourceLoadStatistics();
 
     void setShouldDumpFrameLoadCallbacks(bool value);
     void setShouldDumpProgressFinishedCallback(bool value) { m_dumpProgressFinishedCallback = value; }
@@ -129,12 +131,14 @@ public:
     void setAllowsAnySSLCertificate(bool);
     void setEncryptedMediaAPIEnabled(bool);
     void setMediaDevicesEnabled(bool);
-    void setWebRTCLegacyAPIEnabled(bool);
     void setMDNSICECandidatesEnabled(bool);
+    void setWebRTCUnifiedPlanEnabled(bool);
+    void setCustomUserAgent(JSStringRef);
+    void setWebAPIStatisticsEnabled(bool);
 
     // Special DOM functions.
     void clearBackForwardList();
-    void execCommand(JSStringRef name, JSStringRef argument);
+    void execCommand(JSStringRef name, JSStringRef showUI, JSStringRef value);
     bool isCommandEnabled(JSStringRef name);
     unsigned windowCount();
 
@@ -285,7 +289,6 @@ public:
 
     // Cookies testing
     void setAlwaysAcceptCookies(bool);
-    void setCookieStoragePartitioningEnabled(bool);
 
     // Custom full screen behavior.
     void setHasCustomFullScreenBehavior(bool value) { m_customFullScreenBehavior = value; }
@@ -315,7 +318,7 @@ public:
 
     bool callShouldCloseOnWebView();
 
-    void setCustomTimeout(int duration) { m_timeout = duration; }
+    void setCustomTimeout(WTF::Seconds duration) { m_timeout = duration; }
 
     // Work queue.
     void queueBackNavigation(unsigned howFarBackward);
@@ -377,19 +380,26 @@ public:
     void statisticsDidRunTelemetryCallback(unsigned totalPrevalentResources, unsigned totalPrevalentResourcesWithUserInteraction, unsigned top3SubframeUnderTopFrameOrigins);
     void statisticsNotifyObserver();
     void statisticsProcessStatisticsAndDataRecords();
-    void statisticsUpdateCookiePartitioning(JSValueRef callback);
-    void statisticsSetShouldPartitionCookiesForHost(JSStringRef hostName, bool value, JSValueRef callback);
-    void statisticsCallDidSetPartitionOrBlockCookiesForHostCallback();
+    void statisticsUpdateCookieBlocking(JSValueRef completionHandler);
+    void statisticsCallDidSetBlockCookiesForHostCallback();
     void statisticsSubmitTelemetry();
-    void setStatisticsLastSeen(JSStringRef hostName, double seconds);
-    void setStatisticsPrevalentResource(JSStringRef hostName, bool value);
-    void setStatisticsVeryPrevalentResource(JSStringRef hostName, bool value);
+    void setStatisticsDebugMode(bool value, JSValueRef completionHandler);
+    void statisticsCallDidSetDebugModeCallback();
+    void setStatisticsPrevalentResourceForDebugMode(JSStringRef hostName, JSValueRef completionHandler);
+    void statisticsCallDidSetPrevalentResourceForDebugModeCallback();
+    void setStatisticsLastSeen(JSStringRef hostName, double seconds, JSValueRef completionHandler);
+    void statisticsCallDidSetLastSeenCallback();
+    void setStatisticsPrevalentResource(JSStringRef hostName, bool value, JSValueRef completionHandler);
+    void statisticsCallDidSetPrevalentResourceCallback();
+    void setStatisticsVeryPrevalentResource(JSStringRef hostName, bool value, JSValueRef completionHandler);
+    void statisticsCallDidSetVeryPrevalentResourceCallback();
     bool isStatisticsPrevalentResource(JSStringRef hostName);
     bool isStatisticsVeryPrevalentResource(JSStringRef hostName);
+    bool isStatisticsRegisteredAsSubresourceUnder(JSStringRef subresourceHost, JSStringRef topFrameHost);
     bool isStatisticsRegisteredAsSubFrameUnder(JSStringRef subFrameHost, JSStringRef topFrameHost);
     bool isStatisticsRegisteredAsRedirectingTo(JSStringRef hostRedirectedFrom, JSStringRef hostRedirectedTo);
-    void setStatisticsHasHadUserInteraction(JSStringRef hostName, bool value);
-    void setStatisticsHasHadNonRecentUserInteraction(JSStringRef hostName);
+    void setStatisticsHasHadUserInteraction(JSStringRef hostName, bool value, JSValueRef completionHandler);
+    void statisticsCallDidSetHasHadUserInteractionCallback();
     bool isStatisticsHasHadUserInteraction(JSStringRef hostName);
     void setStatisticsGrandfathered(JSStringRef hostName, bool value);
     bool isStatisticsGrandfathered(JSStringRef hostName);
@@ -400,7 +410,6 @@ public:
     void setStatisticsTopFrameUniqueRedirectTo(JSStringRef hostName, JSStringRef hostNameRedirectedTo);
     void setStatisticsTopFrameUniqueRedirectFrom(JSStringRef hostName, JSStringRef hostNameRedirectedFrom);
     void setStatisticsTimeToLiveUserInteraction(double seconds);
-    void setStatisticsTimeToLiveCookiePartitionFree(double seconds);
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
     void setStatisticsNotifyPagesWhenTelemetryWasCaptured(bool value);
@@ -412,7 +421,8 @@ public:
     void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours, JSValueRef callback);
     void statisticsClearThroughWebsiteDataRemoval(JSValueRef callback);
     void statisticsCallClearThroughWebsiteDataRemovalCallback();
-    void statisticsResetToConsistentState();
+    void statisticsResetToConsistentState(JSValueRef completionHandler);
+    void statisticsCallDidResetToConsistentStateCallback();
 
     // Injected bundle form client.
     void installTextDidChangeInTextFieldCallback(JSValueRef callback);
@@ -432,6 +442,7 @@ public:
 
     void terminateNetworkProcess();
     void terminateServiceWorkerProcess();
+    void terminateStorageProcess();
 
     void removeAllSessionCredentials(JSValueRef);
     void callDidRemoveAllSessionCredentialsCallback();
@@ -444,6 +455,18 @@ public:
     void dumpAllHTTPRedirectedResponseHeaders() { m_dumpAllHTTPRedirectedResponseHeaders = true; }
     bool shouldDumpAllHTTPRedirectedResponseHeaders() const { return m_dumpAllHTTPRedirectedResponseHeaders; }
 
+    void addMockCameraDevice(JSStringRef persistentId, JSStringRef label);
+    void addMockMicrophoneDevice(JSStringRef persistentId, JSStringRef label);
+    void addMockScreenDevice(JSStringRef persistentId, JSStringRef label);
+    void clearMockMediaDevices();
+    void removeMockMediaDevice(JSStringRef persistentId);
+    void resetMockMediaDevices();
+
+    size_t userScriptInjectedCount() const;
+    void injectUserScript(JSStringRef);
+
+    void sendDisplayConfigurationChangedMessageForTesting();
+
 private:
     TestRunner();
 
@@ -452,6 +475,8 @@ private:
 
     void setDumpPixels(bool);
     void setWaitUntilDone(bool);
+
+    void addMockMediaDevice(JSStringRef persistentId, JSStringRef label, const char* type);
 
     WKRetainPtr<WKURLRef> m_testURL; // Set by InjectedBundlePage once provisional load starts.
 
@@ -490,7 +515,7 @@ private:
     bool m_globalFlag;
     bool m_customFullScreenBehavior;
 
-    int m_timeout;
+    WTF::Seconds m_timeout;
 
     double m_databaseDefaultQuota;
     double m_databaseMaxQuota;

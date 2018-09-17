@@ -34,6 +34,7 @@
 
 namespace WebCore {
 
+class FilterOperations;
 class RenderStyle;
 
 // A KeyframeAnimation tracks the state of an explicit animation for a single RenderElement.
@@ -69,7 +70,7 @@ protected:
     void onAnimationEnd(double elapsedTime) override;
     bool startAnimation(double timeOffset) override;
     void pauseAnimation(double timeOffset) override;
-    void endAnimation() override;
+    void endAnimation(bool fillingForwards = false) override;
 
     void overrideAnimations() override;
     void resumeOverriddenAnimations() override;

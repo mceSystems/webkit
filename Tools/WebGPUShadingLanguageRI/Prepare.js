@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,7 @@
 
 let prepare = (() => {
     let standardProgram;
-    return function(origin, lineNumberOffset, text) {
+    return function(origin, lineNumberOffset, text, shouldInline = false) {
         if (!standardProgram) {
             standardProgram = new Program();
             let firstLineOfStandardLibrary = 28; // See StandardLibrary.js.
@@ -40,18 +40,20 @@ let prepare = (() => {
         }
         
         foldConstexprs(program);
+
         let nameResolver = createNameResolver(program);
         resolveNamesInTypes(program, nameResolver);
-        resolveNamesInProtocols(program, nameResolver);
         resolveTypeDefsInTypes(program);
-        resolveTypeDefsInProtocols(program);
         checkRecursiveTypes(program);
         synthesizeStructAccessors(program);
         synthesizeEnumFunctions(program);
+        synthesizeArrayOperatorLength(program);
+        synthesizeCopyConstructorOperator(program);
+        synthesizeDefaultConstructorOperator(program);
         resolveNamesInFunctions(program, nameResolver);
         resolveTypeDefsInFunctions(program);
+        checkTypesWithArguments(program);
         
-        flattenProtocolExtends(program);
         check(program);
         checkLiteralTypes(program);
         resolveProperties(program);
@@ -63,9 +65,12 @@ let prepare = (() => {
         checkLoops(program);
         checkRecursion(program);
         checkProgramWrapped(program);
+        checkTypesWithArguments(program);
         findHighZombies(program);
-        inline(program);
-        
+        program.visit(new StructLayoutBuilder());
+        lateCheckAndLayoutBuffers(program);
+        if (shouldInline)
+            inline(program);
         return program;
     };
 })();

@@ -24,6 +24,7 @@
 #include "AlternativeTextClient.h"
 #include "ApplicationCacheStorage.h"
 #include "ApplicationStateChangeListener.h"
+#include "AuthenticatorCoordinator.h"
 #include "BackForwardClient.h"
 #include "BackForwardController.h"
 #include "CSSAnimationController.h"
@@ -188,11 +189,14 @@ static void networkStateChanged(bool isOnLine)
     for (auto& frame : frames) {
         if (!frame->document())
             continue;
-        frame->document()->dispatchWindowEvent(Event::create(eventName, false, false));
+        frame->document()->dispatchWindowEvent(Event::create(eventName, Event::CanBubble::No, Event::IsCancelable::No));
     }
 }
 
-static const ActivityState::Flags PageInitialActivityState = ActivityState::IsVisible | ActivityState::IsInWindow;
+static constexpr OptionSet<ActivityState::Flag> pageInitialActivityState()
+{
+    return { ActivityState::IsVisible, ActivityState::IsInWindow };
+}
 
 Page::Page(PageConfiguration&& pageConfiguration)
     : m_chrome(std::make_unique<Chrome>(*this, *pageConfiguration.chromeClient))
@@ -200,7 +204,7 @@ Page::Page(PageConfiguration&& pageConfiguration)
 #if ENABLE(DRAG_SUPPORT)
     , m_dragController(std::make_unique<DragController>(*this, *pageConfiguration.dragClient))
 #endif
-    , m_focusController(std::make_unique<FocusController>(*this, PageInitialActivityState))
+    , m_focusController(std::make_unique<FocusController>(*this, pageInitialActivityState()))
 #if ENABLE(CONTEXT_MENUS)
     , m_contextMenuController(std::make_unique<ContextMenuController>(*this, *pageConfiguration.contextMenuClient))
 #endif
@@ -224,7 +228,7 @@ Page::Page(PageConfiguration&& pageConfiguration)
     , m_horizontalScrollElasticity(ScrollElasticityAllowed)
     , m_domTimerAlignmentInterval(DOMTimer::defaultAlignmentInterval())
     , m_domTimerAlignmentIntervalIncreaseTimer(*this, &Page::domTimerAlignmentIntervalIncreaseTimerFired)
-    , m_activityState(PageInitialActivityState)
+    , m_activityState(pageInitialActivityState())
     , m_alternativeTextClient(pageConfiguration.alternativeTextClient)
     , m_consoleClient(std::make_unique<PageConsoleClient>(*this))
 #if ENABLE(REMOTE_INSPECTOR)
@@ -239,6 +243,9 @@ Page::Page(PageConfiguration&& pageConfiguration)
     , m_userContentProvider(*WTFMove(pageConfiguration.userContentProvider))
     , m_visitedLinkStore(*WTFMove(pageConfiguration.visitedLinkStore))
     , m_sessionID(PAL::SessionID::defaultSessionID())
+#if ENABLE(VIDEO)
+    , m_playbackControlsManagerUpdateTimer(*this, &Page::playbackControlsManagerUpdateTimerFired)
+#endif
     , m_isUtilityPage(isUtilityPageChromeClient(chrome().client()))
     , m_performanceMonitor(isUtilityPage() ? nullptr : std::make_unique<PerformanceMonitor>(*this))
     , m_lowPowerModeNotifier(std::make_unique<LowPowerModeNotifier>([this](bool isLowPowerModeEnabled) { handleLowModePowerChange(isLowPowerModeEnabled); }))
@@ -250,6 +257,9 @@ Page::Page(PageConfiguration&& pageConfiguration)
     , m_pageOverlayController(std::make_unique<PageOverlayController>(*this))
 #if ENABLE(APPLE_PAY)
     , m_paymentCoordinator(std::make_unique<PaymentCoordinator>(*pageConfiguration.paymentCoordinatorClient))
+#endif
+#if ENABLE(WEB_AUTHN)
+    , m_authenticatorCoordinator(makeUniqueRef<AuthenticatorCoordinator>(WTFMove(pageConfiguration.authenticatorCoordinatorClient)))
 #endif
 #if ENABLE(APPLICATION_MANIFEST)
     , m_applicationManifest(pageConfiguration.applicationManifest)
@@ -476,16 +486,17 @@ void Page::setOpenedByDOM()
     m_openedByDOM = true;
 }
 
-void Page::goToItem(HistoryItem& item, FrameLoadType type, NavigationPolicyCheck navigationPolicyCheck)
+void Page::goToItem(HistoryItem& item, FrameLoadType type, ShouldTreatAsContinuingLoad shouldTreatAsContinuingLoad)
 {
     // stopAllLoaders may end up running onload handlers, which could cause further history traversals that may lead to the passed in HistoryItem
     // being deref()-ed. Make sure we can still use it with HistoryController::goToItem later.
     Ref<HistoryItem> protector(item);
 
-    if (m_mainFrame->loader().history().shouldStopLoadingForHistoryItem(item))
-        m_mainFrame->loader().stopAllLoaders();
+    auto& frameLoader = m_mainFrame->loader();
+    if (frameLoader.history().shouldStopLoadingForHistoryItem(item))
+        m_mainFrame->loader().stopAllLoadersAndCheckCompleteness();
 
-    m_mainFrame->loader().history().goToItem(item, type, navigationPolicyCheck);
+    m_mainFrame->loader().history().goToItem(item, type, shouldTreatAsContinuingLoad);
 }
 
 void Page::setGroupName(const String& name)
@@ -518,20 +529,27 @@ void Page::initGroup()
     m_group = m_singlePageGroup.get();
 }
 
+void Page::updateStyleAfterChangeInEnvironment()
+{
+    for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
+        // If a change in the global environment has occurred, we need to
+        // make sure all the properties a recomputed, therefore we invalidate
+        // the properties cache.
+        auto* document = frame->document();
+        if (!document)
+            continue;
+
+        if (StyleResolver* styleResolver = document->styleScope().resolverIfExists())
+            styleResolver->invalidateMatchedPropertiesCache();
+        document->scheduleForcedStyleRecalc();
+        document->styleScope().didChangeStyleSheetEnvironment();
+    }
+}
+
 void Page::updateStyleForAllPagesAfterGlobalChangeInEnvironment()
 {
-    for (auto* page : allPages()) {
-        for (Frame* frame = &page->mainFrame(); frame; frame = frame->tree().traverseNext()) {
-            // If a change in the global environment has occurred, we need to
-            // make sure all the properties a recomputed, therefore we invalidate
-            // the properties cache.
-            if (!frame->document())
-                continue;
-            if (StyleResolver* styleResolver = frame->document()->styleScope().resolverIfExists())
-                styleResolver->invalidateMatchedPropertiesCache();
-            frame->document()->scheduleForcedStyleRecalc();
-        }
-    }
+    for (auto* page : allPages())
+        page->updateStyleAfterChangeInEnvironment();
 }
 
 void Page::setNeedsRecalcStyleInAllFrames()
@@ -921,8 +939,6 @@ void Page::setDeviceScaleFactor(float scaleFactor)
     mainFrame().deviceOrPageScaleFactorChanged();
     PageCache::singleton().markPagesForDeviceOrPageScaleChanged(*this);
 
-    GraphicsContext::updateDocumentMarkerResources();
-
     pageOverlayController().didChangeDeviceScaleFactor();
 }
 
@@ -1080,7 +1096,7 @@ unsigned Page::pageCount() const
 
 void Page::setIsInWindow(bool isInWindow)
 {
-    setActivityState(isInWindow ? m_activityState | ActivityState::IsInWindow : m_activityState & ~ActivityState::IsInWindow);
+    setActivityState(isInWindow ? m_activityState | ActivityState::IsInWindow : m_activityState - ActivityState::IsInWindow);
 }
 
 void Page::setIsInWindowInternal(bool isInWindow)
@@ -1229,6 +1245,17 @@ const String& Page::userStyleSheet() const
     return m_userStyleSheet;
 }
 
+void Page::userAgentChanged()
+{
+    for (auto* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
+        auto* window = frame->window();
+        if (!window)
+            continue;
+        if (auto* navigator = window->optionalNavigator())
+            navigator->userAgentChanged();
+    }
+}
+
 void Page::invalidateStylesForAllLinks()
 {
     for (Frame* frame = &m_mainFrame.get(); frame; frame = frame->tree().traverseNext()) {
@@ -1336,7 +1363,7 @@ void Page::updateTimerThrottlingState()
     // If the page is visible (but idle), there is any activity (loading, media playing, etc), or per setting,
     // we allow timer throttling, but not increasing timer throttling.
     if (!m_settings->hiddenPageDOMTimerThrottlingAutoIncreases()
-        || m_activityState & (ActivityState::IsVisible | ActivityState::IsAudible | ActivityState::IsLoading | ActivityState::IsCapturingMedia)) {
+        || m_activityState.containsAny({ActivityState::IsVisible, ActivityState::IsAudible, ActivityState::IsLoading, ActivityState::IsCapturingMedia })) {
         setTimerThrottlingState(TimerThrottlingState::Enabled);
         return;
     }
@@ -1486,6 +1513,24 @@ void Page::updateIsPlayingMedia(uint64_t sourceElementID)
     chrome().client().isPlayingMediaDidChange(state, sourceElementID);
 }
 
+void Page::schedulePlaybackControlsManagerUpdate()
+{
+#if ENABLE(VIDEO)
+    if (!m_playbackControlsManagerUpdateTimer.isActive())
+        m_playbackControlsManagerUpdateTimer.startOneShot(0_s);
+#endif
+}
+
+#if ENABLE(VIDEO)
+void Page::playbackControlsManagerUpdateTimerFired()
+{
+    if (auto bestMediaElement = HTMLMediaElement::bestMediaElementForShowingPlaybackControlsManager(MediaElementSession::PlaybackControlsPurpose::ControlsManager))
+        chrome().client().setUpPlaybackControlsManager(*bestMediaElement);
+    else
+        chrome().client().clearPlaybackControlsManager();
+}
+#endif
+
 void Page::setMuted(MediaProducer::MutedStateFlags muted)
 {
     if (m_mutedState == muted)
@@ -1556,13 +1601,13 @@ void Page::resumeAnimatingImages()
         view->resumeVisibleImageAnimationsIncludingSubframes();
 }
 
-void Page::setActivityState(ActivityState::Flags activityState)
+void Page::setActivityState(OptionSet<ActivityState::Flag> activityState)
 {
-    ActivityState::Flags changed = m_activityState ^ activityState;
+    auto changed = m_activityState ^ activityState;
     if (!changed)
         return;
 
-    ActivityState::Flags oldActivityState = m_activityState;
+    auto oldActivityState = m_activityState;
 
     bool wasVisibleAndActive = isVisibleAndActive();
     m_activityState = activityState;
@@ -1570,17 +1615,17 @@ void Page::setActivityState(ActivityState::Flags activityState)
     m_focusController->setActivityState(activityState);
 
     if (changed & ActivityState::IsVisible)
-        setIsVisibleInternal(activityState & ActivityState::IsVisible);
+        setIsVisibleInternal(activityState.contains(ActivityState::IsVisible));
     if (changed & ActivityState::IsInWindow)
-        setIsInWindowInternal(activityState & ActivityState::IsInWindow);
+        setIsInWindowInternal(activityState.contains(ActivityState::IsInWindow));
     if (changed & ActivityState::IsVisuallyIdle)
-        setIsVisuallyIdleInternal(activityState & ActivityState::IsVisuallyIdle);
+        setIsVisuallyIdleInternal(activityState.contains(ActivityState::IsVisuallyIdle));
     if (changed & ActivityState::WindowIsActive) {
         if (auto* view = m_mainFrame->view())
             view->updateTiledBackingAdaptiveSizing();
     }
 
-    if (changed & (ActivityState::IsVisible | ActivityState::IsVisuallyIdle | ActivityState::IsAudible | ActivityState::IsLoading | ActivityState::IsCapturingMedia))
+    if (changed.containsAny({ActivityState::IsVisible, ActivityState::IsVisuallyIdle, ActivityState::IsAudible, ActivityState::IsLoading, ActivityState::IsCapturingMedia }))
         updateTimerThrottlingState();
 
     for (auto* observer : m_activityStateChangeObservers)
@@ -1595,20 +1640,26 @@ void Page::setActivityState(ActivityState::Flags activityState)
 
 bool Page::isVisibleAndActive() const
 {
-    return (m_activityState & ActivityState::IsVisible) && (m_activityState & ActivityState::WindowIsActive);
+    return m_activityState.contains(ActivityState::IsVisible) && m_activityState.contains(ActivityState::WindowIsActive);
 }
 
 bool Page::isWindowActive() const
 {
-    return m_activityState & ActivityState::WindowIsActive;
+    return m_activityState.contains(ActivityState::WindowIsActive);
 }
 
 void Page::setIsVisible(bool isVisible)
 {
-    if (isVisible)
-        setActivityState((m_activityState & ~ActivityState::IsVisuallyIdle) | ActivityState::IsVisible | ActivityState::IsVisibleOrOccluded);
-    else
-        setActivityState((m_activityState & ~(ActivityState::IsVisible | ActivityState::IsVisibleOrOccluded)) | ActivityState::IsVisuallyIdle);
+    auto state = m_activityState;
+
+    if (isVisible) {
+        state.remove(ActivityState::IsVisuallyIdle);
+        state.add({ ActivityState::IsVisible, ActivityState::IsVisibleOrOccluded });
+    } else {
+        state.add(ActivityState::IsVisuallyIdle);
+        state.remove({ ActivityState::IsVisible, ActivityState::IsVisibleOrOccluded });
+    }
+    setActivityState(state);
 }
 
 enum class SVGAnimationsState { Paused, Resumed };
@@ -1856,14 +1907,20 @@ void Page::resetRelevantPaintedObjectCounter()
 
 static LayoutRect relevantViewRect(RenderView* view)
 {
+    LayoutRect viewRect = view->viewRect();
+
+    float relevantViewRectWidth = 980;
+#if PLATFORM(WATCHOS)
+    // FIXME(186051): Consider limiting the relevant rect width to the view width everywhere.
+    relevantViewRectWidth = std::min<float>(viewRect.width().toFloat(), relevantViewRectWidth);
+#endif
+
     // DidHitRelevantRepaintedObjectsAreaThreshold is a LayoutMilestone intended to indicate that
     // a certain relevant amount of content has been drawn to the screen. This is the rect that
     // has been determined to be relevant in the context of this goal. We may choose to tweak
     // the rect over time, much like we may choose to tweak gMinimumPaintedAreaRatio and
     // gMaximumUnpaintedAreaRatio. But this seems to work well right now.
-    LayoutRect relevantViewRect = LayoutRect(0, 0, 980, 1300);
-
-    LayoutRect viewRect = view->viewRect();
+    LayoutRect relevantViewRect { 0, 0, relevantViewRectWidth, 1300 };
     // If the viewRect is wider than the relevantViewRect, center the relevantViewRect.
     if (viewRect.width() > relevantViewRect.width())
         relevantViewRect.setX((viewRect.width() - relevantViewRect.width()) / 2);
@@ -2066,28 +2123,28 @@ void Page::logNavigation(const Navigation& navigation)
     String navigationDescription;
     switch (navigation.type) {
     case FrameLoadType::Standard:
-        navigationDescription = ASCIILiteral("standard");
+        navigationDescription = "standard"_s;
         break;
     case FrameLoadType::Back:
-        navigationDescription = ASCIILiteral("back");
+        navigationDescription = "back"_s;
         break;
     case FrameLoadType::Forward:
-        navigationDescription = ASCIILiteral("forward");
+        navigationDescription = "forward"_s;
         break;
     case FrameLoadType::IndexedBackForward:
-        navigationDescription = ASCIILiteral("indexedBackForward");
+        navigationDescription = "indexedBackForward"_s;
         break;
     case FrameLoadType::Reload:
-        navigationDescription = ASCIILiteral("reload");
+        navigationDescription = "reload"_s;
         break;
     case FrameLoadType::Same:
-        navigationDescription = ASCIILiteral("same");
+        navigationDescription = "same"_s;
         break;
     case FrameLoadType::ReloadFromOrigin:
-        navigationDescription = ASCIILiteral("reloadFromOrigin");
+        navigationDescription = "reloadFromOrigin"_s;
         break;
     case FrameLoadType::ReloadExpiredOnly:
-        navigationDescription = ASCIILiteral("reloadRevalidatingExpired");
+        navigationDescription = "reloadRevalidatingExpired"_s;
         break;
     case FrameLoadType::Replace:
     case FrameLoadType::RedirectWithLockedBackForwardList:
@@ -2174,7 +2231,7 @@ void Page::setSessionID(PAL::SessionID sessionID)
 
 #if ENABLE(INDEXED_DATABASE)
     if (sessionID != m_sessionID)
-        m_idbIDBConnectionToServer = nullptr;
+        m_idbConnectionToServer = nullptr;
 #endif
 
     bool privateBrowsingStateChanged = (sessionID.isEphemeral() != m_sessionID.isEphemeral());
@@ -2298,10 +2355,20 @@ void Page::setAllowsMediaDocumentInlinePlayback(bool flag)
 #if ENABLE(INDEXED_DATABASE)
 IDBClient::IDBConnectionToServer& Page::idbConnection()
 {
-    if (!m_idbIDBConnectionToServer)
-        m_idbIDBConnectionToServer = &databaseProvider().idbConnectionToServerForSession(m_sessionID);
+    if (!m_idbConnectionToServer)
+        m_idbConnectionToServer = &databaseProvider().idbConnectionToServerForSession(m_sessionID);
     
-    return *m_idbIDBConnectionToServer;
+    return *m_idbConnectionToServer;
+}
+
+IDBClient::IDBConnectionToServer* Page::optionalIDBConnection()
+{
+    return m_idbConnectionToServer.get();
+}
+
+void Page::clearIDBConnection()
+{
+    m_idbConnectionToServer = nullptr;
 }
 #endif
 
@@ -2362,22 +2429,80 @@ void Page::setUnobscuredSafeAreaInsets(const FloatBoxExtent& insets)
     }
 }
 
-void Page::setFullscreenInsetTop(double inset)
+void Page::setUseSystemAppearance(bool value)
 {
-    for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
-        if (!frame->document())
+    if (m_useSystemAppearance == value)
+        return;
+
+    m_useSystemAppearance = value;
+
+    updateStyleAfterChangeInEnvironment();
+
+    for (auto* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
+        auto* document = frame->document();
+        if (!document)
             continue;
-        frame->document()->constantProperties().setFullscreenInsetTop(inset);
+
+        // System apperance change may affect stylesheet parsing. We need to reparse.
+        document->extensionStyleSheets().clearPageUserSheet();
+        document->extensionStyleSheets().invalidateInjectedStyleSheetCache();
     }
 }
 
-void Page::setFullscreenAutoHideDelay(double delay)
+void Page::setUseDarkAppearance(bool value)
 {
+    if (m_useDarkAppearance == value)
+        return;
+
+    m_useDarkAppearance = value;
+
+    updateStyleAfterChangeInEnvironment();
+}
+
+bool Page::useDarkAppearance() const
+{
+    FrameView* view = mainFrame().view();
+    if (!view || !equalLettersIgnoringASCIICase(view->mediaType(), "screen"))
+        return false;
+    return m_useDarkAppearance;
+}
+
+void Page::setFullscreenInsets(const FloatBoxExtent& insets)
+{
+    if (insets == m_fullscreenInsets)
+        return;
+    m_fullscreenInsets = insets;
+
     for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
         if (!frame->document())
             continue;
-        frame->document()->constantProperties().setFullscreenAutoHideDelay(delay);
+        frame->document()->constantProperties().didChangeFullscreenInsets();
     }
+}
+
+void Page::setFullscreenAutoHideDuration(Seconds duration)
+{
+    if (duration == m_fullscreenAutoHideDuration)
+        return;
+    m_fullscreenAutoHideDuration = duration;
+    for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
+        if (!frame->document())
+            continue;
+        frame->document()->constantProperties().setFullscreenAutoHideDuration(duration);
+    }
+}
+
+void Page::setFullscreenControlsHidden(bool hidden)
+{
+#if ENABLE(FULLSCREEN_API)
+    for (Frame* frame = &mainFrame(); frame; frame = frame->tree().traverseNext()) {
+        if (!frame->document())
+            continue;
+        frame->document()->setFullscreenControlsHidden(hidden);
+    }
+#else
+    UNUSED_PARAM(hidden);
+#endif
 }
 
 #if ENABLE(DATA_INTERACTION)

@@ -22,6 +22,7 @@
 
 #include "FloatPoint3D.h"
 #include "TransformationMatrix.h"
+#include "VRPlatformDisplayClient.h"
 
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
@@ -157,15 +158,26 @@ struct VRPlatformTrackingInfo {
     double timestamp { 0 };
 };
 
-class VRPlatformDisplay {
+class VRPlatformDisplay : public CanMakeWeakPtr<VRPlatformDisplay> {
 public:
     virtual VRPlatformDisplayInfo getDisplayInfo() = 0;
     virtual VRPlatformTrackingInfo getTrackingInfo() = 0;
+    virtual void updateDisplayInfo() = 0;
     virtual ~VRPlatformDisplay() = default;
 
-    WeakPtr<VRPlatformDisplay> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
+    void setClient(VRPlatformDisplayClient*);
+
+    enum class Event {
+        Connected,
+        Disconnected,
+        Mounted,
+        Unmounted,
+    };
+
+    void notifyVRPlatformDisplayEvent(Event);
+
 private:
-    WeakPtrFactory<VRPlatformDisplay> m_weakPtrFactory;
+    VRPlatformDisplayClient* m_client { nullptr };
 };
 
 }; // namespace WebCore

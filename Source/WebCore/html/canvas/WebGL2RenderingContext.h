@@ -68,9 +68,9 @@ public:
     void texStorage3D(GC3Denum target, GC3Dsizei levels, GC3Denum internalFormat, GC3Dsizei width, GC3Dsizei height, GC3Dsizei depth);
 
 #if ENABLE(VIDEO)
-    using TexImageSource = WTF::Variant<RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<HTMLVideoElement>>;
+    using TexImageSource = WTF::Variant<RefPtr<ImageBitmap>, RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>, RefPtr<HTMLVideoElement>>;
 #else
-    using TexImageSource = WTF::Variant<RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>>;
+    using TexImageSource = WTF::Variant<RefPtr<ImageBitmap>, RefPtr<ImageData>, RefPtr<HTMLImageElement>, RefPtr<HTMLCanvasElement>>;
 #endif
 
     using WebGLRenderingContextBase::texImage2D;
@@ -217,6 +217,8 @@ private:
     bool validateBlendEquation(const char* functionName, GC3Denum mode) final;
     bool validateCapability(const char* functionName, GC3Denum cap) final;
     bool validateFramebufferFuncParameters(const char* functionName, GC3Denum target, GC3Denum attachment) final;
+    bool validateFramebufferTarget(const char* functionName, GC3Denum target);
+    bool validateNonDefaultFramebufferAttachment(const char* functionName, GC3Denum attachment);
     
     GC3Denum baseInternalFormatFromInternalFormat(GC3Denum internalformat);
     bool isIntegerFormat(GC3Denum internalformat);

@@ -52,16 +52,14 @@
 #include "WebsiteDataStore.h"
 #include "WebsiteDataStoreParameters.h"
 #include <WebCore/NetworkStorageSession.h>
-#include <WebCore/PlatformCookieJar.h>
 #include <WebCore/ResourceLoaderOptions.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/SameSiteInfo.h>
 #include <WebCore/SecurityPolicy.h>
 #include <pal/SessionID.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 Ref<NetworkConnectionToWebProcess> NetworkConnectionToWebProcess::create(IPC::Connection::Identifier connectionIdentifier)
 {
@@ -74,11 +72,14 @@ NetworkConnectionToWebProcess::NetworkConnectionToWebProcess(IPC::Connection::Id
     , m_mdnsRegister(*this)
 #endif
 {
+    RELEASE_ASSERT(RunLoop::isMain());
     m_connection->open();
 }
 
 NetworkConnectionToWebProcess::~NetworkConnectionToWebProcess()
 {
+    RELEASE_ASSERT(RunLoop::isMain());
+
     m_connection->invalidate();
 #if USE(LIBWEBRTC)
     if (m_rtcProvider)
@@ -88,6 +89,8 @@ NetworkConnectionToWebProcess::~NetworkConnectionToWebProcess()
 
 void NetworkConnectionToWebProcess::didCleanupResourceLoader(NetworkResourceLoader& loader)
 {
+    RELEASE_ASSERT(loader.identifier());
+    RELEASE_ASSERT(RunLoop::isMain());
     ASSERT(m_networkResourceLoaders.get(loader.identifier()) == &loader);
 
     m_networkResourceLoaders.remove(loader.identifier());
@@ -101,18 +104,18 @@ void NetworkConnectionToWebProcess::didReceiveMessage(IPC::Connection& connectio
     }
 
     if (decoder.messageReceiverName() == Messages::NetworkResourceLoader::messageReceiverName()) {
-        auto loaderIterator = m_networkResourceLoaders.find(decoder.destinationID());
-        if (loaderIterator != m_networkResourceLoaders.end())
-            loaderIterator->value->didReceiveNetworkResourceLoaderMessage(connection, decoder);
+        RELEASE_ASSERT(RunLoop::isMain());
+        RELEASE_ASSERT(decoder.destinationID());
+        if (auto* loader = m_networkResourceLoaders.get(decoder.destinationID()))
+            loader->didReceiveNetworkResourceLoaderMessage(connection, decoder);
         return;
     }
 
     if (decoder.messageReceiverName() == Messages::NetworkSocketStream::messageReceiverName()) {
-        auto socketIterator = m_networkSocketStreams.find(decoder.destinationID());
-        if (socketIterator != m_networkSocketStreams.end()) {
-            socketIterator->value->didReceiveMessage(connection, decoder);
+        if (auto* socketStream = m_networkSocketStreams.get(decoder.destinationID())) {
+            socketStream->didReceiveMessage(connection, decoder);
             if (decoder.messageName() == Messages::NetworkSocketStream::Close::name())
-                m_networkSocketStreams.remove(socketIterator);
+                m_networkSocketStreams.remove(decoder.destinationID());
         }
         return;
     }
@@ -176,9 +179,8 @@ void NetworkConnectionToWebProcess::didClose(IPC::Connection&)
     // Protect ourself as we might be otherwise be deleted during this function.
     Ref<NetworkConnectionToWebProcess> protector(*this);
 
-    for (auto& loader : copyToVector(m_networkResourceLoaders.values()))
-        loader->abort();
-    ASSERT(m_networkResourceLoaders.isEmpty());
+    while (!m_networkResourceLoaders.isEmpty())
+        m_networkResourceLoaders.begin()->value->abort();
 
     // All trackers of resources that were in the middle of being loaded were
     // stopped with the abort() calls above, but we still need to sweep up the
@@ -238,39 +240,35 @@ void NetworkConnectionToWebProcess::endSuspension()
 void NetworkConnectionToWebProcess::scheduleResourceLoad(NetworkResourceLoadParameters&& loadParameters)
 {
     auto identifier = loadParameters.identifier;
+    RELEASE_ASSERT(identifier);
+    RELEASE_ASSERT(RunLoop::isMain());
     ASSERT(!m_networkResourceLoaders.contains(identifier));
 
     auto loader = NetworkResourceLoader::create(WTFMove(loadParameters), *this);
-    m_networkResourceLoaders.add(identifier, loader.ptr());
+    m_networkResourceLoaders.add(identifier, loader.copyRef());
     loader->start();
 }
 
 void NetworkConnectionToWebProcess::performSynchronousLoad(NetworkResourceLoadParameters&& loadParameters, Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::DelayedReply&& reply)
 {
     auto identifier = loadParameters.identifier;
+    RELEASE_ASSERT(identifier);
+    RELEASE_ASSERT(RunLoop::isMain());
     ASSERT(!m_networkResourceLoaders.contains(identifier));
 
     auto loader = NetworkResourceLoader::create(WTFMove(loadParameters), *this, WTFMove(reply));
-    m_networkResourceLoaders.add(identifier, loader.ptr());
+    m_networkResourceLoaders.add(identifier, loader.copyRef());
     loader->start();
 }
 
 void NetworkConnectionToWebProcess::loadPing(NetworkResourceLoadParameters&& loadParameters)
 {
-    auto completionHandler = [this, protectedThis = makeRef(*this), identifier = loadParameters.identifier] (const ResourceError& error, const ResourceResponse& response) {
-        didFinishPingLoad(identifier, error, response);
+    auto completionHandler = [connection = m_connection.copyRef(), identifier = loadParameters.identifier] (const ResourceError& error, const ResourceResponse& response) {
+        connection->send(Messages::NetworkProcessConnection::DidFinishPingLoad(identifier, error, response), 0);
     };
 
     // PingLoad manages its own lifetime, deleting itself when its purpose has been fulfilled.
-    new PingLoad(WTFMove(loadParameters), *this, WTFMove(completionHandler));
-}
-
-void NetworkConnectionToWebProcess::didFinishPingLoad(uint64_t pingLoadIdentifier, const ResourceError& error, const ResourceResponse& response)
-{
-    if (!m_connection->isValid())
-        return;
-
-    m_connection->send(Messages::NetworkProcessConnection::DidFinishPingLoad(pingLoadIdentifier, error, response), 0);
+    new PingLoad(WTFMove(loadParameters), WTFMove(completionHandler));
 }
 
 void NetworkConnectionToWebProcess::setOnLineState(bool isOnLine)
@@ -280,6 +278,9 @@ void NetworkConnectionToWebProcess::setOnLineState(bool isOnLine)
 
 void NetworkConnectionToWebProcess::removeLoadIdentifier(ResourceLoadIdentifier identifier)
 {
+    RELEASE_ASSERT(identifier);
+    RELEASE_ASSERT(RunLoop::isMain());
+
     RefPtr<NetworkResourceLoader> loader = m_networkResourceLoaders.get(identifier);
 
     // It's possible we have no loader for this identifier if the NetworkProcess crashed and this was a respawned NetworkProcess.
@@ -299,6 +300,9 @@ void NetworkConnectionToWebProcess::pageLoadCompleted(uint64_t webPageID)
 
 void NetworkConnectionToWebProcess::setDefersLoading(ResourceLoadIdentifier identifier, bool defers)
 {
+    RELEASE_ASSERT(identifier);
+    RELEASE_ASSERT(RunLoop::isMain());
+
     RefPtr<NetworkResourceLoader> loader = m_networkResourceLoaders.get(identifier);
     if (!loader)
         return;
@@ -352,6 +356,8 @@ void NetworkConnectionToWebProcess::startDownload(PAL::SessionID sessionID, Down
 
 void NetworkConnectionToWebProcess::convertMainResourceLoadToDownload(PAL::SessionID sessionID, uint64_t mainResourceLoadIdentifier, DownloadID downloadID, const ResourceRequest& request, const ResourceResponse& response)
 {
+    RELEASE_ASSERT(RunLoop::isMain());
+
     auto& networkProcess = NetworkProcess::singleton();
     // In case a response is served from service worker, we do not have yet the ability to convert the load.
     if (!mainResourceLoadIdentifier || response.source() == ResourceResponse::Source::ServiceWorker) {
@@ -371,7 +377,7 @@ void NetworkConnectionToWebProcess::convertMainResourceLoadToDownload(PAL::Sessi
 void NetworkConnectionToWebProcess::cookiesForDOM(PAL::SessionID sessionID, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies includeSecureCookies, String& cookieString, bool& secureCookiesAccessed)
 {
     auto& networkStorageSession = storageSession(sessionID);
-    std::tie(cookieString, secureCookiesAccessed) = WebCore::cookiesForDOM(networkStorageSession, firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
+    std::tie(cookieString, secureCookiesAccessed) = networkStorageSession.cookiesForDOM(firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     if (NetworkProcess::singleton().shouldLogCookieInformation())
         NetworkResourceLoader::logCookieInformation("NetworkConnectionToWebProcess::cookiesForDOM", reinterpret_cast<const void*>(this), networkStorageSession, firstParty, sameSiteInfo, url, emptyString(), frameID, pageID, std::nullopt);
@@ -381,7 +387,7 @@ void NetworkConnectionToWebProcess::cookiesForDOM(PAL::SessionID sessionID, cons
 void NetworkConnectionToWebProcess::setCookiesFromDOM(PAL::SessionID sessionID, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, const String& cookieString)
 {
     auto& networkStorageSession = storageSession(sessionID);
-    WebCore::setCookiesFromDOM(networkStorageSession, firstParty, sameSiteInfo, url, frameID, pageID, cookieString);
+    networkStorageSession.setCookiesFromDOM(firstParty, sameSiteInfo, url, frameID, pageID, cookieString);
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING) && !RELEASE_LOG_DISABLED
     if (NetworkProcess::singleton().shouldLogCookieInformation())
         NetworkResourceLoader::logCookieInformation("NetworkConnectionToWebProcess::setCookiesFromDOM", reinterpret_cast<const void*>(this), networkStorageSession, firstParty, sameSiteInfo, url, emptyString(), frameID, pageID, std::nullopt);
@@ -390,22 +396,22 @@ void NetworkConnectionToWebProcess::setCookiesFromDOM(PAL::SessionID sessionID, 
 
 void NetworkConnectionToWebProcess::cookiesEnabled(PAL::SessionID sessionID, bool& result)
 {
-    result = WebCore::cookiesEnabled(storageSession(sessionID));
+    result = storageSession(sessionID).cookiesEnabled();
 }
 
 void NetworkConnectionToWebProcess::cookieRequestHeaderFieldValue(PAL::SessionID sessionID, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, IncludeSecureCookies includeSecureCookies, String& cookieString, bool& secureCookiesAccessed)
 {
-    std::tie(cookieString, secureCookiesAccessed) = WebCore::cookieRequestHeaderFieldValue(storageSession(sessionID), firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
+    std::tie(cookieString, secureCookiesAccessed) = storageSession(sessionID).cookieRequestHeaderFieldValue(firstParty, sameSiteInfo, url, frameID, pageID, includeSecureCookies);
 }
 
 void NetworkConnectionToWebProcess::getRawCookies(PAL::SessionID sessionID, const URL& firstParty, const SameSiteInfo& sameSiteInfo, const URL& url, std::optional<uint64_t> frameID, std::optional<uint64_t> pageID, Vector<Cookie>& result)
 {
-    WebCore::getRawCookies(storageSession(sessionID), firstParty, sameSiteInfo, url, frameID, pageID, result);
+    storageSession(sessionID).getRawCookies(firstParty, sameSiteInfo, url, frameID, pageID, result);
 }
 
 void NetworkConnectionToWebProcess::deleteCookie(PAL::SessionID sessionID, const URL& url, const String& cookieName)
 {
-    WebCore::deleteCookie(storageSession(sessionID), url, cookieName);
+    storageSession(sessionID).deleteCookie(url, cookieName);
 }
 
 void NetworkConnectionToWebProcess::registerFileBlobURL(const URL& url, const String& path, SandboxExtension::Handle&& extensionHandle, const String& contentType)
@@ -542,17 +548,9 @@ void NetworkConnectionToWebProcess::resetOriginAccessWhitelists()
     SecurityPolicy::resetOriginAccessWhitelists();
 }
 
-static bool networkActivityTrackingEnabled()
-{
-    return NetworkProcess::singleton().tracksResourceLoadMilestones();
-}
-
 std::optional<NetworkActivityTracker> NetworkConnectionToWebProcess::startTrackingResourceLoad(uint64_t pageID, ResourceLoadIdentifier resourceID, bool isMainResource, const PAL::SessionID& sessionID)
 {
     if (sessionID.isEphemeral())
-        return std::nullopt;
-
-    if (!networkActivityTrackingEnabled())
         return std::nullopt;
 
     // Either get the existing root activity tracker for this page or create a
@@ -603,9 +601,6 @@ std::optional<NetworkActivityTracker> NetworkConnectionToWebProcess::startTracki
 
 void NetworkConnectionToWebProcess::stopTrackingResourceLoad(ResourceLoadIdentifier resourceID, NetworkActivityTracker::CompletionCode code)
 {
-    if (!networkActivityTrackingEnabled())
-        return;
-
     auto itemIndex = findNetworkActivityTracker(resourceID);
     if (itemIndex == notFound)
         return;
@@ -616,9 +611,6 @@ void NetworkConnectionToWebProcess::stopTrackingResourceLoad(ResourceLoadIdentif
 
 void NetworkConnectionToWebProcess::stopAllNetworkActivityTracking()
 {
-    if (!networkActivityTrackingEnabled())
-        return;
-
     for (auto& activityTracker : m_networkActivityTrackers)
         activityTracker.networkActivity.complete(NetworkActivityTracker::CompletionCode::None);
 
@@ -627,9 +619,6 @@ void NetworkConnectionToWebProcess::stopAllNetworkActivityTracking()
 
 void NetworkConnectionToWebProcess::stopAllNetworkActivityTrackingForPage(uint64_t pageID)
 {
-    if (!networkActivityTrackingEnabled())
-        return;
-
     for (auto& activityTracker : m_networkActivityTrackers) {
         if (activityTracker.pageID == pageID)
             activityTracker.networkActivity.complete(NetworkActivityTracker::CompletionCode::None);

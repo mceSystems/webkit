@@ -437,7 +437,7 @@ bool AccessibilityObject::hasMisspelling() const
 
     if (unifiedTextCheckerEnabled(frame)) {
         Vector<TextCheckingResult> results;
-        checkTextOfParagraph(*textChecker, stringValue(), TextCheckingTypeSpelling, results, frame->selection().selection());
+        checkTextOfParagraph(*textChecker, stringValue(), TextCheckingType::Spelling, results, frame->selection().selection());
         if (!results.isEmpty())
             isMisspelled = true;
         return isMisspelled;
@@ -751,9 +751,9 @@ RefPtr<Range> AccessibilityObject::rangeOfStringClosestToRangeInDirection(Range*
         return nullptr;
     
     bool isBackwardSearch = searchDirection == AccessibilitySearchDirection::Previous;
-    FindOptions findOptions { { AtWordStarts, AtWordEnds, CaseInsensitive, StartInSelection } };
+    FindOptions findOptions { AtWordStarts, AtWordEnds, CaseInsensitive, StartInSelection };
     if (isBackwardSearch)
-        findOptions |= Backwards;
+        findOptions.add(Backwards);
     
     RefPtr<Range> closestStringRange = nullptr;
     for (const auto& searchString : searchStrings) {
@@ -1940,13 +1940,13 @@ const String AccessibilityObject::defaultLiveRegionStatusForRole(AccessibilityRo
     switch (role) {
     case AccessibilityRole::ApplicationAlertDialog:
     case AccessibilityRole::ApplicationAlert:
-        return ASCIILiteral("assertive");
+        return "assertive"_s;
     case AccessibilityRole::ApplicationLog:
     case AccessibilityRole::ApplicationStatus:
-        return ASCIILiteral("polite");
+        return "polite"_s;
     case AccessibilityRole::ApplicationTimer:
     case AccessibilityRole::ApplicationMarquee:
-        return ASCIILiteral("off");
+        return "off"_s;
     default:
         return nullAtom();
     }
@@ -2004,11 +2004,11 @@ bool AccessibilityObject::ariaIsMultiline() const
 
 String AccessibilityObject::invalidStatus() const
 {
-    String grammarValue = ASCIILiteral("grammar");
-    String falseValue = ASCIILiteral("false");
-    String spellingValue = ASCIILiteral("spelling");
-    String trueValue = ASCIILiteral("true");
-    String undefinedValue = ASCIILiteral("undefined");
+    String grammarValue = "grammar"_s;
+    String falseValue = "false"_s;
+    String spellingValue = "spelling"_s;
+    String trueValue = "true"_s;
+    String undefinedValue = "undefined"_s;
 
     // aria-invalid can return false (default), grammar, spelling, or true.
     String ariaInvalid = stripLeadingAndTrailingHTMLSpaces(getAttribute(aria_invalidAttr));
@@ -2216,7 +2216,7 @@ bool AccessibilityObject::dispatchAccessibilityEventWithType(AccessibilityEventT
         return false;
     }
     
-    auto event = Event::create(eventName, true, true);
+    auto event = Event::create(eventName, Event::CanBubble::Yes, Event::IsCancelable::Yes);
     return dispatchAccessibilityEvent(event);
 }
 
@@ -2290,7 +2290,9 @@ static void initializeRoleMap()
         { "application", AccessibilityRole::WebApplication },
         { "article", AccessibilityRole::DocumentArticle },
         { "banner", AccessibilityRole::LandmarkBanner },
+        { "blockquote", AccessibilityRole::Blockquote },
         { "button", AccessibilityRole::Button },
+        { "caption", AccessibilityRole::Caption },
         { "checkbox", AccessibilityRole::CheckBox },
         { "complementary", AccessibilityRole::LandmarkComplementary },
         { "contentinfo", AccessibilityRole::LandmarkContentInfo },
@@ -2373,6 +2375,7 @@ static void initializeRoleMap()
         { "note", AccessibilityRole::DocumentNote },
         { "navigation", AccessibilityRole::LandmarkNavigation },
         { "option", AccessibilityRole::ListBoxOption },
+        { "paragraph", AccessibilityRole::Paragraph },
         { "presentation", AccessibilityRole::Presentational },
         { "progressbar", AccessibilityRole::ProgressIndicator },
         { "radio", AccessibilityRole::RadioButton },
@@ -2525,6 +2528,11 @@ bool AccessibilityObject::supportsDatetimeAttribute() const
 const AtomicString& AccessibilityObject::datetimeAttributeValue() const
 {
     return getAttribute(datetimeAttr);
+}
+    
+const AtomicString& AccessibilityObject::linkRelValue() const
+{
+    return getAttribute(relAttr);
 }
     
 const String AccessibilityObject::keyShortcutsValue() const
@@ -2797,7 +2805,7 @@ bool AccessibilityObject::isExpanded() const
     // Summary element should use its details parent's expanded status.
     if (isSummary()) {
         if (const AccessibilityObject* parent = AccessibilityObject::matchedParent(*this, false, [] (const AccessibilityObject& object) {
-            return object.roleValue() == AccessibilityRole::Details;
+            return is<HTMLDetailsElement>(object.node());
         }))
             return parent->isExpanded();
     }
@@ -2984,7 +2992,7 @@ void AccessibilityObject::scrollToMakeVisible() const
         parentObject()->scrollToMakeVisible();
 
     if (auto* renderer = this->renderer())
-        renderer->scrollRectToVisible(SelectionRevealMode::Reveal, boundingBoxRect(), false, ScrollAlignment::alignCenterIfNotVisible, ScrollAlignment::alignCenterIfNotVisible, ShouldAllowCrossOriginScrolling::Yes);
+        renderer->scrollRectToVisible(boundingBoxRect(), false, { SelectionRevealMode::Reveal, ScrollAlignment::alignCenterIfNeeded, ScrollAlignment::alignCenterIfNeeded, ShouldAllowCrossOriginScrolling::Yes });
 }
 
 void AccessibilityObject::scrollToMakeVisibleWithSubFocus(const IntRect& subfocus) const

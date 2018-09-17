@@ -104,8 +104,8 @@ void ShapeOutsideInfo::setReferenceBoxLogicalSize(LayoutSize newReferenceBoxLogi
         else
             newReferenceBoxLogicalSize.shrink(m_renderer.verticalBorderAndPaddingExtent(), m_renderer.horizontalBorderAndPaddingExtent());
         break;
-    case CSSBoxType::Fill:
-    case CSSBoxType::Stroke:
+    case CSSBoxType::FillBox:
+    case CSSBoxType::StrokeBox:
     case CSSBoxType::ViewBox:
     case CSSBoxType::BoxMissing:
         ASSERT_NOT_REACHED();
@@ -151,7 +151,7 @@ std::unique_ptr<Shape> ShapeOutsideInfo::createShapeForImage(StyleImage* styleIm
 
     const LayoutRect& marginRect = getShapeImageMarginRect(m_renderer, m_referenceBoxLogicalSize);
     const LayoutRect& imageRect = is<RenderImage>(m_renderer)
-        ? downcast<RenderImage>(m_renderer).replacedContentRect(m_renderer.intrinsicSize())
+        ? downcast<RenderImage>(m_renderer).replacedContentRect()
         : LayoutRect(LayoutPoint(), imageSize);
 
     ASSERT(!styleImage->isPending());
@@ -232,9 +232,9 @@ LayoutUnit ShapeOutsideInfo::logicalTopOffset() const
         return borderBeforeInWritingMode(m_renderer, m_renderer.containingBlock()->style().writingMode());
     case CSSBoxType::ContentBox:
         return borderAndPaddingBeforeInWritingMode(m_renderer, m_renderer.containingBlock()->style().writingMode());
-    case CSSBoxType::Fill:
+    case CSSBoxType::FillBox:
         break;
-    case CSSBoxType::Stroke:
+    case CSSBoxType::StrokeBox:
         break;
     case CSSBoxType::ViewBox:
         break;
@@ -288,9 +288,9 @@ LayoutUnit ShapeOutsideInfo::logicalLeftOffset() const
         return borderStartWithStyleForWritingMode(m_renderer, m_renderer.containingBlock()->style());
     case CSSBoxType::ContentBox:
         return borderAndPaddingStartWithStyleForWritingMode(m_renderer, m_renderer.containingBlock()->style());
-    case CSSBoxType::Fill:
+    case CSSBoxType::FillBox:
         break;
-    case CSSBoxType::Stroke:
+    case CSSBoxType::StrokeBox:
         break;
     case CSSBoxType::ViewBox:
         break;

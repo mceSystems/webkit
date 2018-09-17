@@ -143,7 +143,7 @@ static const CSSPropertyID computedProperties[] = {
     CSSPropertyClear,
     CSSPropertyClip,
     CSSPropertyColor,
-    CSSPropertyColorFilter,
+    CSSPropertyAppleColorFilter,
     CSSPropertyCounterIncrement,
     CSSPropertyCounterReset,
     CSSPropertyContent,
@@ -362,7 +362,6 @@ static const CSSPropertyID computedProperties[] = {
     CSSPropertyWebkitLineBoxContain,
     CSSPropertyLineBreak,
     CSSPropertyWebkitLineClamp,
-    CSSPropertyWebkitLinesClamp,
     CSSPropertyWebkitLineGrid,
     CSSPropertyWebkitLineSnap,
     CSSPropertyWebkitLocale,
@@ -1011,6 +1010,10 @@ Ref<CSSValue> ComputedStyleExtractor::valueForFilter(const RenderStyle& style, c
             case FilterOperation::INVERT: {
                 filterValue = CSSFunctionValue::create(CSSValueInvert);
                 filterValue->append(cssValuePool.createValue(downcast<BasicComponentTransferFilterOperation>(filterOperation).amount(), CSSPrimitiveValue::CSS_NUMBER));
+                break;
+            }
+            case FilterOperation::APPLE_INVERT_LIGHTNESS: {
+                filterValue = CSSFunctionValue::create(CSSValueAppleInvertLightness);
                 break;
             }
             case FilterOperation::OPACITY: {
@@ -2032,11 +2035,11 @@ Ref<CSSFontStyleValue> ComputedStyleExtractor::fontNonKeywordStyleFromStyleValue
     return CSSFontStyleValue::create(CSSValuePool::singleton().createIdentifierValue(CSSValueOblique), CSSValuePool::singleton().createValue(static_cast<float>(italic), CSSPrimitiveValue::CSS_DEG));
 }
 
-Ref<CSSFontStyleValue> ComputedStyleExtractor::fontStyleFromStyleValue(FontSelectionValue italic, FontStyleAxis fontStyleAxis)
+Ref<CSSFontStyleValue> ComputedStyleExtractor::fontStyleFromStyleValue(std::optional<FontSelectionValue> italic, FontStyleAxis fontStyleAxis)
 {
     if (auto keyword = fontStyleKeyword(italic, fontStyleAxis))
         return CSSFontStyleValue::create(CSSValuePool::singleton().createIdentifierValue(keyword.value()));
-    return fontNonKeywordStyleFromStyleValue(italic);
+    return fontNonKeywordStyleFromStyleValue(italic.value());
 }
 
 static Ref<CSSFontStyleValue> fontStyleFromStyle(const RenderStyle& style)
@@ -2317,6 +2320,8 @@ static bool isLayoutDependent(CSSPropertyID propertyID, const RenderStyle* style
         return positionOffsetValueIsRendererDependent(style, renderer);
     case CSSPropertyWidth:
     case CSSPropertyHeight:
+    case CSSPropertyInlineSize:
+    case CSSPropertyBlockSize:
         return renderer && !renderer->isRenderSVGModelObject() && !isNonReplacedInline(*renderer);
     case CSSPropertyPerspectiveOrigin:
     case CSSPropertyTransformOrigin:
@@ -3166,15 +3171,6 @@ RefPtr<CSSValue> ComputedStyleExtractor::valueForPropertyinStyle(const RenderSty
             if (style.lineClamp().isNone())
                 return cssValuePool.createIdentifierValue(CSSValueNone);
             return cssValuePool.createValue(style.lineClamp().value(), style.lineClamp().isPercentage() ? CSSPrimitiveValue::CSS_PERCENTAGE : CSSPrimitiveValue::CSS_NUMBER);
-        case CSSPropertyWebkitLinesClamp: {
-            if (style.linesClamp().isNone())
-                return cssValuePool.createIdentifierValue(CSSValueNone);
-            auto list = CSSValueList::createSpaceSeparated();
-            list->append(cssValuePool.createValue(style.linesClamp().start().value(), style.linesClamp().start().isPercentage() ? CSSPrimitiveValue::CSS_PERCENTAGE : CSSPrimitiveValue::CSS_NUMBER));
-            list->append(cssValuePool.createValue(style.linesClamp().end().value(), style.linesClamp().end().isPercentage() ? CSSPrimitiveValue::CSS_PERCENTAGE : CSSPrimitiveValue::CSS_NUMBER));
-            list->append(cssValuePool.createValue(style.linesClamp().center(), CSSPrimitiveValue::CSS_STRING));
-            return WTFMove(list);
-        }
         case CSSPropertyLineHeight:
             return lineHeightFromStyle(style);
         case CSSPropertyListStyleImage:
@@ -3849,8 +3845,8 @@ RefPtr<CSSValue> ComputedStyleExtractor::valueForPropertyinStyle(const RenderSty
             return shapePropertyValue(style, style.shapeOutside());
         case CSSPropertyFilter:
             return valueForFilter(style, style.filter());
-        case CSSPropertyColorFilter:
-            return valueForFilter(style, style.colorFilter());
+        case CSSPropertyAppleColorFilter:
+            return valueForFilter(style, style.appleColorFilter());
 #if ENABLE(FILTERS_LEVEL_2)
         case CSSPropertyWebkitBackdropFilter:
             return valueForFilter(style, style.backdropFilter());
@@ -3996,36 +3992,36 @@ RefPtr<CSSValue> ComputedStyleExtractor::valueForPropertyinStyle(const RenderSty
             break;
 
         /* Directional properties are resolved by resolveDirectionAwareProperty() before the switch. */
-        case CSSPropertyWebkitBorderEnd:
-        case CSSPropertyWebkitBorderEndColor:
-        case CSSPropertyWebkitBorderEndStyle:
-        case CSSPropertyWebkitBorderEndWidth:
-        case CSSPropertyWebkitBorderStart:
-        case CSSPropertyWebkitBorderStartColor:
-        case CSSPropertyWebkitBorderStartStyle:
-        case CSSPropertyWebkitBorderStartWidth:
-        case CSSPropertyWebkitBorderAfter:
-        case CSSPropertyWebkitBorderAfterColor:
-        case CSSPropertyWebkitBorderAfterStyle:
-        case CSSPropertyWebkitBorderAfterWidth:
-        case CSSPropertyWebkitBorderBefore:
-        case CSSPropertyWebkitBorderBeforeColor:
-        case CSSPropertyWebkitBorderBeforeStyle:
-        case CSSPropertyWebkitBorderBeforeWidth:
-        case CSSPropertyWebkitMarginEnd:
-        case CSSPropertyWebkitMarginStart:
-        case CSSPropertyWebkitMarginAfter:
-        case CSSPropertyWebkitMarginBefore:
-        case CSSPropertyWebkitPaddingEnd:
-        case CSSPropertyWebkitPaddingStart:
-        case CSSPropertyWebkitPaddingAfter:
-        case CSSPropertyWebkitPaddingBefore:
-        case CSSPropertyWebkitLogicalWidth:
-        case CSSPropertyWebkitLogicalHeight:
-        case CSSPropertyWebkitMinLogicalWidth:
-        case CSSPropertyWebkitMinLogicalHeight:
-        case CSSPropertyWebkitMaxLogicalWidth:
-        case CSSPropertyWebkitMaxLogicalHeight:
+        case CSSPropertyBorderBlockEnd:
+        case CSSPropertyBorderBlockEndColor:
+        case CSSPropertyBorderBlockEndStyle:
+        case CSSPropertyBorderBlockEndWidth:
+        case CSSPropertyBorderBlockStart:
+        case CSSPropertyBorderBlockStartColor:
+        case CSSPropertyBorderBlockStartStyle:
+        case CSSPropertyBorderBlockStartWidth:
+        case CSSPropertyBorderInlineEnd:
+        case CSSPropertyBorderInlineEndColor:
+        case CSSPropertyBorderInlineEndStyle:
+        case CSSPropertyBorderInlineEndWidth:
+        case CSSPropertyBorderInlineStart:
+        case CSSPropertyBorderInlineStartColor:
+        case CSSPropertyBorderInlineStartStyle:
+        case CSSPropertyBorderInlineStartWidth:
+        case CSSPropertyMarginBlockEnd:
+        case CSSPropertyMarginBlockStart:
+        case CSSPropertyMarginInlineEnd:
+        case CSSPropertyMarginInlineStart:
+        case CSSPropertyPaddingBlockEnd:
+        case CSSPropertyPaddingBlockStart:
+        case CSSPropertyPaddingInlineEnd:
+        case CSSPropertyPaddingInlineStart:
+        case CSSPropertyBlockSize:
+        case CSSPropertyInlineSize:
+        case CSSPropertyMaxBlockSize:
+        case CSSPropertyMaxInlineSize:
+        case CSSPropertyMinBlockSize:
+        case CSSPropertyMinInlineSize:
             ASSERT_NOT_REACHED();
             break;
 

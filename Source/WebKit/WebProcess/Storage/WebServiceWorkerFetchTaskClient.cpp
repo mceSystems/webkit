@@ -30,15 +30,17 @@
 
 #include "DataReference.h"
 #include "FormDataReference.h"
+#include "SharedBufferDataReference.h"
 #include "StorageProcessMessages.h"
 #include "WebCoreArgumentCoders.h"
+#include "WebErrors.h"
+#include <WebCore/ResourceError.h>
 #include <WebCore/ResourceResponse.h>
 #include <WebCore/SWContextManager.h>
 #include <wtf/RunLoop.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 WebServiceWorkerFetchTaskClient::~WebServiceWorkerFetchTaskClient()
 {
@@ -65,8 +67,7 @@ void WebServiceWorkerFetchTaskClient::didReceiveData(Ref<SharedBuffer>&& buffer)
 {
     if (!m_connection)
         return;
-    IPC::SharedBufferDataReference dataReference { buffer.ptr() };
-    m_connection->send(Messages::StorageProcess::DidReceiveFetchData { m_serverConnectionIdentifier, m_fetchIdentifier, dataReference, static_cast<int64_t>(buffer->size()) }, 0);
+    m_connection->send(Messages::StorageProcess::DidReceiveFetchData { m_serverConnectionIdentifier, m_fetchIdentifier, { buffer }, static_cast<int64_t>(buffer->size()) }, 0);
 }
 
 void WebServiceWorkerFetchTaskClient::didReceiveFormDataAndFinish(Ref<FormData>&& formData)
@@ -85,7 +86,7 @@ void WebServiceWorkerFetchTaskClient::didReceiveFormDataAndFinish(Ref<FormData>&
     callOnMainThread([this, protectedThis = makeRef(*this), blobURL = blobURL.isolatedCopy()] () {
         auto* serviceWorkerThreadProxy = SWContextManager::singleton().serviceWorkerThreadProxy(m_serviceWorkerIdentifier);
         if (!serviceWorkerThreadProxy) {
-            didFail();
+            didFail(internalError(blobURL));
             return;
         }
 
@@ -93,7 +94,7 @@ void WebServiceWorkerFetchTaskClient::didReceiveFormDataAndFinish(Ref<FormData>&
         auto loader = serviceWorkerThreadProxy->createBlobLoader(*m_blobLoader, blobURL);
         if (!loader) {
             m_blobLoader = std::nullopt;
-            didFail();
+            didFail(internalError(blobURL));
             return;
         }
 
@@ -106,8 +107,7 @@ void WebServiceWorkerFetchTaskClient::didReceiveBlobChunk(const char* data, size
     if (!m_connection)
         return;
 
-    IPC::DataReference dataReference { reinterpret_cast<const uint8_t*>(data), size };
-    m_connection->send(Messages::StorageProcess::DidReceiveFetchData { m_serverConnectionIdentifier, m_fetchIdentifier, dataReference, static_cast<int64_t>(size) }, 0);
+    m_connection->send(Messages::StorageProcess::DidReceiveFetchData { m_serverConnectionIdentifier, m_fetchIdentifier, { reinterpret_cast<const uint8_t*>(data), size }, static_cast<int64_t>(size) }, 0);
 }
 
 void WebServiceWorkerFetchTaskClient::didFinishBlobLoading()
@@ -117,12 +117,12 @@ void WebServiceWorkerFetchTaskClient::didFinishBlobLoading()
     std::exchange(m_blobLoader, std::nullopt);
 }
 
-void WebServiceWorkerFetchTaskClient::didFail()
+void WebServiceWorkerFetchTaskClient::didFail(const ResourceError& error)
 {
     if (!m_connection)
         return;
 
-    m_connection->send(Messages::StorageProcess::DidFailFetch { m_serverConnectionIdentifier, m_fetchIdentifier }, 0);
+    m_connection->send(Messages::StorageProcess::DidFailFetch { m_serverConnectionIdentifier, m_fetchIdentifier, error }, 0);
 
     cleanup();
 }

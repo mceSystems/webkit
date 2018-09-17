@@ -37,6 +37,7 @@
 #import "NavigationState.h"
 #import "StringUtilities.h"
 #import "UIKitSPI.h"
+#import "UndoOrRedo.h"
 #import "ViewSnapshotStore.h"
 #import "WKContentView.h"
 #import "WKContentViewInteraction.h"
@@ -47,12 +48,14 @@
 #import "WKWebViewContentProviderRegistry.h"
 #import "WKWebViewInternal.h"
 #import "WebContextMenuProxy.h"
+#import "WebDataListSuggestionsDropdownIOS.h"
 #import "WebEditCommandProxy.h"
 #import "WebProcessProxy.h"
 #import "_WKDownloadInternal.h"
 #import <WebCore/NotImplemented.h>
 #import <WebCore/PlatformScreen.h>
-#import <WebCore/PromisedBlobInfo.h>
+#import <WebCore/PromisedAttachmentInfo.h>
+#import <WebCore/ShareData.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/TextIndicator.h>
 #import <WebCore/ValidationBubble.h>
@@ -61,15 +64,12 @@
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, m_webView->_page->process().connection())
 
-using namespace WebCore;
-using namespace WebKit;
-
 @interface WKEditCommandObjC : NSObject
 {
-    RefPtr<WebEditCommandProxy> m_command;
+    RefPtr<WebKit::WebEditCommandProxy> m_command;
 }
-- (id)initWithWebEditCommandProxy:(Ref<WebEditCommandProxy>&&)command;
-- (WebEditCommandProxy*)command;
+- (id)initWithWebEditCommandProxy:(Ref<WebKit::WebEditCommandProxy>&&)command;
+- (WebKit::WebEditCommandProxy*)command;
 @end
 
 @interface WKEditorUndoTargetObjC : NSObject
@@ -79,7 +79,7 @@ using namespace WebKit;
 
 @implementation WKEditCommandObjC
 
-- (id)initWithWebEditCommandProxy:(Ref<WebEditCommandProxy>&&)command
+- (id)initWithWebEditCommandProxy:(Ref<WebKit::WebEditCommandProxy>&&)command
 {
     self = [super init];
     if (!self)
@@ -89,7 +89,7 @@ using namespace WebKit;
     return self;
 }
 
-- (WebEditCommandProxy *)command
+- (WebKit::WebEditCommandProxy *)command
 {
     return m_command.get();
 }
@@ -113,6 +113,7 @@ using namespace WebKit;
 @end
 
 namespace WebKit {
+using namespace WebCore;
 
 PageClientImpl::PageClientImpl(WKContentView *contentView, WKWebView *webView)
     : PageClientImplCocoa(webView)
@@ -160,13 +161,13 @@ IntSize PageClientImpl::viewSize()
 bool PageClientImpl::isViewWindowActive()
 {
     // FIXME: https://bugs.webkit.org/show_bug.cgi?id=133098
-    return isViewVisible() || (m_webView && m_webView->_activeFocusedStateRetainCount);
+    return isViewVisible() || (m_webView && [m_webView _isRetainingActiveFocusedState]);
 }
 
 bool PageClientImpl::isViewFocused()
 {
     // FIXME: https://bugs.webkit.org/show_bug.cgi?id=133098
-    return isViewWindowActive() || (m_webView && m_webView->_activeFocusedStateRetainCount);
+    return isViewWindowActive() || (m_webView && [m_webView _isRetainingActiveFocusedState]);
 }
 
 bool PageClientImpl::isViewVisible()
@@ -211,6 +212,7 @@ void PageClientImpl::processDidExit()
 void PageClientImpl::didRelaunchProcess()
 {
     [m_contentView _didRelaunchProcess];
+    [m_webView _didRelaunchProcess];
 }
 
 void PageClientImpl::pageClosed()
@@ -245,6 +247,7 @@ void PageClientImpl::decidePolicyForGeolocationPermissionRequest(WebFrameProxy& 
 
 void PageClientImpl::didStartProvisionalLoadForMainFrame()
 {
+    [m_webView _didStartProvisionalLoadForMainFrame];
     [m_webView _hidePasswordView];
 }
 
@@ -302,13 +305,13 @@ void PageClientImpl::didChangeViewportProperties(const ViewportAttributes&)
     notImplemented();
 }
 
-void PageClientImpl::registerEditCommand(Ref<WebEditCommandProxy>&& command, WebPageProxy::UndoOrRedo undoOrRedo)
+void PageClientImpl::registerEditCommand(Ref<WebEditCommandProxy>&& command, UndoOrRedo undoOrRedo)
 {
     RetainPtr<WKEditCommandObjC> commandObjC = adoptNS([[WKEditCommandObjC alloc] initWithWebEditCommandProxy:command.copyRef()]);
     String actionName = WebEditCommandProxy::nameForEditAction(command->editAction());
     
     NSUndoManager *undoManager = [m_contentView undoManager];
-    [undoManager registerUndoWithTarget:m_undoTarget.get() selector:((undoOrRedo == WebPageProxy::Undo) ? @selector(undoEditing:) : @selector(redoEditing:)) object:commandObjC.get()];
+    [undoManager registerUndoWithTarget:m_undoTarget.get() selector:((undoOrRedo == UndoOrRedo::Undo) ? @selector(undoEditing:) : @selector(redoEditing:)) object:commandObjC.get()];
     if (!actionName.isEmpty())
         [undoManager setActionName:(NSString *)actionName];
 }
@@ -325,14 +328,14 @@ void PageClientImpl::clearAllEditCommands()
     [[m_contentView undoManager] removeAllActionsWithTarget:m_undoTarget.get()];
 }
 
-bool PageClientImpl::canUndoRedo(WebPageProxy::UndoOrRedo undoOrRedo)
+bool PageClientImpl::canUndoRedo(UndoOrRedo undoOrRedo)
 {
-    return (undoOrRedo == WebPageProxy::Undo) ? [[m_contentView undoManager] canUndo] : [[m_contentView undoManager] canRedo];
+    return (undoOrRedo == UndoOrRedo::Undo) ? [[m_contentView undoManager] canUndo] : [[m_contentView undoManager] canRedo];
 }
 
-void PageClientImpl::executeUndoRedo(WebPageProxy::UndoOrRedo undoOrRedo)
+void PageClientImpl::executeUndoRedo(UndoOrRedo undoOrRedo)
 {
-    return (undoOrRedo == WebPageProxy::Undo) ? [[m_contentView undoManager] undo] : [[m_contentView undoManager] redo];
+    return (undoOrRedo == UndoOrRedo::Undo) ? [[m_contentView undoManager] undo] : [[m_contentView undoManager] redo];
 }
 
 void PageClientImpl::accessibilityWebProcessTokenReceived(const IPC::DataReference& data)
@@ -514,11 +517,6 @@ void PageClientImpl::layerTreeCommitComplete()
     [m_contentView _layerTreeCommitComplete];
 }
 
-void PageClientImpl::dynamicViewportUpdateChangedTarget(double newScale, const WebCore::FloatPoint& newScrollPosition, uint64_t nextValidLayerTreeTransactionID)
-{
-    [m_webView _dynamicViewportUpdateChangedTargetToScale:newScale position:newScrollPosition nextValidLayerTreeTransactionID:nextValidLayerTreeTransactionID];
-}
-
 void PageClientImpl::couldNotRestorePageState()
 {
     [m_webView _couldNotRestorePageState];
@@ -570,6 +568,12 @@ void PageClientImpl::showPlaybackTargetPicker(bool hasVideo, const IntRect& elem
 bool PageClientImpl::handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, API::OpenPanelParameters* parameters, WebOpenPanelResultListenerProxy* listener)
 {
     [m_contentView _showRunOpenPanel:parameters resultListener:listener];
+    return true;
+}
+
+bool PageClientImpl::showShareSheet(const ShareDataWithParsedURL& shareData, WTF::CompletionHandler<void(bool)>&& completionHandler)
+{
+    [m_contentView _showShareSheet:shareData completionHandler:WTFMove(completionHandler)];
     return true;
 }
 
@@ -653,24 +657,24 @@ void PageClientImpl::didFinishLoadingDataForCustomContentProvider(const String& 
     [m_webView _didFinishLoadingDataForCustomContentProviderWithSuggestedFilename:suggestedFilename data:data.get()];
 }
 
-void PageClientImpl::overflowScrollViewWillStartPanGesture()
+void PageClientImpl::scrollingNodeScrollViewWillStartPanGesture()
 {
     [m_contentView scrollViewWillStartPanOrPinchGesture];
 }
 
-void PageClientImpl::overflowScrollViewDidScroll()
+void PageClientImpl::scrollingNodeScrollViewDidScroll()
 {
     [m_contentView _didScroll];
 }
 
-void PageClientImpl::overflowScrollWillStartScroll()
+void PageClientImpl::scrollingNodeScrollWillStartScroll()
 {
-    [m_contentView _overflowScrollingWillBegin];
+    [m_contentView _scrollingNodeScrollingWillBegin];
 }
 
-void PageClientImpl::overflowScrollDidEndScroll()
+void PageClientImpl::scrollingNodeScrollDidEndScroll()
 {
-    [m_contentView _overflowScrollingDidEnd];
+    [m_contentView _scrollingNodeScrollingDidEnd];
 }
 
 Vector<String> PageClientImpl::mimeTypesWithCustomContentProviders()
@@ -767,10 +771,24 @@ Ref<ValidationBubble> PageClientImpl::createValidationBubble(const String& messa
     return ValidationBubble::create(m_contentView, message, settings);
 }
 
-#if ENABLE(DATA_INTERACTION)
-void PageClientImpl::didPerformDataInteractionControllerOperation(bool handled)
+#if ENABLE(INPUT_TYPE_COLOR)
+RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&, Vector<WebCore::Color>&&)
 {
-    [m_contentView _didPerformDataInteractionControllerOperation:handled];
+    return nullptr;
+}
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+RefPtr<WebDataListSuggestionsDropdown> PageClientImpl::createDataListSuggestionsDropdown(WebPageProxy& page)
+{
+    return WebDataListSuggestionsDropdownIOS::create(page, m_contentView);
+}
+#endif
+
+#if ENABLE(DATA_INTERACTION)
+void PageClientImpl::didPerformDragOperation(bool handled)
+{
+    [m_contentView _didPerformDragOperation:handled];
 }
 
 void PageClientImpl::didHandleStartDataInteractionRequest(bool started)
@@ -821,3 +839,5 @@ void PageClientImpl::requestPasswordForQuickLookDocument(const String& fileName,
 } // namespace WebKit
 
 #endif // PLATFORM(IOS)
+
+#undef MESSAGE_CHECK

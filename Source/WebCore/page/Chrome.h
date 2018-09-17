@@ -37,6 +37,8 @@ namespace WebCore {
 class ChromeClient;
 class ColorChooser;
 class ColorChooserClient;
+class DataListSuggestionPicker;
+class DataListSuggestionsClient;
 class DateTimeChooser;
 class DateTimeChooserClient;
 class FileChooser;
@@ -57,6 +59,7 @@ class PopupOpeningObserver;
 class SearchPopupMenu;
 
 struct DateTimeChooserParameters;
+struct ShareDataWithParsedURL;
 struct ViewportArguments;
 struct WindowFeatures;
     
@@ -152,7 +155,12 @@ public:
     std::unique_ptr<ColorChooser> createColorChooser(ColorChooserClient&, const Color& initialColor);
 #endif
 
+#if ENABLE(DATALIST_ELEMENT)
+    std::unique_ptr<DataListSuggestionPicker> createDataListSuggestionPicker(DataListSuggestionsClient&);
+#endif
+
     void runOpenPanel(Frame&, FileChooser&);
+    void showShareSheet(ShareDataWithParsedURL&, CompletionHandler<void(bool)>&&);
     void loadIconForFiles(const Vector<String>&, FileIconLoader&);
 
     void dispatchDisabledAdaptationsDidChange(const OptionSet<DisabledAdaptations>&) const;

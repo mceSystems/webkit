@@ -28,7 +28,6 @@
 
 #include "CookieRequestHeaderFieldProxy.h"
 #include "NetworkStorageSession.h"
-#include "PlatformCookieJar.h"
 #include "SocketStreamHandleClient.h"
 #include <wtf/Function.h>
 
@@ -77,16 +76,17 @@ static size_t removeTerminationCharacters(const uint8_t* data, size_t dataLength
     return dataLength - 2;
 }
 
-static std::pair<Vector<uint8_t>, bool> cookieDataForHandshake(const CookieRequestHeaderFieldProxy& headerFieldProxy)
+static std::optional<std::pair<Vector<uint8_t>, bool>> cookieDataForHandshake(const CookieRequestHeaderFieldProxy& headerFieldProxy)
 {
     auto networkStorageSession = NetworkStorageSession::storageSession(headerFieldProxy.sessionID);
-    RELEASE_ASSERT(networkStorageSession);
-
+    if (!networkStorageSession)
+        return std::nullopt;
+    
     String cookieDataString;
     bool secureCookiesAccessed = false;
-    std::tie(cookieDataString, secureCookiesAccessed) = WebCore::cookieRequestHeaderFieldValue(*networkStorageSession, headerFieldProxy);
+    std::tie(cookieDataString, secureCookiesAccessed) = networkStorageSession->cookieRequestHeaderFieldValue(headerFieldProxy);
     if (cookieDataString.isEmpty())
-        return { { }, secureCookiesAccessed };
+        return std::pair<Vector<uint8_t>, bool> { { }, secureCookiesAccessed };
 
     CString cookieData = cookieDataString.utf8();
 
@@ -94,7 +94,7 @@ static std::pair<Vector<uint8_t>, bool> cookieDataForHandshake(const CookieReque
     data.append(cookieData.data(), cookieData.length());
     data.appendVector(Vector<uint8_t>({ '\r', '\n', '\r', '\n' }));
 
-    return { data, secureCookiesAccessed };
+    return std::pair<Vector<uint8_t>, bool> { data, secureCookiesAccessed };
 }
 
 void SocketStreamHandleImpl::platformSendHandshake(const uint8_t* data, size_t length, const std::optional<CookieRequestHeaderFieldProxy>& headerFieldProxy, Function<void(bool, bool)>&& completionHandler)
@@ -103,7 +103,13 @@ void SocketStreamHandleImpl::platformSendHandshake(const uint8_t* data, size_t l
     bool secureCookiesAccessed = false;
 
     if (headerFieldProxy) {
-        std::tie(cookieData, secureCookiesAccessed) = cookieDataForHandshake(headerFieldProxy.value());
+        auto cookieDataFromNetworkSession = cookieDataForHandshake(headerFieldProxy.value());
+        if (!cookieDataFromNetworkSession) {
+            completionHandler(false, false);
+            return;
+        }
+
+        std::tie(cookieData, secureCookiesAccessed) = *cookieDataFromNetworkSession;
         if (cookieData.size())
             length = removeTerminationCharacters(data, length);
     }

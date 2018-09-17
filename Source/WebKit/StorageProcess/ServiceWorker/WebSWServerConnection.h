@@ -56,7 +56,6 @@ public:
 
     IPC::Connection& ipcConnection() const { return m_contentConnection.get(); }
 
-    void disconnectedFromWebProcess();
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
     void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
@@ -66,7 +65,7 @@ public:
     void didReceiveFetchData(WebCore::FetchIdentifier, const IPC::DataReference&, int64_t encodedDataLength);
     void didReceiveFetchFormData(WebCore::FetchIdentifier, const IPC::FormDataReference&);
     void didFinishFetch(WebCore::FetchIdentifier);
-    void didFailFetch(WebCore::FetchIdentifier);
+    void didFailFetch(WebCore::FetchIdentifier, const WebCore::ResourceError&);
     void didNotHandleFetch(WebCore::FetchIdentifier);
 
     void postMessageToServiceWorkerClient(WebCore::DocumentIdentifier destinationContextIdentifier, WebCore::MessageWithMessagePorts&&, WebCore::ServiceWorkerIdentifier sourceServiceWorkerIdentifier, const String& sourceOrigin);

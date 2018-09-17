@@ -82,6 +82,10 @@ class Navigation;
 class PageConfiguration;
 }
 
+namespace WebCore {
+struct MockMediaDevice;
+}
+
 namespace WebKit {
 
 class DownloadProxy;
@@ -106,7 +110,9 @@ int webProcessLatencyQOS();
 int webProcessThroughputQOS();
 #endif
 
-class WebProcessPool final : public API::ObjectImpl<API::Object::Type::ProcessPool>, private IPC::MessageReceiver {
+enum class ProcessSwapRequestedByClient;
+
+class WebProcessPool final : public API::ObjectImpl<API::Object::Type::ProcessPool>, public CanMakeWeakPtr<WebProcessPool>, private IPC::MessageReceiver {
 public:
     static Ref<WebProcessPool> create(API::ProcessPoolConfiguration&);
 
@@ -149,6 +155,9 @@ public:
 
     void setMaximumNumberOfProcesses(unsigned); // Can only be called when there are no processes running.
     unsigned maximumNumberOfProcesses() const { return !m_configuration->maximumProcessCount() ? UINT_MAX : m_configuration->maximumProcessCount(); }
+
+    void setCustomWebContentServiceBundleIdentifier(const String&);
+    const String& customWebContentServiceBundleIdentifier() { return m_configuration->customWebContentServiceBundleIdentifier(); }
 
     const Vector<RefPtr<WebProcessProxy>>& processes() const { return m_processes; }
 
@@ -268,7 +277,7 @@ public:
     void setAllowsAnySSLCertificateForWebSocket(bool);
 
     void clearCachedCredentials();
-    void terminateStorageProcess();
+    void terminateStorageProcessForTesting();
     void terminateNetworkProcess();
     void terminateServiceWorkerProcesses();
     void disableServiceWorkerProcessTerminationDelay();
@@ -277,13 +286,15 @@ public:
 
     void setShouldMakeNextWebProcessLaunchFailForTesting(bool value) { m_shouldMakeNextWebProcessLaunchFailForTesting = value; }
     bool shouldMakeNextWebProcessLaunchFailForTesting() const { return m_shouldMakeNextWebProcessLaunchFailForTesting; }
+    void setShouldMakeNextNetworkProcessLaunchFailForTesting(bool value) { m_shouldMakeNextNetworkProcessLaunchFailForTesting = value; }
+    bool shouldMakeNextNetworkProcessLaunchFailForTesting() const { return m_shouldMakeNextNetworkProcessLaunchFailForTesting; }
 
     void reportWebContentCPUTime(Seconds cpuTime, uint64_t activityState);
 
     void allowSpecificHTTPSCertificateForHost(const WebCertificateInfo*, const String& host);
 
     WebProcessProxy& createNewWebProcessRespectingProcessCountLimit(WebsiteDataStore&); // Will return an existing one if limit is met.
-    void warmInitialProcess();
+    void prewarmProcess();
 
     bool shouldTerminate(WebProcessProxy*);
 
@@ -328,7 +339,6 @@ public:
     NetworkProcessProxy& ensureNetworkProcess(WebsiteDataStore* withWebsiteDataStore = nullptr);
     NetworkProcessProxy* networkProcess() { return m_networkProcess.get(); }
     void networkProcessCrashed(NetworkProcessProxy&, Vector<Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply>&&);
-    void networkProcessFailedToLaunch(NetworkProcessProxy&);
 
     void getNetworkProcessConnection(Messages::WebProcessProxy::GetNetworkProcessConnection::DelayedReply&&);
 
@@ -404,16 +414,6 @@ public:
         return m_hiddenPageThrottlingAutoIncreasesCounter.count();
     }
 
-    // FIXME: Move these to API::WebsiteDataStore.
-    static String legacyPlatformDefaultLocalStorageDirectory();
-    static String legacyPlatformDefaultIndexedDBDatabaseDirectory();
-    static String legacyPlatformDefaultWebSQLDatabaseDirectory();
-    static String legacyPlatformDefaultMediaKeysStorageDirectory();
-    static String legacyPlatformDefaultMediaCacheDirectory();
-    static String legacyPlatformDefaultApplicationCacheDirectory();
-    static String legacyPlatformDefaultNetworkCacheDirectory();
-    static String legacyPlatformDefaultJavaScriptConfigurationDirectory();
-
     void setResourceLoadStatisticsEnabled(bool);
     void clearResourceLoadStatistics();
 
@@ -447,12 +447,19 @@ public:
     BackgroundWebProcessToken backgroundWebProcessToken() const { return BackgroundWebProcessToken(m_backgroundWebProcessCounter.count()); }
 #endif
 
-    Ref<WebProcessProxy> processForNavigation(WebPageProxy&, const API::Navigation&, WebCore::PolicyAction&);
+    Ref<WebProcessProxy> processForNavigation(WebPageProxy&, const API::Navigation&, ProcessSwapRequestedByClient, WebCore::PolicyAction&, String& reason);
     void registerSuspendedPageProxy(SuspendedPageProxy&);
     void unregisterSuspendedPageProxy(SuspendedPageProxy&);
     void didReachGoodTimeToPrewarm();
 
     void screenPropertiesStateChanged();
+
+    void addMockMediaDevice(const WebCore::MockMediaDevice&);
+    void clearMockMediaDevices();
+    void removeMockMediaDevice(const String& persistentId);
+    void resetMockMediaDevices();
+
+    void sendDisplayConfigurationChangedMessageForTesting();
 
 private:
     void platformInitialize();
@@ -460,11 +467,11 @@ private:
     void platformInitializeWebProcess(WebProcessCreationParameters&);
     void platformInvalidateContext();
 
-    Ref<WebProcessProxy> processForNavigationInternal(WebPageProxy&, const API::Navigation&, WebCore::PolicyAction&);
+    Ref<WebProcessProxy> processForNavigationInternal(WebPageProxy&, const API::Navigation&, ProcessSwapRequestedByClient, WebCore::PolicyAction&, String& reason);
 
     RefPtr<WebProcessProxy> tryTakePrewarmedProcess(WebsiteDataStore&);
 
-    WebProcessProxy& createNewWebProcess(WebsiteDataStore&, WebProcessProxy::IsInPrewarmedPool = WebProcessProxy::IsInPrewarmedPool::No);
+    WebProcessProxy& createNewWebProcess(WebsiteDataStore&, WebProcessProxy::IsPrewarmed = WebProcessProxy::IsPrewarmed::No);
     void initializeNewWebProcess(WebProcessProxy&, WebsiteDataStore&);
 
     void requestWebContentStatistics(StatisticsRequest*);
@@ -527,7 +534,7 @@ private:
     IPC::MessageReceiverMap m_messageReceiverMap;
 
     Vector<RefPtr<WebProcessProxy>> m_processes;
-    unsigned m_prewarmedProcessCount { 0 };
+    WebProcessProxy* m_prewarmedProcess { nullptr };
 
     WebProcessProxy* m_processWithPageCache { nullptr };
 #if ENABLE(SERVICE_WORKER)
@@ -605,7 +612,7 @@ private:
     RetainPtr<NSObject> m_automaticQuoteSubstitutionNotificationObserver;
     RetainPtr<NSObject> m_automaticDashSubstitutionNotificationObserver;
     RetainPtr<NSObject> m_accessibilityDisplayOptionsNotificationObserver;
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
     RetainPtr<NSObject> m_scrollerStyleNotificationObserver;
 #endif
 
@@ -634,6 +641,7 @@ private:
     bool m_alwaysRunsAtBackgroundPriority;
     bool m_shouldTakeUIBackgroundAssertion;
     bool m_shouldMakeNextWebProcessLaunchFailForTesting { false };
+    bool m_shouldMakeNextNetworkProcessLaunchFailForTesting { false };
 
     UserObservablePageCounter m_userObservablePageCounter;
     ProcessSuppressionDisabledCounter m_processSuppressionDisabledForPageCounter;
@@ -696,7 +704,7 @@ private:
 #endif
 
     HashMap<WebCore::SecurityOriginData, Vector<SuspendedPageProxy*>> m_suspendedPages;
-    HashMap<WebCore::SecurityOriginData, RefPtr<WebProcessProxy>> m_swappedProcesses;
+    HashMap<String, RefPtr<WebProcessProxy>> m_swappedProcessesPerRegistrableDomain;
 };
 
 template<typename T>
@@ -760,7 +768,7 @@ void WebProcessPool::sendToOneProcess(T&& message)
     }
 
     if (!messageSent) {
-        warmInitialProcess();
+        prewarmProcess();
         RefPtr<WebProcessProxy> process = m_processes.last();
         if (process->canSendMessage())
             process->send(std::forward<T>(message), 0);

@@ -68,12 +68,12 @@ private:
     WebCore::ImageDrawResult drawTiledImage(WebCore::Image&, const WebCore::FloatRect&, const WebCore::FloatPoint&, const WebCore::FloatSize&, const WebCore::FloatSize&, const WebCore::ImagePaintingOptions&) override;
     WebCore::ImageDrawResult drawTiledImage(WebCore::Image&, const WebCore::FloatRect&, const WebCore::FloatRect&, const WebCore::FloatSize&, WebCore::Image::TileRule, WebCore::Image::TileRule, const WebCore::ImagePaintingOptions&) override;
     void drawNativeImage(const WebCore::NativeImagePtr&, const WebCore::FloatSize&, const WebCore::FloatRect&, const WebCore::FloatRect&, WebCore::CompositeOperator, WebCore::BlendMode, WebCore::ImageOrientation) override;
-    void drawPattern(WebCore::Image&, const WebCore::FloatRect&, const WebCore::FloatRect&, const WebCore::AffineTransform&, const WebCore::FloatPoint&, const WebCore::FloatSize&, WebCore::CompositeOperator, WebCore::BlendMode = WebCore::BlendModeNormal) override;
+    void drawPattern(WebCore::Image&, const WebCore::FloatRect&, const WebCore::FloatRect&, const WebCore::AffineTransform&, const WebCore::FloatPoint&, const WebCore::FloatSize&, WebCore::CompositeOperator, WebCore::BlendMode = WebCore::BlendMode::Normal) override;
 
     void drawRect(const WebCore::FloatRect&, float) override;
     void drawLine(const WebCore::FloatPoint&, const WebCore::FloatPoint&) override;
     void drawLinesForText(const WebCore::FloatPoint&, const DashArray&, bool, bool, float) override;
-    void drawLineForDocumentMarker(const WebCore::FloatPoint&, float, WebCore::GraphicsContext::DocumentMarkerLineStyle) override;
+    void drawLineForDocumentMarker(const WebCore::FloatPoint&, float, WebCore::DocumentMarkerLineStyle) override;
     void drawEllipse(const WebCore::FloatRect&) override;
     void drawPath(const WebCore::Path&) override;
 
@@ -98,6 +98,7 @@ private:
     void clipOut(const WebCore::Path&) override;
     void clipPath(const WebCore::Path&, WebCore::WindRule) override;
     WebCore::IntRect clipBounds() override;
+    void clipToImageBuffer(WebCore::ImageBuffer&, const WebCore::FloatRect&) override;
 
     void applyDeviceScaleFactor(float) override;
 

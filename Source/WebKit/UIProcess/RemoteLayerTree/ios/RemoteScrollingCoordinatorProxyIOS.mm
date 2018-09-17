@@ -44,9 +44,8 @@
 #import <WebCore/ScrollingTreeFrameScrollingNode.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static LayerRepresentation layerRepresentationFromLayerOrView(LayerOrView *layerOrView)
 {
@@ -102,17 +101,17 @@ FloatRect RemoteScrollingCoordinatorProxy::customFixedPositionRect() const
 
 void RemoteScrollingCoordinatorProxy::scrollingTreeNodeWillStartPanGesture()
 {
-    m_webPageProxy.overflowScrollViewWillStartPanGesture();
+    m_webPageProxy.scrollingNodeScrollViewWillStartPanGesture();
 }
 
 void RemoteScrollingCoordinatorProxy::scrollingTreeNodeWillStartScroll()
 {
-    m_webPageProxy.overflowScrollWillStartScroll();
+    m_webPageProxy.scrollingNodeScrollWillStartScroll();
 }
     
 void RemoteScrollingCoordinatorProxy::scrollingTreeNodeDidEndScroll()
 {
-    m_webPageProxy.overflowScrollDidEndScroll();
+    m_webPageProxy.scrollingNodeScrollDidEndScroll();
 }
 
 #if ENABLE(CSS_SCROLL_SNAP)

@@ -131,6 +131,18 @@ void WebPreferences::updateBoolValueForKey(const String& key, bool value)
     update(); // FIXME: Only send over the changed key and value.
 }
 
+void WebPreferences::updateBoolValueForInternalDebugFeatureKey(const String& key, bool value)
+{
+    if (key == WebPreferencesKey::processSwapOnCrossSiteNavigationEnabledKey()) {
+        for (auto* page : m_pages)
+            page->process().processPool().configuration().setProcessSwapsOnNavigation(value);
+
+        return;
+    }
+
+    update(); // FIXME: Only send over the changed key and value.
+}
+
 void WebPreferences::updateBoolValueForExperimentalFeatureKey(const String& key, bool value)
 {
     update(); // FIXME: Only send over the changed key and value.

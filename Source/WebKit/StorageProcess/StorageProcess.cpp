@@ -262,6 +262,18 @@ void StorageProcess::createStorageToWebProcessConnection(bool isServiceWorkerPro
 
     IPC::Attachment clientPort(listeningPort, MACH_MSG_TYPE_MAKE_SEND);
     parentProcessConnection()->send(Messages::StorageProcessProxy::DidCreateStorageToWebProcessConnection(clientPort), 0);
+#elif OS(WINDOWS)
+    IPC::Connection::Identifier serverIdentifier, clientIdentifier;
+    if (!IPC::Connection::createServerAndClientIdentifiers(serverIdentifier, clientIdentifier)) {
+        LOG_ERROR("Failed to create server and client identifiers");
+        CRASH();
+    }
+
+    auto connection = StorageToWebProcessConnection::create(serverIdentifier);
+    m_storageToWebProcessConnections.append(WTFMove(connection));
+
+    IPC::Attachment clientSocket(clientIdentifier);
+    parentProcessConnection()->send(Messages::StorageProcessProxy::DidCreateStorageToWebProcessConnection(clientSocket), 0);
 #else
     notImplemented();
 #endif
@@ -281,6 +293,16 @@ void StorageProcess::createStorageToWebProcessConnection(bool isServiceWorkerPro
     }
 #else
     UNUSED_PARAM(isServiceWorkerProcess);
+#endif
+}
+
+void StorageProcess::destroySession(PAL::SessionID sessionID)
+{
+#if ENABLE(SERVICE_WORKER)
+    m_swServers.remove(sessionID);
+    m_swDatabasePaths.remove(sessionID);
+#else
+    UNUSED_PARAM(sessionID);
 #endif
 }
 
@@ -349,7 +371,7 @@ void StorageProcess::deleteWebsiteDataForOrigins(PAL::SessionID sessionID, Optio
 #endif
 
 #if ENABLE(INDEXED_DATABASE)
-    if (!websiteDataTypes.contains(WebsiteDataType::IndexedDBDatabases))
+    if (websiteDataTypes.contains(WebsiteDataType::IndexedDBDatabases))
         idbServer(sessionID).closeAndDeleteDatabasesForOrigins(securityOrigins, [callbackAggregator = WTFMove(callbackAggregator)] { });
 #endif
 }
@@ -384,17 +406,22 @@ void StorageProcess::accessToTemporaryFileComplete(const String& path)
         extension->revoke();
 }
 
-Vector<WebCore::SecurityOriginData> StorageProcess::indexedDatabaseOrigins(const String& path)
+HashSet<WebCore::SecurityOriginData> StorageProcess::indexedDatabaseOrigins(const String& path)
 {
     if (path.isEmpty())
         return { };
 
-    Vector<WebCore::SecurityOriginData> securityOrigins;
-    for (auto& originPath : FileSystem::listDirectory(path, "*")) {
-        String databaseIdentifier = FileSystem::pathGetFileName(originPath);
-
+    HashSet<WebCore::SecurityOriginData> securityOrigins;
+    for (auto& topOriginPath : FileSystem::listDirectory(path, "*")) {
+        auto databaseIdentifier = FileSystem::pathGetFileName(topOriginPath);
         if (auto securityOrigin = SecurityOriginData::fromDatabaseIdentifier(databaseIdentifier))
-            securityOrigins.append(WTFMove(*securityOrigin));
+            securityOrigins.add(WTFMove(*securityOrigin));
+        
+        for (auto& originPath : FileSystem::listDirectory(topOriginPath, "*")) {
+            databaseIdentifier = FileSystem::pathGetFileName(originPath);
+            if (auto securityOrigin = SecurityOriginData::fromDatabaseIdentifier(databaseIdentifier))
+                securityOrigins.add(WTFMove(*securityOrigin));
+        }
     }
 
     return securityOrigins;
@@ -424,10 +451,6 @@ SWServer& StorageProcess::swServerForSession(PAL::SessionID sessionID)
 {
     ASSERT(sessionID.isValid());
 
-    // Use the same SWServer for all ephemeral sessions.
-    if (sessionID.isEphemeral())
-        sessionID = PAL::SessionID::legacyPrivateSessionID();
-
     auto result = m_swServers.add(sessionID, nullptr);
     if (!result.isNewEntry) {
         ASSERT(result.iterator->value);
@@ -450,6 +473,14 @@ WebSWOriginStore& StorageProcess::swOriginStoreForSession(PAL::SessionID session
     return static_cast<WebSWOriginStore&>(swServerForSession(sessionID).originStore());
 }
 
+WebSWOriginStore* StorageProcess::existingSWOriginStoreForSession(PAL::SessionID sessionID) const
+{
+    auto* swServer = m_swServers.get(sessionID);
+    if (!swServer)
+        return nullptr;
+    return &static_cast<WebSWOriginStore&>(swServer->originStore());
+}
+
 WebSWServerToContextConnection* StorageProcess::serverToContextConnectionForOrigin(const SecurityOriginData& securityOrigin)
 {
     return m_serverToContextConnections.get(securityOrigin);
@@ -467,10 +498,10 @@ void StorageProcess::createServerToContextConnection(const SecurityOriginData& s
         parentProcessConnection()->send(Messages::StorageProcessProxy::EstablishWorkerContextConnectionToStorageProcess(securityOrigin), 0);
 }
 
-void StorageProcess::didFailFetch(SWServerConnectionIdentifier serverConnectionIdentifier, FetchIdentifier fetchIdentifier)
+void StorageProcess::didFailFetch(SWServerConnectionIdentifier serverConnectionIdentifier, FetchIdentifier fetchIdentifier, const ResourceError& error)
 {
     if (auto* connection = m_swServerConnections.get(serverConnectionIdentifier))
-        connection->didFailFetch(fetchIdentifier);
+        connection->didFailFetch(fetchIdentifier, error);
 }
 
 void StorageProcess::didNotHandleFetch(SWServerConnectionIdentifier serverConnectionIdentifier, FetchIdentifier fetchIdentifier)
@@ -527,7 +558,8 @@ void StorageProcess::unregisterSWServerConnection(WebSWServerConnection& connect
 {
     ASSERT(m_swServerConnections.get(connection.identifier()) == &connection);
     m_swServerConnections.remove(connection.identifier());
-    swOriginStoreForSession(connection.sessionID()).unregisterSWServerConnection(connection);
+    if (auto* store = existingSWOriginStoreForSession(connection.sessionID()))
+        store->unregisterSWServerConnection(connection);
 }
 
 void StorageProcess::swContextConnectionMayNoLongerBeNeeded(WebSWServerToContextConnection& serverToContextConnection)
@@ -538,6 +570,9 @@ void StorageProcess::swContextConnectionMayNoLongerBeNeeded(WebSWServerToContext
 
     RELEASE_LOG(ServiceWorker, "Service worker process is no longer needed, terminating it");
     serverToContextConnection.terminate();
+
+    for (auto& swServer : m_swServers.values())
+        swServer->markAllWorkersForOriginAsTerminated(securityOrigin);
 
     serverToContextConnection.connectionClosed();
     m_serverToContextConnections.remove(securityOrigin);

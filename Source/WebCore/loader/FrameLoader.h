@@ -41,8 +41,10 @@
 #include "ResourceLoaderOptions.h"
 #include "ResourceRequestBase.h"
 #include "SecurityContext.h"
+#include "ShouldSkipSafeBrowsingCheck.h"
 #include "StoredCredentialsPolicy.h"
 #include "Timer.h"
+#include <wtf/CompletionHandler.h>
 #include <wtf/Forward.h>
 #include <wtf/HashSet.h>
 #include <wtf/OptionSet.h>
@@ -80,8 +82,8 @@ class SharedBuffer;
 class SubframeLoader;
 class SubstituteData;
 
-enum class NavigationPolicyCheck;
 enum class ShouldContinue;
+enum class ShouldTreatAsContinuingLoad;
 
 struct WindowFeatures;
 
@@ -128,7 +130,7 @@ public:
     WEBCORE_EXPORT void reloadWithOverrideEncoding(const String& overrideEncoding);
 
     void open(CachedFrameBase&);
-    void loadItem(HistoryItem&, FrameLoadType, NavigationPolicyCheck);
+    void loadItem(HistoryItem&, FrameLoadType, ShouldTreatAsContinuingLoad);
     HistoryItem* requestedHistoryItem() const { return m_requestedHistoryItem.get(); }
 
     void retryAfterFailedCacheOnlyMainResourceLoad();
@@ -138,6 +140,7 @@ public:
     static void reportAuthenticationChallengeBlocked(Frame*, const URL&, const String& reason);
 
     // FIXME: These are all functions which stop loads. We have too many.
+    void stopAllLoadersAndCheckCompleteness();
     WEBCORE_EXPORT void stopAllLoaders(ClearProvisionalItemPolicy = ShouldClearProvisionalItem);
     WEBCORE_EXPORT void stopForUserCancel(bool deferCheckLoadComplete = false);
     void stop();
@@ -253,7 +256,8 @@ public:
 
     void setOutgoingReferrer(const URL&);
 
-    void loadDone();
+    void loadDone(LoadCompletionType);
+    void subresourceLoadDone(LoadCompletionType);
     void finishedParsing();
     void checkCompleted();
 
@@ -319,9 +323,10 @@ private:
     bool allChildrenAreComplete() const; // immediate children, not all descendants
 
     void checkTimerFired();
+    void checkCompletenessNow();
 
     void loadSameDocumentItem(HistoryItem&);
-    void loadDifferentDocumentItem(HistoryItem&, FrameLoadType, FormSubmissionCacheLoadPolicy, NavigationPolicyCheck);
+    void loadDifferentDocumentItem(HistoryItem&, FrameLoadType, FormSubmissionCacheLoadPolicy, ShouldTreatAsContinuingLoad);
 
     void loadProvisionalItemFromCachedPage();
 
@@ -358,16 +363,16 @@ private:
     void closeOldDataSources();
     void willRestoreFromCachedPage();
 
-    bool shouldReloadToHandleUnreachableURL(DocumentLoader*);
+    bool shouldReloadToHandleUnreachableURL(DocumentLoader&);
 
     void dispatchDidCommitLoad(std::optional<HasInsecureContent> initialHasInsecureContent);
 
     void urlSelected(FrameLoadRequest&&, Event*);
 
-    void loadWithDocumentLoader(DocumentLoader*, FrameLoadType, RefPtr<FormState>&&, AllowNavigationToInvalidURL, NavigationPolicyCheck, CompletionHandler<void()>&&); // Calls continueLoadAfterNavigationPolicy
-    void load(DocumentLoader*); // Calls loadWithDocumentLoader
+    void loadWithDocumentLoader(DocumentLoader*, FrameLoadType, RefPtr<FormState>&&, AllowNavigationToInvalidURL, ShouldTreatAsContinuingLoad, ShouldSkipSafeBrowsingCheck = ShouldSkipSafeBrowsingCheck::No, CompletionHandler<void()>&& = [] { }); // Calls continueLoadAfterNavigationPolicy
+    void load(DocumentLoader&, ShouldSkipSafeBrowsingCheck); // Calls loadWithDocumentLoader
 
-    void loadWithNavigationAction(const ResourceRequest&, const NavigationAction&, LockHistory, FrameLoadType, RefPtr<FormState>&&, AllowNavigationToInvalidURL, CompletionHandler<void()>&&); // Calls loadWithDocumentLoader
+    void loadWithNavigationAction(const ResourceRequest&, const NavigationAction&, LockHistory, FrameLoadType, RefPtr<FormState>&&, AllowNavigationToInvalidURL, ShouldSkipSafeBrowsingCheck = ShouldSkipSafeBrowsingCheck::No, CompletionHandler<void()>&& = [] { }); // Calls loadWithDocumentLoader
 
     void loadPostRequest(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, RefPtr<FormState>&&, CompletionHandler<void()>&&);
     void loadURL(FrameLoadRequest&&, const String& referrer, FrameLoadType, Event*, RefPtr<FormState>&&, CompletionHandler<void()>&&);
@@ -427,6 +432,7 @@ private:
     bool m_quickRedirectComing;
     bool m_sentRedirectNotification;
     bool m_inStopAllLoaders;
+    bool m_inClearProvisionalLoadForPolicyCheck { false };
     bool m_shouldReportResourceTimingToParentFrame { true };
 
     String m_outgoingReferrer;
@@ -465,7 +471,9 @@ private:
     std::optional<ResourceRequestCachePolicy> m_overrideCachePolicyForTesting;
     std::optional<ResourceLoadPriority> m_overrideResourceLoadPriorityForTesting;
     bool m_isStrictRawResourceValidationPolicyDisabledForTesting { false };
-    bool m_currentLoadShouldCheckNavigationPolicy { true };
+    bool m_currentLoadShouldBeTreatedAsContinuingLoad { false };
+
+    bool m_checkingLoadCompleteForDetachment { false };
 
     URL m_previousURL;
     RefPtr<HistoryItem> m_requestedHistoryItem;

@@ -30,6 +30,7 @@
 #import "Logging.h"
 #import "NetworkCache.h"
 #import "NetworkProcessCreationParameters.h"
+#import "NetworkProximityManager.h"
 #import "NetworkResourceLoader.h"
 #import "NetworkSessionCocoa.h"
 #import "SandboxExtension.h"
@@ -44,10 +45,7 @@
 #import <wtf/BlockPtr.h>
 #import <wtf/CallbackAggregator.h>
 #import <wtf/ProcessPrivilege.h>
-
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/NetworkProcessCocoaAdditions.mm>
-#endif
+#import <wtf/RetainPtr.h>
 
 namespace WebKit {
 
@@ -74,6 +72,7 @@ static void initializeNetworkSettings()
 void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessCreationParameters& parameters)
 {
     WebCore::setApplicationBundleIdentifier(parameters.uiProcessBundleIdentifier);
+    WebCore::setApplicationSDKVersion(parameters.uiProcessSDKVersion);
 
 #if PLATFORM(IOS)
     SandboxExtension::consumePermanently(parameters.cookieStorageDirectoryExtensionHandle);
@@ -95,12 +94,12 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
 
     initializeNetworkSettings();
 
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     setSharedHTTPCookieStorage(parameters.uiProcessCookieStorageIdentifier);
 #endif
 
-    WebCore::NetworkStorageSession::setCookieStoragePartitioningEnabled(parameters.cookieStoragePartitioningEnabled);
     WebCore::NetworkStorageSession::setStorageAccessAPIEnabled(parameters.storageAccessAPIEnabled);
+    m_suppressesConnectionTerminationOnSystemChange = parameters.suppressesConnectionTerminationOnSystemChange;
 
     // FIXME: Most of what this function does for cache size gets immediately overridden by setCacheModel().
     // - memory cache size passed from UI process is always ignored;
@@ -109,28 +108,18 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
 
     ASSERT(!m_diskCacheIsDisabledForTesting);
 
-    if (!parameters.cacheStorageDirectory.isNull()) {
-        m_cacheStorageDirectory = parameters.cacheStorageDirectory;
-        m_cacheStoragePerOriginQuota = parameters.cacheStoragePerOriginQuota;
-        SandboxExtension::consumePermanently(parameters.cacheStorageDirectoryExtensionHandle);
-    }
-
-#if ENABLE(WIFI_ASSERTIONS)
-    initializeWiFiAssertions(parameters);
-#endif
-
     if (m_diskCacheDirectory.isNull())
         return;
 
     SandboxExtension::consumePermanently(parameters.diskCacheDirectoryExtensionHandle);
     OptionSet<NetworkCache::Cache::Option> cacheOptions { NetworkCache::Cache::Option::RegisterNotify };
     if (parameters.shouldEnableNetworkCacheEfficacyLogging)
-        cacheOptions |= NetworkCache::Cache::Option::EfficacyLogging;
+        cacheOptions.add(NetworkCache::Cache::Option::EfficacyLogging);
     if (parameters.shouldUseTestingNetworkSession)
-        cacheOptions |= NetworkCache::Cache::Option::TestingMode;
+        cacheOptions.add(NetworkCache::Cache::Option::TestingMode);
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     if (parameters.shouldEnableNetworkCacheSpeculativeRevalidation)
-        cacheOptions |= NetworkCache::Cache::Option::SpeculativeRevalidation;
+        cacheOptions.add(NetworkCache::Cache::Option::SpeculativeRevalidation);
 #endif
 
     m_cache = NetworkCache::Cache::open(m_diskCacheDirectory, cacheOptions);
@@ -140,12 +129,11 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
     // Disable NSURLCache.
     auto urlCache(adoptNS([[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:nil]));
     [NSURLCache setSharedURLCache:urlCache.get()];
-    return;
 }
 
 RetainPtr<CFDataRef> NetworkProcess::sourceApplicationAuditData() const
 {
-#if PLATFORM(IOS) && !ENABLE(MINIMAL_SIMULATOR)
+#if PLATFORM(IOS) && !PLATFORM(IOSMAC)
     audit_token_t auditToken;
     ASSERT(parentProcessConnection());
     if (!parentProcessConnection() || !parentProcessConnection()->getAuditToken(auditToken))
@@ -154,6 +142,28 @@ RetainPtr<CFDataRef> NetworkProcess::sourceApplicationAuditData() const
 #else
     return nullptr;
 #endif
+}
+
+static void filterPreloadHSTSEntry(const void* key, const void* value, void* context)
+{
+    HashSet<String>* hostnames = static_cast<HashSet<String>*>(context);
+    auto val = static_cast<CFDictionaryRef>(value);
+    if (CFDictionaryGetValue(val, _kCFNetworkHSTSPreloaded) != kCFBooleanTrue)
+        hostnames->add((CFStringRef)key);
+}
+
+void NetworkProcess::getHostNamesWithHSTSCache(WebCore::NetworkStorageSession& session, HashSet<String>& hostNames)
+{
+    auto HSTSPolicies = adoptCF(_CFNetworkCopyHSTSPolicies(session.platformSession()));
+    CFDictionaryApplyFunction(HSTSPolicies.get(), filterPreloadHSTSEntry, &hostNames);
+}
+
+void NetworkProcess::deleteHSTSCacheForHostNames(WebCore::NetworkStorageSession& session, const Vector<String>& hostNames)
+{
+    for (auto& hostName : hostNames) {
+        auto url = adoptCF(CFURLCreateWithString(kCFAllocatorDefault, hostName.createCFString().get(), NULL));
+        _CFNetworkResetHSTS(url.get(), session.platformSession());
+    }
 }
 
 void NetworkProcess::clearHSTSCache(WebCore::NetworkStorageSession& session, WallTime modifiedSince)
@@ -178,18 +188,13 @@ void NetworkProcess::clearDiskCache(WallTime modifiedSince, Function<void ()>&& 
     }
 }
 
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
 void NetworkProcess::setSharedHTTPCookieStorage(const Vector<uint8_t>& identifier)
 {
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
     [NSHTTPCookieStorage _setSharedHTTPCookieStorage:adoptNS([[NSHTTPCookieStorage alloc] _initWithCFHTTPCookieStorage:cookieStorageFromIdentifyingData(identifier).get()]).get()];
 }
 #endif
-
-void NetworkProcess::setCookieStoragePartitioningEnabled(bool enabled)
-{
-    WebCore::NetworkStorageSession::setCookieStoragePartitioningEnabled(enabled);
-}
 
 void NetworkProcess::setStorageAccessAPIEnabled(bool enabled)
 {
@@ -198,37 +203,69 @@ void NetworkProcess::setStorageAccessAPIEnabled(bool enabled)
 
 void NetworkProcess::syncAllCookies()
 {
-    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    
-#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000)
-    RefPtr<CallbackAggregator> callbackAggregator = CallbackAggregator::create([this] {
+    platformSyncAllCookies([this] {
         didSyncAllCookies();
     });
+}
+
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000)
+static void saveCookies(NSHTTPCookieStorage *cookieStorage, CompletionHandler<void()>&& completionHandler)
+{
+    ASSERT(RunLoop::isMain());
+    [cookieStorage _saveCookies:BlockPtr<void()>::fromCallable([completionHandler = WTFMove(completionHandler)]() mutable {
+        // CFNetwork may call the completion block on a background queue, so we need to redispatch to the main thread.
+        RunLoop::main().dispatch([completionHandler = WTFMove(completionHandler)]() mutable {
+            completionHandler();
+        });
+    }).get()];
+}
+#endif
+
+void NetworkProcess::platformSyncAllCookies(CompletionHandler<void()>&& completionHander) {
+    ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    
+#if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400) || (PLATFORM(IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000)
+    RefPtr<CallbackAggregator> callbackAggregator = CallbackAggregator::create(WTFMove(completionHander));
     WebCore::NetworkStorageSession::forEach([&] (auto& networkStorageSession) {
-        [networkStorageSession.nsCookieStorage() _saveCookies:[callbackAggregator] { }];
+        saveCookies(networkStorageSession.nsCookieStorage(), [callbackAggregator] { });
     });
 #else
     _CFHTTPCookieStorageFlushCookieStores();
-    didSyncAllCookies();
+    completionHander();
 #endif
 
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
-void NetworkProcess::platformPrepareToSuspend()
+void NetworkProcess::platformPrepareToSuspend(CompletionHandler<void()>&& completionHandler)
 {
-#if ENABLE(WIFI_ASSERTIONS)
-    suspendWiFiAssertions();
+#if ENABLE(PROXIMITY_NETWORKING)
+    proximityManager().suspend(SuspensionReason::ProcessSuspending, WTFMove(completionHandler));
+#else
+    completionHandler();
 #endif
 }
 
 void NetworkProcess::platformProcessDidResume()
 {
-#if ENABLE(WIFI_ASSERTIONS)
-    resumeWiFiAssertions();
+#if ENABLE(PROXIMITY_NETWORKING)
+    proximityManager().resume(ResumptionReason::ProcessResuming);
 #endif
 }
 
+void NetworkProcess::platformProcessDidTransitionToBackground()
+{
+#if ENABLE(PROXIMITY_NETWORKING)
+    proximityManager().suspend(SuspensionReason::ProcessBackgrounding, [] { });
+#endif
 }
+
+void NetworkProcess::platformProcessDidTransitionToForeground()
+{
+#if ENABLE(PROXIMITY_NETWORKING)
+    proximityManager().resume(ResumptionReason::ProcessForegrounding);
+#endif
+}
+
+} // namespace WebKit

@@ -30,17 +30,9 @@
 
 namespace WebCore {
 
-#if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/DisabledAdaptationsAdditions.cpp>)
-
-#import <WebKitAdditions/DisabledAdaptationsAdditions.cpp>
-
-#else
-
-String extraZoomModeAdaptationName()
+String watchAdaptationName()
 {
-    return ASCIILiteral("extrazoom");
+    return "watch"_s;
 }
-
-#endif
 
 } // namespace WebCore

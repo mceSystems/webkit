@@ -39,7 +39,7 @@
 #import "WebDelegateImplementationCaching.h"
 #import "WebDocumentInternal.h"
 #import "WebDocumentLoaderMac.h"
-#import "WebDownloadInternal.h"
+#import "WebDownload.h"
 #import "WebDynamicScrollBarsViewInternal.h"
 #import "WebElementDictionary.h"
 #import "WebFormDelegate.h"
@@ -180,11 +180,12 @@ NSString *WebPluginContainerKey = @"WebPluginContainer";
 #if HAVE(APP_LINKS)
     RetainPtr<NSURL> _appLinkURL;
 #endif
+    PolicyAction _defaultPolicy;
 }
 
-- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction;
+- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction defaultPolicy:(PolicyAction)defaultPolicy;
 #if HAVE(APP_LINKS)
-- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction appLinkURL:(NSURL *)url;
+- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction defaultPolicy:(PolicyAction)defaultPolicy appLinkURL:(NSURL *)url;
 #endif
 
 - (void)invalidate;
@@ -307,17 +308,18 @@ void WebFrameLoaderClient::convertMainResourceLoadToDownload(DocumentLoader* doc
 
     if (!mainResourceLoader) {
         // The resource has already been cached, or the conversion is being attmpted when not calling SubresourceLoader::didReceiveResponse().
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        WebDownload *webDownload = [[WebDownload alloc] initWithRequest:request.nsURLRequest(UpdateHTTPBody) delegate:[webView downloadDelegate]];
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        WebDownload *webDownload = [[WebDownload alloc] initWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody) delegate:[webView downloadDelegate]];
+        ALLOW_DEPRECATED_DECLARATIONS_END
         [webDownload autorelease];
         return;
     }
 
     ResourceHandle* handle = mainResourceLoader->handle();
 
-    [WebDownload _downloadWithLoadingConnection:handle->connection() request:request.nsURLRequest(UpdateHTTPBody) response:response.nsURLResponse() delegate:[webView downloadDelegate] proxy:nil];
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    [WebDownload _downloadWithLoadingConnection:handle->connection() request:request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody) response:response.nsURLResponse() delegate:[webView downloadDelegate] proxy:nil];
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 bool WebFrameLoaderClient::dispatchDidLoadResourceFromMemoryCache(DocumentLoader* loader, const ResourceRequest& request, const ResourceResponse& response, int length)
@@ -326,14 +328,14 @@ bool WebFrameLoaderClient::dispatchDidLoadResourceFromMemoryCache(DocumentLoader
     WebResourceDelegateImplementationCache* implementations = WebViewGetResourceLoadDelegateImplementations(webView);
 #if PLATFORM(IOS)
     if (implementations->webThreadDidLoadResourceFromMemoryCacheFunc) {
-        CallResourceLoadDelegateInWebThread(implementations->webThreadDidLoadResourceFromMemoryCacheFunc, webView, @selector(webThreadWebView:didLoadResourceFromMemoryCache:response:length:fromDataSource:), request.nsURLRequest(UpdateHTTPBody), response.nsURLResponse(), length, dataSource(loader));
+        CallResourceLoadDelegateInWebThread(implementations->webThreadDidLoadResourceFromMemoryCacheFunc, webView, @selector(webThreadWebView:didLoadResourceFromMemoryCache:response:length:fromDataSource:), request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody), response.nsURLResponse(), length, dataSource(loader));
         return true;
     } 
 #endif
     if (!implementations->didLoadResourceFromMemoryCacheFunc)
         return false;
 
-    CallResourceLoadDelegate(implementations->didLoadResourceFromMemoryCacheFunc, webView, @selector(webView:didLoadResourceFromMemoryCache:response:length:fromDataSource:), request.nsURLRequest(UpdateHTTPBody), response.nsURLResponse(), length, dataSource(loader));
+    CallResourceLoadDelegate(implementations->didLoadResourceFromMemoryCacheFunc, webView, @selector(webView:didLoadResourceFromMemoryCache:response:length:fromDataSource:), request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody), response.nsURLResponse(), length, dataSource(loader));
     return true;
 }
 
@@ -346,11 +348,11 @@ void WebFrameLoaderClient::assignIdentifierToInitialRequest(unsigned long identi
 
 #if PLATFORM(IOS)
     if (implementations->webThreadIdentifierForRequestFunc) {
-        object = CallResourceLoadDelegateInWebThread(implementations->webThreadIdentifierForRequestFunc, webView, @selector(webThreadWebView:identifierForInitialRequest:fromDataSource:), request.nsURLRequest(UpdateHTTPBody), dataSource(loader));
+        object = CallResourceLoadDelegateInWebThread(implementations->webThreadIdentifierForRequestFunc, webView, @selector(webThreadWebView:identifierForInitialRequest:fromDataSource:), request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody), dataSource(loader));
     } else
 #endif
     if (implementations->identifierForRequestFunc)
-        object = CallResourceLoadDelegate(implementations->identifierForRequestFunc, webView, @selector(webView:identifierForInitialRequest:fromDataSource:), request.nsURLRequest(UpdateHTTPBody), dataSource(loader));
+        object = CallResourceLoadDelegate(implementations->identifierForRequestFunc, webView, @selector(webView:identifierForInitialRequest:fromDataSource:), request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody), dataSource(loader));
     else
         object = adoptNS([[NSObject alloc] init]);
 
@@ -365,7 +367,7 @@ void WebFrameLoaderClient::dispatchWillSendRequest(DocumentLoader* loader, unsig
     if (redirectResponse.isNull())
         static_cast<WebDocumentLoaderMac*>(loader)->increaseLoadCount(identifier);
 
-    NSURLRequest *currentURLRequest = request.nsURLRequest(UpdateHTTPBody);
+    NSURLRequest *currentURLRequest = request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody);
 
 #if PLATFORM(MAC)
     if (MacApplication::isAppleMail() && loader->substituteData().isValid()) {
@@ -863,9 +865,9 @@ void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceRespons
 
     [[webView _policyDelegateForwarder] webView:webView
                         decidePolicyForMIMEType:response.mimeType()
-                                        request:request.nsURLRequest(UpdateHTTPBody)
+                                        request:request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody)
                                           frame:m_webFrame.get()
-                               decisionListener:setUpPolicyListener(WTFMove(function)).get()];
+                               decisionListener:setUpPolicyListener(WTFMove(function), PolicyAction::Use).get()];
 }
 
 
@@ -895,21 +897,21 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const Navigati
 
     [[webView _policyDelegateForwarder] webView:webView
             decidePolicyForNewWindowAction:actionDictionary(action, formState)
-                                   request:request.nsURLRequest(UpdateHTTPBody)
+                                   request:request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody)
                               newFrameName:frameName
-                          decisionListener:setUpPolicyListener(WTFMove(function), tryAppLink ? (NSURL *)request.url() : nil).get()];
+                          decisionListener:setUpPolicyListener(WTFMove(function), PolicyAction::Ignore, tryAppLink ? (NSURL *)request.url() : nil).get()];
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, bool, FormState* formState, PolicyDecisionMode, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, const ResourceResponse&, FormState* formState, PolicyDecisionMode, WebCore::ShouldSkipSafeBrowsingCheck, FramePolicyFunction&& function)
 {
     WebView *webView = getWebView(m_webFrame.get());
     BOOL tryAppLink = shouldTryAppLink(webView, action, core(m_webFrame.get()));
 
     [[webView _policyDelegateForwarder] webView:webView
                 decidePolicyForNavigationAction:actionDictionary(action, formState)
-                                        request:request.nsURLRequest(UpdateHTTPBody)
+                                        request:request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody)
                                           frame:m_webFrame.get()
-                               decisionListener:setUpPolicyListener(WTFMove(function), tryAppLink ? (NSURL *)request.url() : nil).get()];
+                               decisionListener:setUpPolicyListener(WTFMove(function), PolicyAction::Ignore, tryAppLink ? (NSURL *)request.url() : nil).get()];
 }
 
 void WebFrameLoaderClient::cancelPolicyCheck()
@@ -948,16 +950,16 @@ void WebFrameLoaderClient::dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&&
     CallFormDelegate(getWebView(m_webFrame.get()), @selector(willSendSubmitEventToForm:inFrame:withValues:), formElement, m_webFrame.get(), values);
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Function<void(void)>&& function)
+void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, CompletionHandler<void()>&& completionHandler)
 {
     id <WebFormDelegate> formDelegate = [getWebView(m_webFrame.get()) _formDelegate];
     if (!formDelegate) {
-        function();
+        completionHandler();
         return;
     }
 
     NSDictionary *values = makeFormFieldValuesDictionary(formState);
-    CallFormDelegate(getWebView(m_webFrame.get()), @selector(frame:sourceFrame:willSubmitForm:withValues:submissionListener:), m_webFrame.get(), kit(formState.sourceDocument().frame()), kit(&formState.form()), values, setUpPolicyListener([function = WTFMove(function)](PolicyAction) { function(); }).get());
+    CallFormDelegate(getWebView(m_webFrame.get()), @selector(frame:sourceFrame:willSubmitForm:withValues:submissionListener:), m_webFrame.get(), kit(formState.sourceDocument().frame()), kit(&formState.form()), values, setUpPolicyListener([completionHandler = WTFMove(completionHandler)](PolicyAction) mutable { completionHandler(); }, PolicyAction::Ignore).get());
 }
 
 void WebFrameLoaderClient::revertToProvisionalState(DocumentLoader* loader)
@@ -1038,7 +1040,7 @@ void WebFrameLoaderClient::updateGlobalHistory()
         if (implementations->navigatedFunc) {
             WebNavigationData *data = [[WebNavigationData alloc] initWithURLString:loader->url()
                                                                              title:nilOrNSString(loader->title().string)
-                                                                   originalRequest:loader->originalRequestCopy().nsURLRequest(UpdateHTTPBody)
+                                                                   originalRequest:loader->originalRequestCopy().nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody)
                                                                           response:loader->response().nsURLResponse()
                                                                  hasSubstituteData:loader->substituteData().isValid()
                                                               clientRedirectSource:loader->clientRedirectSourceForHistory()];
@@ -1205,7 +1207,7 @@ bool WebFrameLoaderClient::shouldFallBack(const ResourceError& error)
 
 bool WebFrameLoaderClient::canHandleRequest(const ResourceRequest& request) const
 {
-    return [WebView _canHandleRequest:request.nsURLRequest(UpdateHTTPBody) forMainFrame:core(m_webFrame.get())->isMainFrame()];
+    return [WebView _canHandleRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody) forMainFrame:core(m_webFrame.get())->isMainFrame()];
 }
 
 bool WebFrameLoaderClient::canShowMIMEType(const String& MIMEType) const
@@ -1493,7 +1495,7 @@ void WebFrameLoaderClient::transitionToCommittedForNewPage()
     // like the ones that Safari uses for bookmarks it is the only way the DocumentLoader
     // will get the proper title.
     if (auto* documentLoader = [dataSource _documentLoader])
-        documentLoader->setTitle({ [dataSource pageTitle], LTR });
+        documentLoader->setTitle({ [dataSource pageTitle], TextDirection::LTR });
 
     if (auto* ownerElement = coreFrame->ownerElement())
         coreFrame->view()->setCanHaveScrollbars(ownerElement->scrollingMode() != ScrollbarAlwaysOff);
@@ -1522,7 +1524,7 @@ void WebFrameLoaderClient::dispatchDidBecomeFrameset(bool)
 {
 }
 
-RetainPtr<WebFramePolicyListener> WebFrameLoaderClient::setUpPolicyListener(FramePolicyFunction&& function, NSURL *appLinkURL)
+RetainPtr<WebFramePolicyListener> WebFrameLoaderClient::setUpPolicyListener(FramePolicyFunction&& function, PolicyAction defaultPolicy, NSURL *appLinkURL)
 {
     // FIXME: <rdar://5634381> We need to support multiple active policy listeners.
     [m_policyListener invalidate];
@@ -1530,10 +1532,10 @@ RetainPtr<WebFramePolicyListener> WebFrameLoaderClient::setUpPolicyListener(Fram
     RetainPtr<WebFramePolicyListener> policyListener;
 #if HAVE(APP_LINKS)
     if (appLinkURL)
-        policyListener = adoptNS([[WebFramePolicyListener alloc] initWithFrame:core(m_webFrame.get()) policyFunction:WTFMove(function) appLinkURL:appLinkURL]);
+        policyListener = adoptNS([[WebFramePolicyListener alloc] initWithFrame:core(m_webFrame.get()) policyFunction:WTFMove(function) defaultPolicy:defaultPolicy appLinkURL:appLinkURL]);
     else
 #endif
-        policyListener = adoptNS([[WebFramePolicyListener alloc] initWithFrame:core(m_webFrame.get()) policyFunction:WTFMove(function)]);
+        policyListener = adoptNS([[WebFramePolicyListener alloc] initWithFrame:core(m_webFrame.get()) policyFunction:WTFMove(function) defaultPolicy:defaultPolicy]);
 
     m_policyListener = policyListener.get();
 
@@ -1555,28 +1557,19 @@ String WebFrameLoaderClient::userAgent(const URL& url)
     return [webView _userAgentString];
 }
 
-static const MouseEvent* findMouseEvent(const Event* event)
-{
-    for (const Event* e = event; e; e = e->underlyingEvent())
-        if (e->isMouseEvent())
-            return static_cast<const MouseEvent*>(e);
-    return 0;
-}
-
 NSDictionary *WebFrameLoaderClient::actionDictionary(const NavigationAction& action, FormState* formState) const
 {
     unsigned modifierFlags = 0;
-    const Event* event = action.event();
 #if !PLATFORM(IOS)
-    const UIEventWithKeyState* keyStateEvent = findEventWithKeyState(const_cast<Event*>(event));
-    if (keyStateEvent && keyStateEvent->isTrusted()) {
-        if (keyStateEvent->ctrlKey())
+    auto keyStateEventData = action.keyStateEventData();
+    if (keyStateEventData && keyStateEventData->isTrusted) {
+        if (keyStateEventData->ctrlKey)
             modifierFlags |= NSEventModifierFlagControl;
-        if (keyStateEvent->altKey())
+        if (keyStateEventData->altKey)
             modifierFlags |= NSEventModifierFlagOption;
-        if (keyStateEvent->shiftKey())
+        if (keyStateEventData->shiftKey)
             modifierFlags |= NSEventModifierFlagShift;
-        if (keyStateEvent->metaKey())
+        if (keyStateEventData->metaKey)
             modifierFlags |= NSEventModifierFlagCommand;
     }
 #else
@@ -1592,14 +1585,14 @@ NSDictionary *WebFrameLoaderClient::actionDictionary(const NavigationAction& act
         originalURL, WebActionOriginalURLKey,
         nil];
 
-    if (const MouseEvent* mouseEvent = findMouseEvent(event)) {
+    if (auto mouseEventData = action.mouseEventData()) {
         WebElementDictionary *element = [[WebElementDictionary alloc]
-            initWithHitTestResult:core(m_webFrame.get())->eventHandler().hitTestResultAtPoint(mouseEvent->absoluteLocation())];
+            initWithHitTestResult:core(m_webFrame.get())->eventHandler().hitTestResultAtPoint(mouseEventData->absoluteLocation)];
         [result setObject:element forKey:WebActionElementKey];
         [element release];
 
-        if (mouseEvent->isTrusted())
-            [result setObject:[NSNumber numberWithInt:mouseEvent->button()] forKey:WebActionButtonKey];
+        if (mouseEventData->isTrusted)
+            [result setObject:[NSNumber numberWithInt:mouseEventData->button] forKey:WebActionButtonKey];
         else
             [result setObject:[NSNumber numberWithInt:WebCore::NoButton] forKey:WebActionButtonKey];
     }
@@ -2350,10 +2343,9 @@ static NSImage *webGetNSImage(Image* image, NSSize size)
     if (!nsImage)
         return nil;
     if (!NSEqualSizes([nsImage size], size)) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         [nsImage setScalesWhenResized:YES];
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
         [nsImage setSize:size];
     }
     return nsImage;
@@ -2395,7 +2387,7 @@ void WebFrameLoaderClient::finishedLoadingIcon(uint64_t callbackID, SharedBuffer
 #endif
 }
 
-- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction
+- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction defaultPolicy:(PolicyAction)defaultPolicy
 {
     self = [self init];
     if (!self)
@@ -2403,14 +2395,15 @@ void WebFrameLoaderClient::finishedLoadingIcon(uint64_t callbackID, SharedBuffer
 
     _frame = frame;
     _policyFunction = WTFMove(policyFunction);
+    _defaultPolicy = defaultPolicy;
 
     return self;
 }
 
 #if HAVE(APP_LINKS)
-- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction appLinkURL:(NSURL *)appLinkURL
+- (id)initWithFrame:(Frame*)frame policyFunction:(FramePolicyFunction&&)policyFunction defaultPolicy:(PolicyAction)defaultPolicy appLinkURL:(NSURL *)appLinkURL
 {
-    self = [self initWithFrame:frame policyFunction:WTFMove(policyFunction)];
+    self = [self initWithFrame:frame policyFunction:WTFMove(policyFunction) defaultPolicy:defaultPolicy];
     if (!self)
         return nil;
 
@@ -2432,12 +2425,12 @@ void WebFrameLoaderClient::finishedLoadingIcon(uint64_t callbackID, SharedBuffer
     if (WebCoreObjCScheduleDeallocateOnMainThread([WebFramePolicyListener class], self))
         return;
 
-    // If the app did not respond before the listener is destroyed, then we let the load
-    // proceed with policy "Use".
+    // If the app did not respond before the listener is destroyed, then we use the default policy ("Use" for navigation
+    // response policy decision, "Ignore" for other policy decisions).
     _frame = nullptr;
     if (auto policyFunction = std::exchange(_policyFunction, nullptr)) {
-        RELEASE_LOG_ERROR(Loading, "Client application failed to make a policy decision via WebPolicyDecisionListener, letting the load proceed");
-        policyFunction(PolicyAction::Use);
+        RELEASE_LOG_ERROR(Loading, "Client application failed to make a policy decision via WebPolicyDecisionListener, using defaultPolicy %u", _defaultPolicy);
+        policyFunction(_defaultPolicy);
     }
 
     [super dealloc];

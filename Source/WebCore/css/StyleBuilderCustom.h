@@ -144,8 +144,6 @@ public:
 
     static void applyValueStrokeWidth(StyleResolver&, CSSValue&);
     static void applyValueStrokeColor(StyleResolver&, CSSValue&);
-    
-    static void applyValueWebkitLinesClamp(StyleResolver&, CSSValue&);
 
 private:
     static void resetEffectiveZoom(StyleResolver&);
@@ -576,8 +574,12 @@ public:
             image.setFill(false);
             break;
         case Width:
+            // FIXME: This is a local variable to work around a bug in the GCC 8.1 Address Sanitizer.
+            // Might be slightly less efficient when the type is not BorderImage since this is unused in that case.
+            // Should be switched back to a temporary when possible. See https://webkit.org/b/186980
+            LengthBox lengthBox(Length(1, Relative), Length(1, Relative), Length(1, Relative), Length(1, Relative));
             // Masks have a different initial value for widths. They use an 'auto' value rather than trying to fit to the border.
-            image.setBorderSlices(type == BorderImage ? LengthBox(Length(1, Relative), Length(1, Relative), Length(1, Relative), Length(1, Relative)) : LengthBox());
+            image.setBorderSlices(type == BorderImage ? lengthBox : LengthBox());
             break;
         }
         setValue(styleResolver.style(), image);
@@ -1868,20 +1870,6 @@ inline void StyleBuilderCustom::applyValueStrokeColor(StyleResolver& styleResolv
     if (styleResolver.applyPropertyToVisitedLinkStyle())
         styleResolver.style()->setVisitedLinkStrokeColor(styleResolver.colorFromPrimitiveValue(primitiveValue, /* forVisitedLink */ true));
     styleResolver.style()->setHasExplicitlySetStrokeColor(true);
-}
-
-inline void StyleBuilderCustom::applyValueWebkitLinesClamp(StyleResolver& styleResolver, CSSValue& value)
-{
-    if (is<CSSValueList>(value)) {
-        auto& list = downcast<CSSValueList>(value);
-        if (list.length() != 3)
-            return;
-        LineClampValue start = downcast<CSSPrimitiveValue>(*list.itemWithoutBoundsCheck(0));
-        LineClampValue end = downcast<CSSPrimitiveValue>(*list.itemWithoutBoundsCheck(1));
-        AtomicString center = downcast<CSSPrimitiveValue>(*list.itemWithoutBoundsCheck(2)).stringValue();
-        styleResolver.style()->setLinesClamp(LinesClampValue(start, end, center));
-    } else
-        styleResolver.style()->setLinesClamp(RenderStyle::initialLinesClamp());
 }
 
 } // namespace WebCore

@@ -23,6 +23,7 @@
 
 #include "BridgeJSC.h"
 #include "CachedScriptFetcher.h"
+#include "CommonVM.h"
 #include "ContentSecurityPolicy.h"
 #include "DocumentLoader.h"
 #include "Event.h"
@@ -35,7 +36,7 @@
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMWindow.h"
 #include "JSDocument.h"
-#include "JSMainThreadExecState.h"
+#include "JSExecState.h"
 #include "LoadableModuleScript.h"
 #include "ModuleFetchFailureKind.h"
 #include "ModuleFetchParameters.h"
@@ -127,7 +128,7 @@ JSValue ScriptController::evaluateInWorld(const ScriptSourceCode& sourceCode, DO
     InspectorInstrumentationCookie cookie = InspectorInstrumentation::willEvaluateScript(m_frame, sourceURL, sourceCode.startLine());
 
     NakedPtr<JSC::Exception> evaluationException;
-    JSValue returnValue = JSMainThreadExecState::profiledEvaluate(&exec, JSC::ProfilingReason::Other, jsSourceCode, &proxy, evaluationException);
+    JSValue returnValue = JSExecState::profiledEvaluate(&exec, JSC::ProfilingReason::Other, jsSourceCode, &proxy, evaluationException);
 
     InspectorInstrumentation::didEvaluateScript(cookie, m_frame);
 
@@ -153,7 +154,7 @@ void ScriptController::loadModuleScriptInWorld(LoadableModuleScript& moduleScrip
     auto& proxy = jsWindowProxy(world);
     auto& state = *proxy.window()->globalExec();
 
-    auto& promise = JSMainThreadExecState::loadModule(state, moduleName, JSC::JSScriptFetchParameters::create(state.vm(), WTFMove(topLevelFetchParameters)), JSC::JSScriptFetcher::create(state.vm(), { &moduleScript }));
+    auto& promise = JSExecState::loadModule(state, moduleName, JSC::JSScriptFetchParameters::create(state.vm(), WTFMove(topLevelFetchParameters)), JSC::JSScriptFetcher::create(state.vm(), { &moduleScript }));
     setupModuleScriptHandlers(moduleScript, promise, world);
 }
 
@@ -169,7 +170,7 @@ void ScriptController::loadModuleScriptInWorld(LoadableModuleScript& moduleScrip
     auto& proxy = jsWindowProxy(world);
     auto& state = *proxy.window()->globalExec();
 
-    auto& promise = JSMainThreadExecState::loadModule(state, sourceCode.jsSourceCode(), JSC::JSScriptFetcher::create(state.vm(), { &moduleScript }));
+    auto& promise = JSExecState::loadModule(state, sourceCode.jsSourceCode(), JSC::JSScriptFetcher::create(state.vm(), { &moduleScript }));
     setupModuleScriptHandlers(moduleScript, promise, world);
 }
 
@@ -190,7 +191,7 @@ JSC::JSValue ScriptController::linkAndEvaluateModuleScriptInWorld(LoadableModule
     Ref<Frame> protector(m_frame);
 
     NakedPtr<JSC::Exception> evaluationException;
-    auto returnValue = JSMainThreadExecState::linkAndEvaluateModule(state, Identifier::fromUid(&state.vm(), moduleScript.moduleKey()), jsUndefined(), evaluationException);
+    auto returnValue = JSExecState::linkAndEvaluateModule(state, Identifier::fromUid(&state.vm(), moduleScript.moduleKey()), jsUndefined(), evaluationException);
     if (evaluationException) {
         // FIXME: Give a chance to dump the stack trace if the "crossorigin" attribute allows.
         // https://bugs.webkit.org/show_bug.cgi?id=164539
@@ -379,7 +380,7 @@ void ScriptController::disableWebAssembly(const String& errorMessage)
 
 bool ScriptController::canAccessFromCurrentOrigin(Frame* frame)
 {
-    auto* state = JSMainThreadExecState::currentState();
+    auto* state = JSExecState::currentState();
 
     // If the current state is null we're in a call path where the DOM security check doesn't apply (eg. parser).
     if (!state)
@@ -539,7 +540,7 @@ void ScriptController::clearScriptObjects()
 #endif
 }
 
-JSValue ScriptController::executeScriptInWorld(DOMWrapperWorld& world, const String& script, bool forceUserGesture)
+JSValue ScriptController::executeScriptInWorld(DOMWrapperWorld& world, const String& script, bool forceUserGesture, ExceptionDetails* exceptionDetails)
 {
     UserGestureIndicator gestureIndicator(forceUserGesture ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
     ScriptSourceCode sourceCode(script, m_frame.document()->url(), TextPosition(), JSC::SourceProviderSourceType::Program, CachedScriptFetcher::create(m_frame.document()->charset()));
@@ -547,7 +548,7 @@ JSValue ScriptController::executeScriptInWorld(DOMWrapperWorld& world, const Str
     if (!canExecuteScripts(AboutToExecuteScript) || isPaused())
         return { };
 
-    return evaluateInWorld(sourceCode, world);
+    return evaluateInWorld(sourceCode, world, exceptionDetails);
 }
 
 bool ScriptController::canExecuteScripts(ReasonForCallingCanExecuteScripts reason)

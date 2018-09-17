@@ -36,10 +36,10 @@ namespace Layout {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(Box);
 
-Box::Box(RenderStyle&& style, BaseTypeFlags baseTypeFlags)
+Box::Box(std::optional<ElementAttributes> attributes, RenderStyle&& style, BaseTypeFlags baseTypeFlags)
     : m_style(WTFMove(style))
+    , m_elementAttributes(attributes)
     , m_baseTypeFlags(baseTypeFlags)
-    , m_isAnonymous(false)
 {
 }
 
@@ -57,17 +57,26 @@ bool Box::establishesBlockFormattingContext() const
     // Initial Containing Block always creates a new (inital) block formatting context.
     if (!parent())
         return true;
+
     // 9.4.1 Block formatting contexts
     // Floats, absolutely positioned elements, block containers (such as inline-blocks, table-cells, and table-captions)
     // that are not block boxes, and block boxes with 'overflow' other than 'visible' (except when that value has been propagated to the viewport)
     // establish new block formatting contexts for their contents.
     if (isFloatingPositioned() || isAbsolutelyPositioned())
         return true;
+
     if (isBlockContainerBox() && !isBlockLevelBox())
         return true;
+
     if (isBlockLevelBox() && !isOverflowVisible())
         return true;
+
     return false;
+}
+
+bool Box::establishesBlockFormattingContextOnly() const
+{
+    return establishesBlockFormattingContext() && !establishesInlineFormattingContext();
 }
 
 bool Box::isRelativelyPositioned() const
@@ -82,7 +91,7 @@ bool Box::isStickyPositioned() const
 
 bool Box::isAbsolutelyPositioned() const
 {
-    return m_style.position() == PositionType::Absolute;
+    return m_style.position() == PositionType::Absolute || isFixedPositioned(); 
 }
 
 bool Box::isFixedPositioned() const
@@ -93,6 +102,21 @@ bool Box::isFixedPositioned() const
 bool Box::isFloatingPositioned() const
 {
     return m_style.floating() != Float::No;
+}
+
+bool Box::isLeftFloatingPositioned() const
+{
+    return m_style.floating() == Float::Left;
+}
+
+bool Box::isRightFloatingPositioned() const
+{
+    return m_style.floating() == Float::Right;
+}
+
+bool Box::hasFloatClear() const
+{
+    return m_style.clear() != Clear::None;
 }
 
 const Container* Box::containingBlock() const
@@ -138,10 +162,22 @@ const Container& Box::formattingContextRoot() const
     // Initial containing block always establishes a formatting context.
     if (isInitialContainingBlock())
         return downcast<Container>(*this);
+
     RELEASE_ASSERT_NOT_REACHED();
 }
 
-bool Box::isDescendantOf(Container& container) const
+const Container& Box::initialContainingBlock() const
+{
+    if (isInitialContainingBlock())
+        return downcast<Container>(*this);
+
+    auto* parent = this->parent();
+    for (; parent->parent(); parent = parent->parent()) { }
+
+    return *parent;
+}
+
+bool Box::isDescendantOf(const Container& container) const
 { 
     for (auto* ancestor = containingBlock(); ancestor; ancestor = ancestor->containingBlock()) {
         if (ancestor == &container)
@@ -230,7 +266,16 @@ bool Box::isPaddingApplicable() const
 {
     // 8.4 Padding properties:
     // Applies to: all elements except table-row-group, table-header-group, table-footer-group, table-row, table-column-group and table-column
-    return true;
+    if (isAnonymous())
+        return false;
+
+    auto elementType = m_elementAttributes.value().elementType;
+    return elementType != ElementType::TableRowGroup
+        && elementType != ElementType::TableHeaderGroup
+        && elementType != ElementType::TableFooterGroup
+        && elementType != ElementType::TableRow
+        && elementType != ElementType::TableColumnGroup
+        && elementType != ElementType::TableColumn;
 }
 
 }

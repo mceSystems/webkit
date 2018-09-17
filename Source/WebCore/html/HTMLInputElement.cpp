@@ -241,6 +241,13 @@ HTMLElement* HTMLInputElement::placeholderElement() const
     return m_inputType->placeholderElement();
 }
 
+#if ENABLE(DATALIST_ELEMENT)
+HTMLElement* HTMLInputElement::dataListButtonElement() const
+{
+    return m_inputType->dataListButtonElement();
+}
+#endif
+
 bool HTMLInputElement::shouldAutocomplete() const
 {
     if (m_autocomplete != Uninitialized)
@@ -521,6 +528,7 @@ void HTMLInputElement::updateType()
     }
 
     m_inputType->destroyShadowSubtree();
+    m_inputType->detachFromElement();
 
     m_inputType = WTFMove(newType);
     m_inputType->createShadowSubtree();
@@ -749,42 +757,12 @@ void HTMLInputElement::parseAttribute(const QualifiedName& name, const AtomicStr
         m_size = limitToOnlyHTMLNonNegativeNumbersGreaterThanZero(value, defaultSize);
         if (m_size != oldSize && renderer())
             renderer()->setNeedsLayoutAndPrefWidthsRecalc();
-    } else if (name == altAttr)
-        m_inputType->altAttributeChanged();
-    else if (name == srcAttr)
-        m_inputType->srcAttributeChanged();
-    else if (name == usemapAttr || name == accesskeyAttr) {
-        // FIXME: ignore for the moment
-    } else if (name == resultsAttr) {
+    } else if (name == resultsAttr)
         m_maxResults = !value.isNull() ? std::min(value.toInt(), maxSavedResults) : -1;
-        m_inputType->maxResultsAttributeChanged();
-    } else if (name == autosaveAttr) {
+    else if (name == autosaveAttr || name == incrementalAttr)
         invalidateStyleForSubtree();
-    } else if (name == incrementalAttr) {
-        invalidateStyleForSubtree();
-    } else if (name == minAttr) {
-        m_inputType->minOrMaxAttributeChanged();
+    else if (name == maxAttr || name == minAttr || name == multipleAttr || name == patternAttr || name == precisionAttr || name == stepAttr)
         updateValidity();
-    } else if (name == maxAttr) {
-        m_inputType->minOrMaxAttributeChanged();
-        updateValidity();
-    } else if (name == multipleAttr) {
-        m_inputType->multipleAttributeChanged();
-        updateValidity();
-    } else if (name == stepAttr) {
-        m_inputType->stepAttributeChanged();
-        updateValidity();
-    } else if (name == patternAttr) {
-        updateValidity();
-    } else if (name == precisionAttr) {
-        updateValidity();
-    } else if (name == disabledAttr) {
-        HTMLTextFormControlElement::parseAttribute(name, value);
-        m_inputType->disabledAttributeChanged();
-    } else if (name == readonlyAttr) {
-        HTMLTextFormControlElement::parseAttribute(name, value);
-        m_inputType->readonlyAttributeChanged();
-    }
 #if ENABLE(DATALIST_ELEMENT)
     else if (name == listAttr) {
         m_hasNonEmptyList = !value.isEmpty();
@@ -798,6 +776,18 @@ void HTMLInputElement::parseAttribute(const QualifiedName& name, const AtomicStr
         HTMLTextFormControlElement::parseAttribute(name, value);
 
     m_inputType->attributeChanged(name);
+}
+
+void HTMLInputElement::disabledStateChanged()
+{
+    HTMLTextFormControlElement::disabledStateChanged();
+    m_inputType->disabledStateChanged();
+}
+
+void HTMLInputElement::readOnlyStateChanged()
+{
+    HTMLTextFormControlElement::readOnlyStateChanged();
+    m_inputType->readOnlyStateChanged();
 }
 
 void HTMLInputElement::parserDidSetAttributes()
@@ -1296,9 +1286,7 @@ static Vector<String> parseAcceptAttribute(const String& acceptString, bool (*pr
     if (acceptString.isEmpty())
         return types;
 
-    Vector<String> splitTypes;
-    acceptString.split(',', false, splitTypes);
-    for (auto& splitType : splitTypes) {
+    for (auto& splitType : acceptString.split(',')) {
         String trimmedType = stripLeadingAndTrailingHTMLSpaces(splitType);
         if (trimmedType.isEmpty())
             continue;
@@ -1496,7 +1484,7 @@ void HTMLInputElement::onSearch()
 
     if (m_inputType)
         downcast<SearchInputType>(*m_inputType.get()).stopSearchEventTimer();
-    dispatchEvent(Event::create(eventNames().searchEvent, true, false));
+    dispatchEvent(Event::create(eventNames().searchEvent, Event::CanBubble::Yes, Event::IsCancelable::No));
 }
 
 void HTMLInputElement::resumeFromDocumentSuspension()
@@ -1595,12 +1583,12 @@ bool HTMLInputElement::computeWillValidate() const
     return m_inputType->supportsValidation() && HTMLTextFormControlElement::computeWillValidate();
 }
 
-void HTMLInputElement::requiredAttributeChanged()
+void HTMLInputElement::requiredStateChanged()
 {
-    HTMLTextFormControlElement::requiredAttributeChanged();
-    if (RadioButtonGroups* buttons = radioButtonGroups())
-        buttons->requiredAttributeChanged(this);
-    m_inputType->requiredAttributeChanged();
+    HTMLTextFormControlElement::requiredStateChanged();
+    if (auto* buttons = radioButtonGroups())
+        buttons->requiredStateChanged(*this);
+    m_inputType->requiredStateChanged();
 }
 
 Color HTMLInputElement::valueAsColor() const
@@ -1611,6 +1599,11 @@ Color HTMLInputElement::valueAsColor() const
 void HTMLInputElement::selectColor(StringView color)
 {
     m_inputType->selectColor(color);
+}
+
+Vector<Color> HTMLInputElement::suggestedColors() const
+{
+    return m_inputType->suggestedColors();
 }
 
 #if ENABLE(DATALIST_ELEMENT)
@@ -1649,6 +1642,11 @@ void HTMLInputElement::listAttributeTargetChanged()
 }
 
 #endif // ENABLE(DATALIST_ELEMENT)
+
+bool HTMLInputElement::isPresentingAttachedView() const
+{
+    return m_inputType->isPresentingAttachedView();
+}
 
 bool HTMLInputElement::isSteppable() const
 {
@@ -2041,11 +2039,11 @@ static Ref<CSSLinearGradientValue> autoFillStrongPasswordMaskImage()
 {
     CSSGradientColorStop firstStop;
     firstStop.m_color = CSSValuePool::singleton().createColorValue(Color::black);
-    firstStop.m_position = CSSValuePool::singleton().createValue(3, CSSPrimitiveValue::UnitType::CSS_EMS);
+    firstStop.m_position = CSSValuePool::singleton().createValue(50, CSSPrimitiveValue::UnitType::CSS_PERCENTAGE);
 
     CSSGradientColorStop secondStop;
     secondStop.m_color = CSSValuePool::singleton().createColorValue(Color::transparent);
-    secondStop.m_position = CSSValuePool::singleton().createValue(7, CSSPrimitiveValue::UnitType::CSS_EMS);
+    secondStop.m_position = CSSValuePool::singleton().createValue(100, CSSPrimitiveValue::UnitType::CSS_PERCENTAGE);
 
     auto gradient = CSSLinearGradientValue::create(CSSGradientRepeat::NonRepeating, CSSGradientType::CSSLinearGradient);
     gradient->setAngle(CSSValuePool::singleton().createValue(90, CSSPrimitiveValue::UnitType::CSS_DEG));
@@ -2068,7 +2066,9 @@ RenderStyle HTMLInputElement::createInnerTextStyle(const RenderStyle& style)
 
     textBlockStyle.setDisplay(DisplayType::Block);
 
-    if (hasAutoFillStrongPasswordButton()) {
+    if (hasAutoFillStrongPasswordButton() && !isDisabledOrReadOnly()) {
+        textBlockStyle.setDisplay(DisplayType::InlineBlock);
+        textBlockStyle.setMaxWidth(Length { 100, Percent });
         textBlockStyle.setColor({ 0.0f, 0.0f, 0.0f, 0.6f });
         textBlockStyle.setTextOverflow(TextOverflow::Clip);
         textBlockStyle.setMaskImage(styleResolver().styleImage(autoFillStrongPasswordMaskImage()));
@@ -2116,7 +2116,7 @@ bool HTMLInputElement::setupDateTimeChooserParameters(DateTimeChooserParameters&
     else
         parameters.anchorRectInRootView = IntRect();
     parameters.currentValue = value();
-    parameters.isAnchorElementRTL = computedStyle()->direction() == RTL;
+    parameters.isAnchorElementRTL = computedStyle()->direction() == TextDirection::RTL;
 #if ENABLE(DATALIST_ELEMENT)
     if (auto dataList = this->dataList()) {
         Ref<HTMLCollection> options = dataList->options();

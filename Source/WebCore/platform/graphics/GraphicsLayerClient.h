@@ -48,7 +48,7 @@ enum GraphicsLayerPaintingPhaseFlags {
     GraphicsLayerPaintChildClippingMask     = 1 << 6,
     GraphicsLayerPaintAllWithOverflowClip   = GraphicsLayerPaintBackground | GraphicsLayerPaintForeground
 };
-typedef unsigned GraphicsLayerPaintingPhase;
+typedef uint8_t GraphicsLayerPaintingPhase;
 
 enum AnimatedPropertyID {
     AnimatedPropertyInvalid,
@@ -72,6 +72,7 @@ enum LayerTreeAsTextBehaviorFlags {
     LayerTreeAsTextIncludePageOverlayLayers     = 1 << 6,
     LayerTreeAsTextIncludeAcceleratesDrawing    = 1 << 7,
     LayerTreeAsTextIncludeBackingStoreAttached  = 1 << 8,
+    LayerTreeAsTextShowAll                      = 0xFFFF
 };
 typedef unsigned LayerTreeAsTextBehavior;
 

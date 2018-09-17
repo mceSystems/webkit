@@ -40,7 +40,12 @@ void AuthenticationManager::initializeConnection(IPC::Connection* connection)
 {
     ASSERT(isMainThread());
 
-    auto weakThis = m_weakPtrFactory.createWeakPtr(*this);
+    if (!connection || !connection->xpcConnection()) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
+
+    auto weakThis = makeWeakPtr(*this);
     // The following xpc event handler overwrites the boostrap event handler and is only used
     // to capture client certificate credential.
     xpc_connection_set_event_handler(connection->xpcConnection(), ^(xpc_object_t event) {
@@ -83,7 +88,7 @@ void AuthenticationManager::initializeConnection(IPC::Connection* connection)
                 auto certificate = adoptCF(SecCertificateCreateWithData(nullptr, cfData.get()));
                 if (!certificate)
                     return;
-                [certificates addObject:(id)certificate.get()];
+                [certificates addObject:(__bridge id)certificate.get()];
             }
         }
 

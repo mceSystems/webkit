@@ -45,9 +45,9 @@ namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(RootInlineBox);
 
-struct SameSizeAsRootInlineBox : public InlineFlowBox {
+struct SameSizeAsRootInlineBox : public InlineFlowBox, public CanMakeWeakPtr<RootInlineBox> {
     unsigned variables[7];
-    void* pointers[4];
+    void* pointers[3];
 };
 
 COMPILE_ASSERT(sizeof(RootInlineBox) == sizeof(SameSizeAsRootInlineBox), RootInlineBox_should_stay_small);
@@ -63,7 +63,6 @@ static ContainingFragmentMap& containingFragmentMap(RenderBlockFlow& block)
 
 RootInlineBox::RootInlineBox(RenderBlockFlow& block)
     : InlineFlowBox(block)
-    , m_lineBreakPos(0)
 {
     setIsHorizontal(block.isHorizontalWritingMode());
 }
@@ -160,8 +159,7 @@ float RootInlineBox::placeEllipsisBox(bool ltr, float blockLeftEdge, float block
 
 void RootInlineBox::paintEllipsisBox(PaintInfo& paintInfo, const LayoutPoint& paintOffset, LayoutUnit lineTop, LayoutUnit lineBottom) const
 {
-    if (hasEllipsisBox() && paintInfo.shouldPaintWithinRoot(renderer()) && renderer().style().visibility() == Visibility::Visible
-            && paintInfo.phase == PaintPhaseForeground)
+    if (hasEllipsisBox() && paintInfo.shouldPaintWithinRoot(renderer()) && renderer().style().visibility() == Visibility::Visible && paintInfo.phase == PaintPhase::Foreground)
         ellipsisBox()->paint(paintInfo, paintOffset, lineTop, lineBottom);
 }
 

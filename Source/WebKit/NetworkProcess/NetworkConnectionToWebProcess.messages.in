@@ -51,7 +51,7 @@ messages -> NetworkConnectionToWebProcess LegacyReceiver {
     BlobSize(WebCore::URL url) -> (uint64_t resultSize)
     WriteBlobsToTemporaryFiles(Vector<String> blobURLs, uint64_t requestIdentifier)
 
-    StoreDerivedDataToCache(WebKit::NetworkCache::DataKey key, IPC::DataReference data)
+    StoreDerivedDataToCache(WebKit::NetworkCache::DataKey key, IPC::SharedBufferDataReference data)
 
     SetCaptureExtraNetworkLoadMetricsEnabled(bool enabled)
 
@@ -66,6 +66,8 @@ messages -> NetworkConnectionToWebProcess LegacyReceiver {
     RemoveOriginAccessWhitelistEntry(String sourceOrigin, String destinationProtocol, String destinationHost, bool allowDestinationSubdomains);
     ResetOriginAccessWhitelists();
 
-    TakeNetworkLoadInformationResponse(uint64_t resourceLoadIdentifier) -> (WebCore::ResourceResponse response);
+    GetNetworkLoadInformationRequest(uint64_t resourceLoadIdentifier) -> (WebCore::ResourceRequest request);
+    GetNetworkLoadInformationResponse(uint64_t resourceLoadIdentifier) -> (WebCore::ResourceResponse response);
+    GetNetworkLoadIntermediateInformation(uint64_t resourceLoadIdentifier) -> (Vector<WebCore::NetworkTransactionInformation> transactions);
     TakeNetworkLoadInformationMetrics(uint64_t resourceLoadIdentifier) -> (WebCore::NetworkLoadMetrics networkMetrics);
 }

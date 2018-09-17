@@ -25,9 +25,9 @@
 (deny default (with partial-symbolication))
 (allow system-audit file-read-metadata)
 
-(deny mach-lookup (xpc-service-name-prefix ""))
-
 (import "common.sb")
+
+(deny mach-lookup (xpc-service-name-prefix ""))
 
 (deny lsopen)
 
@@ -75,8 +75,7 @@
 ;; Security framework
 (allow mach-lookup
     (global-name "com.apple.ocspd")
-    (global-name "com.apple.securityd")
-    (global-name "com.apple.accountsd.accountmanager"))
+    (global-name "com.apple.securityd"))
 
 (deny file-write-create
        (vnode-type SYMLINK))
@@ -93,4 +92,5 @@
     (global-name "com.apple.lsd.mapdb")
     (global-name "com.apple.analyticsd")
     (global-name "com.apple.WirelessCoexManager")
-    (global-name "com.apple.wifi.manager"))
+    (global-name "com.apple.wifi.manager")
+    (global-name "com.apple.identityservicesd.embedded.auth"))

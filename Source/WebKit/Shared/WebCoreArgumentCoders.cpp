@@ -28,7 +28,6 @@
 
 #include "DataReference.h"
 #include "ShareableBitmap.h"
-#include <WebCore/AttachmentTypes.h>
 #include <WebCore/AuthenticationChallenge.h>
 #include <WebCore/BlobPart.h>
 #include <WebCore/CacheQueryOptions.h>
@@ -36,6 +35,7 @@
 #include <WebCore/CompositionUnderline.h>
 #include <WebCore/Credential.h>
 #include <WebCore/Cursor.h>
+#include <WebCore/DataListSuggestionPicker.h>
 #include <WebCore/DatabaseDetails.h>
 #include <WebCore/DictationAlternative.h>
 #include <WebCore/DictionaryPopupInfo.h>
@@ -56,7 +56,7 @@
 #include <WebCore/Pasteboard.h>
 #include <WebCore/Path.h>
 #include <WebCore/PluginData.h>
-#include <WebCore/PromisedBlobInfo.h>
+#include <WebCore/PromisedAttachmentInfo.h>
 #include <WebCore/ProtectionSpace.h>
 #include <WebCore/RectEdges.h>
 #include <WebCore/Region.h>
@@ -71,6 +71,7 @@
 #include <WebCore/ServiceWorkerClientData.h>
 #include <WebCore/ServiceWorkerClientIdentifier.h>
 #include <WebCore/ServiceWorkerData.h>
+#include <WebCore/ShareData.h>
 #include <WebCore/TextCheckerClient.h>
 #include <WebCore/TextIndicator.h>
 #include <WebCore/TimingFunction.h>
@@ -659,6 +660,14 @@ bool ArgumentCoder<ViewportArguments>::decode(Decoder& decoder, ViewportArgument
 {
     return SimpleArgumentCoder<ViewportArguments>::decode(decoder, viewportArguments);
 }
+
+std::optional<ViewportArguments> ArgumentCoder<ViewportArguments>::decode(Decoder& decoder)
+{
+    ViewportArguments viewportArguments;
+    if (!SimpleArgumentCoder<ViewportArguments>::decode(decoder, viewportArguments))
+        return std::nullopt;
+    return WTFMove(viewportArguments);
+}
 #endif // PLATFORM(IOS)
 
 
@@ -843,6 +852,15 @@ bool ArgumentCoder<Path>::decode(Decoder& decoder, Path& path)
     return true;
 }
 
+std::optional<Path> ArgumentCoder<Path>::decode(Decoder& decoder)
+{
+    Path path;
+    if (!decode(decoder, path))
+        return std::nullopt;
+
+    return path;
+}
+
 void ArgumentCoder<RecentSearch>::encode(Encoder& encoder, const RecentSearch& recentSearch)
 {
     encoder << recentSearch.string << recentSearch.time;
@@ -963,8 +981,8 @@ void ArgumentCoder<PluginInfo>::encode(Encoder& encoder, const PluginInfo& plugi
     encoder << pluginInfo.mimes;
     encoder << pluginInfo.isApplicationPlugin;
     encoder.encodeEnum(pluginInfo.clientLoadPolicy);
-#if PLATFORM(MAC)
     encoder << pluginInfo.bundleIdentifier;
+#if PLATFORM(MAC)
     encoder << pluginInfo.versionString;
 #endif
 }
@@ -984,9 +1002,9 @@ std::optional<WebCore::PluginInfo> ArgumentCoder<PluginInfo>::decode(Decoder& de
         return std::nullopt;
     if (!decoder.decodeEnum(pluginInfo.clientLoadPolicy))
         return std::nullopt;
-#if PLATFORM(MAC)
     if (!decoder.decode(pluginInfo.bundleIdentifier))
         return std::nullopt;
+#if PLATFORM(MAC)
     if (!decoder.decode(pluginInfo.versionString))
         return std::nullopt;
 #endif
@@ -1506,6 +1524,15 @@ bool ArgumentCoder<Color>::decode(Decoder& decoder, Color& color)
     return true;
 }
 
+std::optional<Color> ArgumentCoder<Color>::decode(Decoder& decoder)
+{
+    Color color;
+    if (!decode(decoder, color))
+        return std::nullopt;
+
+    return color;
+}
+
 #if ENABLE(DRAG_SUPPORT)
 void ArgumentCoder<DragData>::encode(Encoder& encoder, const DragData& dragData)
 {
@@ -1623,6 +1650,29 @@ bool ArgumentCoder<DatabaseDetails>::decode(Decoder& decoder, DatabaseDetails& d
     return true;
 }
 
+#if ENABLE(DATALIST_ELEMENT)
+void ArgumentCoder<DataListSuggestionInformation>::encode(Encoder& encoder, const WebCore::DataListSuggestionInformation& info)
+{
+    encoder.encodeEnum(info.activationType);
+    encoder << info.suggestions;
+    encoder << info.elementRect;
+}
+
+bool ArgumentCoder<DataListSuggestionInformation>::decode(Decoder& decoder, WebCore::DataListSuggestionInformation& info)
+{
+    if (!decoder.decodeEnum(info.activationType))
+        return false;
+
+    if (!decoder.decode(info.suggestions))
+        return false;
+
+    if (!decoder.decode(info.elementRect))
+        return false;
+
+    return true;
+}
+#endif
+
 void ArgumentCoder<PasteboardCustomData>::encode(Encoder& encoder, const PasteboardCustomData& data)
 {
     encoder << data.origin;
@@ -1644,6 +1694,38 @@ bool ArgumentCoder<PasteboardCustomData>::decode(Decoder& decoder, PasteboardCus
 
     if (!decoder.decode(data.sameOriginCustomData))
         return false;
+
+    return true;
+}
+
+void ArgumentCoder<PasteboardURL>::encode(Encoder& encoder, const PasteboardURL& content)
+{
+    encoder << content.url;
+    encoder << content.title;
+#if PLATFORM(MAC)
+    encoder << content.userVisibleForm;
+#endif
+#if PLATFORM(GTK)
+    encoder << content.markup;
+#endif
+}
+
+bool ArgumentCoder<PasteboardURL>::decode(Decoder& decoder, PasteboardURL& content)
+{
+    if (!decoder.decode(content.url))
+        return false;
+
+    if (!decoder.decode(content.title))
+        return false;
+
+#if PLATFORM(MAC)
+    if (!decoder.decode(content.userVisibleForm))
+        return false;
+#endif
+#if PLATFORM(GTK)
+    if (!decoder.decode(content.markup))
+        return false;
+#endif
 
     return true;
 }
@@ -1683,23 +1765,6 @@ bool ArgumentCoder<Highlight>::decode(Decoder& decoder, Highlight& highlight)
         return false;
     if (!decoder.decode(highlight.quads))
         return false;
-    return true;
-}
-
-void ArgumentCoder<PasteboardURL>::encode(Encoder& encoder, const PasteboardURL& content)
-{
-    encoder << content.url;
-    encoder << content.title;
-}
-
-bool ArgumentCoder<PasteboardURL>::decode(Decoder& decoder, PasteboardURL& content)
-{
-    if (!decoder.decode(content.url))
-        return false;
-
-    if (!decoder.decode(content.title))
-        return false;
-
     return true;
 }
 
@@ -1852,7 +1917,39 @@ bool ArgumentCoder<FileChooserSettings>::decode(Decoder& decoder, FileChooserSet
 
     return true;
 }
+    
+void ArgumentCoder<ShareData>::encode(Encoder& encoder, const ShareData& settings)
+{
+    encoder << settings.title;
+    encoder << settings.text;
+    encoder << settings.url;
+}
 
+bool ArgumentCoder<ShareData>::decode(Decoder& decoder, ShareData& settings)
+{
+    if (!decoder.decode(settings.title))
+        return false;
+    if (!decoder.decode(settings.text))
+        return false;
+    if (!decoder.decode(settings.url))
+        return false;
+    return true;
+}
+    
+void ArgumentCoder<ShareDataWithParsedURL>::encode(Encoder& encoder, const ShareDataWithParsedURL& settings)
+{
+    encoder << settings.shareData;
+    encoder << settings.url;
+}
+
+bool ArgumentCoder<ShareDataWithParsedURL>::decode(Decoder& decoder, ShareDataWithParsedURL& settings)
+{
+    if (!decoder.decode(settings.shareData))
+        return false;
+    if (!decoder.decode(settings.url))
+        return false;
+    return true;
+}
 
 void ArgumentCoder<GrammarDetail>::encode(Encoder& encoder, const GrammarDetail& detail)
 {
@@ -1891,7 +1988,7 @@ void ArgumentCoder<TextCheckingRequestData>::encode(Encoder& encoder, const Text
 {
     encoder << request.sequence();
     encoder << request.text();
-    encoder << request.mask();
+    encoder << request.checkingTypes();
     encoder.encodeEnum(request.processType());
 }
 
@@ -1905,15 +2002,15 @@ bool ArgumentCoder<TextCheckingRequestData>::decode(Decoder& decoder, TextChecki
     if (!decoder.decode(text))
         return false;
 
-    TextCheckingTypeMask mask;
-    if (!decoder.decode(mask))
+    OptionSet<TextCheckingType> checkingTypes;
+    if (!decoder.decode(checkingTypes))
         return false;
 
     TextCheckingProcessType processType;
     if (!decoder.decodeEnum(processType))
         return false;
 
-    request = TextCheckingRequestData(sequence, text, mask, processType);
+    request = TextCheckingRequestData { sequence, text, checkingTypes, processType };
     return true;
 }
 
@@ -2195,6 +2292,9 @@ void ArgumentCoder<FilterOperation>::encode(Encoder& encoder, const FilterOperat
     case FilterOperation::CONTRAST:
         encoder << downcast<BasicComponentTransferFilterOperation>(filter).amount();
         break;
+    case FilterOperation::APPLE_INVERT_LIGHTNESS:
+        ASSERT_NOT_REACHED(); // APPLE_INVERT_LIGHTNESS is only used in -apple-color-filter.
+        break;
     case FilterOperation::BLUR:
         encoder << downcast<BlurFilterOperation>(filter).stdDeviation();
         break;
@@ -2245,6 +2345,9 @@ bool decodeFilterOperation(Decoder& decoder, RefPtr<FilterOperation>& filter)
         filter = BasicComponentTransferFilterOperation::create(amount, type);
         break;
     }
+    case FilterOperation::APPLE_INVERT_LIGHTNESS:
+        ASSERT_NOT_REACHED(); // APPLE_INVERT_LIGHTNESS is only used in -apple-color-filter.
+        break;
     case FilterOperation::BLUR: {
         Length stdDeviation;
         if (!decoder.decode(stdDeviation))
@@ -2561,6 +2664,16 @@ void ArgumentCoder<ResourceLoadStatistics>::encode(Encoder& encoder, const WebCo
     encoder << statistics.isPrevalentResource;
     encoder << statistics.isVeryPrevalentResource;
     encoder << statistics.dataRecordsRemoved;
+    
+    encoder << statistics.fontsFailedToLoad;
+    encoder << statistics.fontsSuccessfullyLoaded;
+    encoder << statistics.topFrameRegistrableDomainsWhichAccessedWebAPIs;
+    
+    encoder << statistics.canvasActivityRecord;
+    
+    encoder << statistics.navigatorFunctionsAccessed;
+    encoder << statistics.screenFunctionsAccessed;
+    
 }
 
 std::optional<ResourceLoadStatistics> ArgumentCoder<ResourceLoadStatistics>::decode(Decoder& decoder)
@@ -2620,7 +2733,25 @@ std::optional<ResourceLoadStatistics> ArgumentCoder<ResourceLoadStatistics>::dec
     
     if (!decoder.decode(statistics.dataRecordsRemoved))
         return std::nullopt;
-
+    
+    if (!decoder.decode(statistics.fontsFailedToLoad))
+        return std::nullopt;
+    
+    if (!decoder.decode(statistics.fontsSuccessfullyLoaded))
+        return std::nullopt;
+    
+    if (!decoder.decode(statistics.topFrameRegistrableDomainsWhichAccessedWebAPIs))
+        return std::nullopt;
+    
+    if (!decoder.decode(statistics.canvasActivityRecord))
+        return std::nullopt;
+    
+    if (!decoder.decode(statistics.navigatorFunctionsAccessed))
+        return std::nullopt;
+    
+    if (!decoder.decode(statistics.screenFunctionsAccessed))
+        return std::nullopt;
+    
     return WTFMove(statistics);
 }
 
@@ -2792,15 +2923,18 @@ std::optional<MediaSelectionOption> ArgumentCoder<MediaSelectionOption>::decode(
     return {{ WTFMove(*displayName), WTFMove(*type) }};
 }
 
-void ArgumentCoder<PromisedBlobInfo>::encode(Encoder& encoder, const PromisedBlobInfo& info)
+void ArgumentCoder<PromisedAttachmentInfo>::encode(Encoder& encoder, const PromisedAttachmentInfo& info)
 {
     encoder << info.blobURL;
     encoder << info.contentType;
-    encoder << info.filename;
+    encoder << info.fileName;
+#if ENABLE(ATTACHMENT_ELEMENT)
+    encoder << info.attachmentIdentifier;
+#endif
     encodeTypesAndData(encoder, info.additionalTypes, info.additionalData);
 }
 
-bool ArgumentCoder<PromisedBlobInfo>::decode(Decoder& decoder, PromisedBlobInfo& info)
+bool ArgumentCoder<PromisedAttachmentInfo>::decode(Decoder& decoder, PromisedAttachmentInfo& info)
 {
     if (!decoder.decode(info.blobURL))
         return false;
@@ -2808,53 +2942,19 @@ bool ArgumentCoder<PromisedBlobInfo>::decode(Decoder& decoder, PromisedBlobInfo&
     if (!decoder.decode(info.contentType))
         return false;
 
-    if (!decoder.decode(info.filename))
+    if (!decoder.decode(info.fileName))
         return false;
+
+#if ENABLE(ATTACHMENT_ELEMENT)
+    if (!decoder.decode(info.attachmentIdentifier))
+        return false;
+#endif
 
     if (!decodeTypesAndData(decoder, info.additionalTypes, info.additionalData))
         return false;
 
     return true;
 }
-
-#if ENABLE(ATTACHMENT_ELEMENT)
-
-void ArgumentCoder<AttachmentInfo>::encode(Encoder& encoder, const AttachmentInfo& info)
-{
-    bool dataIsNull = !info.data;
-    encoder << info.contentType << info.name << info.filePath << dataIsNull;
-    if (!dataIsNull) {
-        SharedBufferDataReference dataReference { info.data.get() };
-        encoder << static_cast<DataReference&>(dataReference);
-    }
-}
-
-bool ArgumentCoder<AttachmentInfo>::decode(Decoder& decoder, AttachmentInfo& info)
-{
-    if (!decoder.decode(info.contentType))
-        return false;
-
-    if (!decoder.decode(info.name))
-        return false;
-
-    if (!decoder.decode(info.filePath))
-        return false;
-
-    bool dataIsNull = true;
-    if (!decoder.decode(dataIsNull))
-        return false;
-
-    if (!dataIsNull) {
-        DataReference dataReference;
-        if (!decoder.decode(dataReference))
-            return false;
-        info.data = SharedBuffer::create(dataReference.data(), dataReference.size());
-    }
-
-    return true;
-}
-
-#endif // ENABLE(ATTACHMENT_ELEMENT)
 
 void ArgumentCoder<Vector<RefPtr<SecurityOrigin>>>::encode(Encoder& encoder, const Vector<RefPtr<SecurityOrigin>>& origins)
 {

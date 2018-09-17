@@ -565,7 +565,7 @@ void WebFrameLoaderClient::dispatchDecidePolicyForNewWindowAction(const Navigati
     m_policyListenerPrivate->m_policyFunction(PolicyAction::Use);
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, bool, FormState* formState, WebCore::PolicyDecisionMode, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForNavigationAction(const NavigationAction& action, const ResourceRequest& request, const ResourceResponse&, FormState* formState, WebCore::PolicyDecisionMode, WebCore::ShouldSkipSafeBrowsingCheck, FramePolicyFunction&& function)
 {
     WebView* webView = m_webFrame->webView();
     Frame* coreFrame = core(m_webFrame);
@@ -599,7 +599,7 @@ void WebFrameLoaderClient::dispatchWillSendSubmitEvent(Ref<WebCore::FormState>&&
 {
 }
 
-void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Function<void(void)>&& function)
+void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, CompletionHandler<void()>&& completionHandler)
 {
     WebView* webView = m_webFrame->webView();
     Frame* coreFrame = core(m_webFrame);
@@ -608,7 +608,7 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Fun
     COMPtr<IWebFormDelegate> formDelegate;
 
     if (FAILED(webView->formDelegate(&formDelegate))) {
-        function();
+        completionHandler();
         return;
     }
 
@@ -623,11 +623,11 @@ void WebFrameLoaderClient::dispatchWillSubmitForm(FormState& formState, WTF::Fun
     COMPtr<IPropertyBag> formValuesPropertyBag(AdoptCOM, COMPropertyBag<String>::createInstance(formValuesMap));
 
     COMPtr<WebFrame> sourceFrame(kit(formState.sourceDocument().frame()));
-    if (SUCCEEDED(formDelegate->willSubmitForm(m_webFrame, sourceFrame.get(), formElement.get(), formValuesPropertyBag.get(), setUpPolicyListener([function = WTFMove(function)] (PolicyAction) { function(); }).get())))
+    if (SUCCEEDED(formDelegate->willSubmitForm(m_webFrame, sourceFrame.get(), formElement.get(), formValuesPropertyBag.get(), setUpPolicyListener([completionHandler = WTFMove(completionHandler)] (PolicyAction) mutable { completionHandler(); }).get())))
         return;
 
     // FIXME: Add a sane default implementation
-    function();
+    completionHandler();
 }
 
 void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceError& error)

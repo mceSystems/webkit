@@ -30,11 +30,14 @@
 
 #import "APIUIClient.h"
 #import "FindClient.h"
+#import "PDFKitSPI.h"
 #import "WKActionSheetAssistant.h"
+#import "WKUIDelegatePrivate.h"
 #import "WKWebViewInternal.h"
 #import "WebPageProxy.h"
 #import "_WKWebViewPrintFormatterInternal.h"
-#import <PDFKit/PDFHostViewController.h>
+#import <MobileCoreServices/MobileCoreServices.h>
+#import <WebCore/DataDetection.h>
 #import <WebCore/WebCoreNSURLExtras.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/MainThread.h>
@@ -77,6 +80,15 @@
     return [_hostViewController gestureRecognizerShouldBegin:gestureRecognizer];
 }
 
+
+#pragma mark WKApplicationStateTrackingView
+
+- (UIView *)_contentView
+{
+    return _hostViewController ? [_hostViewController view] : self;
+}
+
+
 #pragma mark WKWebViewContentProvider
 
 - (instancetype)web_initWithFrame:(CGRect)frame webView:(WKWebView *)webView mimeType:(NSString *)mimeType
@@ -96,8 +108,7 @@
     _data = adoptNS([data copy]);
     _suggestedFilename = adoptNS([filename copy]);
 
-    WeakObjCPtr<WKPDFView> weakSelf = self;
-    [PDFHostViewController createHostView:[self, weakSelf = WTFMove(weakSelf)](PDFHostViewController * _Nullable hostViewController) {
+    [PDFHostViewController createHostView:[self, weakSelf = WeakObjCPtr<WKPDFView>(self)](PDFHostViewController *hostViewController) {
         ASSERT(isMainThread());
 
         WKPDFView *autoreleasedSelf = weakSelf.getAutoreleased();
@@ -321,7 +332,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 
 - (UIView *)web_contentView
 {
-    return _hostViewController ? [_hostViewController view] : self;
+    return self._contentView;
 }
 
 - (void)web_scrollViewDidScroll:(UIScrollView *)scrollView
@@ -344,13 +355,10 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
     [_hostViewController updatePDFViewLayout];
 }
 
-- (void)web_beginAnimatedResize
+- (void)web_beginAnimatedResizeWithUpdates:(void (^)(void))updateBlock
 {
     [_hostViewController beginPDFViewRotation];
-}
-
-- (void)web_endAnimatedResize
-{
+    updateBlock();
     [_hostViewController endPDFViewRotation];
 }
 
@@ -368,6 +376,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 {
     return self.isBackground;
 }
+
 
 #pragma mark PDFHostViewControllerDelegate
 
@@ -432,7 +441,12 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
     positionInformation.url = url;
 
     _positionInformation = WTFMove(positionInformation);
-    [_actionSheetAssistant showLinkSheet];
+#if ENABLE(DATA_DETECTION)
+    if (WebCore::DataDetection::canBePresentedByDataDetectors(_positionInformation.url))
+        [_actionSheetAssistant showDataDetectorsSheet];
+    else
+#endif
+        [_actionSheetAssistant showLinkSheet];
 }
 
 - (void)pdfHostViewController:(PDFHostViewController *)controller didLongPressURL:(NSURL *)url atLocation:(CGPoint)location withAnnotationRect:(CGRect)annotationRect
@@ -444,6 +458,16 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 {
     [self _showActionSheetForURL:[self _URLWithPageIndex:pageIndex] atLocation:location withAnnotationRect:annotationRect];
 }
+
+- (void)pdfHostViewControllerExtensionProcessDidCrash:(PDFHostViewController *)controller
+{
+    // FIXME 40916725: PDFKit should dispatch this message to the main thread like it does for other delegate messages.
+    dispatch_async(dispatch_get_main_queue(), [webView = _webView] {
+        if (auto page = [webView _page])
+            page->dispatchProcessDidTerminate(WebKit::ProcessTerminationReason::Crash);
+    });
+}
+
 
 #pragma mark WKActionSheetAssistantDelegate
 
@@ -496,11 +520,25 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
     return page->uiClient().actionsForElement(element, WTFMove(defaultActions));
 }
 
+- (NSDictionary *)dataDetectionContextForActionSheetAssistant:(WKActionSheetAssistant *)assistant
+{
+    auto webView = _webView.getAutoreleased();
+    if (!webView)
+        return nil;
+
+    id <WKUIDelegatePrivate> uiDelegate = static_cast<id <WKUIDelegatePrivate>>(webView.UIDelegate);
+    if (![uiDelegate respondsToSelector:@selector(_dataDetectionContextForWebView:)])
+        return nil;
+
+    return [uiDelegate _dataDetectionContextForWebView:webView];
+}
+
 @end
+
 
 #pragma mark _WKWebViewPrintProvider
 
-#if !ENABLE(MINIMAL_SIMULATOR)
+#if !PLATFORM(IOSMAC)
 
 @interface WKPDFView (_WKWebViewPrintFormatter) <_WKWebViewPrintProvider>
 @end
@@ -540,6 +578,6 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 
 @end
 
-#endif // !ENABLE(MINIMAL_SIMULATOR)
+#endif // !PLATFORM(IOSMAC)
 
 #endif // ENABLE(WKPDFVIEW)

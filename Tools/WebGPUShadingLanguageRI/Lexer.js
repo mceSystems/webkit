@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,6 +35,14 @@ class Lexer {
         this._text = text;
         this._index = 0;
         this._stack = [];
+
+        this._lineNumbers = [];
+        let lineNumber = 1;
+        for (let i = 0; i < this._text.length; ++i) {
+            this._lineNumbers.push(lineNumber);
+            if (this._text[i] == '\n')
+                ++lineNumber;
+        }
     }
     
     get lineNumber()
@@ -53,8 +61,7 @@ class Lexer {
     
     lineNumberForIndex(index)
     {
-        let matches = this._text.substring(0, index).match(/\n/g);
-        return (matches ? matches.length : 0) + this._lineNumberOffset;
+        return this._lineNumbers[index] + this._lineNumberOffset;
     }
     
     get state() { return {index: this._index, stack: this._stack.concat()}; }
@@ -103,7 +110,7 @@ class Lexer {
                 let endIndex = relevantText.search(/\*\//);
                 if (endIndex < 0)
                     this.fail("Unterminated comment");
-                this._index += endIndex;
+                this._index += endIndex + 2;
                 continue;
             }
             if (/^\/\/.*/.test(relevantText)) {
@@ -122,7 +129,7 @@ class Lexer {
         
         // FIXME: Make this do Unicode.
         if (Lexer._textIsIdentifierImpl(relevantText)) {
-            if (/^(struct|protocol|typedef|if|else|enum|continue|break|switch|case|default|for|while|do|return|constant|device|threadgroup|thread|operator|null|true|false)$/.test(RegExp.lastMatch))
+            if (/^(struct|typedef|if|else|enum|continue|break|switch|case|default|for|while|do|return|constant|device|threadgroup|thread|operator|null|true|false)$/.test(RegExp.lastMatch))
                 return result("keyword");
             
             if (this._originKind == "native" && /^(native|restricted)$/.test(RegExp.lastMatch))
@@ -166,35 +173,6 @@ class Lexer {
     
     fail(error)
     {
-        throw new WSyntaxError(this.originString, error);
-    }
-    
-    backtrackingScope(callback)
-    {
-        let state = this.state;
-        try {
-            return callback();
-        } catch (e) {
-            if (e instanceof WSyntaxError) {
-                this.state = state;
-                return null;
-            }
-            throw e;
-        }
-    }
-    
-    testScope(callback)
-    {
-        let state = this.state;
-        try {
-            callback();
-            return true;
-        } catch (e) {
-            if (e instanceof WSyntaxError)
-                return false;
-            throw e;
-        } finally {
-            this.state = state;
-        }
+        throw new WLexicalError(this.originString, error);
     }
 }

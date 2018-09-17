@@ -1,3 +1,95 @@
+2018-08-29  David Kilzer  <ddkilzer@apple.com>
+
+        Remove empty directories from from svn.webkit.org repository
+        <https://webkit.org/b/189081>
+
+        * src/angle.xcodeproj: Removed.
+        * src/common/third_party/numerics: Removed.
+
+2018-08-28  David Kilzer  <ddkilzer@apple.com>
+
+        Move PMurHash.{cpp,h} into 'src' folder to match path on disk
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        (src/common/third_party/smhasher/src): Add folder and move
+        PMurHash.{cpp,h} into it.  This makes tidy-Xcode-project-file
+        run smoothly when updating the ANGLE project.
+
+2018-08-27  Keith Rollin  <krollin@apple.com>
+
+        Unreviewed build fix -- disable LTO for production builds
+
+        * Configurations/Base.xcconfig:
+
+2018-08-27  Keith Rollin  <krollin@apple.com>
+
+        Build system support for LTO
+        https://bugs.webkit.org/show_bug.cgi?id=187785
+        <rdar://problem/42353132>
+
+        Reviewed by Dan Bernstein.
+
+        Update Base.xcconfig and DebugRelease.xcconfig to optionally enable
+        LTO.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/DebugRelease.xcconfig:
+
+2018-08-03  Alex Christensen  <achristensen@webkit.org>
+
+        Fix spelling of "overridden"
+        https://bugs.webkit.org/show_bug.cgi?id=188315
+
+        Reviewed by Darin Adler.
+
+        * src/libANGLE/renderer/ProgramImpl.h:
+
+2018-07-14  Kocsen Chung  <kocsen_chung@apple.com>
+
+        Ensure WebKit stack is ad-hoc signed
+        https://bugs.webkit.org/show_bug.cgi?id=187667
+
+        Reviewed by Alexey Proskuryakov.
+
+        * Configurations/Base.xcconfig:
+
+2018-07-04  Tim Horton  <timothy_horton@apple.com>
+
+        Introduce PLATFORM(IOSMAC)
+        https://bugs.webkit.org/show_bug.cgi?id=187315
+
+        Reviewed by Dan Bernstein.
+
+        * Configurations/Base.xcconfig:
+
+2018-06-09  Dan Bernstein  <mitz@apple.com>
+
+        [Xcode] Clean up and modernize some build setting definitions
+        https://bugs.webkit.org/show_bug.cgi?id=186463
+
+        Reviewed by Sam Weinig.
+
+        * Configurations/Base.xcconfig: Removed definition for macOS 10.11.
+        * Configurations/DebugRelease.xcconfig: Ditto.
+
+2018-05-30  David Kilzer  <ddkilzer@apple.com>
+
+        ANGLE: Fix clang static analyzer issues in GetExecutablePath() and GetExecutableDirectory()
+        <https://webkit.org/b/186106>
+        <rdar://problem/40659179>
+
+        Reviewed by Alex Christensen.
+
+        * src/common/system_utils_linux.cpp:
+        (angle::GetExecutablePath):
+        (angle::GetExecutableDirectory):
+        * src/common/system_utils_mac.cpp:
+        (angle::GetExecutablePath):
+        (angle::GetExecutableDirectory):
+        * src/common/system_utils_win.cpp:
+        (angle::GetExecutablePath):
+        (angle::GetExecutableDirectory):
+
 2018-05-22  Ryan Haddad  <ryanhaddad@apple.com>
 
         Unreviewed, rolling out r232052.

@@ -26,6 +26,7 @@ Modules/mediasession/WebMediaSessionManager.cpp
 Modules/plugins/QuickTimePluginReplacement.mm
 Modules/plugins/YouTubePluginReplacement.cpp
 Modules/webauthn/cocoa/LocalAuthenticator.mm
+Modules/webdatabase/cocoa/DatabaseManagerCocoa.mm
 
 accessibility/ios/AccessibilityObjectIOS.mm
 accessibility/ios/AXObjectCacheIOS.mm
@@ -77,6 +78,7 @@ editing/SmartReplaceCF.cpp
 
 editing/cocoa/DataDetection.mm
 editing/cocoa/EditorCocoa.mm
+editing/cocoa/FontAttributeChangesCocoa.mm
 editing/cocoa/HTMLConverter.mm @no-unify
 editing/cocoa/WebArchiveResourceFromNSAttributedString.mm
 editing/cocoa/WebArchiveResourceWebResourceHandler.mm
@@ -158,6 +160,7 @@ page/scrolling/mac/ScrollingTreeStickyNode.mm
 platform/audio/AudioSession.cpp
 
 platform/audio/cocoa/MediaSessionManagerCocoa.cpp
+platform/audio/cocoa/WebAudioBufferList.cpp
 
 platform/audio/ios/AudioDestinationIOS.cpp @no-unify
 platform/audio/ios/AudioFileReaderIOS.cpp @no-unify
@@ -291,27 +294,6 @@ platform/graphics/cg/SubimageCacheWithTimer.cpp
 platform/graphics/cg/TransformationMatrixCG.cpp
 platform/graphics/cg/UTIRegistry.cpp
 
-platform/graphics/cocoa/GPUBufferMetal.mm
-platform/graphics/cocoa/GPUCommandBufferMetal.mm
-platform/graphics/cocoa/GPUCommandQueueMetal.mm
-platform/graphics/cocoa/GPUComputeCommandEncoderMetal.mm
-platform/graphics/cocoa/GPUComputePipelineStateMetal.mm
-platform/graphics/cocoa/GPUDepthStencilDescriptorMetal.mm
-platform/graphics/cocoa/GPUDepthStencilStateMetal.mm
-platform/graphics/cocoa/GPUDeviceMetal.mm
-platform/graphics/cocoa/GPUDrawableMetal.mm
-platform/graphics/cocoa/GPUFunctionMetal.mm
-platform/graphics/cocoa/GPULibraryMetal.mm
-platform/graphics/cocoa/GPURenderCommandEncoderMetal.mm
-platform/graphics/cocoa/GPURenderPassAttachmentDescriptorMetal.mm
-platform/graphics/cocoa/GPURenderPassColorAttachmentDescriptorMetal.mm
-platform/graphics/cocoa/GPURenderPassDepthAttachmentDescriptorMetal.mm
-platform/graphics/cocoa/GPURenderPassDescriptorMetal.mm
-platform/graphics/cocoa/GPURenderPipelineColorAttachmentDescriptorMetal.mm
-platform/graphics/cocoa/GPURenderPipelineDescriptorMetal.mm
-platform/graphics/cocoa/GPURenderPipelineStateMetal.mm
-platform/graphics/cocoa/GPUTextureDescriptorMetal.mm
-platform/graphics/cocoa/GPUTextureMetal.mm
 platform/graphics/cocoa/GraphicsContext3DCocoa.mm
 platform/graphics/cocoa/GraphicsContextCocoa.mm
 platform/graphics/cocoa/FontCacheCoreText.cpp
@@ -330,6 +312,7 @@ platform/graphics/cocoa/WebGPULayer.mm
 platform/graphics/cocoa/TextTrackRepresentationCocoa.mm
 
 platform/graphics/cv/PixelBufferConformerCV.cpp
+platform/graphics/cv/PixelBufferResizer.mm
 platform/graphics/cv/TextureCacheCV.mm
 platform/graphics/cv/VideoTextureCopierCV.cpp
 
@@ -357,6 +340,29 @@ platform/graphics/mac/IntSizeMac.mm
 platform/graphics/mac/PDFDocumentImageMac.mm
 platform/graphics/mac/SimpleFontDataCoreText.cpp
 platform/graphics/mac/WebLayer.mm
+platform/graphics/mac/WebKitNSImageExtras.mm
+
+platform/graphics/metal/GPUBufferMetal.mm
+platform/graphics/metal/GPUCommandBufferMetal.mm
+platform/graphics/metal/GPUCommandQueueMetal.mm
+platform/graphics/metal/GPUComputeCommandEncoderMetal.mm
+platform/graphics/metal/GPUComputePipelineStateMetal.mm
+platform/graphics/metal/GPUDepthStencilDescriptorMetal.mm
+platform/graphics/metal/GPUDepthStencilStateMetal.mm
+platform/graphics/metal/GPUDeviceMetal.mm
+platform/graphics/metal/GPUDrawableMetal.mm
+platform/graphics/metal/GPUFunctionMetal.mm
+platform/graphics/metal/GPULibraryMetal.mm
+platform/graphics/metal/GPURenderCommandEncoderMetal.mm
+platform/graphics/metal/GPURenderPassAttachmentDescriptorMetal.mm
+platform/graphics/metal/GPURenderPassColorAttachmentDescriptorMetal.mm
+platform/graphics/metal/GPURenderPassDepthAttachmentDescriptorMetal.mm
+platform/graphics/metal/GPURenderPassDescriptorMetal.mm
+platform/graphics/metal/GPURenderPipelineColorAttachmentDescriptorMetal.mm
+platform/graphics/metal/GPURenderPipelineDescriptorMetal.mm
+platform/graphics/metal/GPURenderPipelineStateMetal.mm
+platform/graphics/metal/GPUTextureDescriptorMetal.mm
+platform/graphics/metal/GPUTextureMetal.mm
 
 platform/graphics/opengl/Extensions3DOpenGL.cpp
 platform/graphics/opengl/Extensions3DOpenGLCommon.cpp
@@ -380,13 +386,13 @@ platform/ios/LegacyTileLayer.mm
 platform/ios/LegacyTileLayerPool.mm
 platform/ios/LowPowerModeNotifierIOS.mm
 platform/ios/PasteboardIOS.mm
-platform/ios/PlatformEventFactoryIOS.mm
+platform/ios/PlatformEventFactoryIOS.mm @no-unify
 platform/ios/PlatformPasteboardIOS.mm
 platform/ios/PlatformScreenIOS.mm
 platform/ios/PlatformSpeechSynthesizerIOS.mm @no-unify
 platform/ios/PlaybackSessionInterfaceAVKit.mm @no-unify
 platform/ios/QuickLook.mm
-platform/ios/QuickLookSoftLink.mm
+platform/ios/QuickLookSoftLink.mm @no-unify
 platform/ios/RemoteCommandListenerIOS.mm
 platform/ios/ScrollAnimatorIOS.mm
 platform/ios/ScrollbarThemeIOS.mm
@@ -396,7 +402,7 @@ platform/ios/SSLKeyGeneratorIOS.cpp
 platform/ios/SystemMemoryIOS.cpp
 platform/ios/ThemeIOS.mm @no-unify
 platform/ios/TileControllerMemoryHandlerIOS.cpp
-platform/ios/UserAgentIOS.mm
+platform/ios/UserAgentIOS.mm @no-unify
 platform/ios/ValidationBubbleIOS.mm @no-unify
 platform/ios/VideoFullscreenInterfaceAVKit.mm @no-unify
 platform/ios/WebAVPlayerController.mm
@@ -458,6 +464,7 @@ platform/mac/VideoFullscreenInterfaceMac.mm
 platform/mac/WebCoreFullScreenPlaceholderView.mm
 platform/mac/WebCoreFullScreenWarningView.mm
 platform/mac/WebCoreFullScreenWindow.mm
+platform/mac/WebCoreNSFontManagerExtras.mm
 platform/mac/WebCoreNSURLExtras.mm
 platform/mac/WebCoreObjCExtras.mm
 platform/mac/WebGLBlacklist.mm
@@ -504,7 +511,6 @@ platform/network/ios/WebCoreURLResponseIOS.mm
 platform/network/mac/AuthenticationMac.mm
 platform/network/mac/BlobDataFileReferenceMac.mm
 platform/network/mac/CertificateInfoMac.mm
-platform/network/mac/CookieJarMac.mm
 platform/network/mac/CookieStorageMac.mm
 platform/network/mac/CredentialStorageMac.mm
 platform/network/mac/FormDataStreamMac.mm
@@ -525,6 +531,7 @@ platform/text/ios/TextEncodingRegistryIOS.mm
 
 platform/text/mac/LocaleMac.mm
 platform/text/mac/TextBoundaries.mm
+platform/text/mac/TextCheckingMac.mm
 platform/text/mac/TextEncodingRegistryMac.mm
 
 rendering/RenderThemeCocoa.mm

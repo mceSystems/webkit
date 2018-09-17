@@ -102,13 +102,14 @@ public:
     ImageOrientation orientationForCurrentFrame() const { return frameOrientationAtIndex(currentFrame()); }
     bool canAnimate() const;
 
-    bool shouldUseAsyncDecodingForAnimatedImagesForTesting() const { return m_frameDecodingDurationForTesting > 0_s; }
-    void setFrameDecodingDurationForTesting(Seconds duration) { m_frameDecodingDurationForTesting = duration; }
+    bool shouldUseAsyncDecodingForTesting() const { return m_source->frameDecodingDurationForTesting() > 0_s; }
+    void setFrameDecodingDurationForTesting(Seconds duration) { m_source->setFrameDecodingDurationForTesting(duration); }
     bool canUseAsyncDecodingForLargeImages() const;
     bool shouldUseAsyncDecodingForAnimatedImages() const;
     void setClearDecoderAfterAsyncFrameRequestForTesting(bool value) { m_clearDecoderAfterAsyncFrameRequestForTesting = value; }
     void setLargeImageAsyncDecodingEnabledForTesting(bool enabled) { m_largeImageAsyncDecodingEnabledForTesting = enabled; }
     bool isLargeImageAsyncDecodingEnabledForTesting() const { return m_largeImageAsyncDecodingEnabledForTesting; }
+    void stopAsyncDecodingQueue() { m_source->stopAsyncDecodingQueue(); }
 
     WEBCORE_EXPORT unsigned decodeCountForTesting() const;
 
@@ -161,7 +162,7 @@ protected:
     void destroyDecodedDataIfNecessary(bool destroyAll = true);
 
     ImageDrawResult draw(GraphicsContext&, const FloatRect& dstRect, const FloatRect& srcRect, CompositeOperator, BlendMode, DecodingMode, ImageOrientationDescription) override;
-    void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator, BlendMode = BlendModeNormal) override;
+    void drawPattern(GraphicsContext&, const FloatRect& destRect, const FloatRect& srcRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, CompositeOperator, BlendMode = BlendMode::Normal) override;
 #if PLATFORM(WIN)
     void drawFrameMatchingSourceSize(GraphicsContext&, const FloatRect& dstRect, const IntSize& srcSize, CompositeOperator) override;
 #endif
@@ -216,8 +217,6 @@ private:
     MonotonicTime m_desiredFrameStartTime; // The system time at which we hope to see the next call to startAnimation().
 
     std::unique_ptr<Vector<Function<void()>, 1>> m_decodingCallbacks;
-    Seconds m_frameDecodingDurationForTesting;
-    MonotonicTime m_desiredFrameDecodeTimeForTesting;
 
     bool m_animationFinished { false };
 

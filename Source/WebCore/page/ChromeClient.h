@@ -68,6 +68,8 @@ namespace WebCore {
 class AccessibilityObject;
 class ColorChooser;
 class ColorChooserClient;
+class DataListSuggestionPicker;
+class DataListSuggestionsClient;
 class DateTimeChooser;
 class DateTimeChooserClient;
 class Element;
@@ -99,6 +101,7 @@ class MediaPlayerRequestInstallMissingPluginsCallback;
 
 struct DateTimeChooserParameters;
 struct GraphicsDeviceAdapter;
+struct ShareDataWithParsedURL;
 struct ViewportArguments;
 struct WindowFeatures;
 
@@ -275,7 +278,13 @@ public:
     virtual std::unique_ptr<ColorChooser> createColorChooser(ColorChooserClient&, const Color&) = 0;
 #endif
 
+#if ENABLE(DATALIST_ELEMENT)
+    virtual std::unique_ptr<DataListSuggestionPicker> createDataListSuggestionPicker(DataListSuggestionsClient&) = 0;
+#endif
+
     virtual void runOpenPanel(Frame&, FileChooser&) = 0;
+    virtual void showShareSheet(ShareDataWithParsedURL&, WTF::CompletionHandler<void(bool)>&& callback) { callback(false); }
+    
     // Asynchronous request to load an icon for specified filenames.
     virtual void loadIconForFiles(const Vector<String>&, FileIconLoader&) = 0;
         
@@ -480,6 +489,8 @@ public:
     virtual void testIncomingSyncIPCMessageWhileWaitingForSyncReply() { }
 
     virtual String signedPublicKeyAndChallengeString(unsigned, const String&, const URL&) const { return emptyString(); }
+
+    virtual bool isViewVisible() { return true; }
 
 protected:
     virtual ~ChromeClient() = default;

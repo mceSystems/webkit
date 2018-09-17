@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -53,7 +53,7 @@ function generateSPIRV(spirv, program)
     typeMap.set(program.intrinsics.uint32, currentId++);
 
     for (let entryPoint of findEntryPoints()) {
-        let inlinedShader = program.funcInstantiator.getUnique(entryPoint, []);
+        let inlinedShader = entryPoint;
         _inlineFunction(program, inlinedShader, new VisitingSet(entryPoint));
 
         let typeAnalyzer = new SPIRVTypeAnalyzer(program, typeMap, currentId);
@@ -211,14 +211,6 @@ function generateSPIRV(spirv, program)
                 let floatView = new Float32Array(arrayBuffer);
                 let uintView = new Uint32Array(arrayBuffer);
                 floatView[0] = node.value;
-                values = uintView;
-                break;
-            }
-            case program.intrinsics.double: {
-                let arrayBuffer = new ArrayBuffer(Math.max(Uint32Array.BYTES_PER_ELEMENT, Float64Array.BYTES_PER_ELEMENT));
-                let doubleView = new Float64Array(arrayBuffer);
-                let uintView = new Uint32Array(arrayBuffer);
-                doubleView[0] = node.value;
                 values = uintView;
                 break;
             }

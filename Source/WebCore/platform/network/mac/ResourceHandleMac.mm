@@ -63,10 +63,6 @@
 
 using namespace WebCore;
 
-@interface NSURLConnection ()
--(id)_initWithRequest:(NSURLRequest *)request delegate:(id)delegate usesCache:(BOOL)usesCacheFlag maxContentLength:(long long)maxContentLength startImmediately:(BOOL)startImmediately connectionProperties:(NSDictionary *)connectionProperties;
-@end
-
 namespace WebCore {
     
 static void applyBasicAuthorizationHeader(ResourceRequest& request, const Credential& credential)
@@ -100,47 +96,40 @@ ResourceHandle::~ResourceHandle()
 }
 
 #if PLATFORM(IOS)
+
 static bool synchronousWillSendRequestEnabled()
 {
     static bool disabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"WebKitDisableSynchronousWillSendRequestPreferenceKey"] || IOSApplication::isIBooks();
     return !disabled;
 }
+
 #endif
 
 #if PLATFORM(COCOA)
-void ResourceHandle::applySniffingPoliciesAndStoragePartitionIfNeeded(NSURLRequest*& nsRequest, bool shouldContentSniff, bool shouldContentEncodingSniff)
+
+NSURLRequest *ResourceHandle::applySniffingPoliciesIfNeeded(NSURLRequest *request, bool shouldContentSniff, bool shouldContentEncodingSniff)
 {
 #if !PLATFORM(MAC)
     UNUSED_PARAM(shouldContentEncodingSniff);
 #elif __MAC_OS_X_VERSION_MIN_REQUIRED < 101302
     shouldContentEncodingSniff = true;
 #endif
-#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-    String storagePartition = d->m_context->storageSession().cookieStoragePartition(firstRequest(), std::nullopt, std::nullopt);
-#else
-    String storagePartition;
-#endif
-    if (shouldContentSniff && shouldContentEncodingSniff && storagePartition.isEmpty())
-        return;
+    if (shouldContentSniff && shouldContentEncodingSniff)
+        return request;
 
-    auto mutableRequest = adoptNS([nsRequest mutableCopy]);
+    auto mutableRequest = adoptNS([request mutableCopy]);
 
 #if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101302
     if (!shouldContentEncodingSniff)
-        [mutableRequest _setProperty:@(YES) forKey:(NSString *)kCFURLRequestContentDecoderSkipURLCheck];
+        [mutableRequest _setProperty:@(YES) forKey:(__bridge NSString *)kCFURLRequestContentDecoderSkipURLCheck];
 #endif
 
     if (!shouldContentSniff)
-        [mutableRequest _setProperty:@(NO) forKey:(NSString *)_kCFURLConnectionPropertyShouldSniff];
+        [mutableRequest _setProperty:@(NO) forKey:(__bridge NSString *)_kCFURLConnectionPropertyShouldSniff];
 
-#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-    if (!storagePartition.isEmpty())
-        [mutableRequest _setProperty:storagePartition forKey:@"__STORAGE_PARTITION_IDENTIFIER"];
-#endif
-
-    nsRequest = mutableRequest.autorelease();
-
+    return mutableRequest.autorelease();
 }
+
 #endif
 
 #if !PLATFORM(IOS)
@@ -179,8 +168,8 @@ void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredential
         applyBasicAuthorizationHeader(firstRequest(), d->m_initialCredential);
     }
 
-    NSURLRequest *nsRequest = firstRequest().nsURLRequest(UpdateHTTPBody);
-    applySniffingPoliciesAndStoragePartitionIfNeeded(nsRequest, shouldContentSniff, shouldContentEncodingSniff);
+    NSURLRequest *nsRequest = firstRequest().nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody);
+    nsRequest = applySniffingPoliciesIfNeeded(nsRequest, shouldContentSniff, shouldContentEncodingSniff);
 
     if (d->m_storageSession)
         nsRequest = [copyRequestWithStorageSession(d->m_storageSession.get(), nsRequest) autorelease];
@@ -211,7 +200,7 @@ void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredential
 
     RetainPtr<CFDataRef> sourceApplicationAuditData = d->m_context->sourceApplicationAuditData();
     if (sourceApplicationAuditData)
-        [streamProperties setObject:(NSData *)sourceApplicationAuditData.get() forKey:@"kCFStreamPropertySourceApplication"];
+        [streamProperties setObject:(__bridge NSData *)sourceApplicationAuditData.get() forKey:@"kCFStreamPropertySourceApplication"];
 
 #if PLATFORM(IOS)
     NSMutableDictionary *propertyDictionary = [NSMutableDictionary dictionaryWithDictionary:connectionProperties];
@@ -231,7 +220,9 @@ void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredential
     // web content for purposes of App Transport Security.
     [propertyDictionary setObject:@{@"NSAllowsArbitraryLoadsInWebContent": @YES} forKey:@"_kCFURLConnectionPropertyATSFrameworkOverrides"];
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     d->m_connection = adoptNS([[NSURLConnection alloc] _initWithRequest:nsRequest delegate:delegate usesCache:usesCache maxContentLength:0 startImmediately:NO connectionProperties:propertyDictionary]);
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 bool ResourceHandle::start()
@@ -273,7 +264,7 @@ bool ResourceHandle::start()
     [connection() setDelegateQueue:operationQueueForAsyncClients()];
     [connection() start];
 
-    LOG(Network, "Handle %p starting connection %p for %@", this, connection(), firstRequest().nsURLRequest(DoNotUpdateHTTPBody));
+    LOG(Network, "Handle %p starting connection %p for %@", this, connection(), firstRequest().nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody));
     
     if (d->m_connection) {
         if (d->m_defersLoading)
@@ -309,13 +300,13 @@ void ResourceHandle::schedule(SchedulePair& pair)
     NSRunLoop *runLoop = pair.nsRunLoop();
     if (!runLoop)
         return;
-    [d->m_connection.get() scheduleInRunLoop:runLoop forMode:(NSString *)pair.mode()];
+    [d->m_connection.get() scheduleInRunLoop:runLoop forMode:(__bridge NSString *)pair.mode()];
 }
 
 void ResourceHandle::unschedule(SchedulePair& pair)
 {
     if (NSRunLoop *runLoop = pair.nsRunLoop())
-        [d->m_connection.get() unscheduleFromRunLoop:runLoop forMode:(NSString *)pair.mode()];
+        [d->m_connection.get() unscheduleFromRunLoop:runLoop forMode:(__bridge NSString *)pair.mode()];
 }
 
 id ResourceHandle::makeDelegate(bool shouldUseCredentialStorage, MessageQueue<Function<void()>>* queue)
@@ -361,7 +352,7 @@ CFStringRef ResourceHandle::synchronousLoadRunLoopMode()
 
 void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy storedCredentialsPolicy, ResourceError& error, ResourceResponse& response, Vector<char>& data)
 {
-    LOG(Network, "ResourceHandle::platformLoadResourceSynchronously:%@ storedCredentialsPolicy:%u", request.nsURLRequest(DoNotUpdateHTTPBody), static_cast<unsigned>(storedCredentialsPolicy));
+    LOG(Network, "ResourceHandle::platformLoadResourceSynchronously:%@ storedCredentialsPolicy:%u", request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody), static_cast<unsigned>(storedCredentialsPolicy));
 
     ASSERT(!request.isEmpty());
     

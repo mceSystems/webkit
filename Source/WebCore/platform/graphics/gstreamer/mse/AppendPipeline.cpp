@@ -147,6 +147,7 @@ AppendPipeline::AppendPipeline(Ref<MediaSourceClientGStreamerMSE> mediaSourceCli
 
     gst_app_sink_set_emit_signals(GST_APP_SINK(m_appsink.get()), TRUE);
     gst_base_sink_set_sync(GST_BASE_SINK(m_appsink.get()), FALSE);
+    gst_base_sink_set_last_sample_enabled(GST_BASE_SINK(m_appsink.get()), FALSE);
 
     GRefPtr<GstPad> appsinkPad = adoptGRef(gst_element_get_static_pad(m_appsink.get(), "sink"));
     g_signal_connect(appsinkPad.get(), "notify::caps", G_CALLBACK(appendPipelineAppsinkCapsChanged), this);
@@ -1013,11 +1014,11 @@ void AppendPipeline::connectDemuxerSrcPadToAppsink(GstPad* demuxerSrcPad)
     switch (m_streamType) {
     case WebCore::MediaSourceStreamTypeGStreamer::Audio:
         if (m_playerPrivate)
-            m_track = WebCore::AudioTrackPrivateGStreamer::create(m_playerPrivate->createWeakPtr(), id(), sinkSinkPad.get());
+            m_track = WebCore::AudioTrackPrivateGStreamer::create(makeWeakPtr(*m_playerPrivate), id(), sinkSinkPad.get());
         break;
     case WebCore::MediaSourceStreamTypeGStreamer::Video:
         if (m_playerPrivate)
-            m_track = WebCore::VideoTrackPrivateGStreamer::create(m_playerPrivate->createWeakPtr(), id(), sinkSinkPad.get());
+            m_track = WebCore::VideoTrackPrivateGStreamer::create(makeWeakPtr(*m_playerPrivate), id(), sinkSinkPad.get());
         break;
     case WebCore::MediaSourceStreamTypeGStreamer::Text:
         m_track = WebCore::InbandTextTrackPrivateGStreamer::create(id(), sinkSinkPad.get());

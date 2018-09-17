@@ -89,6 +89,7 @@
 #import <WebCore/PlatformEventFactoryMac.h>
 #import <WebCore/PluginData.h>
 #import <WebCore/PrintContext.h>
+#import <WebCore/RenderLayer.h>
 #import <WebCore/RenderView.h>
 #import <WebCore/RenderWidget.h>
 #import <WebCore/RenderedDocumentMarker.h>
@@ -443,10 +444,9 @@ static NSURL *createUniqueWebDataURL();
         if (FrameView* view = frame->view()) {
             view->setTransparent(!drawsBackground);
 #if !PLATFORM(IOS)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             Color color = colorFromNSColor([backgroundColor colorUsingColorSpaceName:NSDeviceRGBColorSpace]);
-#pragma clang diagnostic pop
+            ALLOW_DEPRECATED_DECLARATIONS_END
 #else
             Color color = Color(backgroundColor);
 #endif
@@ -591,30 +591,30 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
     return plainText(core(range), TextIteratorDefaultBehavior, true);
 }
 
-- (PaintBehavior)_paintBehaviorForDestinationContext:(CGContextRef)context
+- (OptionSet<PaintBehavior>)_paintBehaviorForDestinationContext:(CGContextRef)context
 {
 #if PLATFORM(MAC)
     // -currentContextDrawingToScreen returns YES for bitmap contexts.
     BOOL isPrinting = ![NSGraphicsContext currentContextDrawingToScreen];
     if (isPrinting)
-        return PaintBehaviorFlattenCompositingLayers | PaintBehaviorSnapshotting;
+        return OptionSet<PaintBehavior>(PaintBehavior::FlattenCompositingLayers) | PaintBehavior::Snapshotting;
 #endif
 
     if (CGContextGetType(context) != kCGContextTypeBitmap)
-        return PaintBehaviorNormal;
+        return PaintBehavior::Normal;
 
     // If we're drawing into a bitmap, we could be snapshotting or drawing into a layer-backed view.
     if (WebHTMLView *documentView = [self _webHTMLDocumentView]) {
 #if PLATFORM(IOS)
-        return [[documentView window] isInSnapshottingPaint] ? PaintBehaviorSnapshotting : PaintBehaviorNormal;
+        return [[documentView window] isInSnapshottingPaint] ? PaintBehavior::Snapshotting : PaintBehavior::Normal;
 #endif
 #if PLATFORM(MAC)
         if ([documentView _web_isDrawingIntoLayer])
-            return PaintBehaviorNormal;
+            return PaintBehavior::Normal;
 #endif
     }
     
-    return PaintBehaviorFlattenCompositingLayers | PaintBehaviorSnapshotting;
+    return OptionSet<PaintBehavior>(PaintBehavior::FlattenCompositingLayers) | PaintBehavior::Snapshotting;
 }
 
 - (void)_drawRect:(NSRect)rect contentsOnly:(BOOL)contentsOnly
@@ -622,10 +622,9 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
 #if !PLATFORM(IOS)
     ASSERT([[NSGraphicsContext currentContext] isFlipped]);
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGContextRef ctx = static_cast<CGContextRef>([[NSGraphicsContext currentContext] graphicsPort]);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 #else
     CGContextRef ctx = WKGetCurrentGraphicsContext();
 #endif
@@ -642,23 +641,23 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
 
     FrameView* view = _private->coreFrame->view();
     
-    PaintBehavior oldBehavior = view->paintBehavior();
-    PaintBehavior paintBehavior = oldBehavior;
+    OptionSet<PaintBehavior> oldBehavior = view->paintBehavior();
+    OptionSet<PaintBehavior> paintBehavior = oldBehavior;
     
     if (Frame* parentFrame = _private->coreFrame->tree().parent()) {
         // For subframes, we need to inherit the paint behavior from our parent
         if (FrameView* parentView = parentFrame ? parentFrame->view() : nullptr) {
-            if (parentView->paintBehavior() & PaintBehaviorFlattenCompositingLayers)
-                paintBehavior |= PaintBehaviorFlattenCompositingLayers;
+            if (parentView->paintBehavior().contains(PaintBehavior::FlattenCompositingLayers))
+                paintBehavior.add(PaintBehavior::FlattenCompositingLayers);
             
-            if (parentView->paintBehavior() & PaintBehaviorSnapshotting)
-                paintBehavior |= PaintBehaviorSnapshotting;
+            if (parentView->paintBehavior().contains(PaintBehavior::Snapshotting))
+                paintBehavior.add(PaintBehavior::Snapshotting);
             
-            if (parentView->paintBehavior() & PaintBehaviorTileFirstPaint)
-                paintBehavior |= PaintBehaviorTileFirstPaint;
+            if (parentView->paintBehavior().contains(PaintBehavior::TileFirstPaint))
+                paintBehavior.add(PaintBehavior::TileFirstPaint);
         }
     } else
-        paintBehavior |= [self _paintBehaviorForDestinationContext:ctx];
+        paintBehavior.add([self _paintBehaviorForDestinationContext:ctx]);
         
     view->setPaintBehavior(paintBehavior);
 
@@ -741,12 +740,12 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
         
     if (startNode && startNode->renderer()) {
 #if !PLATFORM(IOS)
-        startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes);
+        startNode->renderer()->scrollRectToVisible(enclosingIntRect(rangeRect), insideFixed, { SelectionRevealMode::Reveal, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes });
 #else
         RenderLayer* layer = startNode->renderer()->enclosingLayer();
         if (layer) {
             layer->setAdjustForIOSCaretWhenScrolling(true);
-            startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes);
+            startNode->renderer()->scrollRectToVisible(enclosingIntRect(rangeRect), insideFixed, { SelectionRevealMode::Reveal, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes });
             layer->setAdjustForIOSCaretWhenScrolling(false);
             _private->coreFrame->selection().setCaretRectNeedsUpdate();
             _private->coreFrame->selection().updateAppearance();
@@ -766,7 +765,7 @@ static inline WebDataSource *dataSource(DocumentLoader* loader)
         RenderLayer* layer = startNode->renderer()->enclosingLayer();
         if (layer) {
             layer->setAdjustForIOSCaretWhenScrolling(true);
-            startNode->renderer()->scrollRectToVisible(SelectionRevealMode::Reveal, enclosingIntRect(rangeRect), insideFixed, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes);
+            startNode->renderer()->scrollRectToVisible(enclosingIntRect(rangeRect), insideFixed, { SelectionRevealMode::Reveal, ScrollAlignment::alignToEdgeIfNeeded, ScrollAlignment::alignToEdgeIfNeeded, ShouldAllowCrossOriginScrolling::Yes});
             layer->setAdjustForIOSCaretWhenScrolling(false);
 
             Frame *coreFrame = core(self);
@@ -1247,7 +1246,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     RefPtr<Range> domRange = [self _convertToDOMRange:range];
     if (domRange) {
         const VisibleSelection& newSelection = VisibleSelection(*domRange, SEL_DEFAULT_AFFINITY);
-        _private->coreFrame->selection().setSelection(newSelection, 0);
+        _private->coreFrame->selection().setSelection(newSelection, { });
         
         _private->coreFrame->editor().ensureLastEditCommandHasCurrentSelectionIfOpenForMoreTyping();
     }
@@ -2207,10 +2206,9 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     if (!AXObjectCache::accessibilityEnabled()) {
         AXObjectCache::enableAccessibility();
 #if !PLATFORM(IOS)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         AXObjectCache::setEnhancedUserInterfaceAccessibility([[NSApp accessibilityAttributeValue:NSAccessibilityEnhancedUserInterfaceAttribute] boolValue]);
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
     }
     
@@ -2337,7 +2335,7 @@ static WebFrameLoadType toWebFrameLoadType(FrameLoadType frameLoadType)
     Frame* coreFrame = _private->coreFrame;
     if (!coreFrame)
         return;
-    coreFrame->loader().client().dispatchDidReceiveTitle({ title, LTR });
+    coreFrame->loader().client().dispatchDidReceiveTitle({ title, TextDirection::LTR });
 }
 
 #endif // PLATFORM(IOS)

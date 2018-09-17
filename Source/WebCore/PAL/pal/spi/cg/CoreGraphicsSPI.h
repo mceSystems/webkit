@@ -279,6 +279,8 @@ CGRect* CGSNextRect(const CGSRegionEnumeratorObj);
 CGSRegionEnumeratorObj CGSRegionEnumerator(CGRegionRef);
 CGStyleRef CGStyleCreateFocusRingWithColor(const CGFocusRingStyle*, CGColorRef);
 void CGContextSetStyle(CGContextRef, CGStyleRef);
+
+void CGContextDrawConicGradient(CGContextRef, CGGradientRef, CGPoint center, CGFloat angle);
 #endif
 
 #if PLATFORM(WIN)
@@ -288,6 +290,8 @@ void CGFontCacheSetMaxSize(CGFontCache*, size_t);
 #endif
 
 #if PLATFORM(MAC)
+void CGSShutdownServerConnections(void);
+
 CGSConnectionID CGSMainConnectionID(void);
 CFArrayRef CGSHWCaptureWindowList(CGSConnectionID, CGSWindowIDList windowList, CGSWindowCount, CGSWindowCaptureOptions);
 CGError CGSSetConnectionProperty(CGSConnectionID, CGSConnectionID ownerCid, CFStringRef key, CFTypeRef value);
@@ -299,6 +303,14 @@ bool ColorSyncProfileIsWideGamut(ColorSyncProfileRef);
 
 size_t CGDisplayModeGetPixelsWide(CGDisplayModeRef);
 size_t CGDisplayModeGetPixelsHigh(CGDisplayModeRef);
+
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+CGError CGSSetDenyWindowServerConnections(bool);
+
+typedef int32_t CGSDisplayID;
+CGSDisplayID CGSMainDisplayID(void);
+
+#endif // ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
 
 #endif
 

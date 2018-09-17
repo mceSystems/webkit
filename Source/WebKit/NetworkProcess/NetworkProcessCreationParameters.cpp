@@ -41,23 +41,20 @@ NetworkProcessCreationParameters::NetworkProcessCreationParameters()
 
 void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
 {
-    encoder << defaultSessionParameters;
     encoder << privateBrowsingEnabled;
     encoder.encodeEnum(cacheModel);
     encoder << diskCacheSizeOverride;
     encoder << canHandleHTTPSServerTrustEvaluation;
-    encoder << cacheStorageDirectory;
-    encoder << cacheStoragePerOriginQuota;
-    encoder << cacheStorageDirectoryExtensionHandle;
     encoder << diskCacheDirectory;
     encoder << diskCacheDirectoryExtensionHandle;
     encoder << shouldEnableNetworkCacheEfficacyLogging;
 #if ENABLE(NETWORK_CACHE_SPECULATIVE_REVALIDATION)
     encoder << shouldEnableNetworkCacheSpeculativeRevalidation;
 #endif
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     encoder << uiProcessCookieStorageIdentifier;
 #endif
+    encoder << defaultSessionPendingCookies;
 #if PLATFORM(IOS)
     encoder << cookieStorageDirectoryExtensionHandle;
     encoder << containerCachesDirectoryExtensionHandle;
@@ -69,8 +66,8 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << urlSchemesRegisteredForCustomProtocols;
     encoder << presentingApplicationPID;
 #if PLATFORM(COCOA)
-    encoder << parentProcessName;
     encoder << uiProcessBundleIdentifier;
+    encoder << uiProcessSDKVersion;
     encoder << sourceApplicationBundleIdentifier;
     encoder << sourceApplicationSecondaryIdentifier;
 #if PLATFORM(IOS)
@@ -78,11 +75,9 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
 #endif
     encoder << httpProxy;
     encoder << httpsProxy;
-#if PLATFORM(COCOA)
     IPC::encode(encoder, networkATSContext.get());
-#endif
-    encoder << cookieStoragePartitioningEnabled;
     encoder << storageAccessAPIEnabled;
+    encoder << suppressesConnectionTerminationOnSystemChange;
 #endif
 #if USE(SOUP)
     encoder << cookiePersistentStoragePath;
@@ -110,21 +105,13 @@ void NetworkProcessCreationParameters::encode(IPC::Encoder& encoder) const
     encoder << urlSchemesRegisteredAsCORSEnabled;
     encoder << urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest;
 
-    encoder << tracksResourceLoadMilestones;
-    
-#if ENABLE(WIFI_ASSERTIONS)
+#if ENABLE(PROXIMITY_NETWORKING)
     encoder << wirelessContextIdentifier;
 #endif
 }
 
 bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProcessCreationParameters& result)
 {
-    std::optional<NetworkSessionCreationParameters> defaultSessionParameters;
-    decoder >> defaultSessionParameters;
-    if (!defaultSessionParameters)
-        return false;
-    result.defaultSessionParameters = WTFMove(*defaultSessionParameters);
-
     if (!decoder.decode(result.privateBrowsingEnabled))
         return false;
     if (!decoder.decodeEnum(result.cacheModel))
@@ -133,16 +120,6 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
         return false;
     if (!decoder.decode(result.canHandleHTTPSServerTrustEvaluation))
         return false;
-    if (!decoder.decode(result.cacheStorageDirectory))
-        return false;
-    if (!decoder.decode(result.cacheStoragePerOriginQuota))
-        return false;
-    
-    std::optional<SandboxExtension::Handle> cacheStorageDirectoryExtensionHandle;
-    decoder >> cacheStorageDirectoryExtensionHandle;
-    if (!cacheStorageDirectoryExtensionHandle)
-        return false;
-    result.cacheStorageDirectoryExtensionHandle = WTFMove(*cacheStorageDirectoryExtensionHandle);
 
     if (!decoder.decode(result.diskCacheDirectory))
         return false;
@@ -159,10 +136,12 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
     if (!decoder.decode(result.shouldEnableNetworkCacheSpeculativeRevalidation))
         return false;
 #endif
-#if PLATFORM(COCOA)
+#if PLATFORM(MAC)
     if (!decoder.decode(result.uiProcessCookieStorageIdentifier))
         return false;
 #endif
+    if (!decoder.decode(result.defaultSessionPendingCookies))
+        return false;
 #if PLATFORM(IOS)
     std::optional<SandboxExtension::Handle> cookieStorageDirectoryExtensionHandle;
     decoder >> cookieStorageDirectoryExtensionHandle;
@@ -193,9 +172,9 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
     if (!decoder.decode(result.presentingApplicationPID))
         return false;
 #if PLATFORM(COCOA)
-    if (!decoder.decode(result.parentProcessName))
-        return false;
     if (!decoder.decode(result.uiProcessBundleIdentifier))
+        return false;
+    if (!decoder.decode(result.uiProcessSDKVersion))
         return false;
     if (!decoder.decode(result.sourceApplicationBundleIdentifier))
         return false;
@@ -209,13 +188,11 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
         return false;
     if (!decoder.decode(result.httpsProxy))
         return false;
-#if PLATFORM(COCOA)
     if (!IPC::decode(decoder, result.networkATSContext))
         return false;
-#endif
-    if (!decoder.decode(result.cookieStoragePartitioningEnabled))
-        return false;
     if (!decoder.decode(result.storageAccessAPIEnabled))
+        return false;
+    if (!decoder.decode(result.suppressesConnectionTerminationOnSystemChange))
         return false;
 #endif
 
@@ -264,10 +241,7 @@ bool NetworkProcessCreationParameters::decode(IPC::Decoder& decoder, NetworkProc
     if (!decoder.decode(result.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest))
         return false;
 
-    if (!decoder.decode(result.tracksResourceLoadMilestones))
-        return false;
-
-#if ENABLE(WIFI_ASSERTIONS)
+#if ENABLE(PROXIMITY_NETWORKING)
     if (!decoder.decode(result.wirelessContextIdentifier))
         return false;
 #endif

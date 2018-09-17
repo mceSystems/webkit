@@ -33,15 +33,18 @@
 
 #if USE(APPLE_INTERNAL_SDK)
 
+#if !PLATFORM(WATCHOS) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 120000
+#import <AVKit/AVBackgroundView.h>
+#endif
+
 #import <AVKit/AVPlayerController.h>
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wobjc-property-no-attribute"
+IGNORE_CLANG_WARNINGS_BEGIN("objc-property-no-attribute")
 #import <AVKit/AVPlayerLayerView.h>
-#pragma clang diagnostic pop
+IGNORE_CLANG_WARNINGS_END
 #import <AVKit/AVPlayerViewController_Private.h>
 #import <AVKit/AVPlayerViewController_WebKitOnly.h>
 
-#if ENABLE(EXTRA_ZOOM_MODE)
+#if PLATFORM(WATCHOS)
 
 #import <AVFoundation/AVPlayerLayer.h>
 
@@ -90,6 +93,21 @@ NS_ASSUME_NONNULL_END
 
 #else
 
+NS_ASSUME_NONNULL_BEGIN
+
+@interface AVBackgroundView : UIView
+@property (nonatomic) BOOL automaticallyDrawsRoundedCorners;
+typedef NS_ENUM(NSInteger, AVBackgroundViewMaterialStyle) {
+    AVBackgroundViewMaterialStylePrimary,
+    AVBackgroundViewMaterialStyleSecondary
+};
+typedef NS_ENUM(NSInteger, AVBackgroundViewTintEffectStyle) {
+    AVBackgroundViewTintEffectStylePrimary,
+    AVBackgroundViewTintEffectStyleSecondary
+};
+- (void)addSubview:(UIView *)subview applyingMaterialStyle:(AVBackgroundViewMaterialStyle)materialStyle tintEffectStyle:(AVBackgroundViewTintEffectStyle)tintEffectStyle;
+@end
+
 @interface AVPlayerController : UIResponder
 @end
 
@@ -107,8 +125,6 @@ typedef NS_ENUM(NSInteger, AVPlayerControllerExternalPlaybackType) {
 
 @property (NS_NONATOMIC_IOSONLY, readonly) AVPlayerControllerStatus status;
 @end
-
-NS_ASSUME_NONNULL_BEGIN
 
 @class AVPlayerLayer;
 

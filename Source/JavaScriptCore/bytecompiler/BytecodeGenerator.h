@@ -56,6 +56,8 @@ namespace JSC {
 
     class JSImmutableButterfly;
     class Identifier;
+    class IndexedForInContext;
+    class StructureForInContext;
 
     enum ExpectedFunction {
         NoExpectedFunction,
@@ -180,30 +182,44 @@ namespace JSC {
         WTF_MAKE_FAST_ALLOCATED;
         WTF_MAKE_NONCOPYABLE(ForInContext);
     public:
-        ForInContext(RegisterID* localRegister)
-            : m_localRegister(localRegister)
-            , m_isValid(true)
-        {
-        }
-
-        virtual ~ForInContext()
-        {
-        }
+        virtual ~ForInContext() = default;
 
         bool isValid() const { return m_isValid; }
         void invalidate() { m_isValid = false; }
 
-        enum ForInContextType {
-            StructureForInContextType,
-            IndexedForInContextType
+        enum class Type : uint8_t {
+            IndexedForIn,
+            StructureForIn
         };
-        virtual ForInContextType type() const = 0;
+
+        Type type() const { return m_type; }
+        bool isIndexedForInContext() const { return m_type == Type::IndexedForIn; }
+        bool isStructureForInContext() const { return m_type == Type::StructureForIn; }
+
+        IndexedForInContext& asIndexedForInContext()
+        {
+            ASSERT(isIndexedForInContext());
+            return *reinterpret_cast<IndexedForInContext*>(this);
+        }
+
+        StructureForInContext& asStructureForInContext()
+        {
+            ASSERT(isStructureForInContext());
+            return *reinterpret_cast<StructureForInContext*>(this);
+        }
 
         RegisterID* local() const { return m_localRegister.get(); }
 
+    protected:
+        ForInContext(RegisterID* localRegister, Type type)
+            : m_localRegister(localRegister)
+            , m_type(type)
+        { }
+
     private:
         RefPtr<RegisterID> m_localRegister;
-        bool m_isValid;
+        bool m_isValid { true };
+        Type m_type;
     };
 
     class StructureForInContext : public ForInContext {
@@ -211,16 +227,11 @@ namespace JSC {
         using GetInst = std::tuple<unsigned, int, UnlinkedValueProfile>;
 
         StructureForInContext(RegisterID* localRegister, RegisterID* indexRegister, RegisterID* propertyRegister, RegisterID* enumeratorRegister)
-            : ForInContext(localRegister)
+            : ForInContext(localRegister, Type::StructureForIn)
             , m_indexRegister(indexRegister)
             , m_propertyRegister(propertyRegister)
             , m_enumeratorRegister(enumeratorRegister)
         {
-        }
-
-        ForInContextType type() const override
-        {
-            return StructureForInContextType;
         }
 
         RegisterID* index() const { return m_indexRegister.get(); }
@@ -244,14 +255,9 @@ namespace JSC {
     class IndexedForInContext : public ForInContext {
     public:
         IndexedForInContext(RegisterID* localRegister, RegisterID* indexRegister)
-            : ForInContext(localRegister)
+            : ForInContext(localRegister, Type::IndexedForIn)
             , m_indexRegister(indexRegister)
         {
-        }
-
-        ForInContextType type() const override
-        {
-            return IndexedForInContextType;
         }
 
         RegisterID* index() const { return m_indexRegister.get(); }
@@ -467,9 +473,9 @@ namespace JSC {
         }
 
         // Moves src to dst if dst is not null and is different from src, otherwise just returns src.
-        RegisterID* moveToDestinationIfNeeded(RegisterID* dst, RegisterID* src)
+        RegisterID* move(RegisterID* dst, RegisterID* src)
         {
-            return dst == ignoredResult() ? 0 : (dst && dst != src) ? emitMove(dst, src) : src;
+            return dst == ignoredResult() ? nullptr : (dst && dst != src) ? emitMove(dst, src) : src;
         }
 
         Ref<LabelScope> newLabelScope(LabelScope::Type, const Identifier* = 0);
@@ -682,9 +688,8 @@ namespace JSC {
 
         void emitSetFunctionNameIfNeeded(ExpressionNode* valueNode, RegisterID* value, RegisterID* name);
 
-        RegisterID* emitMoveLinkTimeConstant(RegisterID* dst, LinkTimeConstant);
-        RegisterID* emitMoveEmptyValue(RegisterID* dst);
-        RegisterID* emitMove(RegisterID* dst, RegisterID* src);
+        RegisterID* moveLinkTimeConstant(RegisterID* dst, LinkTimeConstant);
+        RegisterID* moveEmptyValue(RegisterID* dst);
 
         RegisterID* emitToNumber(RegisterID* dst, RegisterID* src) { return emitUnaryOpProfiled(op_to_number, dst, src); }
         RegisterID* emitToString(RegisterID* dst, RegisterID* src) { return emitUnaryOp(op_to_string, dst, src); }
@@ -749,7 +754,7 @@ namespace JSC {
         void emitCallDefineProperty(RegisterID* newObj, RegisterID* propertyNameRegister,
             RegisterID* valueRegister, RegisterID* getterRegister, RegisterID* setterRegister, unsigned options, const JSTextPosition&);
 
-        void emitEnumeration(ThrowableExpressionData* enumerationNode, ExpressionNode* subjectNode, const std::function<void(BytecodeGenerator&, RegisterID*)>& callBack, ForOfNode* = nullptr, RegisterID* forLoopSymbolTable = nullptr);
+        void emitEnumeration(ThrowableExpressionData* enumerationNode, ExpressionNode* subjectNode, const ScopedLambda<void(BytecodeGenerator&, RegisterID*)>& callBack, ForOfNode* = nullptr, RegisterID* forLoopSymbolTable = nullptr);
 
         RegisterID* emitGetTemplateObject(RegisterID* dst, TaggedTemplateNode*);
         RegisterID* emitGetGlobalPrivate(RegisterID* dst, const Identifier& property);
@@ -912,7 +917,7 @@ namespace JSC {
         }
         void emitSetCompletionValue(RegisterID* reg)
         {
-            emitMove(completionValueRegister(), reg);
+            move(completionValueRegister(), reg);
         }
 
         void emitJumpIf(OpcodeID compareOpcode, RegisterID* completionTypeRegister, CompletionType, Label& jumpTarget);
@@ -991,6 +996,8 @@ namespace JSC {
         bool isArgumentsUsedInInnerArrowFunction();
 
         void emitToThis();
+
+        RegisterID* emitMove(RegisterID* dst, RegisterID* src);
 
     public:
         bool isSuperUsedInInnerArrowFunction();
@@ -1073,7 +1080,6 @@ namespace JSC {
         unsigned addConstant(const Identifier&);
         RegisterID* addConstantValue(JSValue, SourceCodeRepresentation = SourceCodeRepresentation::Other);
         RegisterID* addConstantEmptyValue();
-        unsigned addRegExp(RegExp*);
 
         UnlinkedFunctionExecutable* makeFunction(FunctionMetadataNode* metadata)
         {
@@ -1109,7 +1115,7 @@ namespace JSC {
 
         void initializeParameters(FunctionParameters&);
         void initializeVarLexicalEnvironment(int symbolTableConstantIndex, SymbolTable* functionSymbolTable, bool hasCapturedVariables);
-        void initializeDefaultParameterValuesAndSetupFunctionScopeStack(FunctionParameters&, bool isSimpleParameterList, FunctionNode*, SymbolTable*, int symbolTableConstantIndex, const std::function<bool (UniquedStringImpl*)>& captures, bool shouldCreateArgumentsVariableInParameterScope);
+        void initializeDefaultParameterValuesAndSetupFunctionScopeStack(FunctionParameters&, bool isSimpleParameterList, FunctionNode*, SymbolTable*, int symbolTableConstantIndex, const ScopedLambda<bool (UniquedStringImpl*)>& captures, bool shouldCreateArgumentsVariableInParameterScope);
         void initializeArrowFunctionContextScopeIfNeeded(SymbolTable* functionSymbolTable = nullptr, bool canReuseLexicalEnvironment = false);
         bool needsDerivedConstructorInArrowFunctionLexicalEnvironment();
 

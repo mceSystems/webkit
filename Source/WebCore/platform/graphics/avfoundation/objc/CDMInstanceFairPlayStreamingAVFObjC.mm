@@ -241,8 +241,12 @@ Vector<Ref<SharedBuffer>> CDMInstanceFairPlayStreamingAVFObjC::keyIDs()
         return Vector<Ref<SharedBuffer>>::from(SharedBuffer::create([(NSString *)m_request.get().identifier dataUsingEncoding:NSUTF8StringEncoding]));
     if ([m_request.get().identifier isKindOfClass:[NSData class]])
         return Vector<Ref<SharedBuffer>>::from(SharedBuffer::create((NSData *)m_request.get().identifier));
-    if (m_request.get().initializationData)
-        return CDMPrivateFairPlayStreaming::extractKeyIDsSinf(SharedBuffer::create(m_request.get().initializationData));
+    if (m_request.get().initializationData) {
+        auto sinfKeyIDs = CDMPrivateFairPlayStreaming::extractKeyIDsSinf(SharedBuffer::create(m_request.get().initializationData));
+        if (!sinfKeyIDs)
+            return { };
+        return WTFMove(sinfKeyIDs.value());
+    }
     return { };
 }
 
@@ -280,7 +284,7 @@ static bool isEqual(const SharedBuffer& data, const String& value)
     if (!arrayBuffer)
         return false;
 
-    auto exceptionOrDecoder = TextDecoder::create(ASCIILiteral("utf8"), TextDecoder::Options());
+    auto exceptionOrDecoder = TextDecoder::create("utf8"_s, TextDecoder::Options());
     if (exceptionOrDecoder.hasException())
         return false;
 
@@ -294,7 +298,7 @@ static bool isEqual(const SharedBuffer& data, const String& value)
 
 void CDMInstanceFairPlayStreamingAVFObjC::updateLicense(const String&, LicenseType, const SharedBuffer& responseData, LicenseUpdateCallback callback)
 {
-    if (!m_expiredSessions.isEmpty() && isEqual(responseData, ASCIILiteral("acknowledged"))) {
+    if (!m_expiredSessions.isEmpty() && isEqual(responseData, "acknowledged"_s)) {
         auto expiredSessions = adoptNS([[NSMutableArray alloc] init]);
         for (auto& session : m_expiredSessions)
             [expiredSessions addObject:session.get()]; 
@@ -435,7 +439,7 @@ void CDMInstanceFairPlayStreamingAVFObjC::clearClient()
 
 const String& CDMInstanceFairPlayStreamingAVFObjC::keySystem() const
 {
-    static NeverDestroyed<String> s_keySystem { ASCIILiteral("com.apple.fps") };
+    static NeverDestroyed<String> s_keySystem { "com.apple.fps"_s };
     return s_keySystem;
 }
 
@@ -455,7 +459,7 @@ void CDMInstanceFairPlayStreamingAVFObjC::didProvideRequest(AVContentKeyRequest 
     }
 
     RetainPtr<NSData> contentIdentifier = keyIDs.first()->createNSData();
-    [m_request makeStreamingContentKeyRequestDataForApp:appIdentifier.get() contentIdentifier:contentIdentifier.get() options:nil completionHandler:[this, weakThis = createWeakPtr()] (NSData *contentKeyRequestData, NSError *error) mutable {
+    [m_request makeStreamingContentKeyRequestDataForApp:appIdentifier.get() contentIdentifier:contentIdentifier.get() options:nil completionHandler:[this, weakThis = makeWeakPtr(*this)] (NSData *contentKeyRequestData, NSError *error) mutable {
         callOnMainThread([this, weakThis = WTFMove(weakThis), error = retainPtr(error), contentKeyRequestData = retainPtr(contentKeyRequestData)] {
             if (!weakThis || !m_requestLicenseCallback)
                 return;

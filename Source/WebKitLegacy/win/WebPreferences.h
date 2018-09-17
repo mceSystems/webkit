@@ -269,6 +269,8 @@ public:
     virtual HRESULT STDMETHODCALLTYPE setInspectorAdditionsEnabled(BOOL);
     virtual HRESULT STDMETHODCALLTYPE visualViewportAPIEnabled(_Out_ BOOL*);
     virtual HRESULT STDMETHODCALLTYPE setVisualViewportAPIEnabled(BOOL);
+    virtual HRESULT STDMETHODCALLTYPE CSSOMViewScrollingAPIEnabled(_Out_ BOOL*);
+    virtual HRESULT STDMETHODCALLTYPE setCSSOMViewScrollingAPIEnabled(BOOL);
     virtual HRESULT STDMETHODCALLTYPE fetchAPIKeepAliveEnabled(_Out_ BOOL*);
     virtual HRESULT STDMETHODCALLTYPE setFetchAPIKeepAliveEnabled(BOOL);
     virtual HRESULT STDMETHODCALLTYPE spatialNavigationEnabled(_Out_ BOOL*);
@@ -279,8 +281,8 @@ public:
     virtual HRESULT STDMETHODCALLTYPE setServerTimingEnabled(BOOL);
 
     // IWebPreferencesPrivate7
-    virtual HRESULT STDMETHODCALLTYPE crossOriginOptionsSupportEnabled(_Out_ BOOL*);
-    virtual HRESULT STDMETHODCALLTYPE setCrossOriginOptionsSupportEnabled(BOOL);
+    virtual HRESULT STDMETHODCALLTYPE crossOriginWindowPolicySupportEnabled(_Out_ BOOL*);
+    virtual HRESULT STDMETHODCALLTYPE setCrossOriginWindowPolicySupportEnabled(BOOL);
 
     // WebPreferences
 

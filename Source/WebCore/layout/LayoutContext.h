@@ -28,7 +28,7 @@
 #if ENABLE(LAYOUT_FORMATTING_CONTEXT)
 
 #include "FormattingContext.h"
-#include "FormattingState.h"
+#include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
 #include <wtf/IsoMalloc.h>
 #include <wtf/OptionSet.h>
@@ -48,6 +48,7 @@ namespace Layout {
 enum class StyleDiff;
 class Box;
 class Container;
+class FormattingState;
 
 // LayoutContext is the entry point for layout. It takes a (formatting root)container which acts as the root of the layout context.
 // LayoutContext::layout() generates the display tree for the root container's subtree (it does not run layout on the root though).
@@ -63,6 +64,7 @@ public:
     void initializeRoot(const Container&, const LayoutSize&);
     void updateLayout();
     void styleChanged(const Box&, StyleDiff);
+    void setInQuirksMode(bool inQuirksMode) { m_inQuirksMode = inQuirksMode; }
 
     enum class UpdateType {
         Overflow = 1 << 0,
@@ -73,21 +75,26 @@ public:
     void markNeedsUpdate(const Box&, OptionSet<UpdateType>);
     bool needsUpdate(const Box&) const;
 
-    FormattingState& formattingStateForBox(const Box&) const;
-    FormattingState& establishedFormattingState(const Box& formattingContextRoot, const FormattingContext&);
-    std::unique_ptr<FormattingContext> formattingContext(const Box& formattingContextRoot);
+    std::unique_ptr<FormattingContext> formattingContext(const Box& formattingContextRoot) const;
 
+    FormattingState& formattingStateForBox(const Box&) const;
+    FormattingState& establishedFormattingState(const Box& formattingRoot) const;
+    FormattingState& createFormattingStateForFormattingRootIfNeeded(const Box& formattingRoot);
+
+    Display::Box& displayBoxForLayoutBox(const Box& layoutBox) const;
+
+    bool inQuirksMode() const { return m_inQuirksMode; }
     // For testing purposes only
     void verifyAndOutputMismatchingLayoutTree(const RenderView&) const;
 
-    Display::Box& createDisplayBox(const Box&);
-    Display::Box* displayBoxForLayoutBox(const Box& layoutBox) const { return m_layoutToDisplayBox.get(&layoutBox); }
-
 private:
-    WeakPtr<Container> m_root;
+    void layoutFormattingContextSubtree(const Box&);
+
+    WeakPtr<const Container> m_root;
     HashSet<const Container*> m_formattingContextRootListForLayout;
     HashMap<const Box*, std::unique_ptr<FormattingState>> m_formattingStates;
-    HashMap<const Box*, std::unique_ptr<Display::Box>> m_layoutToDisplayBox;
+    mutable HashMap<const Box*, std::unique_ptr<Display::Box>> m_layoutToDisplayBox;
+    bool m_inQuirksMode { false };
 };
 
 }

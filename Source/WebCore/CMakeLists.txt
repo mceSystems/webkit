@@ -293,13 +293,11 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/mediastream/MediaDeviceInfo.idl
     Modules/mediastream/MediaDevices.idl
     Modules/mediastream/MediaStream.idl
-    Modules/mediastream/MediaStreamEvent.idl
     Modules/mediastream/MediaStreamTrack.idl
     Modules/mediastream/MediaStreamTrackEvent.idl
     Modules/mediastream/MediaTrackConstraints.idl
     Modules/mediastream/MediaTrackSupportedConstraints.idl
     Modules/mediastream/NavigatorMediaDevices.idl
-    Modules/mediastream/NavigatorUserMedia.idl
     Modules/mediastream/OverconstrainedError.idl
     Modules/mediastream/OverconstrainedErrorEvent.idl
     Modules/mediastream/RTCAnswerOptions.idl
@@ -308,6 +306,8 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/mediastream/RTCDTMFToneChangeEvent.idl
     Modules/mediastream/RTCDataChannel.idl
     Modules/mediastream/RTCDataChannelEvent.idl
+    Modules/mediastream/RTCDegradationPreference.idl
+    Modules/mediastream/RTCDtxStatus.idl
     Modules/mediastream/RTCIceCandidate.idl
     Modules/mediastream/RTCIceConnectionState.idl
     Modules/mediastream/RTCIceGatheringState.idl
@@ -319,8 +319,15 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/mediastream/RTCPeerConnection.idl
     Modules/mediastream/RTCPeerConnectionIceEvent.idl
     Modules/mediastream/RTCPeerConnectionState.idl
+    Modules/mediastream/RTCPriorityType.idl
+    Modules/mediastream/RTCRtpCodecParameters.idl
+    Modules/mediastream/RTCRtpEncodingParameters.idl
+    Modules/mediastream/RTCRtpFecParameters.idl
+    Modules/mediastream/RTCRtpHeaderExtensionParameters.idl
     Modules/mediastream/RTCRtpParameters.idl
     Modules/mediastream/RTCRtpReceiver.idl
+    Modules/mediastream/RTCRtpRtxParameters.idl
+    Modules/mediastream/RTCRtpSendParameters.idl
     Modules/mediastream/RTCRtpSender.idl
     Modules/mediastream/RTCRtpTransceiver.idl
     Modules/mediastream/RTCRtpTransceiverDirection.idl
@@ -335,7 +342,10 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/notifications/NotificationPermission.idl
     Modules/notifications/NotificationPermissionCallback.idl
 
+    Modules/paymentrequest/AddressErrors.idl
     Modules/paymentrequest/MerchantValidationEvent.idl
+    Modules/paymentrequest/MerchantValidationEventInit.idl
+    Modules/paymentrequest/PayerErrorFields.idl
     Modules/paymentrequest/PaymentAddress.idl
     Modules/paymentrequest/PaymentComplete.idl
     Modules/paymentrequest/PaymentCurrencyAmount.idl
@@ -344,6 +354,7 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/paymentrequest/PaymentDetailsModifier.idl
     Modules/paymentrequest/PaymentDetailsUpdate.idl
     Modules/paymentrequest/PaymentItem.idl
+    Modules/paymentrequest/PaymentMethodChangeEvent.idl
     Modules/paymentrequest/PaymentMethodData.idl
     Modules/paymentrequest/PaymentOptions.idl
     Modules/paymentrequest/PaymentRequest.idl
@@ -352,6 +363,7 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/paymentrequest/PaymentResponse.idl
     Modules/paymentrequest/PaymentShippingOption.idl
     Modules/paymentrequest/PaymentShippingType.idl
+    Modules/paymentrequest/PaymentValidationErrors.idl
 
     Modules/speech/DOMWindowSpeechSynthesis.idl
     Modules/speech/SpeechSynthesis.idl
@@ -439,7 +451,9 @@ set(WebCore_NON_SVG_IDL_FILES
     Modules/webvr/VRPose.idl
     Modules/webvr/VRStageParameters.idl
 
+    accessibility/AccessibilityRole.idl
     accessibility/AccessibleSetValueEvent.idl
+    accessibility/AriaAttributes.idl
 
     animation/Animatable.idl
     animation/AnimationEffectReadOnly.idl
@@ -454,6 +468,7 @@ set(WebCore_NON_SVG_IDL_FILES
     animation/CompositeOperation.idl
     animation/ComputedTimingProperties.idl
     animation/DocumentTimeline.idl
+    animation/DocumentTimelineOptions.idl
     animation/FillMode.idl
     animation/IterationCompositeOperation.idl
     animation/KeyframeAnimationOptions.idl
@@ -810,6 +825,7 @@ set(WebCore_NON_SVG_IDL_FILES
     page/NavigatorLanguage.idl
     page/NavigatorOnLine.idl
     page/NavigatorServiceWorker.idl
+    page/NavigatorShare.idl
     page/Performance.idl
     page/PerformanceEntry.idl
     page/PerformanceMark.idl
@@ -823,7 +839,10 @@ set(WebCore_NON_SVG_IDL_FILES
     page/PerformanceTiming.idl
     page/RemoteDOMWindow.idl
     page/Screen.idl
+    page/ScrollIntoViewOptions.idl
+    page/ScrollLogicalPosition.idl
     page/ScrollToOptions.idl
+    page/ShareData.idl
     page/VisualViewport.idl
     page/WebKitPoint.idl
     page/WindowEventHandlers.idl
@@ -1551,12 +1570,18 @@ endif ()
 
 if (USE_LIBWEBRTC)
   list(APPEND WebCore_SYSTEM_INCLUDE_DIRECTORIES "${THIRDPARTY_DIR}/libwebrtc/Source/"
-      "${THIRDPARTY_DIR}/libwebrtc/Source/webrtc")
+      "${THIRDPARTY_DIR}/libwebrtc/Source/webrtc"
+      "${THIRDPARTY_DIR}/libwebrtc/Source/third_party/abseil-cpp")
   list(APPEND WebCore_LIBRARIES webrtc)
   list(APPEND WebCore_SOURCES
+      Modules/mediastream/libwebrtc/LibWebRTCStatsCollector.cpp
       Modules/mediastream/libwebrtc/LibWebRTCDataChannelHandler.cpp
       Modules/mediastream/libwebrtc/LibWebRTCMediaEndpoint.cpp
       Modules/mediastream/libwebrtc/LibWebRTCPeerConnectionBackend.cpp
+      Modules/mediastream/libwebrtc/LibWebRTCRtpReceiverBackend.cpp
+      Modules/mediastream/libwebrtc/LibWebRTCRtpSenderBackend.cpp
+      Modules/mediastream/libwebrtc/LibWebRTCRtpTransceiverBackend.cpp
+      Modules/mediastream/libwebrtc/LibWebRTCUtils.cpp
       )
 endif ()
 
@@ -1740,14 +1765,16 @@ ADD_SOURCE_WEBCORE_DERIVED_DEPENDENCIES(${WEBCORE_DIR}/css/CSSPrimitiveValueMapp
 # Generate CSS Selector pseudo type name to value maps.
 add_custom_command(
     OUTPUT ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoClassAndCompatibilityElementMap.gperf ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoClassAndCompatibilityElementMap.cpp
-    MAIN_DEPENDENCY ${WEBCORE_DIR}/css/makeSelectorPseudoClassAndCompatibilityElementMap.py
+    MAIN_DEPENDENCY ${WEBCORE_DIR}/css/SelectorPseudoClassAndCompatibilityElementMap.in
+    DEPENDS ${WEBCORE_DIR}/css/makeSelectorPseudoClassAndCompatibilityElementMap.py
     WORKING_DIRECTORY ${DERIVED_SOURCES_WEBCORE_DIR}
     COMMAND ${PYTHON_EXECUTABLE} ${WEBCORE_DIR}/css/makeSelectorPseudoClassAndCompatibilityElementMap.py ${WEBCORE_DIR}/css/SelectorPseudoClassAndCompatibilityElementMap.in "${GPERF_EXECUTABLE}" "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}"
     VERBATIM)
 list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoClassAndCompatibilityElementMap.cpp)
 add_custom_command(
     OUTPUT ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoElementTypeMap.gperf ${DERIVED_SOURCES_WEBCORE_DIR}/SelectorPseudoElementTypeMap.cpp
-    MAIN_DEPENDENCY ${WEBCORE_DIR}/css/makeSelectorPseudoElementsMap.py
+    MAIN_DEPENDENCY ${WEBCORE_DIR}/css/SelectorPseudoElementTypeMap.in
+    DEPENDS ${WEBCORE_DIR}/css/makeSelectorPseudoElementsMap.py
     WORKING_DIRECTORY ${DERIVED_SOURCES_WEBCORE_DIR}
     COMMAND ${PYTHON_EXECUTABLE} ${WEBCORE_DIR}/css/makeSelectorPseudoElementsMap.py ${WEBCORE_DIR}/css/SelectorPseudoElementTypeMap.in "${GPERF_EXECUTABLE}" "${FEATURE_DEFINES_WITH_SPACE_SEPARATOR}"
     VERBATIM)
@@ -1824,7 +1851,6 @@ add_dependencies(WebCoreTestSupportBindings WebCore)
 # WebCore JS Builtins
 
 set(WebCore_BUILTINS_SOURCES
-    ${WEBCORE_DIR}/Modules/mediastream/NavigatorUserMedia.js
     ${WEBCORE_DIR}/Modules/mediastream/RTCPeerConnection.js
     ${WEBCORE_DIR}/Modules/mediastream/RTCPeerConnectionInternals.js
     ${WEBCORE_DIR}/Modules/streams/ByteLengthQueuingStrategy.js
@@ -1844,7 +1870,7 @@ set(WebCore_BUILTINS_SOURCES
 )
 
 set(BUILTINS_GENERATOR_SCRIPTS
-    ${JavaScriptCore_SCRIPTS_DIR}/builtins.py
+    ${JavaScriptCore_SCRIPTS_DIR}/wkbuiltins.py
     ${JavaScriptCore_SCRIPTS_DIR}/builtins_generator.py
     ${JavaScriptCore_SCRIPTS_DIR}/builtins_model.py
     ${JavaScriptCore_SCRIPTS_DIR}/builtins_templates.py
@@ -1894,12 +1920,14 @@ GENERATE_DOM_NAMES(HTML ${WEBCORE_DIR}/html/HTMLAttributeNames.in ${WEBCORE_DIR}
 list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLNames.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/HTMLElementFactory.cpp ${DERIVED_SOURCES_WEBCORE_DIR}/JSHTMLElementWrapperFactory.cpp)
 
 
-GENERATE_EVENT_FACTORY(${WEBCORE_DIR}/dom/EventNames.in EventInterfaces.h)
+GENERATE_EVENT_FACTORY(${WEBCORE_DIR}/dom/EventNames.in Event)
 list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventInterfaces.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventFactory.cpp)
 
 
-GENERATE_EVENT_FACTORY(${WEBCORE_DIR}/dom/EventTargetFactory.in EventTargetInterfaces.h)
+GENERATE_EVENT_FACTORY(${WEBCORE_DIR}/dom/EventTargetFactory.in EventTarget)
 list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventTargetInterfaces.h)
+list(APPEND WebCore_SOURCES ${DERIVED_SOURCES_WEBCORE_DIR}/EventTargetFactory.cpp)
 
 
 GENERATE_SETTINGS_MACROS(${WEBCORE_DIR}/page/Settings.yaml Settings.h)

@@ -41,6 +41,8 @@
 #include "RenderDescendantIterator.h"
 #include "RenderFullScreen.h"
 #include "RenderInline.h"
+#include "RenderMultiColumnFlow.h"
+#include "RenderMultiColumnSet.h"
 #include "RenderTreeUpdaterGeneratedContent.h"
 #include "RuntimeEnabledFeatures.h"
 #include "StyleResolver.h"
@@ -554,8 +556,12 @@ void RenderTreeUpdater::tearDownRenderers(Element& root, TeardownType teardownTy
 
             if (teardownType == TeardownType::Full || teardownType == TeardownType::RendererUpdateCancelingAnimations) {
                 if (RuntimeEnabledFeatures::sharedFeatures().webAnimationsCSSIntegrationEnabled()) {
-                    if (timeline)
-                        timeline->removeAnimationsForElement(element);
+                    if (timeline) {
+                        if (document.renderTreeBeingDestroyed())
+                            timeline->elementWasRemoved(element);
+                        else if (teardownType == TeardownType::RendererUpdateCancelingAnimations)
+                            timeline->cancelDeclarativeAnimationsForElement(element);
+                    }
                 } else
                     animationController.cancelAnimations(element);
             }

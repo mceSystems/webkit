@@ -52,9 +52,8 @@
 #include <wtf/MainThread.h>
 #include <wtf/RunLoop.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 static const unsigned bufferSize = 512 * 1024;
 
@@ -458,7 +457,7 @@ String NetworkDataTaskBlob::suggestedFilename() const
     if (!m_suggestedFilename.isEmpty())
         return m_suggestedFilename;
 
-    return ASCIILiteral("unknown");
+    return "unknown"_s;
 }
 
 void NetworkDataTaskBlob::download()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,7 +48,7 @@ class NameContext {
             return;
         if (!thing.origin)
             throw new Error("Thing does not have origin: " + thing);
-        
+
         if (thing.isNative && !thing.implementation) {
             if (!this._intrinsics)
                 throw new Error("Native function in a scope that does not recognize intrinsics");
@@ -68,10 +68,34 @@ class NameContext {
             array.push(thing);
             return;
         }
+
+        if (thing.kind == Type) {
+            this._set.add(thing);
+            if (thing.typeArguments && thing.typeArguments.length != 0) {
+                let array = this._map.get(thing.name);
+                if (!array) {
+                    array = [];
+                    array.kind = Type;
+                    this._map.set(thing.name, array);
+                }
+                if (array.kind != Type)
+                    throw new WTypeError(thing.origin.originString, "Cannot reuse type name for function: " + thing.name);
+                array.push(thing);
+                return;
+            } else {
+                if (this._map.has(thing.name))
+                    throw new WTypeError(thing.origin.originString, "Duplicate name: " + thing.name);
+                this._map.set(thing.name, thing);
+            }
+            return;
+        }
+        
         if (this._map.has(thing.name))
             throw new WTypeError(thing.origin.originString, "Duplicate name: " + thing.name);
+
         this._set.add(thing);
         this._map.set(thing.name, thing);
+
     }
     
     get(kind, name)
@@ -100,17 +124,21 @@ class NameContext {
             for (let func of thing)
                 yield func;
             return;
+        } else if (thing.kind === Type && (thing instanceof Array)) {
+            for (let type of thing)
+                yield type;
+            return;
         }
         yield thing;
     }
     
-    resolveFuncOverload(name, typeArguments, argumentTypes, returnType, allowEntryPoint = false)
+    resolveFuncOverload(name, argumentTypes, returnType, allowEntryPoint = false)
     {
         let functions = this.get(Func, name);
         if (!functions)
             return {failures: []};
         
-        return resolveOverloadImpl(functions, typeArguments, argumentTypes, returnType, allowEntryPoint);
+        return resolveOverloadImpl(functions, argumentTypes, returnType, allowEntryPoint);
     }
     
     get currentStatement()
@@ -161,8 +189,8 @@ class NameContext {
     {
         for (let value of this._map.values()) {
             if (value instanceof Array) {
-                for (let func of value)
-                    yield func;
+                for (let thing of value)
+                    yield thing;
                 continue;
             }
             yield value;

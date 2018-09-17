@@ -81,7 +81,6 @@
 #include <JavaScriptCore/TypedArrays.h>
 #include <JavaScriptCore/WasmModule.h>
 #include <limits>
-#include <wtf/HashTraits.h>
 #include <wtf/MainThread.h>
 #include <wtf/RunLoop.h>
 #include <wtf/Vector.h>
@@ -699,10 +698,10 @@ private:
         write(TerminatorTag);
     }
 
-    JSValue getProperty(JSObject* object, const Identifier& propertyName)
+    JSValue getProperty(VM& vm, JSObject* object, const Identifier& propertyName)
     {
         PropertySlot slot(object, PropertySlot::InternalMethodType::Get);
-        if (object->methodTable()->getOwnPropertySlot(object, m_exec, propertyName, slot))
+        if (object->methodTable(vm)->getOwnPropertySlot(object, m_exec, propertyName, slot))
             return slot.getValue(m_exec, propertyName);
         return JSValue();
     }
@@ -1547,7 +1546,7 @@ SerializationReturnCode CloneSerializer::serialize(JSValue in)
                     propertyStack.removeLast();
                     break;
                 }
-                inValue = getProperty(object, properties[index]);
+                inValue = getProperty(vm, object, properties[index]);
                 if (shouldTerminate())
                     return SerializationReturnCode::ExistingExceptionError;
 
@@ -3238,7 +3237,7 @@ static void maybeThrowExceptionIfSerializationFailed(ExecState& state, Serializa
         throwException(&state, scope, createStackOverflowError(&state));
         break;
     case SerializationReturnCode::ValidationError:
-        throwTypeError(&state, scope, ASCIILiteral("Unable to deserialize data."));
+        throwTypeError(&state, scope, "Unable to deserialize data."_s);
         break;
     case SerializationReturnCode::DataCloneError:
         throwDataCloneError(state, scope);

@@ -37,6 +37,7 @@
 #include <wtf/OptionSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
+#include <wtf/WeakPtr.h>
 #include <wtf/WorkQueue.h>
 #include <wtf/text/WTFString.h>
 
@@ -72,7 +73,7 @@ struct PluginModuleInfo;
 
 enum class ShouldClearFirst { No, Yes };
 
-class WebsiteDataStore : public RefCounted<WebsiteDataStore>, public WebProcessLifetimeObserver, public Identified<WebsiteDataStore>  {
+class WebsiteDataStore : public RefCounted<WebsiteDataStore>, public WebProcessLifetimeObserver, public Identified<WebsiteDataStore>, public CanMakeWeakPtr<WebsiteDataStore>  {
 public:
     constexpr static uint64_t defaultCacheStoragePerOriginQuota = 50 * 1024 * 1024;
 
@@ -92,6 +93,8 @@ public:
         String resourceLoadStatisticsDirectory;
         String javaScriptConfigurationDirectory;
         String cookieStorageFile;
+        String sourceApplicationBundleIdentifier;
+        String sourceApplicationSecondaryIdentifier;
 
         explicit Configuration();
     };
@@ -108,6 +111,7 @@ public:
     void setResourceLoadStatisticsEnabled(bool);
     bool resourceLoadStatisticsDebugMode() const;
     void setResourceLoadStatisticsDebugMode(bool);
+    void setResourceLoadStatisticsDebugMode(bool, CompletionHandler<void()>&&);
 
     uint64_t cacheStoragePerOriginQuota() const { return m_resolvedConfiguration.cacheStoragePerOriginQuota; }
     void setCacheStoragePerOriginQuota(uint64_t quota) { m_resolvedConfiguration.cacheStoragePerOriginQuota = quota; }
@@ -129,13 +133,13 @@ public:
     void removeDataForTopPrivatelyControlledDomains(OptionSet<WebsiteDataType>, OptionSet<WebsiteDataFetchOption>, const Vector<String>& topPrivatelyControlledDomains, Function<void(HashSet<String>&&)>&& completionHandler);
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-    void updatePrevalentDomainsToPartitionOrBlockCookies(const Vector<String>& domainsToPartition, const Vector<String>& domainsToBlock, const Vector<String>& domainsToNeitherPartitionNorBlock, ShouldClearFirst);
-    void hasStorageAccessForFrameHandler(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool hasAccess)>&& callback);
-    void getAllStorageAccessEntries(CompletionHandler<void(Vector<String>&& domains)>&&);
-    void grantStorageAccessHandler(const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, WTF::CompletionHandler<void(bool wasGranted)>&& callback);
-    void removeAllStorageAccessHandler();
+    void updatePrevalentDomainsToBlockCookiesFor(const Vector<String>& domainsToBlock, ShouldClearFirst, CompletionHandler<void()>&&);
+    void hasStorageAccessForFrameHandler(const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, CompletionHandler<void(bool hasAccess)>&&);
+    void getAllStorageAccessEntries(uint64_t pageID, CompletionHandler<void(Vector<String>&& domains)>&&);
+    void grantStorageAccessHandler(const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, CompletionHandler<void(bool wasGranted)>&&);
+    void removeAllStorageAccessHandler(CompletionHandler<void()>&&);
     void removePrevalentDomains(const Vector<String>& domains);
-    void hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void (bool)>&& callback);
+    void hasStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, CompletionHandler<void(bool)>&&);
     void requestStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, bool promptEnabled, CompletionHandler<void(StorageAccessStatus)>&&);
     void grantStorageAccess(String&& subFrameHost, String&& topFrameHost, uint64_t frameID, uint64_t pageID, bool userWasPrompted, CompletionHandler<void(bool)>&&);
 #endif
@@ -149,6 +153,7 @@ public:
     const String& resolvedCookieStorageFile() const { return m_resolvedConfiguration.cookieStorageFile; }
     const String& resolvedIndexedDatabaseDirectory() const { return m_resolvedConfiguration.indexedDBDatabaseDirectory; }
     const String& resolvedServiceWorkerRegistrationDirectory() const { return m_resolvedConfiguration.serviceWorkerRegistrationDirectory; }
+    const String& resolvedResourceLoadStatisticsDirectory() const { return m_resolvedConfiguration.resourceLoadStatisticsDirectory; }
 
     StorageManager* storageManager() { return m_storageManager.get(); }
 
@@ -199,6 +204,9 @@ private:
     void platformInitialize();
     void platformDestroy();
     static void platformRemoveRecentSearches(WallTime);
+
+    void registerWebResourceLoadStatisticsStoreAsMessageReceiver();
+    void unregisterWebResourceLoadStatisticsStoreAsMessageReceiver();
 
     HashSet<RefPtr<WebProcessPool>> processPools(size_t count = std::numeric_limits<size_t>::max(), bool ensureAPoolExists = true) const;
 

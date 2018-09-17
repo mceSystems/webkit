@@ -59,7 +59,7 @@ RefPtr<SharedBuffer> PlatformPasteboard::bufferForType(const String& pasteboardT
     NSData *data = [m_pasteboard.get() dataForType:pasteboardType];
     if (!data)
         return nullptr;
-    return SharedBuffer::create([[data copy] autorelease]);
+    return SharedBuffer::create(adoptNS([data copy]).get());
 }
 
 int PlatformPasteboard::numberOfFiles() const
@@ -116,17 +116,79 @@ String PlatformPasteboard::stringForType(const String& pasteboardType) const
     return [m_pasteboard stringForType:pasteboardType];
 }
 
+static Vector<String> urlStringsFromPasteboard(NSPasteboard *pasteboard)
+{
+    NSArray<NSPasteboardItem *> *items = pasteboard.pasteboardItems;
+    Vector<String> urlStrings;
+    urlStrings.reserveInitialCapacity(items.count);
+    if (items.count > 1) {
+        for (NSPasteboardItem *item in items) {
+            if (id propertyList = [item propertyListForType:(__bridge NSString *)kUTTypeURL]) {
+                if (auto urlFromItem = adoptNS([[NSURL alloc] initWithPasteboardPropertyList:propertyList ofType:(__bridge NSString *)kUTTypeURL]))
+                    urlStrings.uncheckedAppend([urlFromItem absoluteString]);
+            }
+        }
+    } else if (NSURL *urlFromPasteboard = [NSURL URLFromPasteboard:pasteboard])
+        urlStrings.uncheckedAppend(urlFromPasteboard.absoluteString);
+    else if (NSString *urlStringFromPasteboard = [pasteboard stringForType:legacyURLPasteboardType()])
+        urlStrings.uncheckedAppend(urlStringFromPasteboard);
+
+    bool mayContainFiles = pasteboardMayContainFilePaths(pasteboard);
+    urlStrings.removeAllMatching([&] (auto& urlString) {
+        return urlString.isEmpty() || (mayContainFiles && !Pasteboard::canExposeURLToDOMWhenPasteboardContainsFiles(urlString));
+    });
+
+    return urlStrings;
+}
+
+static String typeIdentifierForPasteboardType(const String& pasteboardType)
+{
+    if (UTTypeIsDeclared(pasteboardType.createCFString().get()))
+        return pasteboardType;
+
+    if (pasteboardType == String(legacyStringPasteboardType()))
+        return kUTTypeUTF8PlainText;
+
+    if (pasteboardType == String(legacyHTMLPasteboardType()))
+        return kUTTypeHTML;
+
+    if (pasteboardType == String(legacyURLPasteboardType()))
+        return kUTTypeURL;
+
+    return { };
+}
+
+Vector<String> PlatformPasteboard::allStringsForType(const String& pasteboardType) const
+{
+    auto typeIdentifier = typeIdentifierForPasteboardType(pasteboardType);
+    if (typeIdentifier == String(kUTTypeURL))
+        return urlStringsFromPasteboard(m_pasteboard.get());
+
+    NSArray<NSPasteboardItem *> *items = [m_pasteboard pasteboardItems];
+    Vector<String> strings;
+    strings.reserveInitialCapacity(items.count);
+    if (items.count > 1 && !typeIdentifier.isNull()) {
+        for (NSPasteboardItem *item in items) {
+            if (NSString *stringFromItem = [item stringForType:typeIdentifier])
+                strings.append(stringFromItem);
+        }
+    } else if (NSString *stringFromPasteboard = [m_pasteboard stringForType:pasteboardType])
+        strings.append(stringFromPasteboard);
+
+    return strings;
+}
+
 static const char* safeTypeForDOMToReadAndWriteForPlatformType(const String& platformType)
 {
     if (platformType == String(legacyStringPasteboardType()) || platformType == String(NSPasteboardTypeString))
-        return ASCIILiteral("text/plain");
+        return "text/plain"_s;
 
     if (platformType == String(legacyURLPasteboardType()))
-        return ASCIILiteral("text/uri-list");
+        return "text/uri-list"_s;
 
     if (platformType == String(legacyHTMLPasteboardType()) || platformType == String(WebArchivePboardType)
         || platformType == String(legacyRTFDPasteboardType()) || platformType == String(legacyRTFPasteboardType()))
-        return ASCIILiteral("text/html");
+        return "text/html"_s;
 
     return nullptr;
 }
@@ -262,14 +324,22 @@ long PlatformPasteboard::setBufferForType(SharedBuffer* buffer, const String& pa
     return changeCount();
 }
 
-long PlatformPasteboard::setPathnamesForType(const Vector<String>& pathnames, const String& pasteboardType)
+long PlatformPasteboard::setURL(const PasteboardURL& pasteboardURL)
 {
-    RetainPtr<NSMutableArray> paths = adoptNS([[NSMutableArray alloc] init]);
-    for (size_t i = 0; i < pathnames.size(); ++i)
-        [paths.get() addObject:[NSArray arrayWithObject:pathnames[i]]];
-    BOOL didWriteData = [m_pasteboard.get() setPropertyList:paths.get() forType:pasteboardType];
+    NSURL *cocoaURL = pasteboardURL.url;
+    NSArray *urlWithTitle = @[ @[ cocoaURL.absoluteString ], @[ pasteboardURL.title ] ];
+    NSString *pasteboardType = [NSString stringWithUTF8String:WebURLsWithTitlesPboardType];
+    BOOL didWriteData = [m_pasteboard.get() setPropertyList:urlWithTitle forType:pasteboardType];
     if (!didWriteData)
         return 0;
+
+    return changeCount();
+}
+
+long PlatformPasteboard::setColor(const Color& color)
+{
+    NSColor *pasteboardColor = nsColor(color);
+    [pasteboardColor writeToPasteboard:m_pasteboard.get()];
     return changeCount();
 }
 

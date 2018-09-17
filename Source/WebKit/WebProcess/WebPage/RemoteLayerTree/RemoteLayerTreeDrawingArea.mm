@@ -50,9 +50,8 @@
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/SystemTracing.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 RemoteLayerTreeDrawingArea::RemoteLayerTreeDrawingArea(WebPage& webPage, const WebPageCreationParameters&)
     : DrawingArea(DrawingAreaTypeRemoteLayerTree, webPage)
@@ -116,14 +115,14 @@ void RemoteLayerTreeDrawingArea::willDestroyDisplayRefreshMonitor(DisplayRefresh
 
 void RemoteLayerTreeDrawingArea::updateRootLayers()
 {
-    Vector<GraphicsLayer*> children;
+    Vector<Ref<GraphicsLayer>> children;
     if (m_contentLayer) {
-        children.append(m_contentLayer);
+        children.append(*m_contentLayer);
         if (m_viewOverlayRootLayer)
-            children.append(m_viewOverlayRootLayer);
+            children.append(*m_viewOverlayRootLayer);
     }
 
-    m_rootLayer->setChildren(children);
+    m_rootLayer->setChildren(WTFMove(children));
 }
 
 void RemoteLayerTreeDrawingArea::attachViewOverlayGraphicsLayer(Frame* frame, GraphicsLayer* viewOverlayRootLayer)
@@ -319,9 +318,6 @@ bool RemoteLayerTreeDrawingArea::adjustLayerFlushThrottling(WebCore::LayerFlushT
 
 void RemoteLayerTreeDrawingArea::flushLayers()
 {
-    if (!m_rootLayer)
-        return;
-
     if (m_isFlushingSuspended) {
         m_hasDeferredFlush = true;
         return;
@@ -351,6 +347,9 @@ void RemoteLayerTreeDrawingArea::flushLayers()
         }
     } forPhase:kCATransactionPhasePostCommit];
 
+    if (m_nextFlushIsForImmediatePaint)
+        m_webPage.mainFrameView()->invalidateImagesWithAsyncDecodes();
+
     m_webPage.mainFrameView()->flushCompositingStateIncludingSubframes();
 
     // Because our view-relative overlay root layer is not attached to the FrameView's GraphicsLayer tree, we need to flush it manually.
@@ -364,13 +363,16 @@ void RemoteLayerTreeDrawingArea::flushLayers()
     layerTransaction.setTransactionID(takeNextTransactionID());
     layerTransaction.setCallbackIDs(WTFMove(m_pendingCallbackIDs));
     m_remoteLayerTreeContext->setNextFlushIsForImmediatePaint(m_nextFlushIsForImmediatePaint);
-    m_remoteLayerTreeContext->buildTransaction(layerTransaction, *downcast<GraphicsLayerCARemote>(*m_rootLayer).platformCALayer());
+    m_remoteLayerTreeContext->buildTransaction(layerTransaction, *downcast<GraphicsLayerCARemote>(m_rootLayer.get()).platformCALayer());
     m_remoteLayerTreeContext->setNextFlushIsForImmediatePaint(false);
     backingStoreCollection.willCommitLayerTree(layerTransaction);
     m_webPage.willCommitLayerTree(layerTransaction);
 
     layerTransaction.setNewlyReachedLayoutMilestones(m_pendingNewlyReachedLayoutMilestones);
     m_pendingNewlyReachedLayoutMilestones = 0;
+
+    layerTransaction.setActivityStateChangeID(m_activityStateChangeID);
+    m_activityStateChangeID = ActivityStateChangeAsynchronous;
 
     RemoteScrollingCoordinatorTransaction scrollingTransaction;
 #if ENABLE(ASYNC_SCROLLING)
@@ -391,7 +393,7 @@ void RemoteLayerTreeDrawingArea::flushLayers()
     bool hadAnyChangedBackingStore = false;
     Vector<RetainPtr<CGContextRef>> contextsToFlush;
     for (auto& layer : layerTransaction.changedLayers()) {
-        if (layer->properties().changedProperties & RemoteLayerTreeTransaction::LayerChanges::BackingStoreChanged) {
+        if (layer->properties().changedProperties & RemoteLayerTreeTransaction::BackingStoreChanged) {
             hadAnyChangedBackingStore = true;
             if (layer->properties().backingStore) {
                 if (auto contextPendingFlush = layer->properties().backingStore->takeFrontContextPendingFlush())
@@ -482,12 +484,13 @@ void RemoteLayerTreeDrawingArea::BackingStoreFlusher::flush()
     m_connection->sendMessage(WTFMove(m_commitEncoder), { });
 }
 
-void RemoteLayerTreeDrawingArea::activityStateDidChange(ActivityState::Flags, bool wantsDidUpdateActivityState, const Vector<CallbackID>&)
+void RemoteLayerTreeDrawingArea::activityStateDidChange(OptionSet<WebCore::ActivityState::Flag>, ActivityStateChangeID activityStateChangeID, const Vector<CallbackID>&)
 {
     // FIXME: Should we suspend painting while not visible, like TiledCoreAnimationDrawingArea? Probably.
 
-    if (wantsDidUpdateActivityState) {
+    if (activityStateChangeID != ActivityStateChangeAsynchronous) {
         m_nextFlushIsForImmediatePaint = true;
+        m_activityStateChangeID = activityStateChangeID;
         scheduleCompositingLayerFlushImmediately();
     }
 }

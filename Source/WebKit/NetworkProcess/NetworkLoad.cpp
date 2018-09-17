@@ -42,6 +42,7 @@
 
 #if PLATFORM(COCOA)
 #include "NetworkDataTaskCocoa.h"
+#include "NetworkSessionCocoa.h"
 #endif
 
 #if ENABLE(NETWORK_CAPTURE)
@@ -121,10 +122,6 @@ NetworkLoad::~NetworkLoad()
         m_redirectCompletionHandler({ });
     if (m_responseCompletionHandler)
         m_responseCompletionHandler(PolicyAction::Ignore);
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    if (m_challengeCompletionHandler)
-        m_challengeCompletionHandler(AuthenticationChallengeDisposition::Cancel, { });
-#endif
     if (m_task)
         m_task->clearClient();
 }
@@ -153,8 +150,8 @@ void NetworkLoad::cancel()
 void NetworkLoad::continueWillSendRequest(WebCore::ResourceRequest&& newRequest)
 {
 #if PLATFORM(COCOA)
-    m_currentRequest.updateFromDelegatePreservingOldProperties(newRequest.nsURLRequest(DoNotUpdateHTTPBody));
-#elif USE(SOUP)
+    m_currentRequest.updateFromDelegatePreservingOldProperties(newRequest.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody));
+#else
     // FIXME: Implement ResourceRequest::updateFromDelegatePreservingOldProperties. See https://bugs.webkit.org/show_bug.cgi?id=126127.
     m_currentRequest.updateFromDelegatePreservingOldProperties(newRequest);
 #endif
@@ -254,55 +251,22 @@ void NetworkLoad::willPerformHTTPRedirection(ResourceResponse&& redirectResponse
     m_client.get().willSendRedirectedRequest(WTFMove(oldRequest), WTFMove(request), WTFMove(redirectResponse));
 }
 
-void NetworkLoad::didReceiveChallenge(const AuthenticationChallenge& challenge, ChallengeCompletionHandler&& completionHandler)
+void NetworkLoad::didReceiveChallenge(AuthenticationChallenge&& challenge, ChallengeCompletionHandler&& completionHandler)
 {
-    m_challenge = challenge;
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    m_challengeCompletionHandler = WTFMove(completionHandler);
-    m_client.get().canAuthenticateAgainstProtectionSpaceAsync(challenge.protectionSpace());
-#else
-    completeAuthenticationChallenge(WTFMove(completionHandler));
-#endif
-}
-
-void NetworkLoad::completeAuthenticationChallenge(ChallengeCompletionHandler&& completionHandler)
-{
-    bool isServerTrustEvaluation = m_challenge->protectionSpace().authenticationScheme() == ProtectionSpaceAuthenticationSchemeServerTrustEvaluationRequested;
-    if (!isAllowedToAskUserForCredentials() && !isServerTrustEvaluation) {
+    auto scheme = challenge.protectionSpace().authenticationScheme();
+    bool isTLSHandshake = scheme == ProtectionSpaceAuthenticationSchemeServerTrustEvaluationRequested
+        || scheme == ProtectionSpaceAuthenticationSchemeClientCertificateRequested;
+    if (!isAllowedToAskUserForCredentials() && !isTLSHandshake) {
         m_client.get().didBlockAuthenticationChallenge();
         completionHandler(AuthenticationChallengeDisposition::UseCredential, { });
         return;
     }
-
-    if (!m_task)
-        return;
-
+    
     if (auto* pendingDownload = m_task->pendingDownload())
-        NetworkProcess::singleton().authenticationManager().didReceiveAuthenticationChallenge(*pendingDownload, *m_challenge, WTFMove(completionHandler));
+        NetworkProcess::singleton().authenticationManager().didReceiveAuthenticationChallenge(*pendingDownload, challenge, WTFMove(completionHandler));
     else
-        NetworkProcess::singleton().authenticationManager().didReceiveAuthenticationChallenge(m_parameters.webPageID, m_parameters.webFrameID, *m_challenge, WTFMove(completionHandler));
+        NetworkProcess::singleton().authenticationManager().didReceiveAuthenticationChallenge(m_parameters.webPageID, m_parameters.webFrameID, challenge, WTFMove(completionHandler));
 }
-
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-void NetworkLoad::continueCanAuthenticateAgainstProtectionSpace(bool result)
-{
-    if (!m_challengeCompletionHandler) {
-        ASSERT_NOT_REACHED();
-        return;
-    }
-
-    auto completionHandler = std::exchange(m_challengeCompletionHandler, nullptr);
-    if (!result) {
-        if (NetworkSession::allowsSpecificHTTPSCertificateForHost(*m_challenge))
-            completionHandler(AuthenticationChallengeDisposition::UseCredential, serverTrustCredential(*m_challenge));
-        else
-            completionHandler(AuthenticationChallengeDisposition::RejectProtectionSpace, { });
-        return;
-    }
-
-    completeAuthenticationChallenge(WTFMove(completionHandler));
-}
-#endif
 
 void NetworkLoad::didReceiveResponseNetworkSession(ResourceResponse&& response, ResponseCompletionHandler&& completionHandler)
 {

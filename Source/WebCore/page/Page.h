@@ -76,6 +76,7 @@ class IDBConnectionToServer;
 
 class AlternativeTextClient;
 class ApplicationCacheStorage;
+class AuthenticatorCoordinator;
 class BackForwardController;
 class BackForwardClient;
 class CacheStorageProvider;
@@ -154,10 +155,15 @@ enum class EventThrottlingBehavior {
     Unresponsive
 };
 
+enum class CompositingPolicy : uint8_t {
+    Normal,
+    Conservative, // Used in low memory situations.
+};
+
 enum class CanWrap : bool;
 enum class DidWrap : bool;
-enum class NavigationPolicyCheck;
 enum class RouteSharingPolicy;
+enum class ShouldTreatAsContinuingLoad;
 
 class Page : public Supplementable<Page> {
     WTF_MAKE_NONCOPYABLE(Page);
@@ -167,6 +173,8 @@ class Page : public Supplementable<Page> {
 public:
     WEBCORE_EXPORT static void updateStyleForAllPagesAfterGlobalChangeInEnvironment();
     WEBCORE_EXPORT static void clearPreviousItemFromAllPages(HistoryItem*);
+
+    void updateStyleAfterChangeInEnvironment();
 
     WEBCORE_EXPORT explicit Page(PageConfiguration&&);
     WEBCORE_EXPORT ~Page();
@@ -194,14 +202,17 @@ public:
     bool openedByDOM() const;
     void setOpenedByDOM();
 
-    WEBCORE_EXPORT void goToItem(HistoryItem&, FrameLoadType, NavigationPolicyCheck);
+    bool openedViaWindowOpenWithOpener() const { return m_openedViaWindowOpenWithOpener; }
+    void setOpenedViaWindowOpenWithOpener() { m_openedViaWindowOpenWithOpener = true; }
+
+    WEBCORE_EXPORT void goToItem(HistoryItem&, FrameLoadType, ShouldTreatAsContinuingLoad);
 
     WEBCORE_EXPORT void setGroupName(const String&);
     WEBCORE_EXPORT const String& groupName() const;
 
     PageGroup& group();
 
-    static void forEachPage(const WTF::Function<void(Page&)>&);
+    WEBCORE_EXPORT static void forEachPage(const WTF::Function<void(Page&)>&);
 
     void incrementSubframeCount() { ++m_subframeCount; }
     void decrementSubframeCount() { ASSERT(m_subframeCount); --m_subframeCount; }
@@ -340,19 +351,23 @@ public:
 #endif
     
     bool useSystemAppearance() const { return m_useSystemAppearance; }
-    void setUseSystemAppearance(bool a) { m_useSystemAppearance = a; }
+    WEBCORE_EXPORT void setUseSystemAppearance(bool);
     
-    bool defaultAppearance() const { return m_defaultAppearance; }
-    void setDefaultAppearance(bool a) { m_defaultAppearance = a; }
+    WEBCORE_EXPORT bool useDarkAppearance() const;
+    WEBCORE_EXPORT void setUseDarkAppearance(bool);
 
 #if ENABLE(TEXT_AUTOSIZING)
     float textAutosizingWidth() const { return m_textAutosizingWidth; }
     void setTextAutosizingWidth(float textAutosizingWidth) { m_textAutosizingWidth = textAutosizingWidth; }
 #endif
 
-    WEBCORE_EXPORT void setFullscreenInsetTop(double);
-    WEBCORE_EXPORT void setFullscreenAutoHideDelay(double);
-    
+    const FloatBoxExtent& fullscreenInsets() const { return m_fullscreenInsets; }
+    WEBCORE_EXPORT void setFullscreenInsets(const FloatBoxExtent&);
+
+    const Seconds fullscreenAutoHideDuration() const { return m_fullscreenAutoHideDuration; }
+    WEBCORE_EXPORT void setFullscreenAutoHideDuration(Seconds);
+    WEBCORE_EXPORT void setFullscreenControlsHidden(bool);
+
     bool shouldSuppressScrollbarAnimations() const { return m_suppressScrollbarAnimations; }
     WEBCORE_EXPORT void setShouldSuppressScrollbarAnimations(bool suppressAnimations);
     void lockAllOverlayScrollbarsToHidden(bool lockOverlayScrollbars);
@@ -399,23 +414,27 @@ public:
     WEBCORE_EXPORT void setPaymentCoordinator(std::unique_ptr<PaymentCoordinator>&&);
 #endif
 
+#if ENABLE(WEB_AUTHN)
+    AuthenticatorCoordinator& authenticatorCoordinator() { return m_authenticatorCoordinator.get(); }
+#endif
+
 #if ENABLE(APPLICATION_MANIFEST)
     const std::optional<ApplicationManifest>& applicationManifest() const { return m_applicationManifest; }
 #endif
 
     // Notifications when the Page starts and stops being presented via a native window.
-    WEBCORE_EXPORT void setActivityState(ActivityState::Flags);
-    ActivityState::Flags activityState() const { return m_activityState; }
+    WEBCORE_EXPORT void setActivityState(OptionSet<ActivityState::Flag>);
+    OptionSet<ActivityState::Flag> activityState() const { return m_activityState; }
 
     bool isWindowActive() const;
     bool isVisibleAndActive() const;
     WEBCORE_EXPORT void setIsVisible(bool);
     WEBCORE_EXPORT void setIsPrerender();
-    bool isVisible() const { return m_activityState & ActivityState::IsVisible; }
+    bool isVisible() const { return m_activityState.contains(ActivityState::IsVisible); }
 
     // Notification that this Page was moved into or out of a native window.
     WEBCORE_EXPORT void setIsInWindow(bool);
-    bool isInWindow() const { return m_activityState & ActivityState::IsInWindow; }
+    bool isInWindow() const { return m_activityState.contains(ActivityState::IsInWindow); }
 
     void setIsClosing() { m_isClosing = true; }
     bool isClosing() const { return m_isClosing; }
@@ -423,8 +442,8 @@ public:
     void setIsRestoringCachedPage(bool value) { m_isRestoringCachedPage = value; }
     bool isRestoringCachedPage() const { return m_isRestoringCachedPage; }
 
-    void addActivityStateChangeObserver(ActivityStateChangeObserver&);
-    void removeActivityStateChangeObserver(ActivityStateChangeObserver&);
+    WEBCORE_EXPORT void addActivityStateChangeObserver(ActivityStateChangeObserver&);
+    WEBCORE_EXPORT void removeActivityStateChangeObserver(ActivityStateChangeObserver&);
 
     WEBCORE_EXPORT void suspendScriptedAnimations();
     WEBCORE_EXPORT void resumeScriptedAnimations();
@@ -433,15 +452,14 @@ public:
     void userStyleSheetLocationChanged();
     const String& userStyleSheet() const;
 
+    WEBCORE_EXPORT void userAgentChanged();
+
     void dnsPrefetchingStateChanged();
     void storageBlockingStateChanged();
 
 #if ENABLE(RESOURCE_USAGE)
     void setResourceUsageOverlayVisible(bool);
 #endif
-
-    void setAsRunningUserScripts() { m_isRunningUserScripts = true; }
-    bool isRunningUserScripts() const { return m_isRunningUserScripts; }
 
     void setDebugger(JSC::Debugger*);
     JSC::Debugger* debugger() const { return m_debugger; }
@@ -565,6 +583,7 @@ public:
     MediaProducer::MutedStateFlags mutedState() const { return m_mutedState; }
     bool isAudioMuted() const { return m_mutedState & MediaProducer::AudioIsMuted; }
     bool isMediaCaptureMuted() const { return m_mutedState & MediaProducer::CaptureDevicesAreMuted; };
+    void schedulePlaybackControlsManagerUpdate();
     WEBCORE_EXPORT void setMuted(MediaProducer::MutedStateFlags);
     WEBCORE_EXPORT void stopMediaCapture();
 
@@ -601,6 +620,8 @@ public:
 
 #if ENABLE(INDEXED_DATABASE)
     IDBClient::IDBConnectionToServer& idbConnection();
+    WEBCORE_EXPORT IDBClient::IDBConnectionToServer* optionalIDBConnection();
+    WEBCORE_EXPORT void clearIDBConnection();
 #endif
 
     void setShowAllPlugins(bool showAll) { m_showAllPlugins = showAll; }
@@ -624,6 +645,9 @@ public:
 
     std::optional<EventThrottlingBehavior> eventThrottlingBehaviorOverride() const { return m_eventThrottlingBehaviorOverride; }
     void setEventThrottlingBehaviorOverride(std::optional<EventThrottlingBehavior> throttling) { m_eventThrottlingBehaviorOverride = throttling; }
+
+    std::optional<CompositingPolicy> compositingPolicyOverride() const { return m_compositingPolicyOverride; }
+    void setCompositingPolicyOverride(std::optional<CompositingPolicy> policy) { m_compositingPolicyOverride = policy; }
 
     WebGLStateTracker* webGLStateTracker() const { return m_webGLStateTracker.get(); }
 
@@ -669,6 +693,10 @@ private:
     unsigned findMatchesForText(const String&, FindOptions, unsigned maxMatchCount, ShouldHighlightMatches, ShouldMarkMatches);
 
     std::optional<std::pair<MediaCanStartListener&, Document&>> takeAnyMediaCanStartListener();
+
+#if ENABLE(VIDEO)
+    void playbackControlsManagerUpdateTimerFired();
+#endif
 
     Vector<Ref<PluginViewBase>> pluginViews();
 
@@ -725,6 +753,7 @@ private:
     int m_subframeCount { 0 };
     String m_groupName;
     bool m_openedByDOM { false };
+    bool m_openedViaWindowOpenWithOpener { false };
 
     bool m_tabKeyCyclesThroughElements { true };
     bool m_defersLoading { false };
@@ -743,13 +772,15 @@ private:
     float m_topContentInset { 0 };
     FloatBoxExtent m_obscuredInsets;
     FloatBoxExtent m_unobscuredSafeAreaInsets;
+    FloatBoxExtent m_fullscreenInsets;
+    Seconds m_fullscreenAutoHideDuration { 0_s };
 
 #if PLATFORM(IOS)
     bool m_enclosedInScrollableAncestorView { false };
 #endif
     
     bool m_useSystemAppearance { false };
-    bool m_defaultAppearance { true };
+    bool m_useDarkAppearance { false };
 
 #if ENABLE(TEXT_AUTOSIZING)
     float m_textAutosizingWidth { 0 };
@@ -788,7 +819,7 @@ private:
 
     bool m_isEditable { false };
     bool m_isPrerender { false };
-    ActivityState::Flags m_activityState;
+    OptionSet<ActivityState::Flag> m_activityState;
 
     LayoutMilestones m_requestedLayoutMilestones { 0 };
 
@@ -813,7 +844,7 @@ private:
 #endif
 
 #if ENABLE(INDEXED_DATABASE)
-    RefPtr<IDBClient::IDBConnectionToServer> m_idbIDBConnectionToServer;
+    RefPtr<IDBClient::IDBConnectionToServer> m_idbConnectionToServer;
 #endif
 
     HashSet<String> m_seenPlugins;
@@ -844,7 +875,11 @@ private:
     bool m_isRestoringCachedPage { false };
 
     MediaProducer::MediaStateFlags m_mediaState { MediaProducer::IsNotPlaying };
-    
+
+#if ENABLE(VIDEO)
+    Timer m_playbackControlsManagerUpdateTimer;
+#endif
+
     bool m_allowsMediaDocumentInlinePlayback { false };
     bool m_allowsPlaybackControlsForAutoplayingAudio { false };
     bool m_showAllPlugins { false };
@@ -856,6 +891,7 @@ private:
     
     // For testing.
     std::optional<EventThrottlingBehavior> m_eventThrottlingBehaviorOverride;
+    std::optional<CompositingPolicy> m_compositingPolicyOverride;
 
     std::unique_ptr<PerformanceMonitor> m_performanceMonitor;
     std::unique_ptr<LowPowerModeNotifier> m_lowPowerModeNotifier;
@@ -878,11 +914,14 @@ private:
     std::unique_ptr<PaymentCoordinator> m_paymentCoordinator;
 #endif
 
+#if ENABLE(WEB_AUTHN)
+    UniqueRef<AuthenticatorCoordinator> m_authenticatorCoordinator;
+#endif
+
 #if ENABLE(APPLICATION_MANIFEST)
     std::optional<ApplicationManifest> m_applicationManifest;
 #endif
 
-    bool m_isRunningUserScripts { false };
     bool m_shouldEnableICECandidateFilteringByDefault { true };
 };
 

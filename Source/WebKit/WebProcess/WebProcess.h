@@ -52,10 +52,6 @@
 #include <wtf/MachSendRight.h>
 #endif
 
-#if PLATFORM(IOS)
-#include "WebSQLiteDatabaseTracker.h"
-#endif
-
 namespace API {
 class Object;
 }
@@ -73,6 +69,7 @@ class ResourceRequest;
 class UserGestureToken;
 struct MessagePortIdentifier;
 struct MessageWithMessagePorts;
+struct MockMediaDevice;
 struct PluginInfo;
 struct SecurityOriginData;
 struct SoupNetworkProxySettings;
@@ -112,6 +109,7 @@ struct WebsiteDataStoreParameters;
 class WebProcess : public ChildProcess {
 public:
     static WebProcess& singleton();
+    static constexpr ProcessType processType = ProcessType::WebContent;
 
     template <typename T>
     T* supplement()
@@ -197,7 +195,7 @@ public:
 #endif
 
     void updateActivePages();
-    void pageActivityStateDidChange(uint64_t pageID, WebCore::ActivityState::Flags changed);
+    void pageActivityStateDidChange(uint64_t pageID, OptionSet<WebCore::ActivityState::Flag> changed);
 
     void setHiddenPageDOMTimerThrottlingIncreaseLimit(int milliseconds);
 
@@ -251,11 +249,13 @@ private:
     void initializeWebProcess(WebProcessCreationParameters&&);
     void platformInitializeWebProcess(WebProcessCreationParameters&&);
 
+    void prewarm();
+
 #if USE(OS_STATE)
     void registerWithStateDumper();
 #endif
 
-    void markAllLayersVolatile(WTF::Function<void()>&& completionHandler);
+    void markAllLayersVolatile(WTF::Function<void(bool)>&& completionHandler);
     void cancelMarkAllLayersVolatile();
     void setAllLayerTreeStatesFrozen(bool);
     void processSuspensionCleanupTimerFired();
@@ -363,6 +363,13 @@ private:
     void stopRunLoop() override;
 #endif
 
+#if ENABLE(MEDIA_STREAM)
+    void addMockMediaDevice(const WebCore::MockMediaDevice&);
+    void clearMockMediaDevices();
+    void removeMockMediaDevice(const String& persistentId);
+    void resetMockMediaDevices();
+#endif
+
     void platformInitializeProcess(const ChildProcessInitializationParameters&);
 
     // IPC::Connection::Client
@@ -375,9 +382,10 @@ private:
     void didReceiveSyncWebProcessMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
 
 #if PLATFORM(MAC)
-    void setScreenProperties(uint32_t primaryScreenID, const HashMap<uint32_t, WebCore::ScreenProperties>&);
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+    void setScreenProperties(const WebCore::ScreenProperties&);
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
     void scrollerStylePreferenceChanged(bool useOverlayScrollbars);
+    void displayConfigurationChanged(CGDirectDisplayID, CGDisplayChangeSummaryFlags);
 #endif
 #endif
 
@@ -441,13 +449,10 @@ private:
 
     RefPtr<WebCore::ApplicationCacheStorage> m_applicationCacheStorage;
 
-#if PLATFORM(IOS)
-    WebSQLiteDatabaseTracker m_webSQLiteDatabaseTracker;
-#endif
-
     enum PageMarkingLayersAsVolatileCounterType { };
     using PageMarkingLayersAsVolatileCounter = RefCounter<PageMarkingLayersAsVolatileCounterType>;
     std::unique_ptr<PageMarkingLayersAsVolatileCounter> m_pageMarkingLayersAsVolatileCounter;
+    unsigned m_countOfPagesFailingToMarkVolatile { 0 };
 
     bool m_suppressMemoryPressureHandler { false };
 #if PLATFORM(MAC)

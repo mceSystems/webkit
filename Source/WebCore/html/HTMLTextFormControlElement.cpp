@@ -2,7 +2,7 @@
  * Copyright (C) 1999 Lars Knoll (knoll@kde.org)
  *           (C) 1999 Antti Koivisto (koivisto@kde.org)
  *           (C) 2001 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2004-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2018 Apple Inc. All rights reserved.
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  *
  * This library is free software; you can redistribute it and/or
@@ -490,7 +490,7 @@ void HTMLTextFormControlElement::selectionChanged(bool shouldFireSelectEvent)
     cacheSelection(computeSelectionStart(), computeSelectionEnd(), computeSelectionDirection());
     
     if (shouldFireSelectEvent && m_cachedSelectionStart != m_cachedSelectionEnd)
-        dispatchEvent(Event::create(eventNames().selectEvent, true, false));
+        dispatchEvent(Event::create(eventNames().selectEvent, Event::CanBubble::Yes, Event::IsCancelable::No));
 }
 
 void HTMLTextFormControlElement::parseAttribute(const QualifiedName& name, const AtomicString& value)
@@ -508,9 +508,9 @@ void HTMLTextFormControlElement::disabledStateChanged()
     updateInnerTextElementEditability();
 }
 
-void HTMLTextFormControlElement::readOnlyAttributeChanged()
+void HTMLTextFormControlElement::readOnlyStateChanged()
 {
-    HTMLFormControlElementWithState::disabledAttributeChanged();
+    HTMLFormControlElementWithState::readOnlyStateChanged();
     updateInnerTextElementEditability();
 }
 
@@ -775,7 +775,7 @@ String HTMLTextFormControlElement::directionForFormData() const
         if (equalLettersIgnoringASCIICase(dirAttributeValue, "auto")) {
             bool isAuto;
             TextDirection textDirection = static_cast<const HTMLElement*>(element)->directionalityIfhasDirAutoAttribute(isAuto);
-            return textDirection == RTL ? "rtl" : "ltr";
+            return textDirection == TextDirection::RTL ? "rtl" : "ltr";
         }
     }
 
@@ -837,7 +837,7 @@ void HTMLTextFormControlElement::adjustInnerTextStyle(const RenderStyle& parentS
             break;
         }
 
-        textBlockStyle.setDirection(LTR);
+        textBlockStyle.setDirection(TextDirection::LTR);
     }
 #endif
 }

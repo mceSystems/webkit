@@ -785,11 +785,12 @@ static void enableExperimentalFeatures(IWebPreferences* preferences)
     // FIXME: InputEvents
     // FIXME: SubtleCrypto
     prefsPrivate->setVisualViewportAPIEnabled(TRUE);
+    prefsPrivate->setCSSOMViewScrollingAPIEnabled(TRUE);
     prefsPrivate->setWebAnimationsEnabled(TRUE);
     prefsPrivate->setServerTimingEnabled(TRUE);
     // FIXME: WebGL2
     // FIXME: WebRTC
-    prefsPrivate->setCrossOriginOptionsSupportEnabled(TRUE);
+    prefsPrivate->setCrossOriginWindowPolicySupportEnabled(TRUE);
 }
 
 static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
@@ -1112,6 +1113,22 @@ static void removeFontFallbackIfPresent(const String& fontFallbackPath)
     ::setPersistentUserStyleSheetLocation(nullptr);
 }
 
+static bool handleControlCommand(const char* command)
+{
+    if (!strcmp("#CHECK FOR ABANDONED DOCUMENTS", command)) {
+        // DumpRenderTree does not support checking for abandonded documents.
+        String result("\n");
+        printf("Content-Type: text/plain\n");
+        printf("Content-Length: %u\n", result.length());
+        fwrite(result.utf8().data(), 1, result.length(), stdout);
+        printf("#EOF\n");
+        fprintf(stderr, "#EOF\n");
+        fflush(stdout);
+        fflush(stderr);
+        return true;
+    }
+    return false;
+}
 
 static void runTest(const string& inputLine)
 {
@@ -1154,12 +1171,6 @@ static void runTest(const string& inputLine)
 
     _bstr_t urlBStr(reinterpret_cast<wchar_t*>(buffer.data()));
     ASSERT(urlBStr.length() == length);
-
-    // Check that test has not already run
-    static HashSet<String> testUrls;
-    if (testUrls.contains(String(inputLine.c_str())))
-        fprintf(stderr, "Test has already run \"%s\"\n", inputLine.c_str());
-    testUrls.add(String(inputLine.c_str()));
 
     CFIndex maximumURLLengthAsUTF8 = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
     Vector<char> testURL(maximumURLLengthAsUTF8 + 1, 0);
@@ -1620,6 +1631,9 @@ int main(int argc, const char* argv[])
                 *newLineCharacter = '\0';
             
             if (strlen(filenameBuffer) == 0)
+                continue;
+
+            if (handleControlCommand(filenameBuffer))
                 continue;
 
             runTest(filenameBuffer);

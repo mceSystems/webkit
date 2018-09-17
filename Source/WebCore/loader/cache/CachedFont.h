@@ -45,7 +45,7 @@ typedef FontTaggedSettings<int> FontFeatureSettings;
 
 class CachedFont : public CachedResource {
 public:
-    CachedFont(CachedResourceRequest&&, PAL::SessionID, Type = FontResource);
+    CachedFont(CachedResourceRequest&&, PAL::SessionID, Type = Type::FontResource);
     virtual ~CachedFont();
 
     void beginLoadIfNeeded(CachedResourceLoader&);
@@ -76,13 +76,14 @@ private:
 
     void allClientsRemoved() override;
 
-    std::unique_ptr<FontCustomPlatformData> m_fontCustomPlatformData;
     bool m_loadInitiated;
     bool m_hasCreatedFontDataWrappingResource;
+
+    std::unique_ptr<FontCustomPlatformData> m_fontCustomPlatformData;
 
     friend class MemoryCache;
 };
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_CACHED_RESOURCE(CachedFont, CachedResource::FontResource)
+SPECIALIZE_TYPE_TRAITS_CACHED_RESOURCE(CachedFont, CachedResource::Type::FontResource)

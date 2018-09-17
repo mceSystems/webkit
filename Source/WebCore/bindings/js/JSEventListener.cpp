@@ -30,8 +30,8 @@
 #include "JSDocument.h"
 #include "JSEvent.h"
 #include "JSEventTarget.h"
-#include "JSMainThreadExecState.h"
-#include "JSMainThreadExecStateInstrumentation.h"
+#include "JSExecState.h"
+#include "JSExecStateInstrumentation.h"
 #include "JSWorkerGlobalScope.h"
 #include "ScriptController.h"
 #include "WorkerGlobalScope.h"
@@ -134,7 +134,7 @@ void JSEventListener::handleEvent(ScriptExecutionContext& scriptExecutionContext
     JSValue handleEventFunction = jsFunction;
 
     CallData callData;
-    CallType callType = getCallData(handleEventFunction, callData);
+    CallType callType = getCallData(vm, handleEventFunction, callData);
 
     // If jsFunction is not actually a function, see if it implements the EventListener interface and use that
     if (callType == CallType::None) {
@@ -146,7 +146,7 @@ void JSEventListener::handleEvent(ScriptExecutionContext& scriptExecutionContext
             reportException(exec, exception);
             return;
         }
-        callType = getCallData(handleEventFunction, callData);
+        callType = getCallData(vm, handleEventFunction, callData);
     }
 
     if (callType != CallType::None) {
@@ -157,17 +157,19 @@ void JSEventListener::handleEvent(ScriptExecutionContext& scriptExecutionContext
         ASSERT(!args.hasOverflowed());
 
         Event* savedEvent = globalObject->currentEvent();
-        globalObject->setCurrentEvent(&event);
+
+        // window.event should not be set when the target is inside a shadow tree, as per the DOM specification.
+        bool isTargetInsideShadowTree = is<Node>(event.currentTarget()) && downcast<Node>(*event.currentTarget()).isInShadowTree();
+        if (!isTargetInsideShadowTree)
+            globalObject->setCurrentEvent(&event);
 
         VMEntryScope entryScope(vm, vm.entryScope ? vm.entryScope->globalObject() : globalObject);
 
-        InspectorInstrumentationCookie cookie = JSMainThreadExecState::instrumentFunctionCall(&scriptExecutionContext, callType, callData);
+        InspectorInstrumentationCookie cookie = JSExecState::instrumentFunctionCall(&scriptExecutionContext, callType, callData);
 
         JSValue thisValue = handleEventFunction == jsFunction ? toJS(exec, globalObject, event.currentTarget()) : jsFunction;
         NakedPtr<JSC::Exception> exception;
-        JSValue retval = scriptExecutionContext.isDocument()
-            ? JSMainThreadExecState::profiledCall(exec, JSC::ProfilingReason::Other, handleEventFunction, callType, callData, thisValue, args, exception)
-            : JSC::profiledCall(exec, JSC::ProfilingReason::Other, handleEventFunction, callType, callData, thisValue, args, exception);
+        JSValue retval = JSExecState::profiledCall(exec, JSC::ProfilingReason::Other, handleEventFunction, callType, callData, thisValue, args, exception);
 
         InspectorInstrumentation::didCallFunction(cookie, &scriptExecutionContext);
 

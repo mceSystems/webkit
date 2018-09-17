@@ -34,7 +34,13 @@
 
 #include "LibWebRTCMacros.h"
 #include "RealtimeMediaSource.h"
+
+ALLOW_UNUSED_PARAMETERS_BEGIN
+
 #include <webrtc/api/mediastreaminterface.h>
+
+ALLOW_UNUSED_PARAMETERS_END
+
 #include <wtf/RetainPtr.h>
 
 namespace WebCore {
@@ -44,7 +50,10 @@ class CaptureDevice;
 class RealtimeIncomingVideoSource : public RealtimeMediaSource, private rtc::VideoSinkInterface<webrtc::VideoFrame> {
 public:
     static Ref<RealtimeIncomingVideoSource> create(rtc::scoped_refptr<webrtc::VideoTrackInterface>&&, String&&);
-    ~RealtimeIncomingVideoSource() { stopProducingData(); }
+    ~RealtimeIncomingVideoSource()
+    {
+        stop();
+    }
 
     void setSourceTrack(rtc::scoped_refptr<webrtc::VideoTrackInterface>&&);
 
@@ -58,10 +67,8 @@ private:
     void startProducingData() final;
     void stopProducingData()  final;
 
-    const RealtimeMediaSourceCapabilities& capabilities() const final;
-    const RealtimeMediaSourceSettings& settings() const final;
-
-    bool applySize(const IntSize&) final { return true; }
+    const RealtimeMediaSourceCapabilities& capabilities() final;
+    const RealtimeMediaSourceSettings& settings() final;
 
     rtc::scoped_refptr<webrtc::VideoTrackInterface> m_videoTrack;
 };

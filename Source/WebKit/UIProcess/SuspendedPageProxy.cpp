@@ -36,9 +36,8 @@
 #include <WebCore/URL.h>
 #include <wtf/DebugUtilities.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #if !LOG_DISABLED
 static const HashSet<IPC::StringReference>& messageNamesToIgnoreWhileSuspended()
@@ -77,22 +76,20 @@ static const HashSet<IPC::StringReference>& messageNamesToIgnoreWhileSuspended()
 SuspendedPageProxy::SuspendedPageProxy(WebPageProxy& page, WebProcessProxy& process, WebBackForwardListItem& item)
     : m_page(page)
     , m_process(&process)
-    , m_backForwardListItem(item)
     , m_origin(SecurityOriginData::fromURL({ ParsedURLString, item.url() }))
 {
-    m_backForwardListItem->setSuspendedPage(this);
+    item.setSuspendedPage(*this);
     m_process->processPool().registerSuspendedPageProxy(*this);
     m_process->send(Messages::WebPage::SetIsSuspended(true), m_page.pageID());
 }
 
 SuspendedPageProxy::~SuspendedPageProxy()
 {
-    if (m_process) {
-        m_process->suspendedPageWasDestroyed(*this);
-        m_process->processPool().unregisterSuspendedPageProxy(*this);
+    if (auto process = makeRefPtr(m_process)) {
+        process->send(Messages::WebPage::SetIsSuspended(false), m_page.pageID());
+        process->suspendedPageWasDestroyed(*this);
+        process->processPool().unregisterSuspendedPageProxy(*this);
     }
-
-    m_backForwardListItem->setSuspendedPage(nullptr);
 }
 
 void SuspendedPageProxy::webProcessDidClose(WebProcessProxy& process)
@@ -102,8 +99,8 @@ void SuspendedPageProxy::webProcessDidClose(WebProcessProxy& process)
     m_process->processPool().unregisterSuspendedPageProxy(*this);
     m_process = nullptr;
 
+    // This will destroy |this|.
     m_page.suspendedPageClosed(*this);
-    m_backForwardListItem->setSuspendedPage(nullptr);
 }
 
 void SuspendedPageProxy::destroyWebPageInWebProcess()
@@ -117,7 +114,9 @@ void SuspendedPageProxy::didFinishLoad()
     ASSERT(m_process);
     LOG(ProcessSwapping, "SuspendedPageProxy %s from process %i finished transition to suspended", loggingString(), m_process->processIdentifier());
 
+#if !LOG_DISABLED
     m_finishedSuspending = true;
+#endif
 
     m_process->send(Messages::WebProcess::UpdateActivePages(), 0);
 }

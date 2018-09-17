@@ -41,9 +41,8 @@
 #include <WebCore/Page.h>
 #include <WebCore/UserGestureIndicator.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 void WebContextMenuClient::contextMenuDestroyed()
 {
@@ -62,7 +61,7 @@ void WebContextMenuClient::searchWithGoogle(const Frame* frame)
     String searchString = frame->editor().selectedText();
     searchString.stripWhiteSpace();
     String encoded = encodeWithURLEscapeSequences(searchString);
-    encoded.replace(ASCIILiteral { "%20" }, ASCIILiteral { "+" });
+    encoded.replace("%20"_s, "+"_s);
 
     String url = "https://www.google.com/search?q=" + encoded + "&ie=UTF-8&oe=UTF-8";
 

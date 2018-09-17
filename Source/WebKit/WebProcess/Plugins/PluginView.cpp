@@ -75,10 +75,9 @@
 #include <WebCore/PlatformDisplay.h>
 #endif
 
+namespace WebKit {
 using namespace JSC;
 using namespace WebCore;
-
-namespace WebKit {
 
 // This simulated mouse click delay in HTMLPlugInImageElement.cpp should generally be the same or shorter than this delay.
 static const Seconds pluginSnapshotTimerDelay { 1100_ms };
@@ -515,7 +514,7 @@ void PluginView::webPageDestroyed()
     m_webPage = 0;
 }
 
-void PluginView::activityStateDidChange(ActivityState::Flags changed)
+void PluginView::activityStateDidChange(OptionSet<WebCore::ActivityState::Flag> changed)
 {
     if (!m_plugin || !m_isInitialized)
         return;
@@ -788,7 +787,7 @@ void PluginView::paint(GraphicsContext& context, const IntRect& /*dirtyRect*/, W
         return;
 
     if (context.paintingDisabled()) {
-        if (context.updatingControlTints())
+        if (context.invalidatingControlTints())
             m_plugin->updateControlTints(context);
         return;
     }
@@ -1847,7 +1846,7 @@ bool PluginView::shouldCreateTransientPaintingSnapshot() const
         return false;
 
     if (FrameView* frameView = frame()->view()) {
-        if (frameView->paintBehavior() & (PaintBehaviorSelectionOnly | PaintBehaviorSelectionAndBackgroundsOnly | PaintBehaviorForceBlackText)) {
+        if (frameView->paintBehavior().containsAny({ PaintBehavior::SelectionOnly, PaintBehavior::SelectionAndBackgroundsOnly, PaintBehavior::ForceBlackText})) {
             // This paint behavior is used when drawing the find indicator and there's no need to
             // snapshot plug-ins, because they can never be painted as part of the find indicator.
             return false;

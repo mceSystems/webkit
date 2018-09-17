@@ -40,9 +40,8 @@
 #include <WebCore/ScrollingStateTree.h>
 #include <WebCore/ScrollingTreeScrollingNode.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 RemoteScrollingCoordinatorProxy::RemoteScrollingCoordinatorProxy(WebPageProxy& webPageProxy)
     : m_webPageProxy(webPageProxy)
@@ -172,7 +171,7 @@ void RemoteScrollingCoordinatorProxy::scrollingTreeNodeDidScroll(ScrollingNodeID
         return;
 
 #if PLATFORM(IOS)
-    m_webPageProxy.overflowScrollViewDidScroll();
+    m_webPageProxy.scrollingNodeScrollViewDidScroll();
 #endif
     m_webPageProxy.send(Messages::RemoteScrollingCoordinator::ScrollPositionChangedForNode(scrolledNodeID, newScrollPosition, scrollingLayerPositionAction == ScrollingLayerPositionAction::Sync));
 }

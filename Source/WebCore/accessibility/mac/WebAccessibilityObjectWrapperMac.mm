@@ -408,6 +408,10 @@ using namespace HTMLNames;
 #define NSAccessibilityHighestEditableAncestorAttribute @"AXHighestEditableAncestor"
 #endif
 
+#ifndef NSAccessibilityLinkRelationshipTypeAttribute
+#define NSAccessibilityLinkRelationshipTypeAttribute @"AXLinkRelationshipType"
+#endif
+
 extern "C" AXUIElementRef NSAccessibilityCreateAXUIElementRef(id element);
 
 @implementation WebAccessibilityObjectWrapper
@@ -438,36 +442,36 @@ extern "C" AXUIElementRef NSAccessibilityCreateAXUIElementRef(id element);
 
 #pragma mark SystemInterface wrappers
 
-static inline BOOL AXObjectIsTextMarker(id obj)
+static inline BOOL AXObjectIsTextMarker(id object)
 {
-    return obj != nil && CFGetTypeID(obj) == AXTextMarkerGetTypeID();
+    return object && CFGetTypeID((__bridge CFTypeRef)object) == AXTextMarkerGetTypeID();
 }
 
-static inline BOOL AXObjectIsTextMarkerRange(id obj)
+static inline BOOL AXObjectIsTextMarkerRange(id object)
 {
-    return obj != nil && CFGetTypeID(obj) == AXTextMarkerRangeGetTypeID();
+    return object && CFGetTypeID((__bridge CFTypeRef)object) == AXTextMarkerRangeGetTypeID();
 }
 
 static id AXTextMarkerRange(id startMarker, id endMarker)
 {
     ASSERT(startMarker != nil);
     ASSERT(endMarker != nil);
-    ASSERT(CFGetTypeID(startMarker) == AXTextMarkerGetTypeID());
-    ASSERT(CFGetTypeID(endMarker) == AXTextMarkerGetTypeID());
+    ASSERT(CFGetTypeID((__bridge CFTypeRef)startMarker) == AXTextMarkerGetTypeID());
+    ASSERT(CFGetTypeID((__bridge CFTypeRef)endMarker) == AXTextMarkerGetTypeID());
     return CFBridgingRelease(AXTextMarkerRangeCreate(kCFAllocatorDefault, (AXTextMarkerRef)startMarker, (AXTextMarkerRef)endMarker));
 }
 
 static id AXTextMarkerRangeStart(id range)
 {
     ASSERT(range != nil);
-    ASSERT(CFGetTypeID(range) == AXTextMarkerRangeGetTypeID());
+    ASSERT(CFGetTypeID((__bridge CFTypeRef)range) == AXTextMarkerRangeGetTypeID());
     return CFBridgingRelease(AXTextMarkerRangeCopyStartMarker((AXTextMarkerRangeRef)range));
 }
 
 static id AXTextMarkerRangeEnd(id range)
 {
     ASSERT(range != nil);
-    ASSERT(CFGetTypeID(range) == AXTextMarkerRangeGetTypeID());
+    ASSERT(CFGetTypeID((__bridge CFTypeRef)range) == AXTextMarkerRangeGetTypeID());
     return CFBridgingRelease(AXTextMarkerRangeCopyEndMarker((AXTextMarkerRangeRef)range));
 }
 
@@ -561,7 +565,7 @@ static bool isTextMarkerIgnored(id textMarker)
         return false;
     
     TextMarkerData textMarkerData;
-    if (!getBytesFromAXTextMarker(textMarker, &textMarkerData, sizeof(textMarkerData)))
+    if (!getBytesFromAXTextMarker((__bridge CFTypeRef)textMarker, &textMarkerData, sizeof(textMarkerData)))
         return false;
     
     return textMarkerData.ignored;
@@ -578,7 +582,7 @@ static AccessibilityObject* accessibilityObjectForTextMarker(AXObjectCache* cach
         return nullptr;
     
     TextMarkerData textMarkerData;
-    if (!getBytesFromAXTextMarker(textMarker, &textMarkerData, sizeof(textMarkerData)))
+    if (!getBytesFromAXTextMarker((__bridge CFTypeRef)textMarker, &textMarkerData, sizeof(textMarkerData)))
         return nullptr;
     return cache->accessibilityObjectForTextMarkerData(textMarkerData);
 }
@@ -699,7 +703,7 @@ static CharacterOffset characterOffsetForTextMarker(AXObjectCache* cache, CFType
 
 - (CharacterOffset)characterOffsetForTextMarker:(id)textMarker
 {
-    return characterOffsetForTextMarker(m_object->axObjectCache(), textMarker);
+    return characterOffsetForTextMarker(m_object->axObjectCache(), (__bridge CFTypeRef)textMarker);
 }
 
 static id textMarkerForVisiblePosition(AXObjectCache* cache, const VisiblePosition& visiblePos)
@@ -746,17 +750,17 @@ static VisiblePosition visiblePositionForTextMarker(AXObjectCache* cache, CFType
 
 - (VisiblePosition)visiblePositionForTextMarker:(id)textMarker
 {
-    return visiblePositionForTextMarker(m_object->axObjectCache(), textMarker);
+    return visiblePositionForTextMarker(m_object->axObjectCache(), (__bridge CFTypeRef)textMarker);
 }
 
 static VisiblePosition visiblePositionForStartOfTextMarkerRange(AXObjectCache* cache, id textMarkerRange)
 {
-    return visiblePositionForTextMarker(cache, AXTextMarkerRangeStart(textMarkerRange));
+    return visiblePositionForTextMarker(cache, (__bridge CFTypeRef)AXTextMarkerRangeStart(textMarkerRange));
 }
 
 static VisiblePosition visiblePositionForEndOfTextMarkerRange(AXObjectCache* cache, id textMarkerRange)
 {
-    return visiblePositionForTextMarker(cache, AXTextMarkerRangeEnd(textMarkerRange));
+    return visiblePositionForTextMarker(cache, (__bridge CFTypeRef)AXTextMarkerRangeEnd(textMarkerRange));
 }
 
 static id textMarkerRangeFromMarkers(id textMarker1, id textMarker2)
@@ -780,14 +784,13 @@ static void AXAttributeStringSetFont(NSMutableAttributedString *attrString, NSSt
         return;
 
     if (font) {
-        NSDictionary *dict = [NSDictionary dictionaryWithObjectsAndKeys:
-            static_cast<NSString *>(adoptCF(CTFontCopyPostScriptName(font)).get()), NSAccessibilityFontNameKey,
-            static_cast<NSString *>(adoptCF(CTFontCopyFamilyName(font)).get()), NSAccessibilityFontFamilyKey,
-            static_cast<NSString *>(adoptCF(CTFontCopyDisplayName(font)).get()), NSAccessibilityVisibleNameKey,
-            [NSNumber numberWithFloat:CTFontGetSize(font)], NSAccessibilityFontSizeKey,
-            nil];
-        
-        [attrString addAttribute:attribute value:dict range:range];
+        NSDictionary *dictionary = @{
+            NSAccessibilityFontNameKey: (__bridge NSString *)adoptCF(CTFontCopyPostScriptName(font)).get(),
+            NSAccessibilityFontFamilyKey: (__bridge NSString *)adoptCF(CTFontCopyFamilyName(font)).get(),
+            NSAccessibilityVisibleNameKey: (__bridge NSString *)adoptCF(CTFontCopyDisplayName(font)).get(),
+            NSAccessibilityFontSizeKey: @(CTFontGetSize(font)),
+        };
+        [attrString addAttribute:attribute value:dictionary range:range];
     } else
         [attrString removeAttribute:attribute range:range];
     
@@ -800,9 +803,9 @@ static void AXAttributeStringSetColor(NSMutableAttributedString* attrString, NSS
 
     if (color) {
         CGColorRef cgColor = color.CGColor;
-        CGColorRef existingColor = (CGColorRef)[attrString attribute:attribute atIndex:range.location effectiveRange:nil];
-        if (!existingColor || !CGColorEqualToColor(existingColor, cgColor))
-            [attrString addAttribute:attribute value:(id)cgColor range:range];
+        id existingColor = [attrString attribute:attribute atIndex:range.location effectiveRange:nil];
+        if (!existingColor || !CGColorEqualToColor((__bridge CGColorRef)existingColor, cgColor))
+            [attrString addAttribute:attribute value:(__bridge id)cgColor range:range];
     } else
         [attrString removeAttribute:attribute range:range];
 }
@@ -906,7 +909,7 @@ static void AXAttributeStringSetSpelling(NSMutableAttributedString* attrString, 
         
         // checkTextOfParagraph is the only spelling/grammar checker implemented in WK1 and WK2
         Vector<TextCheckingResult> results;
-        checkTextOfParagraph(*checker, text, TextCheckingTypeSpelling, results, node->document().frame()->selection().selection());
+        checkTextOfParagraph(*checker, text, TextCheckingType::Spelling, results, node->document().frame()->selection().selection());
         
         size_t size = results.size();
         for (unsigned i = 0; i < size; i++) {
@@ -993,7 +996,7 @@ static void AXAttributeStringSetElement(NSMutableAttributedString* attrString, N
         
         AXUIElementRef axElement = NSAccessibilityCreateAXUIElementRef(objectWrapper);
         if (axElement) {
-            [attrString addAttribute:attribute value:(id)axElement range:range];
+            [attrString addAttribute:attribute value:(__bridge id)axElement range:range];
             CFRelease(axElement);
         }
     } else
@@ -1329,6 +1332,7 @@ static id textMarkerRangeFromVisiblePositions(AXObjectCache* cache, const Visibl
         tempArray = [[NSMutableArray alloc] initWithArray:attributes];
         [tempArray addObject:NSAccessibilityURLAttribute];
         [tempArray addObject:NSAccessibilityAccessKeyAttribute];
+        [tempArray addObject:NSAccessibilityLinkRelationshipTypeAttribute];
         anchorAttrs = [[NSArray alloc] initWithArray:tempArray];
         [tempArray release];
     }
@@ -1675,10 +1679,9 @@ static id textMarkerRangeFromVisiblePositions(AXObjectCache* cache, const Visibl
     Widget* widget = m_object->widget();
     if (!widget)
         return nil;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return [(widget->platformWidget()) accessibilityAttributeValue: NSAccessibilityChildrenAttribute];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 - (id)remoteAccessibilityParentObject
@@ -1747,10 +1750,9 @@ static NSMutableArray *convertStringsToNSArray(const Vector<String>& vector)
     if (frameView && frameView->platformWidget()) {
         NSPoint nsPoint = (NSPoint)point;
         NSView* view = frameView->documentView();
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         nsPoint = [[view window] convertBaseToScreen:[view convertPoint:nsPoint toView:nil]];
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
         return CGPointMake(nsPoint.x, nsPoint.y);
     } else {
         
@@ -1784,9 +1786,9 @@ static NSMutableArray *convertStringsToNSArray(const Vector<String>& vector)
     }
 }
 
-static void WebTransformCGPathToNSBezierPath(void *info, const CGPathElement *element)
+static void WebTransformCGPathToNSBezierPath(void* info, const CGPathElement *element)
 {
-    NSBezierPath *bezierPath = (NSBezierPath *)info;
+    NSBezierPath *bezierPath = (__bridge NSBezierPath *)info;
     switch (element->type) {
     case kCGPathElementMoveToPoint:
         [bezierPath moveToPoint:NSPointFromCGPoint(element->points[0])];
@@ -1808,7 +1810,7 @@ static void WebTransformCGPathToNSBezierPath(void *info, const CGPathElement *el
 - (NSBezierPath *)bezierPathFromPath:(CGPathRef)path
 {
     NSBezierPath *bezierPath = [NSBezierPath bezierPath];
-    CGPathApply(path, bezierPath, WebTransformCGPathToNSBezierPath);
+    CGPathApply(path, (__bridge void*)bezierPath, WebTransformCGPathToNSBezierPath);
     return bezierPath;
 }
 
@@ -1840,15 +1842,14 @@ static void WebTransformCGPathToNSBezierPath(void *info, const CGPathElement *el
     return [NSValue valueWithPoint:NSMakePoint(cgPoint.x, cgPoint.y)];
 }
 
-typedef HashMap<int, NSString*> AccessibilityRoleMap;
+using AccessibilityRoleMap = HashMap<int, CFStringRef>;
 
-static const AccessibilityRoleMap& createAccessibilityRoleMap()
+static AccessibilityRoleMap createAccessibilityRoleMap()
 {
     struct RoleEntry {
         AccessibilityRole value;
-        NSString* string;
+        __unsafe_unretained NSString *string;
     };
-    
     static const RoleEntry roles[] = {
         { AccessibilityRole::Unknown, NSAccessibilityUnknownRole },
         { AccessibilityRole::Button, NSAccessibilityButtonRole },
@@ -1987,29 +1988,26 @@ static const AccessibilityRoleMap& createAccessibilityRoleMap()
         { AccessibilityRole::GraphicsDocument, NSAccessibilityGroupRole },
         { AccessibilityRole::GraphicsObject, NSAccessibilityGroupRole },
         { AccessibilityRole::GraphicsSymbol, NSAccessibilityImageRole },
+        { AccessibilityRole::Caption, NSAccessibilityGroupRole },
     };
-    AccessibilityRoleMap& roleMap = *new AccessibilityRoleMap;
-    
-    const unsigned numRoles = sizeof(roles) / sizeof(roles[0]);
-    for (unsigned i = 0; i < numRoles; ++i)
-        roleMap.set(static_cast<int>(roles[i].value), roles[i].string);
+    AccessibilityRoleMap roleMap;
+    for (auto& role : roles)
+        roleMap.add(static_cast<int>(role.value), (__bridge CFStringRef)role.string);
     return roleMap;
 }
 
-static NSString* roleValueToNSString(AccessibilityRole value)
+static NSString *roleValueToNSString(AccessibilityRole value)
 {
-    ASSERT(static_cast<int>(value));
-    static const AccessibilityRoleMap& roleMap = createAccessibilityRoleMap();
-    return roleMap.get(static_cast<int>(value));
+    static NeverDestroyed<AccessibilityRoleMap> roleMap = createAccessibilityRoleMap();
+    return (__bridge NSString *)roleMap.get().get(static_cast<int>(value));
 }
 
 - (NSString*)role
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (m_object->isAttachment())
         return [[self attachmentView] accessibilityAttributeValue:NSAccessibilityRoleAttribute];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     AccessibilityRole role = m_object->roleValue();
 
     if (role == AccessibilityRole::Label && is<AccessibilityLabel>(*m_object) && downcast<AccessibilityLabel>(*m_object).containsOnlyStaticText())
@@ -2029,8 +2027,7 @@ static NSString* roleValueToNSString(AccessibilityRole value)
     return NSAccessibilityUnknownRole;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 - (NSString*)subrole
 {
     if (m_object->isPasswordField())
@@ -2043,6 +2040,9 @@ static NSString* roleValueToNSString(AccessibilityRole value)
         if ([[attachView accessibilityAttributeNames] containsObject:NSAccessibilitySubroleAttribute])
             return [attachView accessibilityAttributeValue:NSAccessibilitySubroleAttribute];
     }
+    
+    if (m_object->isMeter())
+        return @"AXMeter";
     
     AccessibilityRole role = m_object->roleValue();
     if (role == AccessibilityRole::HorizontalRule)
@@ -2237,19 +2237,18 @@ static NSString* roleValueToNSString(AccessibilityRole value)
     
     return nil;
 }
-#pragma clang diagnostic pop
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (NSString*)roleDescription
 {
     if (!m_object)
         return nil;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     // attachments have the AXImage role, but a different subrole
     if (m_object->isAttachment())
         return [[self attachmentView] accessibilityAttributeValue:NSAccessibilityRoleDescriptionAttribute];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     const AtomicString& overrideRoleDescription = m_object->roleDescription();
     if (!overrideRoleDescription.isNull() && !overrideRoleDescription.isEmpty())
@@ -2736,6 +2735,9 @@ static NSString* roleValueToNSString(AccessibilityRole value)
         return accessKey;
     }
     
+    if ([attributeName isEqualToString:NSAccessibilityLinkRelationshipTypeAttribute])
+        return m_object->linkRelValue();
+    
     if ([attributeName isEqualToString:NSAccessibilityTabsAttribute]) {
         if (m_object->isTabList()) {
             AccessibilityObject::AccessibilityChildrenVector tabsChildren;
@@ -3082,8 +3084,7 @@ static NSString* roleValueToNSString(AccessibilityRole value)
         return [NSNumber numberWithBool:m_object->isARIAGrabbed()];
     
     if ([attributeName isEqualToString:NSAccessibilityDropEffectsAttribute]) {
-        Vector<String> dropEffects;
-        m_object->determineARIADropEffects(dropEffects);
+        Vector<String> dropEffects = m_object->determineARIADropEffects();
         return convertStringsToNSArray(dropEffects);
     }
     
@@ -3101,8 +3102,6 @@ static NSString* roleValueToNSString(AccessibilityRole value)
             return @"credentials";
         case AutoFillButtonType::Contacts:
             return @"contacts";
-        case AutoFillButtonType::StrongConfirmationPassword:
-            return @"strong confirmation password";
         case AutoFillButtonType::StrongPassword:
             return @"strong password";
         }
@@ -3468,8 +3467,7 @@ static NSString* roleValueToNSString(AccessibilityRole value)
     return paramAttrs;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 
 - (void)accessibilityPerformPressAction
 {
@@ -3527,7 +3525,7 @@ static NSString* roleValueToNSString(AccessibilityRole value)
         m_object->decrement();
 }
 
-#pragma clang diagnostic pop
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (void)accessibilityPerformShowMenuAction
 {
@@ -4339,8 +4337,7 @@ static void formatForDebugger(const VisiblePositionRange& range, char* buffer, u
     return NSNotFound;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 - (NSUInteger)accessibilityArrayAttributeCount:(NSString *)attribute
 {
     if (![self updateObjectBackingStore])
@@ -4361,7 +4358,7 @@ static void formatForDebugger(const VisiblePositionRange& range, char* buffer, u
     
     return [super accessibilityArrayAttributeCount:attribute];
 }
-#pragma clang diagnostic pop
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (NSArray *)accessibilityArrayAttributeValues:(NSString *)attribute index:(NSUInteger)index maxCount:(NSUInteger)maxCount
 {

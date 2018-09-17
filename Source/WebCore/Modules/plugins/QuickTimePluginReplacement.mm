@@ -250,7 +250,7 @@ unsigned long long QuickTimePluginReplacement::movieSize() const
 void QuickTimePluginReplacement::postEvent(const String& eventName)
 {
     Ref<HTMLPlugInElement> protect(*m_parentElement);
-    Ref<Event> event = Event::create(eventName, false, true);
+    Ref<Event> event = Event::create(eventName, Event::CanBubble::No, Event::IsCancelable::Yes);
     m_parentElement->dispatchEvent(event);
 }
 
@@ -308,8 +308,9 @@ static JSValue *jsValueWithDictionaryInContext(NSDictionary *dictionary, JSConte
         if (!value)
             continue;
 
-        JSStringRef name = JSStringCreateWithCFString((CFStringRef)key);
+        JSStringRef name = JSStringCreateWithCFString((__bridge CFStringRef)key);
         JSObjectSetProperty([context JSGlobalContextRef], resultObject, name, [value JSValueRef], 0, &exception);
+        JSStringRelease(name);
         if (exception)
             continue;
     }

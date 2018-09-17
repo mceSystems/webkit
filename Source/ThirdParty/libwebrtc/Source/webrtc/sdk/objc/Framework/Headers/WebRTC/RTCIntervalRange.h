@@ -12,17 +12,15 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+__attribute__((objc_runtime_name("WK_RTCIntervalRange")))
 @interface RTCIntervalRange : NSObject
 
 @property(nonatomic, readonly) NSInteger min;
 @property(nonatomic, readonly) NSInteger max;
 
 - (instancetype)init;
-- (instancetype)initWithMin:(NSInteger)min
-                        max:(NSInteger)max
-    NS_DESIGNATED_INITIALIZER;
+- (instancetype)initWithMin:(NSInteger)min max:(NSInteger)max NS_DESIGNATED_INITIALIZER;
 
 @end
 
 NS_ASSUME_NONNULL_END
-

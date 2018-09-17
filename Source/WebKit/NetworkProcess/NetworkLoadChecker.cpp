@@ -40,6 +40,7 @@
 #include <WebCore/CrossOriginPreflightResultCache.h>
 #include <WebCore/HTTPParsers.h>
 #include <WebCore/SchemeRegistry.h>
+#include <wtf/Scope.h>
 
 #define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(m_sessionID.isAlwaysOnLoggingAllowed(), Network, "%p - NetworkLoadChecker::" fmt, this, ##__VA_ARGS__)
 
@@ -52,18 +53,17 @@ static inline bool isSameOrigin(const URL& url, const SecurityOrigin* origin)
     return url.protocolIsData() || url.protocolIsBlob() || !origin || origin->canRequest(url);
 }
 
-NetworkLoadChecker::NetworkLoadChecker(NetworkConnectionToWebProcess& connection, uint64_t webPageID, uint64_t webFrameID, ResourceLoadIdentifier loadIdentifier, FetchOptions&& options, PAL::SessionID sessionID, HTTPHeaderMap&& originalRequestHeaders, URL&& url, RefPtr<SecurityOrigin>&& sourceOrigin, PreflightPolicy preflightPolicy, String&& referrer)
-    : m_connection(connection)
-    , m_webPageID(webPageID)
-    , m_webFrameID(webFrameID)
-    , m_loadIdentifier(loadIdentifier)
-    , m_options(WTFMove(options))
+NetworkLoadChecker::NetworkLoadChecker(FetchOptions&& options, PAL::SessionID sessionID, uint64_t pageID, uint64_t frameID, HTTPHeaderMap&& originalRequestHeaders, URL&& url, RefPtr<SecurityOrigin>&& sourceOrigin, PreflightPolicy preflightPolicy, String&& referrer, bool shouldCaptureExtraNetworkLoadMetrics)
+    : m_options(WTFMove(options))
     , m_sessionID(sessionID)
+    , m_pageID(pageID)
+    , m_frameID(frameID)
     , m_originalRequestHeaders(WTFMove(originalRequestHeaders))
     , m_url(WTFMove(url))
     , m_origin(WTFMove(sourceOrigin))
     , m_preflightPolicy(preflightPolicy)
     , m_referrer(WTFMove(referrer))
+    , m_shouldCaptureExtraNetworkLoadMetrics(shouldCaptureExtraNetworkLoadMetrics)
 {
     m_isSameOriginRequest = isSameOrigin(m_url, m_origin.get());
     switch (options.credentials) {
@@ -81,9 +81,12 @@ NetworkLoadChecker::NetworkLoadChecker(NetworkConnectionToWebProcess& connection
 
 NetworkLoadChecker::~NetworkLoadChecker() = default;
 
-void NetworkLoadChecker::check(ResourceRequest&& request, ValidationHandler&& handler)
+void NetworkLoadChecker::check(ResourceRequest&& request, ContentSecurityPolicyClient* client, ValidationHandler&& handler)
 {
     ASSERT(!isChecking());
+
+    if (m_shouldCaptureExtraNetworkLoadMetrics)
+        m_loadInformation.request = request;
 
     m_firstRequestHeaders = request.httpHeaderFields();
     // FIXME: We should not get this information from the request but directly from some NetworkProcess setting.
@@ -92,7 +95,7 @@ void NetworkLoadChecker::check(ResourceRequest&& request, ValidationHandler&& ha
         m_dntHeaderValue = "1";
         request.setHTTPHeaderField(HTTPHeaderName::DNT, m_dntHeaderValue);
     }
-    checkRequest(WTFMove(request), WTFMove(handler));
+    checkRequest(WTFMove(request), client, WTFMove(handler));
 }
 
 void NetworkLoadChecker::prepareRedirectedRequest(ResourceRequest& request)
@@ -101,19 +104,27 @@ void NetworkLoadChecker::prepareRedirectedRequest(ResourceRequest& request)
         request.setHTTPHeaderField(HTTPHeaderName::DNT, m_dntHeaderValue);
 }
 
-void NetworkLoadChecker::checkRedirection(ResourceResponse& redirectResponse, ResourceRequest&& request, ValidationHandler&& handler)
+static inline NetworkLoadChecker::RedirectionRequestOrError redirectionError(const ResourceResponse& redirectResponse, String&& errorMessage)
+{
+    return makeUnexpected(ResourceError { String { }, 0, redirectResponse.url(), WTFMove(errorMessage), ResourceError::Type::AccessControl });
+}
+
+void NetworkLoadChecker::checkRedirection(ResourceRequest&& request, ResourceRequest&& redirectRequest, ResourceResponse&& redirectResponse, ContentSecurityPolicyClient* client, RedirectionValidationHandler&& handler)
 {
     ASSERT(!isChecking());
 
     auto error = validateResponse(redirectResponse);
     if (!error.isNull()) {
-        auto errorMessage = makeString("Cross-origin redirection to ", request.url().string(), " denied by Cross-Origin Resource Sharing policy: ", error.localizedDescription());
-        handler(makeUnexpected(ResourceError { String { }, 0, redirectResponse.url(), WTFMove(errorMessage), ResourceError::Type::AccessControl }));
+        handler(redirectionError(redirectResponse, makeString("Cross-origin redirection to ", redirectRequest.url().string(), " denied by Cross-Origin Resource Sharing policy: ", error.localizedDescription())));
         return;
     }
 
-    if (m_options.redirect != FetchOptions::Redirect::Follow) {
-        handler(accessControlErrorForValidationHandler(makeString("Not allowed to follow a redirection while loading ", redirectResponse.url().string())));
+    if (m_options.redirect == FetchOptions::Redirect::Error) {
+        handler(redirectionError(redirectResponse, makeString("Not allowed to follow a redirection while loading ", redirectResponse.url().string())));
+        return;
+    }
+    if (m_options.redirect == FetchOptions::Redirect::Manual) {
+        handler(RedirectionTriplet { WTFMove(request), WTFMove(redirectRequest), WTFMove(redirectResponse) });
         return;
     }
 
@@ -121,37 +132,20 @@ void NetworkLoadChecker::checkRedirection(ResourceResponse& redirectResponse, Re
     // See https://github.com/whatwg/fetch/issues/393
 
     if (++m_redirectCount > 20) {
-        handler(accessControlErrorForValidationHandler(ASCIILiteral("Load cannot follow more than 20 redirections")));
+        handler(redirectionError(redirectResponse, "Load cannot follow more than 20 redirections"_s));
         return;
     }
 
     m_previousURL = WTFMove(m_url);
-    m_url = request.url();
+    m_url = redirectRequest.url();
 
-    checkRequest(WTFMove(request), WTFMove(handler));
-}
-
-bool NetworkLoadChecker::shouldCrossOriginResourcePolicyPolicyCancelLoad(const ResourceResponse& response)
-{
-    if (m_origin->canRequest(response.url()))
-        return false;
-
-    auto policy = parseCrossOriginResourcePolicyHeader(response.httpHeaderField(HTTPHeaderName::CrossOriginResourcePolicy));
-    switch (policy) {
-    case CrossOriginResourcePolicy::None:
-    case CrossOriginResourcePolicy::Invalid:
-        return false;
-    case CrossOriginResourcePolicy::Same:
-        return true;
-    case CrossOriginResourcePolicy::SameSite: {
-#if ENABLE(PUBLIC_SUFFIX_LIST)
-        return m_origin->isUnique() || !registrableDomainsAreEqual(response.url(), ResourceRequest::partitionName(m_origin->host()));
-#else
-        return true;
-#endif
-    }}
-
-    RELEASE_ASSERT_NOT_REACHED();
+    checkRequest(WTFMove(redirectRequest), client, [handler = WTFMove(handler), request = WTFMove(request), redirectResponse = WTFMove(redirectResponse)](auto&& result) mutable {
+        if (!result.has_value()) {
+            handler(makeUnexpected(WTFMove(result.error())));
+            return;
+        }
+        handler(RedirectionTriplet { WTFMove(request), WTFMove(result.value()), WTFMove(redirectResponse) });
+    });
 }
 
 ResourceError NetworkLoadChecker::validateResponse(ResourceResponse& response)
@@ -170,13 +164,18 @@ ResourceError NetworkLoadChecker::validateResponse(ResourceResponse& response)
     }
 
     if (m_options.mode == FetchOptions::Mode::NoCors) {
-        if (shouldCrossOriginResourcePolicyPolicyCancelLoad(response))
-            return ResourceError { errorDomainWebKitInternal, 0, m_url, makeString("Cancelled load to ", response.url().stringCenterEllipsizedToLength(), " because it violates the resource's Cross-Origin-Resource-Policy response header."), ResourceError::Type::AccessControl };
+        if (auto error = validateCrossOriginResourcePolicy(*m_origin, m_url, response))
+            return WTFMove(*error);
+
         response.setTainting(ResourceResponse::Tainting::Opaque);
         return { };
     }
 
     ASSERT(m_options.mode == FetchOptions::Mode::Cors);
+
+    // If we have a 304, the cached response is in WebProcess so we let WebProcess do the CORS check on the cached response.
+    if (response.httpStatusCode() == 304)
+        return { };
 
     String errorMessage;
     if (!passesAccessControlCheck(response, m_storedCredentialsPolicy, *m_origin, errorMessage))
@@ -191,8 +190,19 @@ auto NetworkLoadChecker::accessControlErrorForValidationHandler(String&& message
     return makeUnexpected(ResourceError { String { }, 0, m_url, WTFMove(message), ResourceError::Type::AccessControl });
 }
 
-void NetworkLoadChecker::checkRequest(ResourceRequest&& request, ValidationHandler&& handler)
+void NetworkLoadChecker::checkRequest(ResourceRequest&& request, ContentSecurityPolicyClient* client, ValidationHandler&& handler)
 {
+    if (auto* contentSecurityPolicy = this->contentSecurityPolicy()) {
+        if (isRedirected()) {
+            auto type = m_options.mode == FetchOptions::Mode::Navigate ? ContentSecurityPolicy::InsecureRequestType::Navigation : ContentSecurityPolicy::InsecureRequestType::Load;
+            contentSecurityPolicy->upgradeInsecureRequestIfNeeded(request, type);
+        }
+        if (!isAllowedByContentSecurityPolicy(request, client)) {
+            handler(accessControlErrorForValidationHandler("Blocked by Content Security Policy."_s));
+            return;
+        }
+    }
+
 #if ENABLE(CONTENT_EXTENSIONS)
     processContentExtensionRulesForLoad(WTFMove(request), [this, handler = WTFMove(handler)](auto result) mutable {
         if (!result.has_value()) {
@@ -201,7 +211,7 @@ void NetworkLoadChecker::checkRequest(ResourceRequest&& request, ValidationHandl
             return;
         }
         if (result.value().status.blockedLoad) {
-            handler(this->accessControlErrorForValidationHandler(ASCIILiteral("Blocked by content extension")));
+            handler(this->accessControlErrorForValidationHandler("Blocked by content extension"_s));
             return;
         }
         this->continueCheckingRequest(WTFMove(result.value().request), WTFMove(handler));
@@ -211,22 +221,27 @@ void NetworkLoadChecker::checkRequest(ResourceRequest&& request, ValidationHandl
 #endif
 }
 
-bool NetworkLoadChecker::isAllowedByContentSecurityPolicy(const ResourceRequest& request)
+bool NetworkLoadChecker::isAllowedByContentSecurityPolicy(const ResourceRequest& request, WebCore::ContentSecurityPolicyClient* client)
 {
-    ASSERT(contentSecurityPolicy());
+    auto* contentSecurityPolicy = this->contentSecurityPolicy();
+    contentSecurityPolicy->setClient(client);
+    auto clearContentSecurityPolicyClient = makeScopeExit([&] {
+        contentSecurityPolicy->setClient(nullptr);
+    });
+
     auto redirectResponseReceived = isRedirected() ? ContentSecurityPolicy::RedirectResponseReceived::Yes : ContentSecurityPolicy::RedirectResponseReceived::No;
     switch (m_options.destination) {
     case FetchOptions::Destination::Worker:
     case FetchOptions::Destination::Serviceworker:
     case FetchOptions::Destination::Sharedworker:
-        return contentSecurityPolicy()->allowChildContextFromSource(request.url(), redirectResponseReceived);
+        return contentSecurityPolicy->allowChildContextFromSource(request.url(), redirectResponseReceived);
     case FetchOptions::Destination::Script:
-        if (request.requester() == ResourceRequest::Requester::ImportScripts && !contentSecurityPolicy()->allowScriptFromSource(request.url(), redirectResponseReceived))
+        if (request.requester() == ResourceRequest::Requester::ImportScripts && !contentSecurityPolicy->allowScriptFromSource(request.url(), redirectResponseReceived))
             return false;
         // FIXME: Check CSP for non-importScripts() initiated loads.
         return true;
     case FetchOptions::Destination::EmptyString:
-        return contentSecurityPolicy()->allowConnectToSource(request.url(), redirectResponseReceived);
+        return contentSecurityPolicy->allowConnectToSource(request.url(), redirectResponseReceived);
     case FetchOptions::Destination::Audio:
     case FetchOptions::Destination::Document:
     case FetchOptions::Destination::Embed:
@@ -248,20 +263,6 @@ bool NetworkLoadChecker::isAllowedByContentSecurityPolicy(const ResourceRequest&
 
 void NetworkLoadChecker::continueCheckingRequest(ResourceRequest&& request, ValidationHandler&& handler)
 {
-    if (auto* contentSecurityPolicy = this->contentSecurityPolicy()) {
-        if (isRedirected()) {
-            URL url = request.url();
-            auto type = m_options.mode == FetchOptions::Mode::Navigate ? ContentSecurityPolicy::InsecureRequestType::Navigation : ContentSecurityPolicy::InsecureRequestType::Load;
-            contentSecurityPolicy->upgradeInsecureRequestIfNeeded(url, type);
-            if (url != request.url())
-                request.setURL(url);
-        }
-        if (!isAllowedByContentSecurityPolicy(request)) {
-            handler(accessControlErrorForValidationHandler(ASCIILiteral { "Blocked by Content Security Policy." }));
-            return;
-        }
-    }
-
     if (m_options.credentials == FetchOptions::Credentials::SameOrigin)
         m_storedCredentialsPolicy = m_isSameOriginRequest && m_origin->canRequest(request.url()) ? StoredCredentialsPolicy::Use : StoredCredentialsPolicy::DoNotUse;
 
@@ -354,16 +355,22 @@ void NetworkLoadChecker::checkCORSRequestWithPreflight(ResourceRequest&& request
         WTFMove(requestForPreflight),
         *m_origin,
         request.httpReferrer(),
+        request.httpUserAgent(),
         m_sessionID,
+        m_pageID,
+        m_frameID,
         m_storedCredentialsPolicy
     };
-    m_corsPreflightChecker = std::make_unique<NetworkCORSPreflightChecker>(WTFMove(parameters), [this, request = WTFMove(request), handler = WTFMove(handler), isRedirected = isRedirected()](auto&& error) mutable {
+    m_corsPreflightChecker = std::make_unique<NetworkCORSPreflightChecker>(WTFMove(parameters), m_shouldCaptureExtraNetworkLoadMetrics, [this, request = WTFMove(request), handler = WTFMove(handler), isRedirected = isRedirected()](auto&& error) mutable {
         RELEASE_LOG_IF_ALLOWED("checkCORSRequestWithPreflight - makeCrossOriginAccessRequestWithPreflight preflight complete, success: %d forRedirect? %d", error.isNull(), isRedirected);
 
         if (!error.isNull()) {
             handler(makeUnexpected(WTFMove(error)));
             return;
         }
+
+        if (m_shouldCaptureExtraNetworkLoadMetrics)
+            m_loadInformation.transactions.append(m_corsPreflightChecker->takeInformation());
 
         auto corsPreflightChecker = WTFMove(m_corsPreflightChecker);
         updateRequestForAccessControl(request, *m_origin, m_storedCredentialsPolicy);
@@ -387,7 +394,7 @@ ContentSecurityPolicy* NetworkLoadChecker::contentSecurityPolicy()
 {
     if (!m_contentSecurityPolicy && m_cspResponseHeaders) {
         // FIXME: Pass the URL of the protected resource instead of its origin.
-        m_contentSecurityPolicy = std::make_unique<ContentSecurityPolicy>(URL { URL { }, m_origin->toString() }, this);
+        m_contentSecurityPolicy = std::make_unique<ContentSecurityPolicy>(URL { URL { }, m_origin->toString() });
         m_contentSecurityPolicy->didReceiveHeaders(*m_cspResponseHeaders, String { m_referrer }, ContentSecurityPolicy::ReportParsingErrors::No);
     }
     return m_contentSecurityPolicy.get();
@@ -397,7 +404,7 @@ ContentSecurityPolicy* NetworkLoadChecker::contentSecurityPolicy()
 void NetworkLoadChecker::processContentExtensionRulesForLoad(ResourceRequest&& request, ContentExtensionCallback&& callback)
 {
     // FIXME: Enable content blockers for navigation loads.
-    if (!m_userContentControllerIdentifier || m_options.mode == FetchOptions::Mode::Navigate) {
+    if (!m_checkContentExtensions || !m_userContentControllerIdentifier || m_options.mode == FetchOptions::Mode::Navigate) {
         ContentExtensions::BlockedStatus status;
         callback(ContentExtensionResult { WTFMove(request), status });
         return;
@@ -416,22 +423,13 @@ void NetworkLoadChecker::processContentExtensionRulesForLoad(ResourceRequest&& r
 }
 #endif // ENABLE(CONTENT_EXTENSIONS)
 
-void NetworkLoadChecker::addConsoleMessage(MessageSource messageSource, MessageLevel messageLevel, const String& message, unsigned long)
+void NetworkLoadChecker::storeRedirectionIfNeeded(const ResourceRequest& request, const ResourceResponse& response)
 {
-    if (m_webPageID && m_webFrameID)
-        m_connection->connection().send(Messages::WebPage::AddConsoleMessage { m_webFrameID,  messageSource, messageLevel, message, m_loadIdentifier }, m_webPageID);
-}
-
-void NetworkLoadChecker::sendCSPViolationReport(URL&& reportURL, Ref<FormData>&& report)
-{
-    if (m_webPageID && m_webFrameID)
-        m_connection->connection().send(Messages::WebPage::SendCSPViolationReport { m_webFrameID, WTFMove(reportURL), IPC::FormDataReference { WTFMove(report) } }, m_webPageID);
-}
-
-void NetworkLoadChecker::enqueueSecurityPolicyViolationEvent(WebCore::SecurityPolicyViolationEvent::Init&& eventInit)
-{
-    if (m_webPageID && m_webFrameID)
-        m_connection->connection().send(Messages::WebPage::EnqueueSecurityPolicyViolationEvent { m_webFrameID, WTFMove(eventInit) }, m_webPageID);
+    if (!m_shouldCaptureExtraNetworkLoadMetrics)
+        return;
+    m_loadInformation.transactions.append(NetworkTransactionInformation { NetworkTransactionInformation::Type::Redirection, ResourceRequest { request }, ResourceResponse { response }, { } });
 }
 
 } // namespace WebKit
+
+#undef RELEASE_LOG_IF_ALLOWED

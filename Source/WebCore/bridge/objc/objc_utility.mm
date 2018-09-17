@@ -23,16 +23,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#include "config.h"
-#include "objc_utility.h"
+#import "config.h"
+#import "objc_utility.h"
 
-#include "WebScriptObjectProtocol.h"
-#include "objc_instance.h"
-#include "runtime_array.h"
-#include "runtime_object.h"
-#include <JavaScriptCore/JSGlobalObject.h>
-#include <JavaScriptCore/JSLock.h>
-#include <wtf/Assertions.h>
+#import "WebScriptObjectProtocol.h"
+#import "objc_instance.h"
+#import "runtime_array.h"
+#import "runtime_object.h"
+#import <JavaScriptCore/JSGlobalObject.h>
+#import <JavaScriptCore/JSLock.h>
+#import <wtf/Assertions.h>
 
 #if !defined(_C_LNG_LNG)
 #define _C_LNG_LNG 'q'
@@ -88,9 +88,10 @@ ObjcValue convertValueToObjcValue(ExecState* exec, JSValue value, ObjcValueType 
 
     switch (type) {
         case ObjcObjectType: {
-            JSLockHolder lock(exec);
+            VM& vm = exec->vm();
+            JSLockHolder lock(vm);
             
-            JSGlobalObject *originGlobalObject = exec->vmEntryGlobalObject();
+            JSGlobalObject *originGlobalObject = vm.vmEntryGlobalObject(exec);
             RootObject* originRootObject = findRootObject(originGlobalObject);
 
             JSGlobalObject* globalObject = 0;
@@ -101,8 +102,8 @@ ObjcValue convertValueToObjcValue(ExecState* exec, JSValue value, ObjcValueType 
                 globalObject = originGlobalObject;
                 
             RootObject* rootObject = findRootObject(globalObject);
-            result.objectValue =  rootObject
-                ? [webScriptObjectClass() _convertValueToObjcValue:value originRootObject:originRootObject rootObject:rootObject]
+            result.objectValue = rootObject
+                ? (__bridge CFTypeRef)[webScriptObjectClass() _convertValueToObjcValue:value originRootObject:originRootObject rootObject:rootObject]
                 : nil;
         }
         break;
@@ -180,14 +181,14 @@ JSValue convertObjcValueToValue(ExecState* exec, void* buffer, ObjcValueType typ
     
     switch (type) {
         case ObjcObjectType: {
-            id obj = *(id*)buffer;
+            id obj = *(const id*)buffer;
             if ([obj isKindOfClass:[NSString class]])
                 return convertNSStringToString(exec, (NSString *)obj);
             if ([obj isKindOfClass:webUndefinedClass()])
                 return jsUndefined();
-            if ((CFBooleanRef)obj == kCFBooleanTrue)
+            if ((__bridge CFBooleanRef)obj == kCFBooleanTrue)
                 return jsBoolean(true);
-            if ((CFBooleanRef)obj == kCFBooleanFalse)
+            if ((__bridge CFBooleanRef)obj == kCFBooleanFalse)
                 return jsBoolean(false);
             if ([obj isKindOfClass:[NSNumber class]])
                 return jsNumber([obj doubleValue]);

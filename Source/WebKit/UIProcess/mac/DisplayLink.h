@@ -25,12 +25,16 @@
 
 #pragma once
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
 
 #include <CoreVideo/CVDisplayLink.h>
 
 #include <WebCore/PlatformScreen.h>
 #include <wtf/HashSet.h>
+
+namespace IPC {
+class Connection;
+}
 
 namespace WebKit {
 
@@ -45,14 +49,13 @@ public:
     void removeObserver(unsigned observerID);
     bool hasObservers() const;
 
-    void pause();
-    void resume();
-    
 private:
     static CVReturn displayLinkCallback(CVDisplayLinkRef, const CVTimeStamp*, const CVTimeStamp*, CVOptionFlags, CVOptionFlags*, void* data);
     
     CVDisplayLinkRef m_displayLink { nullptr };
     HashSet<unsigned> m_observers;
+    RefPtr<IPC::Connection> m_connection;
+    uint64_t m_pageID { 0 };
 };
 
 }

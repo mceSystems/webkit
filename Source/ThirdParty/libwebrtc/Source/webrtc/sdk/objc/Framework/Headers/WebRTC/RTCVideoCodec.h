@@ -20,6 +20,8 @@ RTC_EXPORT extern NSString *const kRTCVideoCodecVp9Name;
 RTC_EXPORT extern NSString *const kRTCVideoCodecH264Name;
 RTC_EXPORT extern NSString *const kRTCLevel31ConstrainedHigh;
 RTC_EXPORT extern NSString *const kRTCLevel31ConstrainedBaseline;
+RTC_EXPORT extern NSString *const kRTCMaxSupportedH264ProfileLevelConstrainedHigh;
+RTC_EXPORT extern NSString *const kRTCMaxSupportedH264ProfileLevelConstrainedBaseline;
 
 /** Represents an encoded frame's type. */
 typedef NS_ENUM(NSUInteger, RTCFrameType) {
@@ -37,6 +39,7 @@ typedef NS_ENUM(NSUInteger, RTCVideoContentType) {
 
 /** Represents an encoded frame. Corresponds to webrtc::EncodedImage. */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCEncodedImage")))
 @interface RTCEncodedImage : NSObject
 
 @property(nonatomic, strong) NSData *buffer;
@@ -58,6 +61,7 @@ RTC_EXPORT
 
 /** Information for header. Corresponds to webrtc::RTPFragmentationHeader. */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCRtpFragmentationHeader")))
 @interface RTCRtpFragmentationHeader : NSObject
 
 @property(nonatomic, strong) NSArray<NSNumber *> *fragmentationOffset;
@@ -88,8 +92,9 @@ typedef NS_ENUM(NSUInteger, RTCVideoCodecMode) {
   RTCVideoCodecModeScreensharing,
 };
 
-/** Holds information to identify a codec. Corresponds to cricket::VideoCodec. */
+/** Holds information to identify a codec. Corresponds to webrtc::SdpVideoFormat. */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCVideoCodecInfo")))
 @interface RTCVideoCodecInfo : NSObject <NSCoding>
 
 - (instancetype)init NS_UNAVAILABLE;
@@ -109,6 +114,7 @@ RTC_EXPORT
 
 /** Settings for encoder. Corresponds to webrtc::VideoCodec. */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCVideoEncoderSettings")))
 @interface RTCVideoEncoderSettings : NSObject
 
 @property(nonatomic, strong) NSString *name;
@@ -130,6 +136,7 @@ RTC_EXPORT
 
 /** QP thresholds for encoder. Corresponds to webrtc::VideoEncoder::QpThresholds. */
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCVideoEncoderQpThresholds")))
 @interface RTCVideoEncoderQpThresholds : NSObject
 
 - (instancetype)initWithThresholdsLow:(NSInteger)low high:(NSInteger)high;
@@ -166,14 +173,18 @@ RTC_EXPORT
 
 - (void)setCallback:(RTCVideoDecoderCallback)callback;
 - (NSInteger)startDecodeWithSettings:(RTCVideoEncoderSettings *)settings
-                       numberOfCores:(int)numberOfCores;
+                       numberOfCores:(int)numberOfCores
+    DEPRECATED_MSG_ATTRIBUTE("use startDecodeWithNumberOfCores: instead");
 - (NSInteger)releaseDecoder;
 - (NSInteger)decode:(RTCEncodedImage *)encodedImage
-          missingFrames:(BOOL)missingFrames
-    fragmentationHeader:(RTCRtpFragmentationHeader *)fragmentationHeader
-      codecSpecificInfo:(nullable id<RTCCodecSpecificInfo>)info
-           renderTimeMs:(int64_t)renderTimeMs;
+        missingFrames:(BOOL)missingFrames
+    codecSpecificInfo:(nullable id<RTCCodecSpecificInfo>)info
+         renderTimeMs:(int64_t)renderTimeMs;
 - (NSString *)implementationName;
+
+// TODO(andersc): Make non-optional when `startDecodeWithSettings:numberOfCores:` is removed.
+@optional
+- (NSInteger)startDecodeWithNumberOfCores:(int)numberOfCores;
 
 @end
 

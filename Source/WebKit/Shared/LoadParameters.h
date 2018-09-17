@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef LoadParameters_h
-#define LoadParameters_h
+#pragma once
 
 #include "DataReference.h"
 #include "SandboxExtension.h"
@@ -53,7 +52,6 @@ struct LoadParameters {
     SandboxExtension::Handle sandboxExtensionHandle;
 
     IPC::DataReference data;
-    String string;
     String MIMEType;
     String encodingName;
 
@@ -62,8 +60,9 @@ struct LoadParameters {
     String provisionalLoadErrorURLString;
 
     uint64_t shouldOpenExternalURLsPolicy;
-    bool shouldCheckNavigationPolicy { true };
+    bool shouldTreatAsContinuingLoad { false };
     UserData userData;
+    bool forSafeBrowsing { false };
 
 #if PLATFORM(COCOA)
     RetainPtr<NSDictionary> dataDetectionContext;
@@ -71,5 +70,3 @@ struct LoadParameters {
 };
 
 } // namespace WebKit
-
-#endif // LoadParameters_h

@@ -26,20 +26,23 @@
 #import "config.h"
 #import "WebPageProxy.h"
 
+#import "APIAttachment.h"
 #import "APIUIClient.h"
 #import "DataDetectionResult.h"
 #import "LoadParameters.h"
 #import "PageClient.h"
+#import "SafeBrowsingResult.h"
+#import "SafeBrowsingSPI.h"
 #import "WebProcessProxy.h"
 #import <WebCore/DragItem.h>
 #import <WebCore/NotImplemented.h>
 #import <WebCore/SearchPopupMenuCocoa.h>
 #import <WebCore/ValidationBubble.h>
+#import <wtf/BlockPtr.h>
 #import <wtf/cf/TypeCastsCF.h>
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #if ENABLE(DATA_DETECTION)
 void WebPageProxy::setDataDetectionResult(const DataDetectionResult& dataDetectionResult)
@@ -66,6 +69,32 @@ void WebPageProxy::loadRecentSearches(const String& name, Vector<WebCore::Recent
     }
 
     searchItems = WebCore::loadRecentSearches(name);
+}
+
+void WebPageProxy::beginSafeBrowsingCheck(const URL& url, WebFramePolicyListenerProxy& listener)
+{
+#if HAVE(SAFE_BROWSING)
+    SSBLookupContext *context = [SSBLookupContext sharedLookupContext];
+    if (!context)
+        return listener.didReceiveSafeBrowsingResults({ });
+    [context lookUpURL:url completionHandler:BlockPtr<void(SSBLookupResult *, NSError *)>::fromCallable([listener = makeRef(listener), url = url] (SSBLookupResult *result, NSError *error) mutable {
+        RunLoop::main().dispatch([listener = WTFMove(listener), result = retainPtr(result), error = retainPtr(error), url = WTFMove(url)] {
+            if (error) {
+                listener->didReceiveSafeBrowsingResults({ });
+                return;
+            }
+
+            NSArray<SSBServiceLookupResult *> *results = [result serviceLookupResults];
+            Vector<SafeBrowsingResult> resultsVector;
+            resultsVector.reserveInitialCapacity([results count]);
+            for (SSBServiceLookupResult *result in results)
+                resultsVector.uncheckedAppend({ URL(url), result });
+            listener->didReceiveSafeBrowsingResults(WTFMove(resultsVector));
+        });
+    }).get()];
+#else
+    listener.didReceiveSafeBrowsingResults({ });
+#endif
 }
 
 #if ENABLE(CONTENT_FILTERING)
@@ -107,7 +136,7 @@ void WebPageProxy::createSandboxExtensionsIfNeeded(const Vector<String>& files, 
 
 void WebPageProxy::startDrag(const DragItem& dragItem, const ShareableBitmap::Handle& dragImageHandle)
 {
-    m_pageClient.startDrag(dragItem, dragImageHandle);
+    pageClient().startDrag(dragItem, dragImageHandle);
 }
 
 #if PLATFORM(IOS)
@@ -124,11 +153,34 @@ void WebPageProxy::setDragCaretRect(const IntRect& dragCaretRect)
 
     auto previousRect = m_currentDragCaretRect;
     m_currentDragCaretRect = dragCaretRect;
-    m_pageClient.didChangeDataInteractionCaretRect(previousRect, dragCaretRect);
+    pageClient().didChangeDataInteractionCaretRect(previousRect, dragCaretRect);
 }
 
 #endif // PLATFORM(IOS)
 
 #endif // ENABLE(DRAG_SUPPORT)
+
+#if ENABLE(ATTACHMENT_ELEMENT)
+
+void WebPageProxy::platformRegisterAttachment(Ref<API::Attachment>&& attachment, const String& preferredFileName, const IPC::DataReference& dataReference)
+{
+    auto buffer = SharedBuffer::create(dataReference.data(), dataReference.size());
+    auto fileWrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:buffer->createNSData().autorelease()]);
+    [fileWrapper setPreferredFilename:preferredFileName];
+    attachment->setFileWrapper(fileWrapper.get());
+}
+
+void WebPageProxy::platformRegisterAttachment(Ref<API::Attachment>&& attachment, const String& filePath)
+{
+    auto fileWrapper = adoptNS([[NSFileWrapper alloc] initWithURL:[NSURL fileURLWithPath:filePath] options:0 error:nil]);
+    attachment->setFileWrapper(fileWrapper.get());
+}
+
+void WebPageProxy::platformCloneAttachment(Ref<API::Attachment>&& fromAttachment, Ref<API::Attachment>&& toAttachment)
+{
+    toAttachment->setFileWrapper(fromAttachment->fileWrapper());
+}
+
+#endif // ENABLE(ATTACHMENT_ELEMENT)
 
 }

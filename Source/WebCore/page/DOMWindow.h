@@ -92,6 +92,7 @@ enum class IncludeTargetOrigin { No, Yes };
 // FIXME: Rename DOMWindow to LocalWindow and AbstractDOMWindow to DOMWindow.
 class DOMWindow final
     : public AbstractDOMWindow
+    , public CanMakeWeakPtr<DOMWindow>
     , public ContextDestructionObserver
     , public FrameDestructionObserver
     , public Base64Utilities
@@ -158,7 +159,7 @@ public:
     void print();
     void stop();
 
-    WEBCORE_EXPORT RefPtr<WindowProxy> open(DOMWindow& activeWindow, DOMWindow& firstWindow, const String& urlString, const AtomicString& frameName, const String& windowFeaturesString);
+    WEBCORE_EXPORT ExceptionOr<RefPtr<WindowProxy>> open(DOMWindow& activeWindow, DOMWindow& firstWindow, const String& urlString, const AtomicString& frameName, const String& windowFeaturesString);
 
     void showModalDialog(const String& urlString, const String& dialogFeaturesString, DOMWindow& activeWindow, DOMWindow& firstWindow, const WTF::Function<void(DOMWindow&)>& prepareDialogFunction);
 
@@ -335,8 +336,6 @@ public:
     void enableSuddenTermination();
     void disableSuddenTermination();
 
-    WeakPtr<DOMWindow> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
-
 private:
     explicit DOMWindow(Document&);
 
@@ -351,7 +350,7 @@ private:
     void frameDestroyed() final;
     void willDetachPage() final;
 
-    static RefPtr<Frame> createWindow(const String& urlString, const AtomicString& frameName, const WindowFeatures&, DOMWindow& activeWindow, Frame& firstFrame, Frame& openerFrame, const WTF::Function<void(DOMWindow&)>& prepareDialogFunction = nullptr);
+    static ExceptionOr<RefPtr<Frame>> createWindow(const String& urlString, const AtomicString& frameName, const WindowFeatures&, DOMWindow& activeWindow, Frame& firstFrame, Frame& openerFrame, const WTF::Function<void(DOMWindow&)>& prepareDialogFunction = nullptr);
     bool isInsecureScriptAccess(DOMWindow& activeWindow, const String& urlString);
 
     void resetDOMWindowProperties();
@@ -392,8 +391,6 @@ private:
 
     enum class PageStatus { None, Shown, Hidden };
     PageStatus m_lastPageStatus { PageStatus::None };
-
-    WeakPtrFactory<DOMWindow> m_weakPtrFactory;
 
 #if PLATFORM(IOS)
     unsigned m_scrollEventListenerCount { 0 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,6 +42,8 @@
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 
+#include "CoreVideoSoftLink.h"
+
 namespace WebCore {
 using namespace PAL;
 
@@ -58,7 +60,7 @@ DisplayCaptureSourceCocoa::~DisplayCaptureSourceCocoa()
 #endif
 }
 
-const RealtimeMediaSourceCapabilities& DisplayCaptureSourceCocoa::capabilities() const
+const RealtimeMediaSourceCapabilities& DisplayCaptureSourceCocoa::capabilities()
 {
     if (!m_capabilities) {
         RealtimeMediaSourceCapabilities capabilities(settings().supportedConstraints());
@@ -73,7 +75,7 @@ const RealtimeMediaSourceCapabilities& DisplayCaptureSourceCocoa::capabilities()
     return m_capabilities.value();
 }
 
-const RealtimeMediaSourceSettings& DisplayCaptureSourceCocoa::settings() const
+const RealtimeMediaSourceSettings& DisplayCaptureSourceCocoa::settings()
 {
     if (!m_currentSettings) {
         RealtimeMediaSourceSettings settings;
@@ -96,10 +98,17 @@ const RealtimeMediaSourceSettings& DisplayCaptureSourceCocoa::settings() const
     return m_currentSettings.value();
 }
 
-void DisplayCaptureSourceCocoa::settingsDidChange()
+void DisplayCaptureSourceCocoa::settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag> settings)
 {
+    if (settings.contains(RealtimeMediaSourceSettings::Flag::FrameRate) && m_timer.isActive())
+        m_timer.startRepeating(1_s / frameRate());
+
+    if (settings.containsAny({ RealtimeMediaSourceSettings::Flag::Width, RealtimeMediaSourceSettings::Flag::Height }))
+        m_bufferAttributes = nullptr;
+
     m_currentSettings = std::nullopt;
-    RealtimeMediaSource::settingsDidChange();
+
+    RealtimeMediaSource::settingsDidChange(settings);
 }
 
 void DisplayCaptureSourceCocoa::startProducingData()
@@ -109,7 +118,7 @@ void DisplayCaptureSourceCocoa::startProducingData()
 #endif
 
     m_startTime = MonotonicTime::now();
-    m_timer.startRepeating(1_ms * lround(1000 / frameRate()));
+    m_timer.startRepeating(1_s / frameRate());
 }
 
 void DisplayCaptureSourceCocoa::stopProducingData()
@@ -127,14 +136,6 @@ Seconds DisplayCaptureSourceCocoa::elapsedTime()
     return m_elapsedTime + (MonotonicTime::now() - m_startTime);
 }
 
-bool DisplayCaptureSourceCocoa::applyFrameRate(double rate)
-{
-    if (m_timer.isActive())
-        m_timer.startRepeating(1_ms * lround(1000 / rate));
-
-    return true;
-}
-
 void DisplayCaptureSourceCocoa::emitFrame()
 {
     if (muted())
@@ -142,6 +143,76 @@ void DisplayCaptureSourceCocoa::emitFrame()
 
     generateFrame();
 }
+
+RetainPtr<CMSampleBufferRef> DisplayCaptureSourceCocoa::sampleBufferFromPixelBuffer(CVPixelBufferRef pixelBuffer)
+{
+    if (!pixelBuffer)
+        return nullptr;
+
+    CMTime sampleTime = CMTimeMake(((elapsedTime() + 100_ms) * 100).seconds(), 100);
+    CMSampleTimingInfo timingInfo = { kCMTimeInvalid, sampleTime, sampleTime };
+
+    CMVideoFormatDescriptionRef formatDescription = nullptr;
+    auto status = CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, (CVImageBufferRef)pixelBuffer, &formatDescription);
+    if (status) {
+        RELEASE_LOG(Media, "Failed to initialize CMVideoFormatDescription with error code: %d", static_cast<int>(status));
+        return nullptr;
+    }
+
+    CMSampleBufferRef sampleBuffer;
+    status = CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, (CVImageBufferRef)pixelBuffer, formatDescription, &timingInfo, &sampleBuffer);
+    CFRelease(formatDescription);
+    if (status) {
+        RELEASE_LOG(Media, "Failed to initialize CMSampleBuffer with error code: %d", static_cast<int>(status));
+        return nullptr;
+    }
+
+    return adoptCF(sampleBuffer);
+}
+
+#if HAVE(IOSURFACE) && PLATFORM(MAC)
+static int32_t roundUpToMacroblockMultiple(int32_t size)
+{
+    return (size + 15) & ~15;
+}
+
+RetainPtr<CVPixelBufferRef> DisplayCaptureSourceCocoa::pixelBufferFromIOSurface(IOSurfaceRef surface)
+{
+    if (!m_bufferAttributes) {
+        m_bufferAttributes = adoptCF(CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
+        auto format = IOSurfaceGetPixelFormat(surface);
+        if (format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
+
+            // If the width x height isn't a multiple of 16 x 16 and the surface has extra memory in the planes, set pixel buffer attributes to reflect it.
+            auto width = IOSurfaceGetWidth(surface);
+            auto height = IOSurfaceGetHeight(surface);
+            int32_t extendedRight = roundUpToMacroblockMultiple(width) - width;
+            int32_t extendedBottom = roundUpToMacroblockMultiple(height) - height;
+
+            if ((IOSurfaceGetBytesPerRowOfPlane(surface, 0) >= width + extendedRight)
+                && (IOSurfaceGetBytesPerRowOfPlane(surface, 1) >= width + extendedRight)
+                && (IOSurfaceGetAllocSize(surface) >= (height + extendedBottom) * IOSurfaceGetBytesPerRowOfPlane(surface, 0) * 3 / 2)) {
+                auto cfInt = adoptCF(CFNumberCreate(nullptr,  kCFNumberIntType,  &extendedRight));
+                CFDictionarySetValue(m_bufferAttributes.get(), kCVPixelBufferExtendedPixelsRightKey, cfInt.get());
+                cfInt = adoptCF(CFNumberCreate(nullptr,  kCFNumberIntType,  &extendedBottom));
+                CFDictionarySetValue(m_bufferAttributes.get(), kCVPixelBufferExtendedPixelsBottomKey, cfInt.get());
+            }
+        }
+
+        CFDictionarySetValue(m_bufferAttributes.get(), kCVPixelBufferOpenGLCompatibilityKey, kCFBooleanTrue);
+    }
+
+    CVPixelBufferRef pixelBuffer;
+    auto status = CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, m_bufferAttributes.get(), &pixelBuffer);
+    if (status) {
+        RELEASE_LOG(Media, "CVPixelBufferCreateWithIOSurface failed with error code: %d", static_cast<int>(status));
+        return nullptr;
+    }
+
+    return adoptCF(pixelBuffer);
+}
+#endif
 
 } // namespace WebCore
 

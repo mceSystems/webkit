@@ -224,7 +224,7 @@ JSValue ProxyInstance::invokeMethod(ExecState* exec, JSC::RuntimeMethod* runtime
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     if (!asObject(runtimeMethod)->inherits<ProxyRuntimeMethod>(vm))
-        return throwTypeError(exec, scope, ASCIILiteral("Attempt to invoke non-plug-in method on plug-in object."));
+        return throwTypeError(exec, scope, "Attempt to invoke non-plug-in method on plug-in object."_s);
 
     ProxyMethod* method = static_cast<ProxyMethod*>(runtimeMethod->method());
     ASSERT(method);
@@ -317,7 +317,7 @@ void ProxyInstance::getPropertyNames(ExecState* exec, PropertyNameArray& nameArr
     if (!reply || !reply->m_returnValue)
         return;
     
-    NSArray *array = [NSPropertyListSerialization propertyListWithData:(NSData *)reply->m_result.get() options:NSPropertyListImmutable format:nullptr error:nullptr];
+    NSArray *array = [NSPropertyListSerialization propertyListWithData:(__bridge NSData *)reply->m_result.get() options:NSPropertyListImmutable format:nullptr error:nullptr];
     
     for (NSNumber *number in array) {
         IdentifierRep* identifier = reinterpret_cast<IdentifierRep*>([number longLongValue]);

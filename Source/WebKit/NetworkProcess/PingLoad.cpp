@@ -38,13 +38,13 @@ namespace WebKit {
 
 using namespace WebCore;
 
-PingLoad::PingLoad(NetworkResourceLoadParameters&& parameters, NetworkConnectionToWebProcess& connection, WTF::CompletionHandler<void(const ResourceError&, const ResourceResponse&)>&& completionHandler)
+PingLoad::PingLoad(NetworkResourceLoadParameters&& parameters, WTF::CompletionHandler<void(const ResourceError&, const ResourceResponse&)>&& completionHandler)
     : m_parameters(WTFMove(parameters))
     , m_completionHandler(WTFMove(completionHandler))
     , m_timeoutTimer(*this, &PingLoad::timeoutTimerFired)
-    , m_networkLoadChecker(makeUniqueRef<NetworkLoadChecker>(connection, m_parameters.webPageID, m_parameters.webFrameID, m_parameters.identifier, FetchOptions { m_parameters.options}, m_parameters.sessionID, WTFMove(m_parameters.originalRequestHeaders), URL { m_parameters.request.url() }, m_parameters.sourceOrigin.copyRef(), m_parameters.preflightPolicy, m_parameters.request.httpReferrer()))
+    , m_networkLoadChecker(makeUniqueRef<NetworkLoadChecker>(FetchOptions { m_parameters.options}, m_parameters.sessionID, m_parameters.webPageID, m_parameters.webFrameID, WTFMove(m_parameters.originalRequestHeaders), URL { m_parameters.request.url() }, m_parameters.sourceOrigin.copyRef(), m_parameters.preflightPolicy, m_parameters.request.httpReferrer()))
 {
-
+    m_networkLoadChecker->enableContentExtensionsCheck();
     if (m_parameters.cspResponseHeaders)
         m_networkLoadChecker->setCSPResponseHeaders(WTFMove(m_parameters.cspResponseHeaders.value()));
 #if ENABLE(CONTENT_EXTENSIONS)
@@ -55,7 +55,7 @@ PingLoad::PingLoad(NetworkResourceLoadParameters&& parameters, NetworkConnection
     // Set a very generous timeout, just in case.
     m_timeoutTimer.startOneShot(60000_s);
 
-    m_networkLoadChecker->check(ResourceRequest { m_parameters.request }, [this] (auto&& result) {
+    m_networkLoadChecker->check(ResourceRequest { m_parameters.request }, nullptr, [this] (auto&& result) {
         if (!result.has_value()) {
             this->didFinish(result.error());
             return;
@@ -93,17 +93,17 @@ void PingLoad::loadRequest(ResourceRequest&& request)
 
 void PingLoad::willPerformHTTPRedirection(ResourceResponse&& redirectResponse, ResourceRequest&& request, RedirectCompletionHandler&& completionHandler)
 {
-    m_networkLoadChecker->checkRedirection(redirectResponse, WTFMove(request), [this, completionHandler = WTFMove(completionHandler)](auto&& result) {
+    m_networkLoadChecker->checkRedirection(ResourceRequest { }, WTFMove(request), WTFMove(redirectResponse), nullptr, [this, completionHandler = WTFMove(completionHandler)] (auto&& result) mutable {
         if (!result.has_value()) {
             completionHandler({ });
             this->didFinish(result.error());
             return;
         }
-        auto request = WTFMove(result.value());
+        auto request = WTFMove(result->redirectRequest);
         m_networkLoadChecker->prepareRedirectedRequest(request);
 
-        if (!result.value().url().protocolIsInHTTPFamily()) {
-            this->didFinish(ResourceError { String { }, 0, result.value().url(), ASCIILiteral("Redirection to URL with a scheme that is not HTTP(S)"), ResourceError::Type::AccessControl });
+        if (!request.url().protocolIsInHTTPFamily()) {
+            this->didFinish(ResourceError { String { }, 0, request.url(), "Redirection to URL with a scheme that is not HTTP(S)"_s, ResourceError::Type::AccessControl });
             return;
         }
 
@@ -111,17 +111,23 @@ void PingLoad::willPerformHTTPRedirection(ResourceResponse&& redirectResponse, R
     });
 }
 
-void PingLoad::didReceiveChallenge(const AuthenticationChallenge&, ChallengeCompletionHandler&& completionHandler)
+void PingLoad::didReceiveChallenge(AuthenticationChallenge&&, ChallengeCompletionHandler&& completionHandler)
 {
     RELEASE_LOG_IF_ALLOWED("didReceiveChallenge");
+    auto weakThis = makeWeakPtr(*this);
     completionHandler(AuthenticationChallengeDisposition::Cancel, { });
-    didFinish(ResourceError { String(), 0, currentURL(), ASCIILiteral("Failed HTTP authentication"), ResourceError::Type::AccessControl });
+    if (!weakThis)
+        return;
+    didFinish(ResourceError { String(), 0, currentURL(), "Failed HTTP authentication"_s, ResourceError::Type::AccessControl });
 }
 
 void PingLoad::didReceiveResponseNetworkSession(ResourceResponse&& response, ResponseCompletionHandler&& completionHandler)
 {
     RELEASE_LOG_IF_ALLOWED("didReceiveResponseNetworkSession - httpStatusCode: %d", response.httpStatusCode());
+    auto weakThis = makeWeakPtr(*this);
     completionHandler(PolicyAction::Ignore);
+    if (!weakThis)
+        return;
     didFinish({ }, response);
 }
 
@@ -160,7 +166,7 @@ void PingLoad::cannotShowURL()
 void PingLoad::timeoutTimerFired()
 {
     RELEASE_LOG_IF_ALLOWED("timeoutTimerFired");
-    didFinish(ResourceError { String(), 0, currentURL(), ASCIILiteral("Load timed out"), ResourceError::Type::Timeout });
+    didFinish(ResourceError { String(), 0, currentURL(), "Load timed out"_s, ResourceError::Type::Timeout });
 }
 
 const URL& PingLoad::currentURL() const
@@ -169,3 +175,5 @@ const URL& PingLoad::currentURL() const
 }
 
 } // namespace WebKit
+
+#undef RELEASE_LOG_IF_ALLOWED

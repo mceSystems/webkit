@@ -95,13 +95,13 @@ class WEBCORE_EXPORT EmptyFrameLoaderClient : public FrameLoaderClient {
 
     void dispatchDecidePolicyForResponse(const ResourceResponse&, const ResourceRequest&, FramePolicyFunction&&) final { }
     void dispatchDecidePolicyForNewWindowAction(const NavigationAction&, const ResourceRequest&, FormState*, const String&, FramePolicyFunction&&) final;
-    void dispatchDecidePolicyForNavigationAction(const NavigationAction&, const ResourceRequest&, bool didReceiveRedirectResponse, FormState*, PolicyDecisionMode, FramePolicyFunction&&) final;
+    void dispatchDecidePolicyForNavigationAction(const NavigationAction&, const ResourceRequest&, const ResourceResponse& redirectResponse, FormState*, PolicyDecisionMode, ShouldSkipSafeBrowsingCheck, FramePolicyFunction&&) final;
     void cancelPolicyCheck() final { }
 
     void dispatchUnableToImplementPolicy(const ResourceError&) final { }
 
     void dispatchWillSendSubmitEvent(Ref<FormState>&&) final;
-    void dispatchWillSubmitForm(FormState&, WTF::Function<void(void)>&&) final;
+    void dispatchWillSubmitForm(FormState&, CompletionHandler<void()>&&) final;
 
     void revertToProvisionalState(DocumentLoader*) final { }
     void setMainDocumentError(DocumentLoader*, const ResourceError&) final { }

@@ -28,9 +28,12 @@
 
 #if ENABLE(LAYOUT_FORMATTING_CONTEXT)
 
+#include "DisplayBox.h"
 #include "LayoutBlockContainer.h"
+#include "LayoutBox.h"
 #include "LayoutChildIterator.h"
 #include "LayoutContainer.h"
+#include "LayoutContext.h"
 #include "LayoutInlineBox.h"
 #include "LayoutInlineContainer.h"
 #include "RenderBlock.h"
@@ -46,24 +49,60 @@ namespace Layout {
 
 std::unique_ptr<Container> TreeBuilder::createLayoutTree(const RenderView& renderView)
 {
-    std::unique_ptr<Container> initialContainingBlock(new BlockContainer(RenderStyle::clone(renderView.style())));
+    std::unique_ptr<Container> initialContainingBlock(new BlockContainer(std::nullopt, RenderStyle::clone(renderView.style())));
     TreeBuilder::createSubTree(renderView, *initialContainingBlock);
     return initialContainingBlock;
 }
 
 void TreeBuilder::createSubTree(const RenderElement& rootRenderer, Container& rootContainer)
 {
-    // Skip RenderText (and some others) for now.
-    for (auto& child : childrenOfType<RenderElement>(rootRenderer)) {
+    auto elementAttributes = [] (const RenderElement& renderer) -> std::optional<Box::ElementAttributes> {
+        if (renderer.isDocumentElementRenderer())
+            return Box::ElementAttributes { Box::ElementType::Document };
+        if (auto* element = renderer.element()) {
+            if (element->hasTagName(HTMLNames::bodyTag))
+                return Box::ElementAttributes { Box::ElementType::Body };
+            if (element->hasTagName(HTMLNames::colTag))
+                return Box::ElementAttributes { Box::ElementType::TableColumn };
+            if (element->hasTagName(HTMLNames::trTag))
+                return Box::ElementAttributes { Box::ElementType::TableRow };
+            if (element->hasTagName(HTMLNames::colgroupTag))
+                return Box::ElementAttributes { Box::ElementType::TableColumnGroup };
+            if (element->hasTagName(HTMLNames::tbodyTag))
+                return Box::ElementAttributes { Box::ElementType::TableRowGroup };
+            if (element->hasTagName(HTMLNames::theadTag))
+                return Box::ElementAttributes { Box::ElementType::TableHeaderGroup };
+            if (element->hasTagName(HTMLNames::tfootTag))
+                return Box::ElementAttributes { Box::ElementType::TableFooterGroup };
+            if (element->hasTagName(HTMLNames::tfootTag))
+                return Box::ElementAttributes { Box::ElementType::TableFooterGroup };
+            return Box::ElementAttributes { Box::ElementType::GenericElement };
+        }
+        return std::nullopt;
+    };
+
+    for (auto& child : childrenOfType<RenderObject>(rootRenderer)) {
         Box* box = nullptr;
-        if (is<RenderBlock>(child)) {
-            box = new BlockContainer(RenderStyle::clone(child.style()));
-            createSubTree(child, downcast<Container>(*box));
-        } else if (is<RenderInline>(child)) {
-            box = new InlineContainer(RenderStyle::clone(child.style()));
-            createSubTree(child, downcast<Container>(*box));
-        } else
+
+        if (is<RenderElement>(child)) {
+            auto& renderer = downcast<RenderElement>(child);
+            auto display = renderer.style().display();
+            if (display == DisplayType::Block)
+                box = new BlockContainer(elementAttributes(renderer), RenderStyle::clone(renderer.style()));
+            else if (display == DisplayType::Inline)
+                box = new InlineContainer(elementAttributes(renderer), RenderStyle::clone(renderer.style()));
+            else {
+                ASSERT_NOT_IMPLEMENTED_YET();
+                continue;
+            }
+
+        } else if (is<RenderText>(child)) {
+            box = new InlineBox( { }, RenderStyle::createAnonymousStyleWithDisplay(rootRenderer.style(), DisplayType::Inline));
+            downcast<InlineBox>(*box).setTextContent(downcast<RenderText>(child).originalText());
+        } else {
             ASSERT_NOT_IMPLEMENTED_YET();
+            continue;
+        }
 
         if (!rootContainer.hasChild()) {
             rootContainer.setFirstChild(*box);
@@ -74,12 +113,22 @@ void TreeBuilder::createSubTree(const RenderElement& rootRenderer, Container& ro
             lastChild->setNextSibling(*box);
             rootContainer.setLastChild(*box);
         }
+
         box->setParent(rootContainer);
+
+        if (box->isOutOfFlowPositioned()) {
+            // Not efficient, but this is temporary anyway.
+            // Collect the out-of-flow descendants at the formatting root lever (as opposed to at the containing block level, though they might be the same).
+            auto& containingBlockFormattingContextRoot = box->containingBlock()->formattingContextRoot();
+            const_cast<Container&>(containingBlockFormattingContextRoot).addOutOfFlowDescendant(*box);
+        }
+        if (is<RenderElement>(child))
+            createSubTree(downcast<RenderElement>(child), downcast<Container>(*box));
     }
 }
 
 #if ENABLE(TREE_DEBUGGING)
-static void outputLayoutBox(TextStream& stream, const Box& layoutBox, unsigned depth)
+static void outputLayoutBox(TextStream& stream, const Box& layoutBox, const Display::Box* displayBox, unsigned depth)
 {
     unsigned printedCharacters = 0;
     while (++printedCharacters <= depth * 2)
@@ -95,27 +144,36 @@ static void outputLayoutBox(TextStream& stream, const Box& layoutBox, unsigned d
         stream << "block container";
     } else
         stream << "box";
-    stream << " at [0 0] size [0 0]";
+    // FIXME: Inline text runs don't create display boxes yet.
+    if (displayBox)
+        stream << " at [" << displayBox->left() << " " << displayBox->top() << "] size [" << displayBox->width() << " " << displayBox->height() << "]";
     stream << " object [" << &layoutBox << "]";
 
     stream.nextLine();
 }
 
-static void outputLayoutTree(TextStream& stream, const Container& rootContainer, unsigned depth)
+static void outputLayoutTree(const LayoutContext* layoutContext, TextStream& stream, const Container& rootContainer, unsigned depth)
 {
     for (auto& child : childrenOfType<Box>(rootContainer)) {
-        outputLayoutBox(stream, child, depth);
+        outputLayoutBox(stream, child, layoutContext ? &layoutContext->displayBoxForLayoutBox(child) : nullptr, depth);
         if (is<Container>(child))
-            outputLayoutTree(stream, downcast<Container>(child), depth + 1);
+            outputLayoutTree(layoutContext, stream, downcast<Container>(child), depth + 1);
     }
 }
 
-void TreeBuilder::showLayoutTree(const Container& layoutBox)
+void showLayoutTree(const Box& layoutBox, const LayoutContext* layoutContext)
 {
     TextStream stream(TextStream::LineMode::MultipleLine, TextStream::Formatting::SVGStyleRect);
-    outputLayoutBox(stream, layoutBox, 0);
-    outputLayoutTree(stream, layoutBox, 1);
+
+    auto& initialContainingBlock = layoutBox.initialContainingBlock();
+    outputLayoutBox(stream, initialContainingBlock, layoutContext ? &layoutContext->displayBoxForLayoutBox(initialContainingBlock) : nullptr, 0);
+    outputLayoutTree(layoutContext, stream, initialContainingBlock, 1);
     WTFLogAlways("%s", stream.release().utf8().data());
+}
+
+void showLayoutTree(const Box& layoutBox)
+{
+    showLayoutTree(layoutBox, nullptr);
 }
 
 void printLayoutTreeForLiveDocuments()
@@ -126,7 +184,8 @@ void printLayoutTreeForLiveDocuments()
         if (document->frame() && document->frame()->isMainFrame())
             fprintf(stderr, "----------------------main frame--------------------------\n");
         fprintf(stderr, "%s\n", document->url().string().utf8().data());
-        Layout::TreeBuilder::showLayoutTree(*TreeBuilder::createLayoutTree(*document->renderView()));
+        // FIXME: Need to find a way to output geometry without layout context.
+        // Layout::TreeBuilder::showLayoutTree(*TreeBuilder::createLayoutTree(*document->renderView()));
     }
 }
 #endif

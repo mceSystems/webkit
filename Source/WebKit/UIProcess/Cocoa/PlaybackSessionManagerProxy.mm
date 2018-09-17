@@ -33,9 +33,8 @@
 #import "WebPageProxy.h"
 #import "WebProcessProxy.h"
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 #pragma mark - PlaybackSessionModelContext
 
@@ -150,6 +149,12 @@ void PlaybackSessionModelContext::setVolume(double volume)
 {
     if (m_manager)
         m_manager->setVolume(m_contextId, volume);
+}
+
+void PlaybackSessionModelContext::setPlayingOnSecondScreen(bool value)
+{
+    if (m_manager)
+        m_manager->setPlayingOnSecondScreen(m_contextId, value);
 }
 
 void PlaybackSessionModelContext::playbackStartedTimeChanged(double playbackStartedTime)
@@ -271,6 +276,13 @@ void PlaybackSessionModelContext::volumeChanged(double volume)
         client->volumeChanged(volume);
 }
 
+void PlaybackSessionModelContext::pictureInPictureSupportedChanged(bool supported)
+{
+    m_pictureInPictureSupported = supported;
+    for (auto* client : m_clients)
+        client->isPictureInPictureSupportedChanged(supported);
+}
+
 void PlaybackSessionModelContext::pictureInPictureActiveChanged(bool active)
 {
     m_pictureInPictureActive = active;
@@ -303,16 +315,16 @@ void PlaybackSessionManagerProxy::invalidate()
     m_page->process().removeMessageReceiver(Messages::PlaybackSessionManagerProxy::messageReceiverName(), m_page->pageID());
     m_page = nullptr;
 
-    for (auto& tuple : m_contextMap.values()) {
+    auto contextMap = WTFMove(m_contextMap);
+    m_clientCounts.clear();
+
+    for (auto& tuple : contextMap.values()) {
         RefPtr<PlaybackSessionModelContext> model;
         RefPtr<PlatformPlaybackSessionInterface> interface;
         std::tie(model, interface) = tuple;
 
         interface->invalidate();
     }
-
-    m_contextMap.clear();
-    m_clientCounts.clear();
 }
 
 PlaybackSessionManagerProxy::ModelInterfaceTuple PlaybackSessionManagerProxy::createModelAndInterface(uint64_t contextId)
@@ -473,6 +485,11 @@ void PlaybackSessionManagerProxy::rateChanged(uint64_t contextId, bool isPlaying
     ensureModel(contextId).rateChanged(isPlaying, rate);
 }
 
+void PlaybackSessionManagerProxy::pictureInPictureSupportedChanged(uint64_t contextId, bool supported)
+{
+    ensureModel(contextId).pictureInPictureSupportedChanged(supported);
+}
+
 void PlaybackSessionManagerProxy::pictureInPictureActiveChanged(uint64_t contextId, bool active)
 {
     ensureModel(contextId).pictureInPictureActiveChanged(active);
@@ -570,6 +587,12 @@ void PlaybackSessionManagerProxy::setMuted(uint64_t contextId, bool muted)
 void PlaybackSessionManagerProxy::setVolume(uint64_t contextId, double volume)
 {
     m_page->send(Messages::PlaybackSessionManager::SetVolume(contextId, volume), m_page->pageID());
+}
+
+void PlaybackSessionManagerProxy::setPlayingOnSecondScreen(uint64_t contextId, bool value)
+{
+    if (m_page)
+        m_page->send(Messages::PlaybackSessionManager::SetPlayingOnSecondScreen(contextId, value), m_page->pageID());
 }
 
 void PlaybackSessionManagerProxy::requestControlledElementID()

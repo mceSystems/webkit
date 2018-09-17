@@ -41,6 +41,8 @@
 #include "InspectorInstrumentation.h"
 #include "Path2D.h"
 #include "RenderTheme.h"
+#include "ResourceLoadObserver.h"
+#include "RuntimeEnabledFeatures.h"
 #include "StyleProperties.h"
 #include "StyleResolver.h"
 #include "TextMetrics.h"
@@ -295,21 +297,21 @@ inline TextDirection CanvasRenderingContext2D::toTextDirection(Direction directi
         *computedStyle = style;
     switch (direction) {
     case Direction::Inherit:
-        return style ? style->direction() : LTR;
+        return style ? style->direction() : TextDirection::LTR;
     case Direction::Rtl:
-        return RTL;
+        return TextDirection::RTL;
     case Direction::Ltr:
-        return LTR;
+        return TextDirection::LTR;
     }
     ASSERT_NOT_REACHED();
-    return LTR;
+    return TextDirection::LTR;
 }
 
 CanvasDirection CanvasRenderingContext2D::direction() const
 {
     if (state().direction == Direction::Inherit)
         canvas().document().updateStyleIfNeeded();
-    return toTextDirection(state().direction) == RTL ? CanvasDirection::Rtl : CanvasDirection::Ltr;
+    return toTextDirection(state().direction) == TextDirection::RTL ? CanvasDirection::Rtl : CanvasDirection::Ltr;
 }
 
 void CanvasRenderingContext2D::setDirection(CanvasDirection direction)
@@ -363,6 +365,12 @@ static void normalizeSpaces(String& text)
 
 Ref<TextMetrics> CanvasRenderingContext2D::measureText(const String& text)
 {
+    if (RuntimeEnabledFeatures::sharedFeatures().webAPIStatisticsEnabled()) {
+        auto& canvas = this->canvas();
+        ResourceLoadObserver::shared().logCanvasWriteOrMeasure(canvas.document(), text);
+        ResourceLoadObserver::shared().logCanvasRead(canvas.document());
+    }
+    
     Ref<TextMetrics> metrics = TextMetrics::create();
 
     String normalizedText = text;
@@ -429,7 +437,7 @@ FloatPoint CanvasRenderingContext2D::textOffset(float width, TextDirection direc
         break;
     }
 
-    bool isRTL = direction == RTL;
+    bool isRTL = direction == TextDirection::RTL;
     auto align = state().textAlign;
     if (align == StartTextAlign)
         align = isRTL ? RightTextAlign : LeftTextAlign;
@@ -451,6 +459,9 @@ FloatPoint CanvasRenderingContext2D::textOffset(float width, TextDirection direc
 
 void CanvasRenderingContext2D::drawTextInternal(const String& text, float x, float y, bool fill, std::optional<float> maxWidth)
 {
+    if (RuntimeEnabledFeatures::sharedFeatures().webAPIStatisticsEnabled())
+        ResourceLoadObserver::shared().logCanvasWriteOrMeasure(this->canvas().document(), text);
+    
     auto& fontProxy = this->fontProxy();
     const auto& fontMetrics = fontProxy.fontMetrics();
 

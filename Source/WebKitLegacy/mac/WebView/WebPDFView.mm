@@ -26,9 +26,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if !PLATFORM(IOS)
-
 #import "WebPDFView.h"
+
+#if PLATFORM(MAC)
 
 #import "DOMNodeInternal.h"
 #import "DOMRangeInternal.h"
@@ -126,14 +126,13 @@ static void _applicationInfoForMIMEType(NSString *type, NSString **name, NSImage
 {
     CFURLRef appURL = nullptr;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    OSStatus error = LSCopyApplicationForMIMEType((CFStringRef)type, kLSRolesAll, &appURL);
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    OSStatus error = LSCopyApplicationForMIMEType((__bridge CFStringRef)type, kLSRolesAll, &appURL);
+    ALLOW_DEPRECATED_DECLARATIONS_END
     if (error != noErr)
         return;
     
-    NSString *appPath = [(NSURL *)appURL path];
+    NSString *appPath = [(__bridge NSURL *)appURL path];
     CFRelease(appURL);
     
     *image = [[NSWorkspace sharedWorkspace] iconForFile:appPath];  
@@ -226,10 +225,9 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
 - (void)centerSelectionInVisibleArea:(id)sender
 {
     // FIXME: Get rid of this once <rdar://problem/25149294> has been fixed.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
     [PDFSubview scrollSelectionToVisible:nil];
-#pragma clang diagnostic pop
+    IGNORE_NULL_CHECK_WARNINGS_END
 }
 
 - (void)scrollPageDown:(id)sender
@@ -370,10 +368,9 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
 
 - (void)_recursiveDisplayRectIfNeededIgnoringOpacity:(NSRect)rect isVisibleRect:(BOOL)isVisibleRect rectIsVisibleRectForView:(NSView *)visibleView topView:(BOOL)topView
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGContextRef context = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     
     bool allowsSmoothing = CGContextGetAllowsFontSmoothing(context);
     bool allowsSubpixelQuantization = CGContextGetAllowsFontSubpixelQuantization(context);
@@ -386,10 +383,9 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
 
 - (void)_recursiveDisplayAllDirtyWithLockFocus:(BOOL)needsLockFocus visRect:(NSRect)visRect
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGContextRef context = (CGContextRef)[[NSGraphicsContext currentContext] graphicsPort];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     
     bool allowsSmoothing = CGContextGetAllowsFontSmoothing(context);
     bool allowsSubpixelQuantization = CGContextGetAllowsFontSubpixelQuantization(context);
@@ -402,10 +398,9 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
 
 - (void)_recursive:(BOOL)recurse displayRectIgnoringOpacity:(NSRect)displayRect inContext:(NSGraphicsContext *)graphicsContext topView:(BOOL)topView
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     CGContextRef context = (CGContextRef)[graphicsContext graphicsPort];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     
     bool allowsSmoothing = CGContextGetAllowsFontSmoothing(context);
     bool allowsSubpixelQuantization = CGContextGetAllowsFontSubpixelQuantization(context);
@@ -669,10 +664,9 @@ static BOOL _PDFSelectionsAreEqual(PDFSelection *selectionA, PDFSelection *selec
     [PDFSubview setCurrentSelection:selection];
 
     // FIXME: Get rid of this once <rdar://problem/25149294> has been fixed.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
     [PDFSubview scrollSelectionToVisible:nil];
-#pragma clang diagnostic pop
+    IGNORE_NULL_CHECK_WARNINGS_END
     return YES;
 }
 
@@ -1030,15 +1024,10 @@ static BOOL isFrameInRange(WebFrame *frame, DOMRange *range)
         break;
     }
     if (button != noButton) {
-        event = MouseEvent::create(eventNames().clickEvent, true, true, MonotonicTime::now(), 0, [nsEvent clickCount], 0, 0, 0, 0,
-#if ENABLE(POINTER_LOCK)
-            0, 0,
-#endif
-            [nsEvent modifierFlags] & NSEventModifierFlagControl,
-            [nsEvent modifierFlags] & NSEventModifierFlagOption,
-            [nsEvent modifierFlags] & NSEventModifierFlagShift,
-            [nsEvent modifierFlags] & NSEventModifierFlagCommand,
-            button, [NSEvent pressedMouseButtons], nullptr, WebCore::ForceAtClick, 0, nullptr, true);
+        // FIXME: Use createPlatformMouseEvent instead.
+        event = MouseEvent::create(eventNames().clickEvent, Event::CanBubble::Yes, Event::IsCancelable::Yes, Event::IsComposed::Yes,
+            MonotonicTime::now(), nullptr, [nsEvent clickCount], { }, { }, { }, modifiersForEvent(nsEvent),
+            button, [NSEvent pressedMouseButtons], nullptr, WebCore::ForceAtClick, 0, nullptr, MouseEvent::IsSimulated::Yes);
     }
 
     // Call to the frame loader because this is where our security checks are made.
@@ -1594,4 +1583,4 @@ static void removeUselessMenuItemSeparators(NSMutableArray *menuItems)
 
 @end
 
-#endif // !PLATFORM(IOS)
+#endif // PLATFORM(MAC)

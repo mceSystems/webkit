@@ -46,7 +46,7 @@ namespace WebCore {
 // These functions scale between screen and page coordinates because JavaScript/DOM operations
 // assume that the screen and the page share the same coordinate system.
 
-static PlatformDisplayID displayID(NSScreen *screen)
+PlatformDisplayID displayID(NSScreen *screen)
 {
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
     return [[[screen deviceDescription] objectForKey:@"NSScreenNumber"] intValue];
@@ -96,24 +96,22 @@ static NSScreen *screen(Widget* widget)
     return screen(displayID(widget));
 }
 
-static HashMap<PlatformDisplayID, ScreenProperties>& screenProperties()
+static ScreenProperties& screenProperties()
 {
-    static NeverDestroyed<HashMap<PlatformDisplayID, ScreenProperties>> screenProperties;
+    static NeverDestroyed<ScreenProperties> screenProperties;
     return screenProperties;
 }
 
-static PlatformDisplayID& primaryScreenDisplayID()
+PlatformDisplayID primaryScreenDisplayID()
 {
-    static PlatformDisplayID primaryScreenDisplayID = 0;
-    return primaryScreenDisplayID;
+    return screenProperties().primaryDisplayID;
 }
 
-std::pair<PlatformDisplayID, HashMap<PlatformDisplayID, ScreenProperties>> getScreenProperties()
+ScreenProperties collectScreenProperties()
 {
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
 
-    HashMap<PlatformDisplayID, ScreenProperties> screenProperties;
-    std::optional<PlatformDisplayID> firstScreen;
+    ScreenProperties screenProperties;
 
     for (NSScreen *screen in [NSScreen screens]) {
         auto displayID = WebCore::displayID(screen);
@@ -128,46 +126,115 @@ std::pair<PlatformDisplayID, HashMap<PlatformDisplayID, ScreenProperties>> getSc
         bool screenSupportsExtendedColor = [screen canRepresentDisplayGamut:NSDisplayGamutP3];
         bool screenHasInvertedColors = CGDisplayUsesInvertedPolarity();
         bool screenIsMonochrome = CGDisplayUsesForceToGray();
+        uint32_t displayMask = CGDisplayIDToOpenGLDisplayMask(displayID);
+        IORegistryGPUID gpuID = 0;
 
-        screenProperties.set(displayID, ScreenProperties { screenAvailableRect, screenRect, colorSpace, screenDepth, screenDepthPerComponent, screenSupportsExtendedColor, screenHasInvertedColors, screenIsMonochrome });
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+        if (displayMask)
+            gpuID = gpuIDForDisplayMask(displayMask);
+#endif
 
-        if (!firstScreen)
-            firstScreen = displayID;
+        screenProperties.screenDataMap.set(displayID, ScreenData { screenAvailableRect, screenRect, colorSpace, screenDepth, screenDepthPerComponent, screenSupportsExtendedColor, screenHasInvertedColors, screenIsMonochrome, displayMask, gpuID });
+
+        if (!screenProperties.primaryDisplayID)
+            screenProperties.primaryDisplayID = displayID;
     }
 
-    return { WTFMove(*firstScreen), WTFMove(screenProperties) };
+    return screenProperties;
 }
 
-void setScreenProperties(PlatformDisplayID primaryScreenID, const HashMap<PlatformDisplayID, ScreenProperties>& properties)
+void setScreenProperties(const ScreenProperties& properties)
 {
-    primaryScreenDisplayID() = primaryScreenID;
     screenProperties() = properties;
 }
 
-ScreenProperties screenProperties(PlatformDisplayID screendisplayID)
+static ScreenData screenData(PlatformDisplayID screendisplayID)
 {
-    RELEASE_ASSERT(!screenProperties().isEmpty());
+    RELEASE_ASSERT(!screenProperties().screenDataMap.isEmpty());
 
     // Return property of the first screen if the screen is not found in the map.
     auto displayID = screendisplayID ? screendisplayID : primaryScreenDisplayID();
     if (displayID) {
-        auto screenPropertiesForDisplay = screenProperties().find(displayID);
-        if (screenPropertiesForDisplay != screenProperties().end())
+        auto screenPropertiesForDisplay = screenProperties().screenDataMap.find(displayID);
+        if (screenPropertiesForDisplay != screenProperties().screenDataMap.end())
             return screenPropertiesForDisplay->value;
     }
 
     // Last resort: use the first item in the screen list.
-    return screenProperties().begin()->value;
+    return screenProperties().screenDataMap.begin()->value;
 }
 
-static ScreenProperties getScreenProperties(Widget* widget)
+uint32_t primaryOpenGLDisplayMask()
 {
-    return screenProperties(displayID(widget));
+    if (!screenProperties().screenDataMap.isEmpty())
+        return screenData(primaryScreenDisplayID()).displayMask;
+    
+    return 0;
+}
+
+uint32_t displayMaskForDisplay(PlatformDisplayID displayID)
+{
+    if (!screenProperties().screenDataMap.isEmpty())
+        return screenData(displayID).displayMask;
+    
+    ASSERT_NOT_REACHED();
+    return 0;
+}
+
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+IORegistryGPUID primaryGPUID()
+{
+    return gpuIDForDisplay(screenProperties().primaryDisplayID);
+}
+
+IORegistryGPUID gpuIDForDisplay(PlatformDisplayID displayID)
+{
+#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+    if (!screenProperties().screenDataMap.isEmpty())
+        return screenData(displayID).gpuID;
+#else
+    return gpuIDForDisplayMask(CGDisplayIDToOpenGLDisplayMask(displayID));
+#endif
+    return 0;
+}
+
+IORegistryGPUID gpuIDForDisplayMask(GLuint displayMask)
+{
+    GLint numRenderers = 0;
+    CGLRendererInfoObj rendererInfo = nullptr;
+    CGLError error = CGLQueryRendererInfo(displayMask, &rendererInfo, &numRenderers);
+    if (!numRenderers || !rendererInfo || error != kCGLNoError)
+        return 0;
+
+    // The 0th renderer should not be the software renderer.
+    GLint isAccelerated;
+    error = CGLDescribeRenderer(rendererInfo, 0, kCGLRPAccelerated, &isAccelerated);
+    if (!isAccelerated || error != kCGLNoError)
+        return 0;
+
+    GLint gpuIDLow = 0;
+    GLint gpuIDHigh = 0;
+
+    error = CGLDescribeRenderer(rendererInfo, 0, kCGLRPRegistryIDLow, &gpuIDLow);
+    if (error != kCGLNoError)
+        return 0;
+
+    error = CGLDescribeRenderer(rendererInfo, 0, kCGLRPRegistryIDHigh, &gpuIDHigh);
+    if (error != kCGLNoError)
+        return 0;
+
+    return (IORegistryGPUID) gpuIDHigh << 32 | gpuIDLow;
+}
+#endif // !__MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+
+static ScreenData getScreenProperties(Widget* widget)
+{
+    return screenData(displayID(widget));
 }
 
 bool screenIsMonochrome(Widget* widget)
 {
-    if (!screenProperties().isEmpty())
+    if (!screenProperties().screenDataMap.isEmpty())
         return getScreenProperties(widget).screenIsMonochrome;
 
     // This is a system-wide accessibility setting, same on all screens.
@@ -177,8 +244,8 @@ bool screenIsMonochrome(Widget* widget)
 
 bool screenHasInvertedColors()
 {
-    if (!screenProperties().isEmpty())
-        return screenProperties(primaryScreenDisplayID()).screenHasInvertedColors;
+    if (!screenProperties().screenDataMap.isEmpty())
+        return screenData(primaryScreenDisplayID()).screenHasInvertedColors;
 
     // This is a system-wide accessibility setting, same on all screens.
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
@@ -187,7 +254,7 @@ bool screenHasInvertedColors()
 
 int screenDepth(Widget* widget)
 {
-    if (!screenProperties().isEmpty()) {
+    if (!screenProperties().screenDataMap.isEmpty()) {
         auto screenDepth = getScreenProperties(widget).screenDepth;
         ASSERT(screenDepth);
         return screenDepth;
@@ -199,7 +266,7 @@ int screenDepth(Widget* widget)
 
 int screenDepthPerComponent(Widget* widget)
 {
-    if (!screenProperties().isEmpty()) {
+    if (!screenProperties().screenDataMap.isEmpty()) {
         auto depthPerComponent = getScreenProperties(widget).screenDepthPerComponent;
         ASSERT(depthPerComponent);
         return depthPerComponent;
@@ -211,8 +278,8 @@ int screenDepthPerComponent(Widget* widget)
 
 FloatRect screenRectForDisplay(PlatformDisplayID displayID)
 {
-    if (!screenProperties().isEmpty()) {
-        auto screenRect = screenProperties(displayID).screenRect;
+    if (!screenProperties().screenDataMap.isEmpty()) {
+        auto screenRect = screenData(displayID).screenRect;
         ASSERT(!screenRect.isEmpty());
         return screenRect;
     }
@@ -228,7 +295,7 @@ FloatRect screenRectForPrimaryScreen()
 
 FloatRect screenRect(Widget* widget)
 {
-    if (!screenProperties().isEmpty())
+    if (!screenProperties().screenDataMap.isEmpty())
         return getScreenProperties(widget).screenRect;
 
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
@@ -237,7 +304,7 @@ FloatRect screenRect(Widget* widget)
 
 FloatRect screenAvailableRect(Widget* widget)
 {
-    if (!screenProperties().isEmpty())
+    if (!screenProperties().screenDataMap.isEmpty())
         return getScreenProperties(widget).screenAvailableRect;
 
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
@@ -262,7 +329,7 @@ NSScreen *screen(PlatformDisplayID displayID)
 
 CGColorSpaceRef screenColorSpace(Widget* widget)
 {
-    if (!screenProperties().isEmpty())
+    if (!screenProperties().screenDataMap.isEmpty())
         return getScreenProperties(widget).colorSpace.get();
 
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));
@@ -271,7 +338,7 @@ CGColorSpaceRef screenColorSpace(Widget* widget)
 
 bool screenSupportsExtendedColor(Widget* widget)
 {
-    if (!screenProperties().isEmpty())
+    if (!screenProperties().screenDataMap.isEmpty())
         return getScreenProperties(widget).screenSupportsExtendedColor;
 
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanCommunicateWithWindowServer));

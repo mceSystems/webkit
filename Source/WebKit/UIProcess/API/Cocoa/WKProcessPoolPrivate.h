@@ -42,6 +42,8 @@
 
 + (WKProcessPool *)_sharedProcessPool;
 
++ (NSArray<WKProcessPool *> *)_allProcessPoolsForTesting WK_API_AVAILABLE(macosx(10.14), ios(12.0));
+
 @property (nonatomic, readonly) _WKProcessPoolConfiguration *_configuration;
 
 - (void)_setAllowsSpecificHTTPSCertificate:(NSArray *)certificateChain forHost:(NSString *)host;
@@ -72,16 +74,18 @@
 - (void)_automationCapabilitiesDidChange WK_API_AVAILABLE(macosx(10.12), ios(10.0));
 - (void)_setAutomationSession:(_WKAutomationSession *)automationSession WK_API_AVAILABLE(macosx(10.12), ios(10.0));
 
-- (void)_addSupportedPlugin:(NSString *) domain named:(NSString *) name withMimeTypes: (NSSet<NSString *> *) mimeTypes withExtensions: (NSSet<NSString *> *) extensions WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
-- (void)_clearSupportedPlugins WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)_addSupportedPlugin:(NSString *) domain named:(NSString *) name withMimeTypes: (NSSet<NSString *> *) mimeTypes withExtensions: (NSSet<NSString *> *) extensions WK_API_AVAILABLE(macosx(10.14), ios(12.0));
+- (void)_clearSupportedPlugins WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 
-- (void)_registerURLSchemeAsCanDisplayOnlyIfCanRequest:(NSString *)scheme WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)_registerURLSchemeAsCanDisplayOnlyIfCanRequest:(NSString *)scheme WK_API_AVAILABLE(macosx(10.14), ios(12.0));
+
++ (int)_webContentProcessXPCMain WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
 
 // Test only. Should be called only while no web content processes are running.
 - (void)_terminateStorageProcess;
 - (void)_terminateNetworkProcess;
-- (void)_terminateServiceWorkerProcesses WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
-- (void)_disableServiceWorkerProcessTerminationDelay WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)_terminateServiceWorkerProcesses WK_API_AVAILABLE(macosx(10.14), ios(12.0));
+- (void)_disableServiceWorkerProcessTerminationDelay WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 
 // Test only.
 - (pid_t)_networkProcessIdentifier WK_API_AVAILABLE(macosx(10.13), ios(11.0));
@@ -89,12 +93,13 @@
 
 // Test only.
 - (size_t)_webProcessCount WK_API_AVAILABLE(macosx(10.13), ios(11.0));
-- (size_t)_prewarmedWebProcessCount WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
-- (size_t)_webProcessCountIgnoringPrewarmed WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (BOOL)_hasPrewarmedWebProcess WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (size_t)_webProcessCountIgnoringPrewarmed WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 - (size_t)_pluginProcessCount WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
-- (size_t)_serviceWorkerProcessCount WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (size_t)_serviceWorkerProcessCount WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 - (void)_syncNetworkProcessCookies WK_API_AVAILABLE(macosx(10.13), ios(11.0));
-- (void)_makeNextWebProcessLaunchFailForTesting WK_API_AVAILABLE(macosx(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)_makeNextWebProcessLaunchFailForTesting WK_API_AVAILABLE(macosx(10.14), ios(12.0));
+- (void)_makeNextNetworkProcessLaunchFailForTesting WK_API_AVAILABLE(macosx(10.14), ios(12.0));
 
 // Test only. Returns web processes running web pages (does not include web processes running service workers)
 - (size_t)_webPageContentProcessCount WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
@@ -109,7 +114,7 @@
 - (void)_registerURLSchemeServiceWorkersCanHandle:(NSString *)scheme WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
 - (void)_setMaximumNumberOfProcesses:(NSUInteger)value WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
 
-@property (nonatomic, getter=_isCookieStoragePartitioningEnabled, setter=_setCookieStoragePartitioningEnabled:) BOOL _cookieStoragePartitioningEnabled WK_API_AVAILABLE(macosx(10.12.3), ios(10.3));
+@property (nonatomic, getter=_isCookieStoragePartitioningEnabled, setter=_setCookieStoragePartitioningEnabled:) BOOL _cookieStoragePartitioningEnabled WK_API_DEPRECATED("Partitioned cookies are no longer supported", macosx(10.12.3, WK_MAC_TBA), ios(10.3, WK_IOS_TBA));
 @property (nonatomic, getter=_isStorageAccessAPIEnabled, setter=_setStorageAccessAPIEnabled:) BOOL _storageAccessAPIEnabled WK_API_AVAILABLE(macosx(10.13.4), ios(11.3));
 
 @end

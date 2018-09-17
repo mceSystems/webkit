@@ -59,15 +59,15 @@ public:
     const std::set<std::string>& allowedHosts() const { return m_allowedHosts; }
     void setAllowedHosts(std::set<std::string> hosts) { m_allowedHosts = WTFMove(hosts); }
     void addURLToRedirect(std::string origin, std::string destination);
-    const std::string& redirectionDestinationForURL(std::string);
+    const char* redirectionDestinationForURL(const char*);
     void clearAllApplicationCaches();
     void clearAllDatabases();
     void clearApplicationCacheForOrigin(JSStringRef name);
     void clearBackForwardList();
     void clearPersistentUserStyleSheet();
     bool callShouldCloseOnWebView();
-    JSStringRef copyDecodedHostName(JSStringRef name);
-    JSStringRef copyEncodedHostName(JSStringRef name);
+    JSRetainPtr<JSStringRef> copyDecodedHostName(JSStringRef name);
+    JSRetainPtr<JSStringRef> copyEncodedHostName(JSStringRef name);
     void dispatchPendingLoadRequests();
     void display();
     void displayAndTrackRepaints();
@@ -83,7 +83,7 @@ public:
     int numberOfPendingGeolocationPermissionRequests();
     bool isGeolocationProviderActive();
     void overridePreference(JSStringRef key, JSStringRef value);
-    JSStringRef pathToLocalResource(JSContextRef, JSStringRef url);
+    JSRetainPtr<JSStringRef> pathToLocalResource(JSContextRef, JSStringRef url);
     void queueBackNavigation(int howFarBackward);
     void queueForwardNavigation(int howFarForward);
     void queueLoad(JSStringRef url, JSStringRef target);
@@ -319,7 +319,7 @@ public:
     void showWebInspector();
     void closeWebInspector();
     void evaluateInWebInspector(JSStringRef script);
-    JSStringRef inspectorTestStubURL();
+    JSRetainPtr<JSStringRef> inspectorTestStubURL();
 
     void evaluateScriptInIsolatedWorld(unsigned worldID, JSObjectRef globalObject, JSStringRef script);
     void evaluateScriptInIsolatedWorldAndReturnValue(unsigned worldID, JSObjectRef globalObject, JSStringRef script);
@@ -376,6 +376,7 @@ public:
     bool dumpJSConsoleLogInStdErr() const { return m_dumpJSConsoleLogInStdErr; }
 
     void setSpellCheckerLoggingEnabled(bool);
+    void setSpellCheckerResults(JSContextRef, JSObjectRef results);
 
     const std::vector<std::string>& openPanelFiles() const { return m_openPanelFiles; }
     void setOpenPanelFiles(JSContextRef, JSValueRef);

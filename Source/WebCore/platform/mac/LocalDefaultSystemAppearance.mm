@@ -31,19 +31,18 @@
 
 namespace WebCore {
 
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/LocalDefaultSystemAppearanceAdditions.mm>
-#else
-LocalDefaultSystemAppearance::LocalDefaultSystemAppearance(bool useSystemAppearance, bool)
+LocalDefaultSystemAppearance::LocalDefaultSystemAppearance(bool useSystemAppearance, bool useDarkAppearance)
 {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
     m_savedSystemAppearance = [NSAppearance currentAppearance];
-    [NSAppearance setCurrentAppearance:useSystemAppearance ? [NSApp effectiveAppearance] : [NSAppearance appearanceNamed:NSAppearanceNameAqua]];
+    m_usingDarkAppearance = useSystemAppearance && useDarkAppearance;
+
+    [NSAppearance setCurrentAppearance:[NSAppearance appearanceNamed:m_usingDarkAppearance ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua]];
 #else
     UNUSED_PARAM(useSystemAppearance);
+    UNUSED_PARAM(useDarkAppearance);
 #endif
 }
-#endif
 
 LocalDefaultSystemAppearance::~LocalDefaultSystemAppearance()
 {

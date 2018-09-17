@@ -82,6 +82,7 @@
 #include <JavaScriptCore/ArrayPrototype.h>
 #include <JavaScriptCore/BuiltinNames.h>
 #include <JavaScriptCore/FunctionPrototype.h>
+#include <JavaScriptCore/HeapSnapshotBuilder.h>
 #include <JavaScriptCore/IteratorOperations.h>
 #include <JavaScriptCore/JSArray.h>
 #include <JavaScriptCore/JSCInlines.h>
@@ -834,7 +835,7 @@ template<> TestObj::Dictionary convertDictionary<TestObj::Dictionary>(ExecState&
         result.stringWithDefault = convert<IDLDOMString>(state, stringWithDefaultValue);
         RETURN_IF_EXCEPTION(throwScope, { });
     } else
-        result.stringWithDefault = ASCIILiteral("defaultString");
+        result.stringWithDefault = "defaultString"_s;
     JSValue stringWithoutDefaultValue;
     if (isNullOrUndefined)
         stringWithoutDefaultValue = jsUndefined();
@@ -1941,7 +1942,7 @@ template<> JSValue JSTestObjConstructor::prototypeForStructure(JSC::VM& vm, cons
 template<> void JSTestObjConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
     putDirect(vm, vm.propertyNames->prototype, JSTestObj::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String(ASCIILiteral("TestObject"))), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->name, jsNontrivialString(&vm, String("TestObject"_s)), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(2), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     reifyStaticProperties(vm, JSTestObj::info(), JSTestObjConstructorTableValues, *this);
 }
@@ -6274,7 +6275,7 @@ static inline JSC::EncodedJSValue jsTestObjPrototypeFunctionMethodWithOptionalSt
     UNUSED_PARAM(state);
     UNUSED_PARAM(throwScope);
     auto& impl = castedThis->wrapped();
-    auto str = state->argument(0).isUndefined() ? ASCIILiteral("foo") : convert<IDLDOMString>(*state, state->uncheckedArgument(0));
+    auto str = state->argument(0).isUndefined() ? "foo"_s : convert<IDLDOMString>(*state, state->uncheckedArgument(0));
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
     impl.methodWithOptionalStringAndDefaultValue(WTFMove(str));
     return JSValue::encode(jsUndefined());
@@ -8389,10 +8390,20 @@ void JSTestObj::visitChildren(JSCell* cell, SlotVisitor& visitor)
     visitor.append(thisObject->m_cachedAttribute2);
 }
 
-bool JSTestObjOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor)
+void JSTestObj::heapSnapshot(JSCell* cell, HeapSnapshotBuilder& builder)
+{
+    auto* thisObject = jsCast<JSTestObj*>(cell);
+    builder.setWrappedObjectForCell(cell, &thisObject->wrapped());
+    if (thisObject->scriptExecutionContext())
+        builder.setLabelForCell(cell, String::format("url %s", thisObject->scriptExecutionContext()->url().string().utf8().data()));
+    Base::heapSnapshot(cell, builder);
+}
+
+bool JSTestObjOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, SlotVisitor& visitor, const char** reason)
 {
     UNUSED_PARAM(handle);
     UNUSED_PARAM(visitor);
+    UNUSED_PARAM(reason);
     return false;
 }
 

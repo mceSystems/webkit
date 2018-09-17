@@ -45,7 +45,7 @@ namespace WebKit {
 class RemoteLayerTreeContext;
 class RemoteLayerTreeDisplayRefreshMonitor;
 
-class RemoteLayerTreeDrawingArea : public DrawingArea, public WebCore::GraphicsLayerClient {
+class RemoteLayerTreeDrawingArea : public DrawingArea, public CanMakeWeakPtr<RemoteLayerTreeDrawingArea>, public WebCore::GraphicsLayerClient {
     friend class RemoteLayerTreeDisplayRefreshMonitor;
 public:
     RemoteLayerTreeDrawingArea(WebPage&, const WebPageCreationParameters&);
@@ -53,8 +53,6 @@ public:
 
     uint64_t nextTransactionID() const { return m_currentTransactionID + 1; }
     uint64_t lastCommittedTransactionID() const { return m_currentTransactionID; }
-
-    WeakPtr<RemoteLayerTreeDrawingArea> createWeakPtr() { return m_weakPtrFactory.createWeakPtr(*this); }
 
 private:
     // DrawingArea
@@ -104,7 +102,7 @@ private:
 
     void mainFrameContentSizeChanged(const WebCore::IntSize&) override;
 
-    void activityStateDidChange(WebCore::ActivityState::Flags changed, bool wantsDidUpdateActivityState, const Vector<CallbackID>& callbackIDs) override;
+    void activityStateDidChange(OptionSet<WebCore::ActivityState::Flag> changed, ActivityStateChangeID, const Vector<CallbackID>& callbackIDs) override;
 
     bool adjustLayerFlushThrottling(WebCore::LayerFlushThrottleState::Flags) override;
 
@@ -139,7 +137,7 @@ private:
     };
 
     std::unique_ptr<RemoteLayerTreeContext> m_remoteLayerTreeContext;
-    std::unique_ptr<WebCore::GraphicsLayer> m_rootLayer;
+    Ref<WebCore::GraphicsLayer> m_rootLayer;
 
     WebCore::IntSize m_viewSize;
 
@@ -165,13 +163,12 @@ private:
 
     uint64_t m_currentTransactionID { 0 };
     Vector<RemoteLayerTreeTransaction::TransactionCallbackID> m_pendingCallbackIDs;
+    ActivityStateChangeID m_activityStateChangeID { ActivityStateChangeAsynchronous };
 
     WebCore::LayoutMilestones m_pendingNewlyReachedLayoutMilestones { 0 };
 
     WebCore::GraphicsLayer* m_contentLayer { nullptr };
     WebCore::GraphicsLayer* m_viewOverlayRootLayer { nullptr };
-    
-    WeakPtrFactory<RemoteLayerTreeDrawingArea> m_weakPtrFactory;
 };
 
 } // namespace WebKit

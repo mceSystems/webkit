@@ -89,15 +89,20 @@ RetainPtr<NSDictionary> Editor::fontAttributesForSelectionStart() const
     RetainPtr<NSMutableDictionary> attributes = adoptNS([[NSMutableDictionary alloc] init]);
 
     if (auto ctFont = style->fontCascade().primaryFont().getCTFont())
-        [attributes setObject:(id)ctFont forKey:NSFontAttributeName];
+        [attributes setObject:(__bridge id)ctFont forKey:NSFontAttributeName];
 
     // FIXME: Why would we not want to retrieve these attributes on iOS?
 #if PLATFORM(MAC)
-    if (style->visitedDependentColor(CSSPropertyBackgroundColor).isVisible())
-        [attributes setObject:nsColor(style->visitedDependentColor(CSSPropertyBackgroundColor)) forKey:NSBackgroundColorAttributeName];
+    // FIXME: for now, always report the colors after applying -apple-color-filter. In future not all clients
+    // may want this, so we may have to add a setting to control it. See also editingAttributedStringFromRange().
+    Color backgroundColor = style->visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
+    if (backgroundColor.isVisible())
+        [attributes setObject:nsColor(backgroundColor) forKey:NSBackgroundColorAttributeName];
 
-    if (style->visitedDependentColor(CSSPropertyColor).isValid() && !Color::isBlackColor(style->visitedDependentColor(CSSPropertyColor)))
-        [attributes setObject:nsColor(style->visitedDependentColor(CSSPropertyColor)) forKey:NSForegroundColorAttributeName];
+    Color foregroundColor = style->visitedDependentColorWithColorFilter(CSSPropertyColor);
+    // FIXME: isBlackColor not suitable for dark mode.
+    if (foregroundColor.isValid() && !Color::isBlackColor(foregroundColor))
+        [attributes setObject:nsColor(foregroundColor) forKey:NSForegroundColorAttributeName];
 
     const ShadowData* shadowData = style->textShadow();
     if (shadowData) {
@@ -155,15 +160,21 @@ String Editor::selectionInHTMLFormat()
 
 #if ENABLE(ATTACHMENT_ELEMENT)
 
-void Editor::getPasteboardTypesAndDataForAttachment(HTMLAttachmentElement& attachment, Vector<String>& outTypes, Vector<RefPtr<SharedBuffer>>& outData)
+void Editor::getPasteboardTypesAndDataForAttachment(Element& element, Vector<String>& outTypes, Vector<RefPtr<SharedBuffer>>& outData)
 {
-    auto attachmentRange = Range::create(attachment.document(), { &attachment, Position::PositionIsBeforeAnchor }, { &attachment, Position::PositionIsAfterAnchor });
-    client()->getClientPasteboardDataForRange(attachmentRange.ptr(), outTypes, outData);
-    // FIXME: We should additionally write the attachment as a web archive here, such that drag and drop within the
-    // same page doesn't destroy and recreate attachments unnecessarily. This is also needed to preserve the attachment
-    // display mode when dragging and dropping or cutting and pasting. For the time being, this is disabled because
-    // inserting attachment elements from web archive data sometimes causes attachment data to be lost; this requires
-    // further investigation.
+    auto& document = element.document();
+    auto elementRange = Range::create(document, { &element, Position::PositionIsBeforeAnchor }, { &element, Position::PositionIsAfterAnchor });
+    client()->getClientPasteboardDataForRange(elementRange.ptr(), outTypes, outData);
+
+    outTypes.append(PasteboardCustomData::cocoaType());
+    outData.append(PasteboardCustomData { document.originIdentifierForPasteboard(), { }, { }, { } }.createSharedBuffer());
+
+    if (auto archive = LegacyWebArchive::create(elementRange.ptr())) {
+        if (auto webArchiveData = archive->rawDataRepresentation()) {
+            outTypes.append(WebArchivePboardType);
+            outData.append(SharedBuffer::create(webArchiveData.get()));
+        }
+    }
 }
 
 #endif
@@ -278,6 +289,16 @@ RefPtr<SharedBuffer> Editor::dataInRTFFormat(NSAttributedString *string)
     END_BLOCK_OBJC_EXCEPTIONS;
 
     return nullptr;
+}
+
+// FIXME: Should give this function a name that makes it clear it adds resources to the document loader as a side effect.
+// Or refactor so it does not do that.
+RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, Range& context, bool allowPlainText, bool& chosePlainText)
+{
+    WebContentReader reader(m_frame, context, allowPlainText);
+    pasteboard.read(reader);
+    chosePlainText = reader.madeFragmentFromPlainText;
+    return WTFMove(reader.fragment);
 }
 
 }

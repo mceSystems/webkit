@@ -44,6 +44,7 @@ namespace WebCore {
 
 class ContentSecurityPolicyResponseHeaders;
 class Crypto;
+class MicrotaskQueue;
 class Performance;
 class ScheduledAction;
 class WorkerInspectorController;
@@ -68,7 +69,6 @@ public:
 
 #if ENABLE(INDEXED_DATABASE)
     IDBClient::IDBConnectionProxy* idbConnectionProxy() final;
-    void stopIndexedDatabase();
 #endif
 
     WorkerCacheStorageConnection& cacheStorageConnection();
@@ -77,6 +77,8 @@ public:
     void clearScript() { m_script = nullptr; }
 
     WorkerInspectorController& inspectorController() const { return *m_inspectorController; }
+
+    MicrotaskQueue& microtaskQueue() const { return *m_microtaskQueue; }
 
     WorkerThread& thread() const { return m_thread; }
 
@@ -113,6 +115,8 @@ public:
 
     Crypto& crypto();
     Performance& performance() const;
+
+    void prepareForTermination();
 
     void removeAllEventListeners() final;
 
@@ -169,6 +173,10 @@ private:
     bool unwrapCryptoKey(const Vector<uint8_t>& wrappedKey, Vector<uint8_t>& key) final;
 #endif
 
+#if ENABLE(INDEXED_DATABASE)
+    void stopIndexedDatabase();
+#endif
+
     URL m_url;
     String m_identifier;
     String m_userAgent;
@@ -179,6 +187,7 @@ private:
     WorkerThread& m_thread;
     std::unique_ptr<WorkerScriptController> m_script;
     std::unique_ptr<WorkerInspectorController> m_inspectorController;
+    std::unique_ptr<MicrotaskQueue> m_microtaskQueue;
 
     bool m_closing { false };
     bool m_isOnline;

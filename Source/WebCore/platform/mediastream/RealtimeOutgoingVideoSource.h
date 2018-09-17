@@ -33,16 +33,20 @@
 #include "LibWebRTCMacros.h"
 #include "MediaStreamTrackPrivate.h"
 #include <Timer.h>
+
+ALLOW_UNUSED_PARAMETERS_BEGIN
+
 #include <webrtc/api/mediastreaminterface.h>
-#include <webrtc/api/optional.h>
 #include <webrtc/common_video/include/i420_buffer_pool.h>
-#include <webrtc/api/videosinkinterface.h>
+
+ALLOW_UNUSED_PARAMETERS_END
+
 #include <wtf/Optional.h>
 #include <wtf/ThreadSafeRefCounted.h>
 
 namespace WebCore {
 
-class RealtimeOutgoingVideoSource : public ThreadSafeRefCounted<RealtimeOutgoingVideoSource>, public webrtc::VideoTrackSourceInterface, private MediaStreamTrackPrivate::Observer {
+class RealtimeOutgoingVideoSource : public ThreadSafeRefCounted<RealtimeOutgoingVideoSource, WTF::DestructionThread::Main>, public webrtc::VideoTrackSourceInterface, private MediaStreamTrackPrivate::Observer {
 public:
     static Ref<RealtimeOutgoingVideoSource> create(Ref<MediaStreamTrackPrivate>&& videoSource);
     ~RealtimeOutgoingVideoSource() { stop(); }
@@ -54,9 +58,7 @@ public:
     void AddRef() const final { ref(); }
     rtc::RefCountReleaseStatus Release() const final
     {
-        callOnMainThread([this] {
-            deref();
-        });
+        deref();
         return rtc::RefCountReleaseStatus::kOtherRefsRemained;
     }
 
@@ -89,7 +91,7 @@ private:
 
     // VideoTrackSourceInterface API
     bool is_screencast() const final { return false; }
-    rtc::Optional<bool> needs_denoising() const final { return rtc::Optional<bool>(); }
+    absl::optional<bool> needs_denoising() const final { return absl::optional<bool>(); }
     bool GetStats(Stats*) final { return false; };
 
     // MediaSourceInterface API

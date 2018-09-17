@@ -33,6 +33,8 @@
 #include <WebCore/CertificateInfo.h>
 #include <WebCore/FileSystem.h>
 #include <WebCore/NetworkStorageSession.h>
+#include "WebCookieManager.h"
+#include <WebCore/CurlContext.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/ResourceHandle.h>
 #include <wtf/RAMSize.h>
@@ -69,12 +71,23 @@ void NetworkProcess::platformTerminate()
     notImplemented();
 }
 
-void NetworkProcess::platformPrepareToSuspend()
+void NetworkProcess::platformPrepareToSuspend(CompletionHandler<void()>&& completionHandler)
+{
+    notImplemented();
+    completionHandler();
+}
+
+void NetworkProcess::platformProcessDidResume()
 {
     notImplemented();
 }
 
-void NetworkProcess::platformProcessDidResume()
+void NetworkProcess::platformProcessDidTransitionToForeground()
+{
+    notImplemented();
+}
+
+void NetworkProcess::platformProcessDidTransitionToBackground()
 {
     notImplemented();
 }

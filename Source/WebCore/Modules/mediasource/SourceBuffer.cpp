@@ -348,6 +348,58 @@ void SourceBuffer::rangeRemoval(const MediaTime& start, const MediaTime& end)
     m_removeTimer.startOneShot(0_s);
 }
 
+ExceptionOr<void> SourceBuffer::changeType(const String& type)
+{
+    // changeType() proposed API. See issue #155: <https://github.com/w3c/media-source/issues/155>
+    // https://rawgit.com/wicg/media-source/codec-switching/index.html#dom-sourcebuffer-changetype
+
+    // 1. If type is an empty string then throw a TypeError exception and abort these steps.
+    if (type.isEmpty())
+        return Exception { TypeError };
+
+    // 2. If this object has been removed from the sourceBuffers attribute of the parent media source,
+    // then throw an InvalidStateError exception and abort these steps.
+    // 3. If the updating attribute equals true, then throw an InvalidStateError exception and abort these steps.
+    if (isRemoved() || m_updating)
+        return Exception { InvalidStateError };
+
+    // 4. If type contains a MIME type that is not supported or contains a MIME type that is not supported with
+    // the types specified (currently or previously) of SourceBuffer objects in the sourceBuffers attribute of
+    // the parent media source, then throw a NotSupportedError exception and abort these steps.
+    ContentType contentType(type);
+    if (!m_private->canSwitchToType(contentType))
+        return Exception { NotSupportedError };
+
+    // 5. If the readyState attribute of the parent media source is in the "ended" state then run the following
+    // steps:
+    // 5.1. Set the readyState attribute of the parent media source to "open"
+    // 5.2. Queue a task to fire a simple event named sourceopen at the parent media source.
+    m_source->openIfInEndedState();
+
+    // 6. Run the reset parser state algorithm.
+    resetParserState();
+
+    // 7. Update the generate timestamps flag on this SourceBuffer object to the value in the "Generate Timestamps
+    // Flag" column of the byte stream format registry [MSE-REGISTRY] entry that is associated with type.
+    setShouldGenerateTimestamps(MediaSource::contentTypeShouldGenerateTimestamps(contentType));
+
+    // ↳ If the generate timestamps flag equals true:
+    // Set the mode attribute on this SourceBuffer object to "sequence", including running the associated steps
+    // for that attribute being set.
+    if (m_shouldGenerateTimestamps)
+        setMode(AppendMode::Sequence);
+
+    // ↳ Otherwise:
+    // Keep the previous value of the mode attribute on this SourceBuffer object, without running any associated
+    // steps for that attribute being set.
+    // NOTE: No-op.
+
+    // 9. Set pending initialization segment for changeType flag to true.
+    m_pendingInitializationSegmentForChangeType = true;
+
+    return { };
+}
+
 void SourceBuffer::abortIfUpdating()
 {
     // Section 3.2 abort() method step 4 substeps.
@@ -458,8 +510,28 @@ bool SourceBuffer::hasPendingActivity() const
     return m_source || m_asyncEventQueue.hasPendingEvents();
 }
 
+void SourceBuffer::suspend(ReasonForSuspension reason)
+{
+    switch (reason) {
+    case ReasonForSuspension::PageCache:
+    case ReasonForSuspension::PageWillBeSuspended:
+        m_asyncEventQueue.suspend();
+        break;
+    case ReasonForSuspension::JavaScriptDebuggerPaused:
+    case ReasonForSuspension::WillDeferLoading:
+        // Do nothing, we don't pause media playback in these cases.
+        break;
+    }
+}
+
+void SourceBuffer::resume()
+{
+    m_asyncEventQueue.resume();
+}
+
 void SourceBuffer::stop()
 {
+    m_asyncEventQueue.close();
     m_appendBufferTimer.stop();
     m_removeTimer.stop();
 }
@@ -481,7 +553,7 @@ bool SourceBuffer::isRemoved() const
 
 void SourceBuffer::scheduleEvent(const AtomicString& eventName)
 {
-    auto event = Event::create(eventName, false, false);
+    auto event = Event::create(eventName, Event::CanBubble::No, Event::IsCancelable::No);
     event->setTarget(this);
 
     m_asyncEventQueue.enqueueEvent(WTFMove(event));
@@ -990,8 +1062,10 @@ void SourceBuffer::sourceBufferPrivateDidReceiveInitializationSegment(const Init
         //   Run the duration change algorithm with new duration set to the duration in the initialization segment.
         // ↳ Otherwise:
         //   Run the duration change algorithm with new duration set to positive Infinity.
-        MediaTime newDuration = segment.duration.isValid() ? segment.duration : MediaTime::positiveInfiniteTime();
-        m_source->setDurationInternal(newDuration);
+        if (segment.duration.isValid() && !segment.duration.isIndefinite())
+            m_source->setDurationInternal(segment.duration);
+        else
+            m_source->setDurationInternal(MediaTime::positiveInfiniteTime());
     }
 
     // 2. If the initialization segment has no audio, video, or text tracks, then run the append error algorithm
@@ -1088,7 +1162,7 @@ void SourceBuffer::sourceBufferPrivateDidReceiveInitializationSegment(const Init
             // 5.2.7 Queue a task to fire a trusted event named addtrack, that does not bubble and is
             // not cancelable, and that uses the TrackEvent interface, at the AudioTrackList object
             // referenced by the audioTracks attribute on the HTMLMediaElement.
-            m_source->mediaElement()->audioTracks().append(newAudioTrack.copyRef());
+            m_source->mediaElement()->ensureAudioTracks().append(newAudioTrack.copyRef());
 
             // 5.2.8 Create a new track buffer to store coded frames for this track.
             ASSERT(!m_trackBufferMap.contains(newAudioTrack->id()));
@@ -1127,7 +1201,7 @@ void SourceBuffer::sourceBufferPrivateDidReceiveInitializationSegment(const Init
             // 5.3.7 Queue a task to fire a trusted event named addtrack, that does not bubble and is
             // not cancelable, and that uses the TrackEvent interface, at the VideoTrackList object
             // referenced by the videoTracks attribute on the HTMLMediaElement.
-            m_source->mediaElement()->videoTracks().append(newVideoTrack.copyRef());
+            m_source->mediaElement()->ensureVideoTracks().append(newVideoTrack.copyRef());
 
             // 5.3.8 Create a new track buffer to store coded frames for this track.
             ASSERT(!m_trackBufferMap.contains(newVideoTrack->id()));
@@ -1163,7 +1237,7 @@ void SourceBuffer::sourceBufferPrivateDidReceiveInitializationSegment(const Init
             // 5.4.6 Queue a task to fire a trusted event named addtrack, that does not bubble and is
             // not cancelable, and that uses the TrackEvent interface, at the TextTrackList object
             // referenced by the textTracks attribute on the HTMLMediaElement.
-            m_source->mediaElement()->textTracks().append(WTFMove(newTextTrack));
+            m_source->mediaElement()->ensureTextTracks().append(WTFMove(newTextTrack));
 
             // 5.4.7 Create a new track buffer to store coded frames for this track.
             ASSERT(!m_trackBufferMap.contains(textTrackPrivate.id()));
@@ -1185,6 +1259,10 @@ void SourceBuffer::sourceBufferPrivateDidReceiveInitializationSegment(const Init
         // 5.6 Set first initialization segment flag to true.
         m_receivedFirstInitializationSegment = true;
     }
+
+    // (Note: Issue #155 adds this step after step 5:)
+    // 6. Set  pending initialization segment for changeType flag  to false.
+    m_pendingInitializationSegmentForChangeType = false;
 
     // 6. If the HTMLMediaElement.readyState attribute is HAVE_NOTHING, then run the following steps:
     if (m_private->readyState() == MediaPlayer::HaveNothing) {
@@ -1220,9 +1298,14 @@ bool SourceBuffer::validateInitializationSegment(const InitializationSegment& se
         return false;
 
     //   * The codecs for each track, match what was specified in the first initialization segment.
-    for (auto& audioTrackInfo : segment.audioTracks) {
-        if (!m_audioCodecs.contains(audioTrackInfo.description->codec()))
-            return false;
+    // (Note: Issue #155 strikes out this check. For broad compatibility when this experimental feature
+    // is not enabled, only perform this check if the "pending initialization segment for changeType flag"
+    // is not set.)
+    if (!m_pendingInitializationSegmentForChangeType) {
+        for (auto& audioTrackInfo : segment.audioTracks) {
+            if (!m_audioCodecs.contains(audioTrackInfo.description->codec()))
+                return false;
+        }
     }
 
     for (auto& videoTrackInfo : segment.videoTracks) {
@@ -1308,12 +1391,14 @@ void SourceBuffer::sourceBufferPrivateDidReceiveSample(MediaSample& sample)
         return;
 
     // 3.5.1 Segment Parser Loop
-    // 6.1 If the first initialization segment received flag is false, then run the append error algorithm
+    // 6.1 If the first initialization segment received flag is false, (Note: Issue # 155 & changeType()
+    // algorithm) or the  pending initialization segment for changeType flag  is true, (End note)
+    // then run the append error algorithm
     //     with the decode error parameter set to true and abort this algorithm.
     // Note: current design makes SourceBuffer somehow ignorant of append state - it's more a thing
     //  of SourceBufferPrivate. That's why this check can't really be done in appendInternal.
     //  unless we force some kind of design with state machine switching.
-    if (!m_receivedFirstInitializationSegment) {
+    if (!m_receivedFirstInitializationSegment || m_pendingInitializationSegmentForChangeType) {
         appendError(true);
         return;
     }

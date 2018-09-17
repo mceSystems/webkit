@@ -214,9 +214,6 @@
 /* Day label in date picker */
 "DAY (Date picker for extra zoom mode)" = "DAY";
 
-/* Fullscreen Deceptive Website Warning Sheet Title */
-"Deceptive Website Warning" = "Deceptive Website Warning";
-
 /* Default writing direction context menu item */
 "Default" = "Default";
 
@@ -265,14 +262,17 @@
 /* Validation message for input form controls of type 'email' that have an invalid value */
 "Enter an email address" = "Enter an email address";
 
+/* Custom protocol synchronous load failure description */
+"Error handling synchronous load with custom protocol" = "Error handling synchronous load with custom protocol";
+
 /* Button for exiting full screen when in full screen media playback */
 "Exit Full Screen" = "Exit Full Screen";
 
+/* Fullscreen Deceptive Website Exit Action */
+"Exit Full Screen (Element Fullscreen)" = "Exit Full Screen";
+
 /* Video Exit Fullscreen context menu item */
 "Exit Full Screen (context menu)" = "Exit Full Screen";
-
-/* Fullscreen Deceptive Website Exit Action */
-"Exit Fullscreen" = "Exit Fullscreen";
 
 /* menu item */
 "Exit Picture in Picture" = "Exit Picture in Picture";
@@ -336,6 +336,9 @@
 
 /* Validation message for input form controls with a value not matching type */
 "Invalid value" = "Invalid value";
+
+/* Fullscreen Deceptive Website Warning Sheet Title */
+"It looks like you are typing while in full screen" = "It looks like you are typing while in full screen";
 
 /* Italic context menu item */
 "Italic" = "Italic";
@@ -647,7 +650,7 @@
 "Start Speaking" = "Start Speaking";
 
 /* Fullscreen Deceptive Website Stay Action */
-"Stay in Fullscreen" = "Stay in Fullscreen";
+"Stay in Full Screen (Element Fullscreen)" = "Stay in Full Screen";
 
 /* Stop context menu item */
 "Stop" = "Stop";
@@ -733,9 +736,6 @@
 /* prompt string in authentication panel */
 "The user name or password you entered for this area on %@ was incorrect. Make sure you’re entering them correctly, and then try again." = "The user name or password you entered for this area on %@ was incorrect. Make sure you’re entering them correctly, and then try again.";
 
-/* Fullscreen Deceptive Website Warning Sheet Content Text */
-"The website \"%@\" may be a deceptive website. Would you like to exit fullscreen?" = "The website \"%@\" may be a deceptive website. Would you like to exit fullscreen?";
-
 /* text that appears at the start of nearly-obsolete web pages in the form of a 'searchable index' */
 "This is a searchable index. Enter search keywords: " = "This is a searchable index. Enter search keywords: ";
 
@@ -762,6 +762,9 @@
 
 /* Undo action name */
 "Typing (Undo action name)" = "Typing";
+
+/* Fullscreen Deceptive Website Warning Sheet Content Text */
+"Typing is not allowed in full screen websites. “%@” may be showing a fake keyboard to trick you into disclosing personal or financial information." = "Typing is not allowed in full screen websites. “%@” may be showing a fake keyboard to trick you into disclosing personal or financial information.";
 
 /* accessibility role description for a URL field. */
 "URL field" = "URL field";
@@ -1212,9 +1215,6 @@
 
 /* Label for the strong password auto fill button inside a text field. */
 "strong password auto fill" = "strong password auto fill";
-
-/* Label for the strong password confirmation auto fill button inside a text field. */
-"strong password confirmation auto fill" = "strong password confirmation auto fill";
 
 /* The suboptimal value description for a meter element. */
 "suboptimal value" = "suboptimal value";

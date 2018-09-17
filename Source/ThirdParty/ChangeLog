@@ -1,3 +1,114 @@
+2018-09-05  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Allow port specific options on gtest
+        https://bugs.webkit.org/show_bug.cgi?id=189313
+
+        Reviewed by Alex Christensen.
+
+        Allows a port to configure options within gtest for its platform.
+        The library type can be set otherwise it defaults to shared. Also the
+        compile definitions are propogated to TestWebKitAPI through a global
+        property.
+
+        * gtest/CMakeLists.txt:
+        * gtest/PlatformWin.cmake: Added.
+
+2018-09-04  Ross Kirsling  <ross.kirsling@sony.com>
+
+        Update googletest
+        https://bugs.webkit.org/show_bug.cgi?id=175722
+
+        Reviewed by Brent Fulgham.
+
+        * gtest/:
+        Update to 1.8.1.
+
+        * gtest/CMakeLists.txt:
+        * gtest/xcode/:
+        Keep our versions of these build files, making any necessary additive updates
+        and removing WTF/JSC dependencies so that we stop forking third-party source.
+
+2018-07-17  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE][GTK] Update xdgmime
+        https://bugs.webkit.org/show_bug.cgi?id=187727
+
+        Reviewed by Carlos Garcia Campos.
+
+        * xdgmime/README:
+        * xdgmime/README.webkit:
+        * xdgmime/src/xdgmime.c:
+        (_xdg_mime_mime_type_subclass):
+        * xdgmime/src/xdgmimecache.c:
+        (_xdg_mime_cache_new_from_file):
+        (_xdg_mime_cache_get_mime_type_for_file):
+        (_xdg_mime_cache_mime_type_subclass):
+
+2018-07-03  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE][GTK] Another memory issue in xdgmime
+        https://bugs.webkit.org/show_bug.cgi?id=187239
+
+        Reviewed by Carlos Garcia Campos.
+
+        Sync the end of xdg_mime_get_mime_type_for_file() with _xdg_mime_cache_get_mime_type_for_file()
+        to avoid a memory issue.
+
+        I'm pretty sure this code is never executed by either Chromium or WebKit, but I'm not
+        comfortable with leaving it broken.
+
+        * xdgmime/README.webkit:
+        * xdgmime/src/xdgmime.c:
+        (xdg_mime_get_mime_type_for_file):
+
+2018-06-30  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        Fix off-by-one error in xdg_mime_get_simple_globs
+        https://bugs.webkit.org/show_bug.cgi?id=186554
+
+        Reviewed by Daniel Bates.
+
+        We have an off-by-one error here in some code that was added for WebKit. (This is not an
+        issue with upstream xdgmime.)
+
+        No new tests. This problem is caught by TestDownloads, but only when running with ASan
+        enabled.
+
+        * xdgmime/src/xdgmimecache.c:
+        (get_simple_globs):
+        * xdgmime/src/xdgmimeglob.c:
+        (get_simple_globs):
+
+2018-06-27  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        MIME type subclass check should guard against small strings
+        https://bugs.webkit.org/show_bug.cgi?id=186977
+
+        Reviewed by Carlos Garcia Campos.
+
+        Sadly, this code is duplicated between two different files because it is not good.
+
+        * xdgmime/README.webkit:
+        * xdgmime/src/xdgmime.c:
+        (ends_with):
+        (xdg_mime_is_super_type):
+        * xdgmime/src/xdgmimecache.c:
+        (ends_with):
+        (is_super_type):
+
+2018-06-22  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE][GTK] Update xdgmime
+        https://bugs.webkit.org/show_bug.cgi?id=186907
+
+        Reviewed by Carlos Garcia Campos.
+
+        Only one change, fixes https://bugs.freedesktop.org/show_bug.cgi?id=97372.
+
+        * xdgmime/README.webkit:
+        * xdgmime/src/xdgmimeint.c:
+        (_xdg_binary_or_text_fallback):
+
 2018-05-22  Ryan Haddad  <ryanhaddad@apple.com>
 
         Unreviewed, rolling out r232052.

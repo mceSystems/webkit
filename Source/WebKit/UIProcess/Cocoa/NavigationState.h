@@ -108,9 +108,8 @@ private:
 
         void renderingProgressDidChange(WebPageProxy&, WebCore::LayoutMilestones) override;
 
-        bool canAuthenticateAgainstProtectionSpace(WebPageProxy&, WebProtectionSpace*) override;
         void didReceiveAuthenticationChallenge(WebPageProxy&, AuthenticationChallengeProxy&) override;
-        void processDidTerminate(WebPageProxy&, ProcessTerminationReason) override;
+        bool processDidTerminate(WebPageProxy&, ProcessTerminationReason) override;
         void processDidBecomeResponsive(WebPageProxy&) override;
         void processDidBecomeUnresponsive(WebPageProxy&) override;
 
@@ -124,12 +123,12 @@ private:
 #endif
 
 #if PLATFORM(MAC)
-        void webGLLoadPolicy(WebPageProxy&, const WebCore::URL&, WTF::Function<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const final;
-        void resolveWebGLLoadPolicy(WebPageProxy&, const WebCore::URL&, WTF::Function<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const final;
+        void webGLLoadPolicy(WebPageProxy&, const WebCore::URL&, CompletionHandler<void(WebCore::WebGLLoadPolicy)>&&) const final;
+        void resolveWebGLLoadPolicy(WebPageProxy&, const WebCore::URL&, CompletionHandler<void(WebCore::WebGLLoadPolicy)>&&) const final;
         bool willGoToBackForwardListItem(WebPageProxy&, WebBackForwardListItem&, bool inPageCache, API::Object*) final;
         bool didFailToInitializePlugIn(WebPageProxy&, API::Dictionary&) final;
         bool didBlockInsecurePluginVersion(WebPageProxy&, API::Dictionary&) final;
-        WebKit::PluginModuleLoadPolicy decidePolicyForPluginLoad(WebKit::WebPageProxy&, WebKit::PluginModuleLoadPolicy, API::Dictionary&, WTF::String&) final;
+        void decidePolicyForPluginLoad(WebKit::WebPageProxy&, WebKit::PluginModuleLoadPolicy, API::Dictionary&, CompletionHandler<void(WebKit::PluginModuleLoadPolicy, const WTF::String&)>&&) final;
         bool didChangeBackForwardList(WebPageProxy&, WebBackForwardListItem*, const Vector<Ref<WebBackForwardListItem>>&) final;
 #endif
 
@@ -207,8 +206,6 @@ private:
         bool webViewDidReceiveAuthenticationChallengeCompletionHandler : 1;
         bool webViewWebContentProcessDidTerminate : 1;
         bool webViewWebContentProcessDidTerminateWithReason : 1;
-        bool webViewCanAuthenticateAgainstProtectionSpace : 1;
-        bool webViewDidReceiveAuthenticationChallenge : 1;
         bool webViewWebProcessDidCrash : 1;
         bool webViewWebProcessDidBecomeResponsive : 1;
         bool webViewWebProcessDidBecomeUnresponsive : 1;
@@ -232,7 +229,7 @@ private:
         bool webViewDidFailToInitializePlugInWithInfo : 1;
         bool webViewDidBlockInsecurePluginVersionWithInfo : 1;
         bool webViewWillGoToBackForwardListItemInPageCache : 1;
-        bool webViewDecidePolicyForPluginLoadWithCurrentPolicyPluginInfoUnavailabilityDescription : 1;
+        bool webViewDecidePolicyForPluginLoadWithCurrentPolicyPluginInfoCompletionHandler : 1;
 #endif
     } m_navigationDelegateMethods;
 

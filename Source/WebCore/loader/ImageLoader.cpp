@@ -178,10 +178,9 @@ void ImageLoader::updateFromElement()
         options.contentSecurityPolicyImposition = element().isInUserAgentShadowTree() ? ContentSecurityPolicyImposition::SkipPolicyCheck : ContentSecurityPolicyImposition::DoPolicyCheck;
         options.sameOriginDataURLFlag = SameOriginDataURLFlag::Set;
 
-        CachedResourceRequest request(ResourceRequest(document.completeURL(sourceURI(attr))), options);
+        auto crossOriginAttribute = element().attributeWithoutSynchronization(HTMLNames::crossoriginAttr);
+        auto request = createPotentialAccessControlRequest(document.completeURL(sourceURI(attr)), document, crossOriginAttribute, WTFMove(options));
         request.setInitiator(element());
-
-        request.setAsPotentiallyCrossOrigin(element().attributeWithoutSynchronization(HTMLNames::crossoriginAttr), document);
 
         if (m_loadManually) {
             bool autoLoadOtherImages = document.cachedResourceLoader().autoLoadImages();
@@ -505,7 +504,7 @@ void ImageLoader::dispatchPendingErrorEvent()
         return;
     m_hasPendingErrorEvent = false;
     if (element().document().hasLivingRenderTree())
-        element().dispatchEvent(Event::create(eventNames().errorEvent, false, false));
+        element().dispatchEvent(Event::create(eventNames().errorEvent, Event::CanBubble::No, Event::IsCancelable::No));
 
     // Only consider updating the protection ref-count of the Element immediately before returning
     // from this function as doing so might result in the destruction of this ImageLoader.

@@ -108,16 +108,16 @@ static void updateCustomAppearance(CALayer *layer, GraphicsLayer::CustomAppearan
 {
 #if ENABLE(RUBBER_BANDING)
     switch (customAppearance) {
-    case GraphicsLayer::NoCustomAppearance:
-    case GraphicsLayer::DarkBackdropAppearance:
-    case GraphicsLayer::LightBackdropAppearance:
+    case GraphicsLayer::CustomAppearance::None:
+    case GraphicsLayer::CustomAppearance::DarkBackdrop:
+    case GraphicsLayer::CustomAppearance::LightBackdrop:
         ScrollbarThemeMac::removeOverhangAreaBackground(layer);
         ScrollbarThemeMac::removeOverhangAreaShadow(layer);
         break;
-    case GraphicsLayer::ScrollingOverhang:
+    case GraphicsLayer::CustomAppearance::ScrollingOverhang:
         ScrollbarThemeMac::setUpOverhangAreaBackground(layer);
         break;
-    case GraphicsLayer::ScrollingShadow:
+    case GraphicsLayer::CustomAppearance::ScrollingShadow:
         ScrollbarThemeMac::setUpOverhangAreaShadow(layer);
         break;
     }
@@ -263,7 +263,7 @@ void RemoteLayerTreePropertyApplier::applyProperties(CALayer *layer, RemoteLayer
         RetainPtr<NSMutableArray> children = adoptNS([[NSMutableArray alloc] initWithCapacity:properties.children.size()]);
         for (auto& child : properties.children) {
             ASSERT(relatedLayers.get(child));
-            [children addObject:relatedLayers.get(child)];
+            [children addObject:(__bridge id)relatedLayers.get(child)];
         }
 
         layer.sublayers = children.get();
@@ -274,13 +274,13 @@ void RemoteLayerTreePropertyApplier::applyProperties(CALayer *layer, RemoteLayer
             layer.mask = nullptr;
         else {
 #if PLATFORM(IOS)
-            UIView *maskView = relatedLayers.get(properties.maskLayerID);
+            UIView *maskView = (__bridge UIView *)relatedLayers.get(properties.maskLayerID);
             // FIXME: need to check that the mask view is kept alive.
             ASSERT(!maskView.layer.superlayer);
             if (!maskView.layer.superlayer)
                 layer.mask = maskView.layer;
 #else
-            CALayer *maskLayer = relatedLayers.get(properties.maskLayerID);
+            CALayer *maskLayer = (__bridge CALayer *)relatedLayers.get(properties.maskLayerID);
             ASSERT(!maskLayer.superlayer);
             if (!maskLayer.superlayer)
                 layer.mask = maskLayer;
@@ -300,10 +300,10 @@ void RemoteLayerTreePropertyApplier::applyProperties(UIView *view, RemoteLayerTr
         RetainPtr<NSMutableArray> children = adoptNS([[NSMutableArray alloc] initWithCapacity:properties.children.size()]);
         for (auto& child : properties.children) {
             ASSERT(relatedLayers.get(child));
-            [children addObject:relatedLayers.get(child)];
+            [children addObject:(__bridge id)relatedLayers.get(child)];
         }
 
-        if (properties.customAppearance == GraphicsLayer::LightBackdropAppearance || properties.customAppearance == GraphicsLayer::DarkBackdropAppearance) {
+        if (properties.customAppearance == GraphicsLayer::CustomAppearance::LightBackdrop || properties.customAppearance == GraphicsLayer::CustomAppearance::DarkBackdrop) {
             // This is a UIBackdropView, which should have children attached to
             // its content view, not directly on its layers.
             [[(_UIBackdropView*)view contentView] _web_setSubviews:children.get()];
@@ -314,7 +314,7 @@ void RemoteLayerTreePropertyApplier::applyProperties(UIView *view, RemoteLayerTr
     if (properties.changedProperties & RemoteLayerTreeTransaction::MaskLayerChanged) {
         CALayer *maskOwnerLayer = view.layer;
 
-        if (properties.customAppearance == GraphicsLayer::LightBackdropAppearance || properties.customAppearance == GraphicsLayer::DarkBackdropAppearance) {
+        if (properties.customAppearance == GraphicsLayer::CustomAppearance::LightBackdrop || properties.customAppearance == GraphicsLayer::CustomAppearance::DarkBackdrop) {
             // This is a UIBackdropView, which means any mask must be applied to the CABackdropLayer rather
             // that the view's layer. The backdrop is the first layer child.
             if (view.layer.sublayers.count && [view.layer.sublayers[0] isKindOfClass:[CABackdropLayer class]])
@@ -324,7 +324,7 @@ void RemoteLayerTreePropertyApplier::applyProperties(UIView *view, RemoteLayerTr
         if (!properties.maskLayerID)
             maskOwnerLayer.mask = nullptr;
         else {
-            UIView *maskView = relatedLayers.get(properties.maskLayerID);
+            UIView *maskView = (__bridge UIView *)relatedLayers.get(properties.maskLayerID);
             // FIXME: need to check that the mask view is kept alive.
             ASSERT(!maskView.layer.superlayer);
             if (!maskView.layer.superlayer)
@@ -332,7 +332,7 @@ void RemoteLayerTreePropertyApplier::applyProperties(UIView *view, RemoteLayerTr
         }
     }
 
-    if (properties.changedProperties & (RemoteLayerTreeTransaction::ContentsHiddenChanged | RemoteLayerTreeTransaction::UserInteractionEnabledChanged))
+    if (properties.changedProperties.containsAny({ RemoteLayerTreeTransaction::ContentsHiddenChanged, RemoteLayerTreeTransaction::UserInteractionEnabledChanged }))
         view.userInteractionEnabled = !properties.contentsHidden && properties.userInteractionEnabled;
 
     END_BLOCK_OBJC_EXCEPTIONS;

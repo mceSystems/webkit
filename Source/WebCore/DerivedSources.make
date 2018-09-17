@@ -217,13 +217,11 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/mediastream/MediaDeviceInfo.idl \
     $(WebCore)/Modules/mediastream/MediaDevices.idl \
     $(WebCore)/Modules/mediastream/MediaStream.idl \
-    $(WebCore)/Modules/mediastream/MediaStreamEvent.idl \
     $(WebCore)/Modules/mediastream/MediaStreamTrack.idl \
     $(WebCore)/Modules/mediastream/MediaStreamTrackEvent.idl \
     $(WebCore)/Modules/mediastream/MediaTrackConstraints.idl \
     $(WebCore)/Modules/mediastream/MediaTrackSupportedConstraints.idl \
     $(WebCore)/Modules/mediastream/NavigatorMediaDevices.idl \
-    $(WebCore)/Modules/mediastream/NavigatorUserMedia.idl \
     $(WebCore)/Modules/mediastream/OverconstrainedError.idl \
     $(WebCore)/Modules/mediastream/OverconstrainedErrorEvent.idl \
     $(WebCore)/Modules/mediastream/RTCAnswerOptions.idl \
@@ -232,8 +230,11 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/mediastream/RTCDTMFToneChangeEvent.idl \
     $(WebCore)/Modules/mediastream/RTCDataChannel.idl \
     $(WebCore)/Modules/mediastream/RTCDataChannelEvent.idl \
+    $(WebCore)/Modules/mediastream/RTCDegradationPreference.idl \
+    $(WebCore)/Modules/mediastream/RTCDtxStatus.idl \
     $(WebCore)/Modules/mediastream/RTCIceCandidate.idl \
     $(WebCore)/Modules/mediastream/RTCPeerConnectionIceEvent.idl \
+    $(WebCore)/Modules/mediastream/RTCPriorityType.idl \
     $(WebCore)/Modules/mediastream/RTCIceConnectionState.idl \
     $(WebCore)/Modules/mediastream/RTCIceGatheringState.idl \
     $(WebCore)/Modules/mediastream/RTCIceServer.idl \
@@ -243,8 +244,14 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/mediastream/RTCOfferOptions.idl \
     $(WebCore)/Modules/mediastream/RTCPeerConnection.idl \
     $(WebCore)/Modules/mediastream/RTCPeerConnectionState.idl \
+    $(WebCore)/Modules/mediastream/RTCRtpCodecParameters.idl \
+    $(WebCore)/Modules/mediastream/RTCRtpEncodingParameters.idl \
+    $(WebCore)/Modules/mediastream/RTCRtpFecParameters.idl \
+    $(WebCore)/Modules/mediastream/RTCRtpHeaderExtensionParameters.idl \
     $(WebCore)/Modules/mediastream/RTCRtpParameters.idl \
     $(WebCore)/Modules/mediastream/RTCRtpReceiver.idl \
+    $(WebCore)/Modules/mediastream/RTCRtpRtxParameters.idl \
+    $(WebCore)/Modules/mediastream/RTCRtpSendParameters.idl \
     $(WebCore)/Modules/mediastream/RTCRtpSender.idl \
     $(WebCore)/Modules/mediastream/RTCRtpTransceiver.idl \
     $(WebCore)/Modules/mediastream/RTCRtpTransceiverDirection.idl \
@@ -255,7 +262,10 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/notifications/Notification.idl \
     $(WebCore)/Modules/notifications/NotificationPermission.idl \
     $(WebCore)/Modules/notifications/NotificationPermissionCallback.idl \
+    $(WebCore)/Modules/paymentrequest/AddressErrors.idl \
     $(WebCore)/Modules/paymentrequest/MerchantValidationEvent.idl \
+    $(WebCore)/Modules/paymentrequest/MerchantValidationEventInit.idl \
+    $(WebCore)/Modules/paymentrequest/PayerErrorFields.idl \
     $(WebCore)/Modules/paymentrequest/PaymentAddress.idl \
     $(WebCore)/Modules/paymentrequest/PaymentComplete.idl \
     $(WebCore)/Modules/paymentrequest/PaymentCurrencyAmount.idl \
@@ -264,6 +274,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/paymentrequest/PaymentDetailsModifier.idl \
     $(WebCore)/Modules/paymentrequest/PaymentDetailsUpdate.idl \
     $(WebCore)/Modules/paymentrequest/PaymentItem.idl \
+    $(WebCore)/Modules/paymentrequest/PaymentMethodChangeEvent.idl \
     $(WebCore)/Modules/paymentrequest/PaymentMethodData.idl \
     $(WebCore)/Modules/paymentrequest/PaymentOptions.idl \
     $(WebCore)/Modules/paymentrequest/PaymentRequest.idl \
@@ -272,6 +283,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/paymentrequest/PaymentResponse.idl \
     $(WebCore)/Modules/paymentrequest/PaymentShippingOption.idl \
     $(WebCore)/Modules/paymentrequest/PaymentShippingType.idl \
+    $(WebCore)/Modules/paymentrequest/PaymentValidationErrors.idl \
     $(WebCore)/Modules/plugins/QuickTimePluginReplacement.idl \
     $(WebCore)/Modules/quota/DOMWindowQuota.idl \
     $(WebCore)/Modules/quota/NavigatorStorageQuota.idl \
@@ -360,7 +372,9 @@ JS_BINDING_IDLS = \
     $(WebCore)/Modules/webvr/VRLayerInit.idl \
     $(WebCore)/Modules/webvr/VRPose.idl \
     $(WebCore)/Modules/webvr/VRStageParameters.idl \
+    $(WebCore)/accessibility/AccessibilityRole.idl \
     $(WebCore)/accessibility/AccessibleSetValueEvent.idl \
+    $(WebCore)/accessibility/AriaAttributes.idl \
     $(WebCore)/animation/Animatable.idl \
     $(WebCore)/animation/AnimationEffectReadOnly.idl \
     $(WebCore)/animation/AnimationEffectTiming.idl \
@@ -374,6 +388,7 @@ JS_BINDING_IDLS = \
     $(WebCore)/animation/CSSAnimation.idl \
     $(WebCore)/animation/CSSTransition.idl \
     $(WebCore)/animation/DocumentTimeline.idl \
+    $(WebCore)/animation/DocumentTimelineOptions.idl \
     $(WebCore)/animation/FillMode.idl \
     $(WebCore)/animation/IterationCompositeOperation.idl \
     $(WebCore)/animation/KeyframeAnimationOptions.idl \
@@ -773,6 +788,8 @@ JS_BINDING_IDLS = \
     $(WebCore)/page/NavigatorID.idl \
     $(WebCore)/page/NavigatorLanguage.idl \
     $(WebCore)/page/NavigatorOnLine.idl \
+    $(WebCore)/page/NavigatorShare.idl \
+    $(WebCore)/page/ShareData.idl \
     $(WebCore)/page/NavigatorServiceWorker.idl \
     $(WebCore)/page/Performance.idl \
     $(WebCore)/page/PerformanceEntry.idl \
@@ -787,6 +804,8 @@ JS_BINDING_IDLS = \
     $(WebCore)/page/PerformanceTiming.idl \
     $(WebCore)/page/RemoteDOMWindow.idl \
     $(WebCore)/page/Screen.idl \
+    $(WebCore)/page/ScrollIntoViewOptions.idl \
+    $(WebCore)/page/ScrollLogicalPosition.idl \
     $(WebCore)/page/ScrollToOptions.idl \
     $(WebCore)/page/UserMessageHandler.idl \
     $(WebCore)/page/UserMessageHandlersNamespace.idl \
@@ -952,9 +971,9 @@ JS_BINDING_IDLS = \
     $(WebCore)/testing/Internals.idl \
     $(WebCore)/testing/MallocStatistics.idl \
     $(WebCore)/testing/MemoryInfo.idl \
+    $(WebCore)/testing/MockAuthenticatorCoordinator.idl \
     $(WebCore)/testing/MockCDMFactory.idl \
     $(WebCore)/testing/MockContentFilterSettings.idl \
-    $(WebCore)/testing/MockCredentialsMessenger.idl \
     $(WebCore)/testing/MockPageOverlay.idl \
     $(WebCore)/testing/MockPaymentAddress.idl \
     $(WebCore)/testing/MockPaymentCoordinator.idl \
@@ -1017,24 +1036,32 @@ ifeq ($(USE_LLVM_TARGET_TRIPLES_FOR_CLANG),YES)
 	TARGET_TRIPLE_FLAGS=-target $(CURRENT_ARCH)-$(LLVM_TARGET_TRIPLE_VENDOR)-$(LLVM_TARGET_TRIPLE_OS_VERSION)$(LLVM_TARGET_TRIPLE_SUFFIX)
 endif
 
-ifeq ($(shell $(CC) -std=gnu++17 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep ' WTF_PLATFORM_IOS ' | cut -d' ' -f3), 1)
+ifeq ($(shell $(CC) -std=gnu++14 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep ' WTF_PLATFORM_IOS ' | cut -d' ' -f3), 1)
     WTF_PLATFORM_IOS = 1
 else
     WTF_PLATFORM_IOS = 0
 endif
 
-ifeq ($(shell $(CC) -std=gnu++17 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep USE_APPLE_INTERNAL_SDK | cut -d' ' -f3), 1)
+ifeq ($(shell $(CC) -std=gnu++14 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep ' WTF_PLATFORM_MAC ' | cut -d' ' -f3), 1)
+    WTF_PLATFORM_MAC = 1
+else
+    WTF_PLATFORM_MAC = 0
+endif
+
+ifeq ($(shell $(CC) -std=gnu++14 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep USE_APPLE_INTERNAL_SDK | cut -d' ' -f3), 1)
     USE_APPLE_INTERNAL_SDK = 1
 else
     USE_APPLE_INTERNAL_SDK = 0
 endif
 
-ifeq ($(shell $(CC) -std=gnu++17 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep ENABLE_ORIENTATION_EVENTS | cut -d' ' -f3), 1)
+ifeq ($(shell $(CC) -std=gnu++14 -x c++ -E -P -dM $(SDK_FLAGS) $(TARGET_TRIPLE_FLAGS) $(FRAMEWORK_FLAGS) $(HEADER_FLAGS) -include "wtf/Platform.h" /dev/null | grep ENABLE_ORIENTATION_EVENTS | cut -d' ' -f3), 1)
     ENABLE_ORIENTATION_EVENTS = 1
 endif
 
 ifeq ($(WTF_PLATFORM_IOS), 1)
 FEATURE_AND_PLATFORM_DEFINES = $(FEATURE_DEFINES) WTF_PLATFORM_IOS
+else ifeq ($(WTF_PLATFORM_MAC), 1)
+FEATURE_AND_PLATFORM_DEFINES = $(FEATURE_DEFINES) WTF_PLATFORM_MAC
 else
 FEATURE_AND_PLATFORM_DEFINES = $(FEATURE_DEFINES)
 endif
@@ -1388,8 +1415,8 @@ EventFactory%cpp EventHeaders%h EventInterfaces%h : dom/make_event_factory.pl $(
 
 EVENT_TARGET_FACTORY = EventTargetFactory.in $(ADDITIONAL_EVENT_TARGET_FACTORY)
 
-all : EventTargetHeaders.h EventTargetInterfaces.h
-EventTargetHeaders%h EventTargetInterfaces%h : dom/make_event_factory.pl $(EVENT_TARGET_FACTORY)
+all : EventTargetFactory.cpp EventTargetHeaders.h EventTargetInterfaces.h
+EventTargetFactory%cpp EventTargetHeaders%h EventTargetInterfaces%h : dom/make_event_factory.pl $(EVENT_TARGET_FACTORY)
 	$(PERL) $< $(addprefix --input , $(filter-out $(WebCore)/dom/make_event_factory.pl, $^))
 
 # --------
@@ -1504,7 +1531,6 @@ CommandLineAPIModuleSource.h : CommandLineAPIModuleSource.js
 # WebCore JS Builtins
 
 WebCore_BUILTINS_SOURCES = \
-    $(WebCore)/Modules/mediastream/NavigatorUserMedia.js \
     $(WebCore)/Modules/mediastream/RTCPeerConnection.js \
     $(WebCore)/Modules/mediastream/RTCPeerConnectionInternals.js \
     $(WebCore)/Modules/streams/ByteLengthQueuingStrategy.js \
@@ -1524,7 +1550,7 @@ WebCore_BUILTINS_SOURCES = \
 #
 
 BUILTINS_GENERATOR_SCRIPTS = \
-    $(JavaScriptCore_SCRIPTS_DIR)/builtins.py \
+    $(JavaScriptCore_SCRIPTS_DIR)/wkbuiltins.py \
     $(JavaScriptCore_SCRIPTS_DIR)/builtins_generator.py \
     $(JavaScriptCore_SCRIPTS_DIR)/builtins_model.py \
     $(JavaScriptCore_SCRIPTS_DIR)/builtins_templates.py \

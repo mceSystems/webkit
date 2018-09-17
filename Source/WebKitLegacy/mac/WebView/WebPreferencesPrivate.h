@@ -183,9 +183,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (void)setPeerConnectionEnabled:(BOOL)flag;
 - (BOOL)peerConnectionEnabled;
 
-- (void)setWebRTCLegacyAPIEnabled:(BOOL)flag;
-- (BOOL)webRTCLegacyAPIEnabled;
-
 #if !TARGET_OS_IPHONE
 // zero means do AutoScale
 - (float)PDFScaleFactor;
@@ -543,8 +540,8 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (BOOL)cacheAPIEnabled;
 - (void)setCacheAPIEnabled:(BOOL)enabled;
 
-- (BOOL)crossOriginOptionsSupportEnabled;
-- (void)setCrossOriginOptionsSupportEnabled:(BOOL)enabled;
+- (BOOL)crossOriginWindowPolicySupportEnabled;
+- (void)setCrossOriginWindowPolicySupportEnabled:(BOOL)enabled;
 
 - (void)setFetchAPIEnabled:(BOOL)flag;
 - (BOOL)fetchAPIEnabled;
@@ -576,6 +573,9 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 - (void)setWebAuthenticationEnabled:(BOOL)flag;
 - (BOOL)webAuthenticationEnabled;
 
+- (void)setIntersectionObserverEnabled:(BOOL)flag;
+- (BOOL)intersectionObserverEnabled;
+
 - (void)setIsSecureContextAttributeEnabled:(BOOL)flag;
 - (BOOL)isSecureContextAttributeEnabled;
 
@@ -584,6 +584,7 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 
 @property (nonatomic) BOOL visualViewportEnabled;
 @property (nonatomic) BOOL visualViewportAPIEnabled;
+@property (nonatomic) BOOL CSSOMViewScrollingAPIEnabled;
 @property (nonatomic) BOOL largeImageAsyncDecodingEnabled;
 @property (nonatomic) BOOL animatedImageAsyncDecodingEnabled;
 @property (nonatomic) BOOL javaScriptMarkupEnabled;
@@ -604,11 +605,14 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL viewportFitEnabled;
 @property (nonatomic) BOOL constantPropertiesEnabled;
 @property (nonatomic) BOOL colorFilterEnabled;
+@property (nonatomic) BOOL punchOutWhiteBackgroundsInDarkMode;
 @property (nonatomic) BOOL inspectorAdditionsEnabled;
 @property (nonatomic) BOOL allowMediaContentTypesRequiringHardwareSupportAsFallback;
 @property (nonatomic) BOOL accessibilityObjectModelEnabled;
+@property (nonatomic) BOOL ariaReflectionEnabled;
 @property (nonatomic) BOOL mediaCapabilitiesEnabled;
 @property (nonatomic) BOOL allowCrossOriginSubresourcesToAskForCredentials;
+@property (nonatomic) BOOL sourceBufferChangeTypeEnabled;
 
 #if TARGET_OS_IPHONE
 @property (nonatomic) BOOL quickLookDocumentSavingEnabled;

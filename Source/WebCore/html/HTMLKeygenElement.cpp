@@ -39,8 +39,6 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/StdLibExtras.h>
 
-using namespace WebCore;
-
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLKeygenElement);
@@ -116,7 +114,7 @@ void HTMLKeygenElement::setKeytype(const AtomicString& value)
 
 String HTMLKeygenElement::keytype() const
 {
-    return isKeytypeRSA() ? ASCIILiteral("rsa") : emptyString();
+    return isKeytypeRSA() ? "rsa"_s : emptyString();
 }
 
 bool HTMLKeygenElement::appendFormData(DOMFormData& formData, bool)

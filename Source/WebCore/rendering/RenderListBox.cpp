@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008, 2011, 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
  *               2009 Torch Mobile Inc. All rights reserved. (http://www.torchmobile.com/)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -313,7 +313,7 @@ void RenderListBox::paintObject(PaintInfo& paintInfo, const LayoutPoint& paintOf
     if (style().visibility() != Visibility::Visible)
         return;
     
-    if (paintInfo.phase == PaintPhaseForeground) {
+    if (paintInfo.phase == PaintPhase::Foreground) {
         paintItem(paintInfo, paintOffset, [this](PaintInfo& paintInfo, const LayoutPoint& paintOffset, int listItemIndex) {
             paintItemForeground(paintInfo, paintOffset, listItemIndex);
         });
@@ -325,16 +325,16 @@ void RenderListBox::paintObject(PaintInfo& paintInfo, const LayoutPoint& paintOf
     switch (paintInfo.phase) {
     // Depending on whether we have overlay scrollbars they
     // get rendered in the foreground or background phases
-    case PaintPhaseForeground:
+    case PaintPhase::Foreground:
         if (m_vBar->isOverlayScrollbar())
             paintScrollbar(paintInfo, paintOffset);
         break;
-    case PaintPhaseBlockBackground:
+    case PaintPhase::BlockBackground:
         if (!m_vBar->isOverlayScrollbar())
             paintScrollbar(paintInfo, paintOffset);
         break;
-    case PaintPhaseChildBlockBackground:
-    case PaintPhaseChildBlockBackgrounds: {
+    case PaintPhase::ChildBlockBackground:
+    case PaintPhase::ChildBlockBackgrounds: {
         paintItem(paintInfo, paintOffset, [this](PaintInfo& paintInfo, const LayoutPoint& paintOffset, int listItemIndex) {
             paintItemBackground(paintInfo, paintOffset, listItemIndex);
         });
@@ -422,13 +422,16 @@ void RenderListBox::paintItemForeground(PaintInfo& paintInfo, const LayoutPoint&
         itemText = downcast<HTMLOptGroupElement>(*listItemElement).groupLabelText();
     itemText = applyTextTransform(style(), itemText, ' ');
 
+    if (itemText.isNull())
+        return;
+
     Color textColor = itemStyle.visitedDependentColorWithColorFilter(CSSPropertyColor);
     if (isOptionElement && downcast<HTMLOptionElement>(*listItemElement).selected()) {
         if (frame().selection().isFocusedAndActive() && document().focusedElement() == &selectElement())
-            textColor = theme().activeListBoxSelectionForegroundColor();
+            textColor = theme().activeListBoxSelectionForegroundColor(document().styleColorOptions());
         // Honor the foreground color for disabled items
         else if (!listItemElement->isDisabledFormControl() && !selectElement().isDisabledFormControl())
-            textColor = theme().inactiveListBoxSelectionForegroundColor();
+            textColor = theme().inactiveListBoxSelectionForegroundColor(document().styleColorOptions());
     }
 
     paintInfo.context().setFillColor(textColor);
@@ -458,7 +461,7 @@ void RenderListBox::paintItemBackground(PaintInfo& paintInfo, const LayoutPoint&
     Color backColor;
     if (is<HTMLOptionElement>(*listItemElement) && downcast<HTMLOptionElement>(*listItemElement).selected()) {
         if (frame().selection().isFocusedAndActive() && document().focusedElement() == &selectElement())
-            backColor = theme().activeListBoxSelectionBackgroundColor();
+            backColor = theme().activeListBoxSelectionBackgroundColor(document().styleColorOptions());
         else
             backColor = theme().inactiveListBoxSelectionBackgroundColor(document().styleColorOptions());
     } else

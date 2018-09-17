@@ -369,7 +369,6 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${FORWARDING_HEADERS_DIR}/JavaScriptCore/glib"
     "${WEBKIT_DIR}/PluginProcess/unix"
     "${WEBKIT_DIR}/NetworkProcess/CustomProtocols/soup"
-    "${WEBKIT_DIR}/NetworkProcess/Downloads/soup"
     "${WEBKIT_DIR}/NetworkProcess/gtk"
     "${WEBKIT_DIR}/NetworkProcess/soup"
     "${WEBKIT_DIR}/NetworkProcess/unix"
@@ -555,8 +554,7 @@ endif ()
 if (ENABLE_PLUGIN_PROCESS_GTK2)
     set(PluginProcessGTK2_EXECUTABLE_NAME WebKitPluginProcess2)
 
-    # FIXME: We should figure out a way to avoid compiling files that are common between the plugin
-    # process and WebKit only once instead of recompiling them for the plugin process.
+    # FIXME: We should remove WebKitPluginProcess2 in 2020, once Flash is no longer supported.
     list(APPEND PluginProcessGTK2_SOURCES
         Platform/Logging.cpp
         Platform/Module.cpp

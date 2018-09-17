@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,17 +62,13 @@ SOFT_LINK_FRAMEWORK_OPTIONAL(AVFoundation)
 
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVAsset)
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVURLAsset)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVSampleBufferAudioRenderer)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVSampleBufferDisplayLayer)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVSampleBufferRenderSynchronizer)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVStreamDataParser)
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVStreamSession);
 SOFT_LINK_CLASS_OPTIONAL(AVFoundation, AVVideoPerformanceMetrics)
@@ -275,14 +271,6 @@ void MediaPlayerPrivateMediaSourceAVFObjC::prepareToPlay()
 {
 }
 
-PlatformMedia MediaPlayerPrivateMediaSourceAVFObjC::platformMedia() const
-{
-    PlatformMedia pm;
-    pm.type = PlatformMedia::AVFoundationAssetType;
-    pm.media.avfAsset = m_asset.get();
-    return pm;
-}
-
 PlatformLayer* MediaPlayerPrivateMediaSourceAVFObjC::platformLayer() const
 {
     return m_videoFullscreenLayerManager->videoInlineLayer();
@@ -329,8 +317,8 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::paused() const
 
 void MediaPlayerPrivateMediaSourceAVFObjC::setVolume(float volume)
 {
-    for (auto pair : m_sampleBufferAudioRendererMap)
-        [pair.key setVolume:volume];
+    for (auto key : m_sampleBufferAudioRendererMap.keys())
+        [(__bridge AVSampleBufferAudioRenderer *)key.get() setVolume:volume];
 }
 
 bool MediaPlayerPrivateMediaSourceAVFObjC::supportsScanning() const
@@ -340,8 +328,8 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::supportsScanning() const
 
 void MediaPlayerPrivateMediaSourceAVFObjC::setMuted(bool muted)
 {
-    for (auto pair : m_sampleBufferAudioRendererMap)
-        [pair.key setMuted:muted];
+    for (auto key : m_sampleBufferAudioRendererMap.keys())
+        [(__bridge AVSampleBufferAudioRenderer *)key.get() setMuted:muted];
 }
 
 FloatSize MediaPlayerPrivateMediaSourceAVFObjC::naturalSize() const
@@ -423,9 +411,12 @@ void MediaPlayerPrivateMediaSourceAVFObjC::seekInternal()
     else
         m_lastSeekTime = m_mediaSourcePrivate->fastSeekTimeForMediaTime(pendingSeek->targetTime, pendingSeek->positiveThreshold, pendingSeek->negativeThreshold);
 
-    LOG(MediaSource, "MediaPlayerPrivateMediaSourceAVFObjC::seekInternal(%p) - seekTime(%s)", this, toString(m_lastSeekTime).utf8().data());
+    if (m_lastSeekTime.hasDoubleValue())
+        m_lastSeekTime = MediaTime::createWithDouble(m_lastSeekTime.toDouble(), MediaTime::DefaultTimeScale);
 
     MediaTime synchronizerTime = PAL::toMediaTime(CMTimebaseGetTime([m_synchronizer timebase]));
+    LOG(MediaSource, "MediaPlayerPrivateMediaSourceAVFObjC::seekInternal(%p) - seekTime(%s), synchronizerTime(%s)", this, toString(m_lastSeekTime).utf8().data(), toString(synchronizerTime).utf8().data());
+
     bool doesNotRequireSeek = synchronizerTime == m_lastSeekTime;
 
     m_mediaSourcePrivate->willSeek();
@@ -485,8 +476,8 @@ void MediaPlayerPrivateMediaSourceAVFObjC::setRateDouble(double rate)
 void MediaPlayerPrivateMediaSourceAVFObjC::setPreservesPitch(bool preservesPitch)
 {
     NSString *algorithm = preservesPitch ? AVAudioTimePitchAlgorithmSpectral : AVAudioTimePitchAlgorithmVarispeed;
-    for (auto pair : m_sampleBufferAudioRendererMap)
-        [pair.key setAudioTimePitchAlgorithm:algorithm];
+    for (auto key : m_sampleBufferAudioRendererMap.keys())
+        [(__bridge AVSampleBufferAudioRenderer *)key.get() setAudioTimePitchAlgorithm:algorithm];
 }
 
 MediaPlayer::NetworkState MediaPlayerPrivateMediaSourceAVFObjC::networkState() const
@@ -559,8 +550,8 @@ bool MediaPlayerPrivateMediaSourceAVFObjC::updateLastImage()
     ASSERT(m_lastPixelBuffer);
 
     if (!m_rgbConformer) {
-        NSDictionary *attributes = @{ (NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
-        m_rgbConformer = std::make_unique<PixelBufferConformerCV>((CFDictionaryRef)attributes);
+        auto attributes = @{ (__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
+        m_rgbConformer = std::make_unique<PixelBufferConformerCV>((__bridge CFDictionaryRef)attributes);
     }
 
     m_lastImage = m_rgbConformer->createImageFromPixelBuffer(m_lastPixelBuffer.get());
@@ -665,27 +656,27 @@ size_t MediaPlayerPrivateMediaSourceAVFObjC::extraMemoryCost() const
     return 0;
 }
 
-std::optional<PlatformVideoPlaybackQualityMetrics> MediaPlayerPrivateMediaSourceAVFObjC::videoPlaybackQualityMetrics()
+std::optional<VideoPlaybackQualityMetrics> MediaPlayerPrivateMediaSourceAVFObjC::videoPlaybackQualityMetrics()
 {
     if (m_decompressionSession) {
-        return PlatformVideoPlaybackQualityMetrics(
+        return VideoPlaybackQualityMetrics {
             m_decompressionSession->totalVideoFrames(),
             m_decompressionSession->droppedVideoFrames(),
             m_decompressionSession->corruptedVideoFrames(),
             m_decompressionSession->totalFrameDelay().toDouble()
-        );
+        };
     }
 
     auto metrics = [m_sampleBufferDisplayLayer videoPerformanceMetrics];
     if (!metrics)
         return std::nullopt;
 
-    return PlatformVideoPlaybackQualityMetrics(
-        [metrics totalNumberOfVideoFrames],
-        [metrics numberOfDroppedVideoFrames],
-        [metrics numberOfCorruptedVideoFrames],
+    return VideoPlaybackQualityMetrics {
+        static_cast<unsigned>([metrics totalNumberOfVideoFrames]),
+        static_cast<unsigned>([metrics numberOfDroppedVideoFrames]),
+        static_cast<unsigned>([metrics numberOfCorruptedVideoFrames]),
         [metrics totalFrameDelay]
-    );
+    };
 }
 
 #pragma mark -
@@ -778,13 +769,11 @@ void MediaPlayerPrivateMediaSourceAVFObjC::setHasAvailableVideoFrame(bool flag)
     }
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 void MediaPlayerPrivateMediaSourceAVFObjC::setHasAvailableAudioSample(AVSampleBufferAudioRenderer* renderer, bool flag)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 {
-    auto iter = m_sampleBufferAudioRendererMap.find(renderer);
+    auto iter = m_sampleBufferAudioRendererMap.find((__bridge CFTypeRef)renderer);
     if (iter == m_sampleBufferAudioRendererMap.end())
         return;
 
@@ -1022,16 +1011,12 @@ void MediaPlayerPrivateMediaSourceAVFObjC::setNetworkState(MediaPlayer::NetworkS
     m_player->networkStateChanged();
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 void MediaPlayerPrivateMediaSourceAVFObjC::addAudioRenderer(AVSampleBufferAudioRenderer* audioRenderer)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 {
-    if (m_sampleBufferAudioRendererMap.contains(audioRenderer))
+    if (!m_sampleBufferAudioRendererMap.add((__bridge CFTypeRef)audioRenderer, AudioRendererProperties()).isNewEntry)
         return;
-
-    m_sampleBufferAudioRendererMap.add(audioRenderer, AudioRendererProperties());
 
     [audioRenderer setMuted:m_player->muted()];
     [audioRenderer setVolume:m_player->volume()];
@@ -1041,13 +1026,11 @@ void MediaPlayerPrivateMediaSourceAVFObjC::addAudioRenderer(AVSampleBufferAudioR
     m_player->client().mediaPlayerRenderingModeChanged(m_player);
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
 void MediaPlayerPrivateMediaSourceAVFObjC::removeAudioRenderer(AVSampleBufferAudioRenderer* audioRenderer)
-#pragma clang diagnostic pop
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 {
-    auto iter = m_sampleBufferAudioRendererMap.find(audioRenderer);
+    auto iter = m_sampleBufferAudioRendererMap.find((__bridge CFTypeRef)audioRenderer);
     if (iter == m_sampleBufferAudioRendererMap.end())
         return;
 

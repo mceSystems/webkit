@@ -55,6 +55,7 @@
 #include <WebCore/ApplicationCache.h>
 #include <WebCore/ApplicationCacheStorage.h>
 #include <WebCore/CommonVM.h>
+#include <WebCore/Document.h>
 #include <WebCore/Frame.h>
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameView.h>
@@ -85,10 +86,9 @@
 #include "WebNotificationManager.h"
 #endif
 
+namespace WebKit {
 using namespace WebCore;
 using namespace JSC;
-
-namespace WebKit {
 
 RefPtr<InjectedBundle> InjectedBundle::create(WebProcessCreationParameters& parameters, API::Object* initializationUserData)
 {
@@ -239,16 +239,19 @@ void InjectedBundle::overrideBoolPreferenceForTestRunner(WebPageGroupProxy* page
 #endif
 
 #if ENABLE(WEB_RTC)
-    if (preference == "WebKitWebRTCLegacyAPIEnabled")
-        RuntimeEnabledFeatures::sharedFeatures().setWebRTCLegacyAPIEnabled(enabled);
     if (preference == "WebKitMDNSICECandidatesEnabled")
         RuntimeEnabledFeatures::sharedFeatures().setMDNSICECandidatesEnabled(enabled);
+    if (preference == "WebKitWebRTCUnifiedPlanEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setWebRTCUnifiedPlanEnabled(enabled);
 #endif
 
     if (preference == "WebKitIsSecureContextAttributeEnabled") {
         WebPreferencesStore::overrideBoolValueForKey(WebPreferencesKey::isSecureContextAttributeEnabledKey(), enabled);
         RuntimeEnabledFeatures::sharedFeatures().setIsSecureContextAttributeEnabled(enabled);
     }
+
+    if (preference == "WebKitWebAPIStatisticsEnabled")
+        RuntimeEnabledFeatures::sharedFeatures().setWebAPIStatisticsEnabled(enabled);
 
     // Map the names used in LayoutTests with the names used in WebCore::Settings and WebPreferencesStore.
 #define FOR_EACH_OVERRIDE_BOOL_PREFERENCE(macro) \
@@ -603,6 +606,26 @@ Ref<API::Data> InjectedBundle::createWebDataFromUint8Array(JSContextRef context,
     JSLockHolder lock(execState);
     RefPtr<Uint8Array> arrayData = WebCore::toUnsharedUint8Array(execState->vm(), toJS(execState, data));
     return API::Data::create(static_cast<unsigned char*>(arrayData->baseAddress()), arrayData->byteLength());
+}
+
+InjectedBundle::DocumentIDToURLMap InjectedBundle::liveDocumentURLs(WebPageGroupProxy* pageGroup, bool excludeDocumentsInPageGroupPages)
+{
+    DocumentIDToURLMap result;
+
+    for (const auto* document : Document::allDocuments())
+        result.add(document->identifier().toUInt64(), document->url().string());
+
+    if (excludeDocumentsInPageGroupPages) {
+        for (const auto* page : PageGroup::pageGroup(pageGroup->identifier())->pages()) {
+            for (const auto* frame = &page->mainFrame(); frame; frame = frame->tree().traverseNext()) {
+                if (!frame->document())
+                    continue;
+                result.remove(frame->document()->identifier().toUInt64());
+            }
+        }
+    }
+
+    return result;
 }
 
 void InjectedBundle::setTabKeyCyclesThroughElements(WebPage* page, bool enabled)

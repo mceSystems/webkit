@@ -57,15 +57,15 @@
 #include <WebCore/ServiceWorkerJobDataIdentifier.h>
 #include <WebCore/UserAgent.h>
 #include <pal/SessionID.h>
+#include <wtf/ProcessID.h>
 
 #if USE(QUICK_LOOK)
 #include <WebCore/PreviewLoaderClient.h>
 #endif
 
+namespace WebKit {
 using namespace PAL;
 using namespace WebCore;
-
-namespace WebKit {
 
 static const Seconds asyncWorkerTerminationTimeout { 10_s };
 static const Seconds syncWorkerTerminationTimeout { 100_ms }; // Only used by layout tests.
@@ -130,6 +130,7 @@ void WebSWContextManagerConnection::updatePreferencesStore(const WebPreferencesS
     RuntimeEnabledFeatures::sharedFeatures().setFetchAPIKeepAliveEnabled(store.getBoolValueForKey(WebPreferencesKey::fetchAPIKeepAliveEnabledKey()));
     RuntimeEnabledFeatures::sharedFeatures().setRestrictedHTTPResponseAccess(store.getBoolValueForKey(WebPreferencesKey::restrictedHTTPResponseAccessKey()));
     RuntimeEnabledFeatures::sharedFeatures().setServerTimingEnabled(store.getBoolValueForKey(WebPreferencesKey::serverTimingEnabledKey()));
+    RuntimeEnabledFeatures::sharedFeatures().setIsSecureContextAttributeEnabled(store.getBoolValueForKey(WebPreferencesKey::isSecureContextAttributeEnabledKey()));
 
     m_storageBlockingPolicy = static_cast<SecurityOrigin::StorageBlockingPolicy>(store.getUInt32ValueForKey(WebPreferencesKey::storageBlockingPolicyKey()));
 }
@@ -160,7 +161,7 @@ void WebSWContextManagerConnection::installServiceWorker(const ServiceWorkerCont
     auto serviceWorkerThreadProxy = ServiceWorkerThreadProxy::create(WTFMove(pageConfiguration), data, sessionID, String { m_userAgent }, WebProcess::singleton().cacheStorageProvider(), m_storageBlockingPolicy);
     SWContextManager::singleton().registerServiceWorkerThreadForInstall(WTFMove(serviceWorkerThreadProxy));
 
-    LOG(ServiceWorker, "Context process PID: %i created worker thread\n", getpid());
+    LOG(ServiceWorker, "Context process PID: %i created worker thread\n", getCurrentProcessID());
 }
 
 void WebSWContextManagerConnection::setUserAgent(String&& userAgent)
@@ -188,15 +189,27 @@ static inline bool isValidFetch(const ResourceRequest& request, const FetchOptio
     if (!serviceWorkerURL.protocolIsInHTTPFamily())
         return true;
 
-    if (options.mode == FetchOptions::Mode::Navigate)
-        return protocolHostAndPortAreEqual(request.url(), serviceWorkerURL);
+    if (options.mode == FetchOptions::Mode::Navigate) {
+        if (!protocolHostAndPortAreEqual(request.url(), serviceWorkerURL)) {
+            RELEASE_LOG_ERROR(ServiceWorker, "Should not intercept a navigation load that is not same-origin as the service worker URL");
+            RELEASE_ASSERT_WITH_MESSAGE(request.url().host() == serviceWorkerURL.host(), "Hosts do not match");
+            RELEASE_ASSERT_WITH_MESSAGE(request.url().protocol() == serviceWorkerURL.protocol(), "Protocols do not match");
+            RELEASE_ASSERT_WITH_MESSAGE(request.url().port() == serviceWorkerURL.port(), "Ports do not match");
+            return false;
+        }
+        return true;
+    }
 
     String origin = request.httpOrigin();
     URL url { URL(), origin.isEmpty() ? referrer : origin };
-    if (!url.protocolIsInHTTPFamily())
-        return true;
-
-    return protocolHostAndPortAreEqual(url, serviceWorkerURL);
+    if (url.protocolIsInHTTPFamily() && !protocolHostAndPortAreEqual(url, serviceWorkerURL)) {
+        RELEASE_LOG_ERROR(ServiceWorker, "Should not intercept a non navigation load that is not originating from a same-origin context as the service worker URL");
+        ASSERT(url.host() == serviceWorkerURL.host());
+        ASSERT(url.protocol() == serviceWorkerURL.protocol());
+        ASSERT(url.port() == serviceWorkerURL.port());
+        return false;
+    }
+    return true;
 }
 
 void WebSWContextManagerConnection::cancelFetch(SWServerConnectionIdentifier serverConnectionIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, FetchIdentifier fetchIdentifier)
@@ -213,7 +226,10 @@ void WebSWContextManagerConnection::startFetch(SWServerConnectionIdentifier serv
         return;
     }
 
-    RELEASE_ASSERT(isValidFetch(request, options, serviceWorkerThreadProxy->scriptURL(), referrer));
+    if (!isValidFetch(request, options, serviceWorkerThreadProxy->scriptURL(), referrer)) {
+        m_connectionToStorageProcess->send(Messages::StorageProcess::DidNotHandleFetch { serverConnectionIdentifier, fetchIdentifier }, 0);
+        return;
+    }
 
     auto client = WebServiceWorkerFetchTaskClient::create(m_connectionToStorageProcess.copyRef(), serviceWorkerIdentifier, serverConnectionIdentifier, fetchIdentifier);
     std::optional<ServiceWorkerClientIdentifier> clientId;
@@ -276,6 +292,11 @@ void WebSWContextManagerConnection::skipWaiting(ServiceWorkerIdentifier serviceW
     auto callbackID = ++m_previousRequestIdentifier;
     m_skipWaitingRequests.add(callbackID, WTFMove(callback));
     m_connectionToStorageProcess->send(Messages::WebSWServerToContextConnection::SkipWaiting(serviceWorkerIdentifier, callbackID), 0);
+}
+
+void WebSWContextManagerConnection::setScriptResource(ServiceWorkerIdentifier serviceWorkerIdentifier, const URL& url, const ServiceWorkerContextData::ImportedScript& script)
+{
+    m_connectionToStorageProcess->send(Messages::WebSWServerToContextConnection::SetScriptResource { serviceWorkerIdentifier, url, script.script, script.responseURL, script.mimeType }, 0);
 }
 
 void WebSWContextManagerConnection::workerTerminated(ServiceWorkerIdentifier serviceWorkerIdentifier)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,11 +48,9 @@
 
 namespace WebKit {
 
-static inline _WKDownload *wrapper(DownloadProxy& download)
-{
-    ASSERT([download.wrapper() isKindOfClass:[_WKDownload class]]);
-    return (_WKDownload *)download.wrapper();
-}
+template<> struct WrapperTraits<DownloadProxy> {
+    using WrapperClass = _WKDownload;
+};
 
 DownloadClient::DownloadClient(id <_WKDownloadDelegate> delegate)
     : m_delegate(delegate)
@@ -78,7 +76,7 @@ void DownloadClient::didStart(WebProcessPool&, DownloadProxy& downloadProxy)
     if (downloadProxy.isSystemPreviewDownload()) {
         if (auto* webPage = downloadProxy.originatingPage()) {
             // FIXME: Update the MIME-type once it is known in the ResourceResponse.
-            webPage->systemPreviewController()->start(ASCIILiteral { "application/octet-stream" }, downloadProxy.systemPreviewDownloadRect());
+            webPage->systemPreviewController()->start("application/octet-stream"_s, downloadProxy.systemPreviewDownloadRect());
         }
         takeActivityToken(downloadProxy);
         return;
@@ -92,7 +90,7 @@ void DownloadClient::didStart(WebProcessPool&, DownloadProxy& downloadProxy)
 void DownloadClient::didReceiveResponse(WebProcessPool&, DownloadProxy& downloadProxy, const WebCore::ResourceResponse& response)
 {
 #if USE(SYSTEM_PREVIEW)
-    if (downloadProxy.isSystemPreviewDownload()) {
+    if (downloadProxy.isSystemPreviewDownload() && response.isSuccessful()) {
         downloadProxy.setExpectedContentLength(response.expectedContentLength());
         downloadProxy.setBytesLoaded(0);
         if (auto* webPage = downloadProxy.originatingPage())
@@ -177,6 +175,8 @@ void DownloadClient::processDidCrash(WebProcessPool&, DownloadProxy& downloadPro
 {
 #if USE(SYSTEM_PREVIEW)
     if (downloadProxy.isSystemPreviewDownload()) {
+        if (auto* webPage = downloadProxy.originatingPage())
+            webPage->systemPreviewController()->cancel();
         releaseActivityTokenIfNecessary(downloadProxy);
         return;
     }
@@ -202,10 +202,9 @@ void DownloadClient::decideDestinationWithSuggestedFilename(WebProcessPool&, Dow
 
     if (m_delegateMethods.downloadDecideDestinationWithSuggestedFilenameAllowOverwrite) {
         BOOL allowOverwrite = NO;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         NSString *destination = [m_delegate _download:wrapper(downloadProxy) decideDestinationWithSuggestedFilename:filename allowOverwrite:&allowOverwrite];
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
         completionHandler(allowOverwrite ? AllowOverwrite::Yes : AllowOverwrite::No, destination);
     } else {
         [m_delegate _download:wrapper(downloadProxy) decideDestinationWithSuggestedFilename:filename completionHandler:BlockPtr<void(BOOL, NSString *)>::fromCallable([checker = CompletionHandlerCallChecker::create(m_delegate.get().get(), @selector(_download:decideDestinationWithSuggestedFilename:completionHandler:)), completionHandler = WTFMove(completionHandler)] (BOOL allowOverwrite, NSString *destination) {
@@ -239,7 +238,7 @@ void DownloadClient::didFail(WebProcessPool&, DownloadProxy& downloadProxy, cons
 #if USE(SYSTEM_PREVIEW)
     if (downloadProxy.isSystemPreviewDownload()) {
         if (auto* webPage = downloadProxy.originatingPage())
-            webPage->systemPreviewController()->cancel();
+            webPage->systemPreviewController()->fail(error);
         releaseActivityTokenIfNecessary(downloadProxy);
         return;
     }

@@ -48,20 +48,31 @@ bool isScriptAllowedByNosniff(const ResourceResponse& response)
 }
 
 ResourceResponseBase::ResourceResponseBase()
-    : m_isNull(true)
-    , m_expectedContentLength(0)
-    , m_httpStatusCode(0)
+    : m_haveParsedCacheControlHeader(false)
+    , m_haveParsedAgeHeader(false)
+    , m_haveParsedDateHeader(false)
+    , m_haveParsedExpiresHeader(false)
+    , m_haveParsedLastModifiedHeader(false)
+    , m_haveParsedContentRangeHeader(false)
+    , m_isRedirected(false)
+    , m_isNull(true)
 {
 }
 
 ResourceResponseBase::ResourceResponseBase(const URL& url, const String& mimeType, long long expectedLength, const String& textEncodingName)
-    : m_isNull(false)
-    , m_url(url)
+    : m_url(url)
     , m_mimeType(mimeType)
     , m_expectedContentLength(expectedLength)
     , m_textEncodingName(textEncodingName)
     , m_certificateInfo(CertificateInfo()) // Empty but valid for synthetic responses.
-    , m_httpStatusCode(0)
+    , m_haveParsedCacheControlHeader(false)
+    , m_haveParsedAgeHeader(false)
+    , m_haveParsedDateHeader(false)
+    , m_haveParsedExpiresHeader(false)
+    , m_haveParsedLastModifiedHeader(false)
+    , m_haveParsedContentRangeHeader(false)
+    , m_isRedirected(false)
+    , m_isNull(false)
 {
 }
 
@@ -142,10 +153,10 @@ ResourceResponse ResourceResponseBase::filter(const ResourceResponse& response)
 
     HTTPHeaderSet accessControlExposeHeaderSet;
     parseAccessControlExposeHeadersAllowList(response.httpHeaderField(HTTPHeaderName::AccessControlExposeHeaders), accessControlExposeHeaderSet);
-    filteredResponse.m_httpHeaderFields.uncommonHeaders().removeIf([&](auto& entry) {
+    filteredResponse.m_httpHeaderFields.uncommonHeaders().removeAllMatching([&](auto& entry) {
         return !isCrossOriginSafeHeader(entry.key, accessControlExposeHeaderSet);
     });
-    filteredResponse.m_httpHeaderFields.commonHeaders().removeIf([&](auto& entry) {
+    filteredResponse.m_httpHeaderFields.commonHeaders().removeAllMatching([&](auto& entry) {
         return !isCrossOriginSafeHeader(entry.key, accessControlExposeHeaderSet);
     });
 
@@ -339,6 +350,7 @@ static bool isSafeRedirectionResponseHeader(HTTPHeaderName name)
         || name == HTTPHeaderName::AccessControlAllowOrigin
         || name == HTTPHeaderName::AccessControlExposeHeaders
         || name == HTTPHeaderName::AccessControlMaxAge
+        || name == HTTPHeaderName::CrossOriginResourcePolicy
         || name == HTTPHeaderName::TimingAllowOrigin;
 }
 
@@ -364,6 +376,7 @@ static bool isSafeCrossOriginResponseHeader(HTTPHeaderName name)
         || name == HTTPHeaderName::ContentSecurityPolicy
         || name == HTTPHeaderName::ContentSecurityPolicyReportOnly
         || name == HTTPHeaderName::ContentType
+        || name == HTTPHeaderName::CrossOriginResourcePolicy
         || name == HTTPHeaderName::Date
         || name == HTTPHeaderName::ETag
         || name == HTTPHeaderName::Expires
@@ -434,8 +447,8 @@ void ResourceResponseBase::sanitizeHTTPHeaderFields(SanitizationType type)
 {
     lazyInit(AllFields);
 
-    m_httpHeaderFields.commonHeaders().remove(HTTPHeaderName::SetCookie);
-    m_httpHeaderFields.commonHeaders().remove(HTTPHeaderName::SetCookie2);
+    m_httpHeaderFields.remove(HTTPHeaderName::SetCookie);
+    m_httpHeaderFields.remove(HTTPHeaderName::SetCookie2);
 
     switch (type) {
     case SanitizationType::RemoveCookies:
@@ -706,7 +719,7 @@ static ParsedContentRange parseContentRangeInHeader(const HTTPHeaderMap& headers
     return ParsedContentRange(contentRangeValue);
 }
 
-ParsedContentRange& ResourceResponseBase::contentRange() const
+const ParsedContentRange& ResourceResponseBase::contentRange() const
 {
     lazyInit(CommonFieldsOnly);
 

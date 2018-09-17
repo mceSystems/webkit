@@ -41,6 +41,7 @@ RTC_EXPORT
 @end
 
 RTC_EXPORT
+__attribute__((objc_runtime_name("WK_RTCRtpSender")))
 @interface RTCRtpSender : NSObject <RTCRtpSender>
 
 - (instancetype)init NS_UNAVAILABLE;

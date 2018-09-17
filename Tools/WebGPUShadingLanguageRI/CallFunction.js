@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,21 +25,20 @@
 "use strict";
 
 // This allows you to pass structs and arrays in-place, but it's a more annoying API.
-function callFunction(program, name, typeArguments, argumentList)
+function callFunction(program, name, argumentList)
 {
     let argumentTypes = argumentList.map(argument => argument.type);
-    let funcOrFailures = resolveInlinedFunction(program, name, typeArguments, argumentTypes, true);
-    if (!(funcOrFailures instanceof Func)) {
-        let failures = funcOrFailures;
-        throw new WTypeError("<callFunction>", "Cannot resolve function call " + name + "<" + typeArguments + ">(" + argumentList + ")" + (failures.length ? "; tried:\n" + failures.join("\n") : ""));
-    }
-    let func = funcOrFailures;
+    let overload = program.globalNameContext.resolveFuncOverload(name, argumentTypes, null, true);
+    if (!overload.func)
+        throw new WTypeError("<callFunction>", "Cannot resolve function call " + name + "(" + argumentList + ")" + (overload.failures.length ? "; tried:\n" + overload.failures.join("\n") : ""));
+
+    const func = overload.func;
     for (let i = 0; i < func.parameters.length; ++i) {
-        let type = argumentTypes[i].instantiatedType;
+        let type = argumentTypes[i];
         type.visit(new StructLayoutBuilder());
         func.parameters[i].ePtr.copyFrom(argumentList[i].ePtr, type.size);
     }
     let result = new Evaluator(program).runFunc(func);
-    return new TypedValue(func.uninstantiatedReturnType, result);
+    return new TypedValue(func.returnType, result);
 }
 

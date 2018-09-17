@@ -63,6 +63,7 @@
 #import <WebCore/Editor.h>
 #import <WebCore/EventHandler.h>
 #import <WebCore/FocusController.h>
+#import <WebCore/FontAttributeChanges.h>
 #import <WebCore/Frame.h>
 #import <WebCore/FrameLoader.h>
 #import <WebCore/FrameView.h>
@@ -97,9 +98,8 @@
 #import <WebCore/MediaPlaybackTargetMock.h>
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 void WebPage::platformInitialize()
 {
@@ -399,8 +399,9 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
 
     // Find the frame the point is over.
     HitTestResult result = m_page->mainFrame().eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(roundedIntPoint(floatPoint)));
-    NSDictionary *options = nil;
-    auto range = DictionaryLookup::rangeAtHitTestResult(result, &options);
+    RefPtr<Range> range;
+    NSDictionary *options;
+    std::tie(range, options) = DictionaryLookup::rangeAtHitTestResult(result);
     if (!range)
         return;
 
@@ -413,8 +414,10 @@ void WebPage::performDictionaryLookupAtLocation(const FloatPoint& floatPoint)
 
 void WebPage::performDictionaryLookupForSelection(Frame& frame, const VisibleSelection& selection, TextIndicatorPresentationTransition presentationTransition)
 {
-    NSDictionary *options = nil;
-    if (auto selectedRange = DictionaryLookup::rangeForSelection(selection, &options))
+    RefPtr<Range> selectedRange;
+    NSDictionary *options;
+    std::tie(selectedRange, options) = DictionaryLookup::rangeForSelection(selection);
+    if (selectedRange)
         performDictionaryLookupForRange(frame, *selectedRange, options, presentationTransition);
 }
 
@@ -459,10 +462,10 @@ DictionaryPopupInfo WebPage::dictionaryPopupInfoForRange(Frame& frame, Range& ra
         RetainPtr<NSMutableDictionary> scaledAttributes = adoptNS([attributes mutableCopy]);
 
         NSFont *font = [scaledAttributes objectForKey:NSFontAttributeName];
-        if (font) {
-            font = [fontManager convertFont:font toSize:[font pointSize] * pageScaleFactor()];
+        if (font)
+            font = [fontManager convertFont:font toSize:font.pointSize * pageScaleFactor()];
+        if (font)
             [scaledAttributes setObject:font forKey:NSFontAttributeName];
-        }
 
         [scaledNSAttributedString addAttributes:scaledAttributes.get() range:range];
     }];
@@ -680,7 +683,7 @@ WKAccessibilityWebPageObject* WebPage::accessibilityRemoteObject()
 
 bool WebPage::platformCanHandleRequest(const WebCore::ResourceRequest& request)
 {
-    if ([NSURLConnection canHandleRequest:request.nsURLRequest(DoNotUpdateHTTPBody)])
+    if ([NSURLConnection canHandleRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody)])
         return true;
 
     // FIXME: Return true if this scheme is any one WebKit2 knows how to handle.
@@ -734,7 +737,7 @@ void WebPage::setTopOverhangImage(WebImage* image)
 
     layer->setSize(image->size());
     layer->setPosition(FloatPoint(0, -image->size().height()));
-    layer->platformLayer().contents = (id)image->bitmap().makeCGImageCopy().get();
+    layer->platformLayer().contents = (__bridge id)image->bitmap().makeCGImageCopy().get();
 }
 
 void WebPage::setBottomOverhangImage(WebImage* image)
@@ -748,7 +751,7 @@ void WebPage::setBottomOverhangImage(WebImage* image)
         return;
 
     layer->setSize(image->size());
-    layer->platformLayer().contents = (id)image->bitmap().makeCGImageCopy().get();
+    layer->platformLayer().contents = (__bridge id)image->bitmap().makeCGImageCopy().get();
 }
 
 void WebPage::updateHeaderAndFooterLayersForDeviceScaleChange(float scaleFactor)
@@ -816,11 +819,10 @@ static void drawPDFPage(PDFDocument *pdfDocument, CFIndex pageIndex, CGContextRe
     }
 
     [NSGraphicsContext saveGraphicsState];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:context flipped:NO]];
     [pdfPage drawWithBox:kPDFDisplayBoxCropBox];
-#pragma clang diagnostic pop
+    ALLOW_DEPRECATED_DECLARATIONS_END
     [NSGraphicsContext restoreGraphicsState];
 
     CGAffineTransform transform = CGContextGetCTM(context);
@@ -829,10 +831,9 @@ static void drawPDFPage(PDFDocument *pdfDocument, CFIndex pageIndex, CGContextRe
         if (![annotation isKindOfClass:pdfAnnotationLinkClass()])
             continue;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         PDFAnnotationLink *linkAnnotation = (PDFAnnotationLink *)annotation;
-#pragma clang diagnostic pop
+        ALLOW_DEPRECATED_DECLARATIONS_END
         NSURL *url = [linkAnnotation URL];
         if (!url)
             continue;
@@ -1052,9 +1053,7 @@ std::tuple<RefPtr<WebCore::Range>, NSDictionary *> WebPage::lookupTextAtLocation
 
     auto point = roundedIntPoint(locationInViewCoordinates);
     auto result = mainFrame.eventHandler().hitTestResultAtPoint(m_page->mainFrame().view()->windowToContents(point));
-    NSDictionary *options = nil;
-    auto range = DictionaryLookup::rangeAtHitTestResult(result, &options);
-    return { WTFMove(range), WTFMove(options) };
+    return DictionaryLookup::rangeAtHitTestResult(result);
 }
 
 void WebPage::immediateActionDidUpdate()
@@ -1114,10 +1113,18 @@ void WebPage::dataDetectorsDidHideUI(PageOverlay::PageOverlayID overlayID)
     }
 }
 
-void WebPage::setFont(const String& fontFamily, double fontSize, uint64_t fontTraits)
+void WebPage::changeFontAttributes(WebCore::FontAttributeChanges&& changes)
 {
-    Frame& frame = m_page->focusController().focusedOrMainFrame();
-    frame.editor().applyFontStyles(fontFamily, fontSize, fontTraits);
+    auto& frame = m_page->focusController().focusedOrMainFrame();
+    if (frame.selection().selection().isContentEditable())
+        frame.editor().applyStyleToSelection(changes.createEditingStyle(), changes.editAction(), Editor::ColorFilterMode::InvertColor);
+}
+
+void WebPage::changeFont(WebCore::FontChanges&& changes)
+{
+    auto& frame = m_page->focusController().focusedOrMainFrame();
+    if (frame.selection().selection().isContentEditable())
+        frame.editor().applyStyleToSelection(changes.createEditingStyle(), EditAction::SetFont, Editor::ColorFilterMode::InvertColor);
 }
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS)
@@ -1144,13 +1151,6 @@ void WebPage::playbackTargetAvailabilityDidChange(uint64_t contextId, bool chang
 void WebPage::setShouldPlayToPlaybackTarget(uint64_t contextId, bool shouldPlay)
 {
     m_page->setShouldPlayToPlaybackTarget(contextId, shouldPlay);
-}
-#endif
-
-#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
-void WebPage::openGLDisplayMaskChanged(uint32_t displayMask)
-{
-    GraphicsContext3D::setOpenGLDisplayMask(displayMask);
 }
 #endif
 

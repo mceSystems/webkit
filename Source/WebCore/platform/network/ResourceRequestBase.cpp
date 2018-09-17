@@ -29,6 +29,7 @@
 #include "HTTPHeaderNames.h"
 #include "PublicSuffix.h"
 #include "ResourceRequest.h"
+#include "ResourceResponse.h"
 #include "SecurityPolicy.h"
 #include <wtf/PointerComparison.h>
 
@@ -141,7 +142,7 @@ ResourceRequest ResourceRequestBase::redirectedRequest(const ResourceResponse& r
     request.setURL(location.isEmpty() ? URL { } : URL { redirectResponse.url(), location });
 
     if (shouldUseGet(*this, redirectResponse)) {
-        request.setHTTPMethod(ASCIILiteral("GET"));
+        request.setHTTPMethod("GET"_s);
         request.setHTTPBody(nullptr);
         request.clearHTTPContentType();
         request.m_httpHeaderFields.remove(HTTPHeaderName::ContentLength);
@@ -480,7 +481,7 @@ void ResourceRequestBase::setResponseContentDispositionEncodingFallbackArray(con
 
 FormData* ResourceRequestBase::httpBody() const
 {
-    updateResourceRequest(UpdateHTTPBody);
+    updateResourceRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody);
 
     return m_httpBody.get();
 }
@@ -690,7 +691,7 @@ void ResourceRequestBase::updatePlatformRequest(HTTPBodyUpdatePolicy bodyPolicy)
         m_platformRequestUpdated = true;
     }
 
-    if (!m_platformRequestBodyUpdated && bodyPolicy == UpdateHTTPBody) {
+    if (!m_platformRequestBodyUpdated && bodyPolicy == HTTPBodyUpdatePolicy::UpdateHTTPBody) {
         ASSERT(m_resourceRequestBodyUpdated);
         const_cast<ResourceRequest&>(asResourceRequest()).doUpdatePlatformHTTPBody();
         m_platformRequestBodyUpdated = true;
@@ -705,7 +706,7 @@ void ResourceRequestBase::updateResourceRequest(HTTPBodyUpdatePolicy bodyPolicy)
         m_resourceRequestUpdated = true;
     }
 
-    if (!m_resourceRequestBodyUpdated && bodyPolicy == UpdateHTTPBody) {
+    if (!m_resourceRequestBodyUpdated && bodyPolicy == HTTPBodyUpdatePolicy::UpdateHTTPBody) {
         ASSERT(m_platformRequestBodyUpdated);
         const_cast<ResourceRequest&>(asResourceRequest()).doUpdateResourceHTTPBody();
         m_resourceRequestBodyUpdated = true;

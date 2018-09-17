@@ -27,14 +27,12 @@
 #include "DocumentTimeline.h"
 
 #include "AnimationPlaybackEvent.h"
-#include "Chrome.h"
-#include "ChromeClient.h"
+#include "CSSPropertyAnimation.h"
 #include "DOMWindow.h"
 #include "DeclarativeAnimation.h"
-#include "DisplayRefreshMonitor.h"
-#include "DisplayRefreshMonitorManager.h"
 #include "Document.h"
 #include "KeyframeEffect.h"
+#include "Microtasks.h"
 #include "Page.h"
 #include "RenderElement.h"
 
@@ -43,31 +41,39 @@ static const Seconds throttledAnimationInterval { 30_ms };
 
 namespace WebCore {
 
-Ref<DocumentTimeline> DocumentTimeline::create(Document& document, PlatformDisplayID displayID)
+Ref<DocumentTimeline> DocumentTimeline::create(Document& document)
 {
-    return adoptRef(*new DocumentTimeline(document, displayID));
+    return adoptRef(*new DocumentTimeline(document, 0_s));
 }
 
-DocumentTimeline::DocumentTimeline(Document& document, PlatformDisplayID displayID)
+Ref<DocumentTimeline> DocumentTimeline::create(Document& document, DocumentTimelineOptions&& options)
+{
+    return adoptRef(*new DocumentTimeline(document, Seconds::fromMilliseconds(options.originTime)));
+}
+
+DocumentTimeline::DocumentTimeline(Document& document, Seconds originTime)
     : AnimationTimeline(DocumentTimelineClass)
     , m_document(&document)
+    , m_originTime(originTime)
     , m_animationScheduleTimer(*this, &DocumentTimeline::animationScheduleTimerFired)
 #if !USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
     , m_animationResolutionTimer(*this, &DocumentTimeline::animationResolutionTimerFired)
 #endif
 {
-    windowScreenDidChange(displayID);
 }
 
-DocumentTimeline::~DocumentTimeline()
-{
-}
+DocumentTimeline::~DocumentTimeline() = default;
 
 void DocumentTimeline::detachFromDocument()
 {
     m_invalidationTaskQueue.close();
     m_eventDispatchTaskQueue.close();
     m_animationScheduleTimer.stop();
+
+    auto& animationsToRemove = animations();
+    while (!animationsToRemove.isEmpty())
+        animationsToRemove.first()->remove();
+
     m_document = nullptr;
 }
 
@@ -135,11 +141,46 @@ std::optional<Seconds> DocumentTimeline::currentTime()
     if (m_paused || m_isSuspended || !m_document || !m_document->domWindow())
         return AnimationTimeline::currentTime();
 
-    if (!m_cachedCurrentTime) {
-        m_cachedCurrentTime = Seconds(m_document->domWindow()->nowTimestamp());
-        scheduleInvalidationTaskIfNeeded();
+    if (auto* mainDocumentTimeline = m_document->existingTimeline()) {
+        if (mainDocumentTimeline != this) {
+            if (auto mainDocumentTimelineCurrentTime = mainDocumentTimeline->currentTime())
+                return mainDocumentTimelineCurrentTime.value() - m_originTime;
+            return std::nullopt;
+        }
     }
-    return m_cachedCurrentTime;
+
+#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
+    // If we're in the middle of firing a frame, either due to a requestAnimationFrame callback
+    // or scheduling an animation update, we want to ensure we use the same time we're using as
+    // the timestamp for requestAnimationFrame() callbacks.
+    if (m_document->animationScheduler().isFiring())
+        m_cachedCurrentTime = m_document->animationScheduler().lastTimestamp();
+#endif
+
+    if (!m_cachedCurrentTime) {
+#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
+        // If we're not in the middle of firing a frame, let's make our best guess at what the currentTime should
+        // be since the last time a frame fired by increment of our update interval. This way code using something
+        // like setTimeout() or handling events will get a time that's only updating at around 60fps, or less if
+        // we're throttled.
+        auto lastAnimationSchedulerTimestamp = m_document->animationScheduler().lastTimestamp();
+        auto delta = Seconds(m_document->domWindow()->nowTimestamp()) - lastAnimationSchedulerTimestamp;
+        int frames = std::floor(delta.seconds() / animationInterval().seconds());
+        m_cachedCurrentTime = lastAnimationSchedulerTimestamp + Seconds(frames * animationInterval().seconds());
+#else
+        m_cachedCurrentTime = Seconds(m_document->domWindow()->nowTimestamp());
+#endif
+        // We want to be sure to keep this time cached until we've both finished running JS and finished updating
+        // animations, so we schedule the invalidation task and register a whenIdle callback on the VM, which will
+        // fire syncronously if no JS is running.
+        scheduleInvalidationTaskIfNeeded();
+        m_waitingOnVMIdle = true;
+        m_document->vm().whenIdle([this, protectedThis = makeRefPtr(this)]() {
+            m_waitingOnVMIdle = false;
+            maybeClearCachedCurrentTime();
+        });
+    }
+    return m_cachedCurrentTime.value() - m_originTime;
 }
 
 void DocumentTimeline::pause()
@@ -180,7 +221,17 @@ void DocumentTimeline::performInvalidationTask()
     applyPendingAcceleratedAnimations();
 
     updateAnimationSchedule();
-    m_cachedCurrentTime = std::nullopt;
+    maybeClearCachedCurrentTime();
+}
+
+void DocumentTimeline::maybeClearCachedCurrentTime()
+{
+    // We want to make sure we only clear the cached current time if we're not currently running
+    // JS or waiting on all current animation updating code to have completed. This is so that
+    // we're guaranteed to have a consistent current time reported for all work happening in a given
+    // JS frame or throughout updating animations in WebCore.
+    if (!m_waitingOnVMIdle && !m_invalidationTaskQueue.hasPendingTasks())
+        m_cachedCurrentTime = std::nullopt;
 }
 
 void DocumentTimeline::updateAnimationSchedule()
@@ -218,7 +269,7 @@ void DocumentTimeline::animationScheduleTimerFired()
 void DocumentTimeline::scheduleAnimationResolution()
 {
 #if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-    DisplayRefreshMonitorManager::sharedManager().scheduleAnimation(*this);
+    m_document->animationScheduler().scheduleWebAnimationsResolution();
 #else
     // FIXME: We need to use the same logic as ScriptedAnimationController here,
     // which will be addressed by the refactor tracked by webkit.org/b/179293.
@@ -227,7 +278,7 @@ void DocumentTimeline::scheduleAnimationResolution()
 }
 
 #if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-void DocumentTimeline::displayRefreshFired()
+void DocumentTimeline::documentAnimationSchedulerDidFire()
 #else
 void DocumentTimeline::animationResolutionTimerFired()
 #endif
@@ -237,6 +288,19 @@ void DocumentTimeline::animationResolutionTimerFired()
 
 void DocumentTimeline::updateAnimations()
 {
+    for (const auto& animation : animations())
+        animation->runPendingTasks();
+
+    // Perform a microtask checkpoint such that all promises that may have resolved while
+    // running pending tasks can fire right away.
+    MicrotaskQueue::mainThreadQueue().performMicrotaskCheckpoint();
+
+    // Let's first resolve any animation that does not have a target.
+    for (auto* animation : animationsWithoutTarget())
+        animation->resolve();
+
+    // For the rest of the animations, we will resolve them via TreeResolver::createAnimatedElementUpdate()
+    // by invalidating their target element's style.
     if (m_document && hasElementAnimations()) {
         for (const auto& elementToAnimationsMapItem : elementToAnimationsMap())
             elementToAnimationsMapItem.key->invalidateStyleAndLayerComposition();
@@ -333,8 +397,11 @@ void DocumentTimeline::animationAcceleratedRunningStateDidChange(WebAnimation& a
 
 void DocumentTimeline::applyPendingAcceleratedAnimations()
 {
+    auto acceleratedAnimationsPendingRunningStateChange = m_acceleratedAnimationsPendingRunningStateChange;
+    m_acceleratedAnimationsPendingRunningStateChange.clear();
+
     bool hasForcedLayout = false;
-    for (auto& animation : m_acceleratedAnimationsPendingRunningStateChange) {
+    for (auto& animation : acceleratedAnimationsPendingRunningStateChange) {
         if (!hasForcedLayout) {
             auto* effect = animation->effect();
             if (is<KeyframeEffectReadOnly>(effect))
@@ -342,8 +409,34 @@ void DocumentTimeline::applyPendingAcceleratedAnimations()
         }
         animation->applyPendingAcceleratedActions();
     }
+}
 
-    m_acceleratedAnimationsPendingRunningStateChange.clear();
+bool DocumentTimeline::resolveAnimationsForElement(Element& element, RenderStyle& targetStyle)
+{
+    bool hasNonAcceleratedAnimations = false;
+    bool hasPendingAcceleratedAnimations = true;
+    for (const auto& animation : animationsForElement(element)) {
+        animation->resolve(targetStyle);
+        if (!hasNonAcceleratedAnimations) {
+            if (auto* effect = animation->effect()) {
+                if (is<KeyframeEffectReadOnly>(effect)) {
+                    auto* keyframeEffect = downcast<KeyframeEffectReadOnly>(effect);
+                    for (auto cssPropertyId : keyframeEffect->animatedProperties()) {
+                        if (!CSSPropertyAnimation::animationOfPropertyIsAccelerated(cssPropertyId)) {
+                            hasNonAcceleratedAnimations = true;
+                            continue;
+                        }
+                        if (!hasPendingAcceleratedAnimations)
+                            hasPendingAcceleratedAnimations = keyframeEffect->hasPendingAcceleratedAction();
+                    }
+                }
+            }
+        }
+    }
+
+    // If there are no non-accelerated animations and we've encountered at least one pending
+    // accelerated animation, we should recomposite this element's layer for animation purposes.
+    return !hasNonAcceleratedAnimations && hasPendingAcceleratedAnimations;
 }
 
 bool DocumentTimeline::runningAnimationsForElementAreAllAccelerated(Element& element)
@@ -391,27 +484,5 @@ void DocumentTimeline::performEventDispatchTask()
     for (auto& pendingEvent : pendingAnimationEvents)
         pendingEvent->target()->dispatchEvent(pendingEvent);
 }
-
-void DocumentTimeline::windowScreenDidChange(PlatformDisplayID displayID)
-{
-#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-    DisplayRefreshMonitorManager::sharedManager().windowScreenDidChange(displayID, *this);
-#else
-    UNUSED_PARAM(displayID);
-#endif
-}
-
-#if USE(REQUEST_ANIMATION_FRAME_DISPLAY_MONITOR)
-RefPtr<DisplayRefreshMonitor> DocumentTimeline::createDisplayRefreshMonitor(PlatformDisplayID displayID) const
-{
-    if (!m_document || !m_document->page())
-        return nullptr;
-
-    if (auto monitor = m_document->page()->chrome().client().createDisplayRefreshMonitor(displayID))
-        return monitor;
-
-    return DisplayRefreshMonitor::createDefaultDisplayRefreshMonitor(displayID);
-}
-#endif
 
 } // namespace WebCore

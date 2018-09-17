@@ -33,21 +33,20 @@
 #include <wtf/UUID.h>
 #include <wtf/text/StringBuilder.h>
 
-using namespace WebCore::DOMCacheEngine;
-using namespace WebKit::NetworkCache;
-
 namespace WebKit {
 
 namespace CacheStorage {
+using namespace WebCore::DOMCacheEngine;
+using namespace NetworkCache;
 
 static inline String cachesListFilename(const String& cachesRootPath)
 {
-    return WebCore::FileSystem::pathByAppendingComponent(cachesRootPath, ASCIILiteral("cacheslist"));
+    return WebCore::FileSystem::pathByAppendingComponent(cachesRootPath, "cacheslist"_s);
 }
 
 static inline String cachesOriginFilename(const String& cachesRootPath)
 {
-    return WebCore::FileSystem::pathByAppendingComponent(cachesRootPath, ASCIILiteral("origin"));
+    return WebCore::FileSystem::pathByAppendingComponent(cachesRootPath, "origin"_s);
 }
 
 Caches::~Caches()
@@ -187,7 +186,7 @@ void Caches::initializeSize()
     }
 
     uint64_t size = 0;
-    m_storage->traverse({ }, 0, [protectedThis = makeRef(*this), this, protectedStorage = makeRef(*m_storage), size](const auto* storage, const auto& information) mutable {
+    m_storage->traverse({ }, { }, [protectedThis = makeRef(*this), this, protectedStorage = makeRef(*m_storage), size](const auto* storage, const auto& information) mutable {
         if (!storage) {
             if (m_pendingInitializationCallbacks.isEmpty()) {
                 // Caches was cleared so let's not get initialized.
@@ -461,7 +460,7 @@ void Caches::readRecordsList(Cache& cache, NetworkCache::Storage::TraverseHandle
         callback(nullptr, { });
         return;
     }
-    m_storage->traverse(cache.uniqueName(), 0, [protectedStorage = makeRef(*m_storage), callback = WTFMove(callback)](const auto* storage, const auto& information) {
+    m_storage->traverse(cache.uniqueName(), { }, [protectedStorage = makeRef(*m_storage), callback = WTFMove(callback)](const auto* storage, const auto& information) {
         callback(storage, information);
     });
 }
@@ -508,7 +507,7 @@ void Caches::readRecord(const NetworkCache::Key& key, WTF::Function<void(Expecte
         return;
     }
 
-    m_storage->retrieve(key, 4, [protectedStorage = makeRef(*m_storage), callback = WTFMove(callback)](std::unique_ptr<Storage::Record> storage) mutable {
+    m_storage->retrieve(key, 4, [protectedStorage = makeRef(*m_storage), callback = WTFMove(callback)](std::unique_ptr<Storage::Record> storage, const Storage::Timings&) mutable {
         if (!storage) {
             callback(makeUnexpected(Error::ReadDisk));
             return false;

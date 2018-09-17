@@ -109,9 +109,9 @@ void CompositeAnimation::updateTransitions(Element& element, const RenderStyle* 
             for (int propertyIndex = 0; propertyIndex < CSSPropertyAnimation::getNumProperties(); ++propertyIndex) {
                 if (all) {
                     // Get the next property which is not a shorthand.
-                    bool isShorthand;
+                    std::optional<bool> isShorthand;
                     prop = CSSPropertyAnimation::getPropertyAtIndex(propertyIndex, isShorthand);
-                    if (isShorthand)
+                    if (isShorthand && *isShorthand)
                         continue;
                 }
 
@@ -159,7 +159,7 @@ void CompositeAnimation::updateTransitions(Element& element, const RenderStyle* 
                     }
                 } else {
                     // We need to start a transition if it is active and the properties don't match
-                    equal = !isActiveTransition || CSSPropertyAnimation::propertiesEqual(prop, fromStyle, &targetStyle);
+                    equal = !isActiveTransition || CSSPropertyAnimation::propertiesEqual(prop, fromStyle, &targetStyle) || !CSSPropertyAnimation::canPropertyBeInterpolated(prop, fromStyle, &targetStyle);
                 }
 
                 // We can be in this loop with an inactive transition (!isActiveTransition). We need

@@ -83,12 +83,12 @@ bool JSString::equalSlowCase(ExecState* exec, JSString* other) const
     return WTF::equal(*str1.impl(), *str2.impl());
 }
 
-size_t JSString::estimatedSize(JSCell* cell)
+size_t JSString::estimatedSize(JSCell* cell, VM& vm)
 {
     JSString* thisObject = asString(cell);
     if (thisObject->isRope())
-        return Base::estimatedSize(cell);
-    return Base::estimatedSize(cell) + thisObject->m_value.impl()->costDuringGC();
+        return Base::estimatedSize(cell, vm);
+    return Base::estimatedSize(cell, vm) + thisObject->m_value.impl()->costDuringGC();
 }
 
 void JSString::visitChildren(JSCell* cell, SlotVisitor& visitor)
@@ -178,8 +178,12 @@ void JSRopeString::resolveRopeInternal16NoSubstring(UChar* buffer) const
 
 void JSRopeString::resolveRopeToAtomicString(ExecState* exec) const
 {
+    VM& vm = exec->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
     if (length() > maxLengthForOnStackResolve) {
         resolveRope(exec);
+        RETURN_IF_EXCEPTION(scope, void());
         m_value = AtomicString(m_value);
         setIs8Bit(m_value.impl()->is8Bit());
         return;

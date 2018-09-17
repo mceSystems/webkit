@@ -89,7 +89,7 @@ public:
     virtual void didReceiveAuthenticationChallenge(WebKit::WebPageProxy&, WebKit::AuthenticationChallengeProxy&) { }
 
     // FIXME: These function should not be part of this client.
-    virtual void processDidTerminate(WebKit::WebPageProxy&, WebKit::ProcessTerminationReason) { }
+    virtual bool processDidTerminate(WebKit::WebPageProxy&, WebKit::ProcessTerminationReason) { return false; }
     virtual void processDidBecomeResponsive(WebKit::WebPageProxy&) { }
     virtual void processDidBecomeUnresponsive(WebKit::WebPageProxy&) { }
 
@@ -104,12 +104,12 @@ public:
 
     virtual void decidePolicyForNavigationAction(WebKit::WebPageProxy&, Ref<NavigationAction>&&, Ref<WebKit::WebFramePolicyListenerProxy>&& listener, Object*)
     {
-        listener->use(std::nullopt);
+        listener->use();
     }
 
     virtual void decidePolicyForNavigationResponse(WebKit::WebPageProxy&, Ref<NavigationResponse>&&, Ref<WebKit::WebFramePolicyListenerProxy>&& listener, Object*)
     {
-        listener->use(std::nullopt);
+        listener->use();
     }
     
     virtual void contentRuleListNotification(WebKit::WebPageProxy&, WebCore::URL&&, Vector<WTF::String>&&, Vector<WTF::String>&&) { };
@@ -117,15 +117,15 @@ public:
 #if ENABLE(NETSCAPE_PLUGIN_API)
     virtual bool didFailToInitializePlugIn(WebKit::WebPageProxy&, API::Dictionary&) { return false; }
     virtual bool didBlockInsecurePluginVersion(WebKit::WebPageProxy&, API::Dictionary&) { return false; }
-    virtual WebKit::PluginModuleLoadPolicy decidePolicyForPluginLoad(WebKit::WebPageProxy&, WebKit::PluginModuleLoadPolicy currentPluginLoadPolicy, Dictionary&, WTF::String&)
+    virtual void decidePolicyForPluginLoad(WebKit::WebPageProxy&, WebKit::PluginModuleLoadPolicy currentPluginLoadPolicy, Dictionary&, CompletionHandler<void(WebKit::PluginModuleLoadPolicy, const WTF::String&)>&& completionHandler)
     {
-        return currentPluginLoadPolicy;
+        completionHandler(currentPluginLoadPolicy, { });
     }
 #endif
 
 #if ENABLE(WEBGL)
-    virtual void webGLLoadPolicy(WebKit::WebPageProxy&, const WebCore::URL&, WTF::Function<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const { completionHandler(WebCore::WebGLLoadPolicy::WebGLAllowCreation); }
-    virtual void resolveWebGLLoadPolicy(WebKit::WebPageProxy&, const WebCore::URL&, WTF::Function<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const { completionHandler(WebCore::WebGLLoadPolicy::WebGLAllowCreation); }
+    virtual void webGLLoadPolicy(WebKit::WebPageProxy&, const WebCore::URL&, CompletionHandler<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const { completionHandler(WebCore::WebGLLoadPolicy::WebGLAllowCreation); }
+    virtual void resolveWebGLLoadPolicy(WebKit::WebPageProxy&, const WebCore::URL&, CompletionHandler<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const { completionHandler(WebCore::WebGLLoadPolicy::WebGLAllowCreation); }
 #endif
     
     virtual bool willGoToBackForwardListItem(WebKit::WebPageProxy&, WebKit::WebBackForwardListItem&, bool inPageCache, Object*) { return false; }

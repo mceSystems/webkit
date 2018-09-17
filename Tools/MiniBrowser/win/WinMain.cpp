@@ -29,8 +29,10 @@
 #pragma warning(disable: 4091)
 
 #include "stdafx.h"
+#include "Common.h"
 #include "MiniBrowserLibResource.h"
-#include "Common.cpp"
+#include "MiniBrowserReplace.h"
+#include <WebKitLegacy/WebKitCOMAPI.h>
 
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpstrCmdLine, _In_ int nCmdShow)
 {
@@ -48,14 +50,9 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     InitCtrlEx.dwICC  = 0x00004000; // ICC_STANDARD_CLASSES;
     InitCommonControlsEx(&InitCtrlEx);
 
-    bool usesLayeredWebView = false;
-    bool useFullDesktop = false;
-    bool pageLoadTesting = false;
-    _bstr_t requestedURL;
+    auto options = parseCommandLine();
 
-    parseCommandLine(usesLayeredWebView, useFullDesktop, pageLoadTesting, requestedURL);
-
-    if (useFullDesktop)
+    if (options.useFullDesktop)
         computeFullDesktopFrame();
 
     // Init COM
@@ -63,20 +60,19 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
     ::SetProcessDPIAware();
 
-    gMainWindow = new MainWindow();
-    HRESULT hr = gMainWindow->init(hInst, usesLayeredWebView, pageLoadTesting);
+    auto& mainWindow = MainWindow::create(options.windowType).leakRef();
+    HRESULT hr = mainWindow.init(hInst, options.usesLayeredWebView, options.pageLoadTesting);
     if (FAILED(hr))
         goto exit;
 
-    gMiniBrowser = gMainWindow->browserWindow();
-    ShowWindow(gMainWindow->hwnd(), nCmdShow);
+    ShowWindow(mainWindow.hwnd(), nCmdShow);
 
     hAccelTable = LoadAccelerators(hInst, MAKEINTRESOURCE(IDC_MINIBROWSER));
 
-    if (requestedURL.length())
-        loadURL(requestedURL.GetBSTR());
+    if (options.requestedURL.length())
+        mainWindow.loadURL(options.requestedURL.GetBSTR());
     else
-        gMiniBrowser->loadHTMLString(_bstr_t(defaultHTML).GetBSTR());
+        mainWindow.browserWindow()->loadHTMLString(_bstr_t(defaultHTML).GetBSTR());
 
 #pragma warning(disable:4509)
 
@@ -102,4 +98,9 @@ exit:
     OleUninitialize();
 
     return static_cast<int>(msg.wParam);
+}
+
+extern "C" __declspec(dllexport) int WINAPI dllLauncherEntryPoint(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpstrCmdLine, int nCmdShow)
+{
+    return wWinMain(hInstance, hPrevInstance, lpstrCmdLine, nCmdShow);
 }

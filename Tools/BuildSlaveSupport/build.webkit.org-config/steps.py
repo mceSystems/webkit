@@ -367,7 +367,7 @@ class RunTest262Tests(TestWithFailureCount):
     description = ["test262-tests running"]
     descriptionDone = ["test262-tests"]
     failedTestsFormatString = "%d Test262 test%s failed"
-    command = ["perl", "./Tools/Scripts/test262-runner", WithProperties("--%(configuration)s")]
+    command = ["perl", "./Tools/Scripts/test262-runner", "--verbose", WithProperties("--%(configuration)s")]
 
     def start(self):
         appendCustomBuildFlags(self, self.getProperty('platform'), self.getProperty('fullPlatform'))
@@ -390,6 +390,7 @@ class RunWebKitTests(shell.Test):
                "--no-build",
                "--no-show-results",
                "--no-new-test-results",
+               "--clobber-old-results",
                "--builder-name", WithProperties("%(buildername)s"),
                "--build-number", WithProperties("%(buildnumber)s"),
                "--master-name", "webkit.org",
@@ -526,7 +527,7 @@ class RunPythonTests(TestWithFailureCount):
     name = "webkitpy-test"
     description = ["python-tests running"]
     descriptionDone = ["python-tests"]
-    command = ["python", "./Tools/Scripts/test-webkitpy", "--verbose"]
+    command = ["python", "./Tools/Scripts/test-webkitpy", "--verbose", WithProperties("--%(configuration)s")]
     failedTestsFormatString = "%d python test%s failed"
 
     def start(self):
@@ -825,11 +826,9 @@ class RunBenchmarkTests(shell.Test):
     name = "benchmark-test"
     description = ["benchmark tests running"]
     descriptionDone = ["benchmark tests"]
-    # Buildbot default timeout without output for a step is 1200.
-    # The current maximum timeout for a benchmark plan is also 1200.
-    # So raise the buildbot timeout to avoid aborting this whole step when a test timeouts.
-    timeout = 1500
-    command = ["python", "./Tools/Scripts/run-benchmark", "--allplans"]
+    command = ["python", "./Tools/Scripts/browserperfdash-benchmark", "--allplans",
+               "--config-file", "../../browserperfdash-benchmark-config.txt",
+               "--browser-version", WithProperties("r%(got_revision)s")]
 
     def start(self):
         platform = self.getProperty("platform")

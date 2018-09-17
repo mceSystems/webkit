@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,7 +33,13 @@
 #include "Logging.h"
 #include "MediaSampleAVFObjC.h"
 #include <pal/cf/CoreMediaSoftLink.h>
+
+ALLOW_UNUSED_PARAMETERS_BEGIN
+
 #include <webrtc/sdk/WebKit/WebKitUtilities.h>
+
+ALLOW_UNUSED_PARAMETERS_END
+
 #include <wtf/cf/TypeCastsCF.h>
 
 #include "CoreVideoSoftLink.h"
@@ -166,9 +172,15 @@ void RealtimeIncomingVideoSourceCocoa::processNewSample(CMSampleBufferRef sample
 {
     m_buffer = sample;
     if (width != m_currentSettings.width() || height != m_currentSettings.height()) {
+        OptionSet<RealtimeMediaSourceSettings::Flag> changed;
+        if (width != m_currentSettings.width())
+            changed.add(RealtimeMediaSourceSettings::Flag::Width);
+        if (height != m_currentSettings.height())
+            changed.add(RealtimeMediaSourceSettings::Flag::Height);
+
         m_currentSettings.setWidth(width);
         m_currentSettings.setHeight(height);
-        settingsDidChange();
+        settingsDidChange(changed);
     }
 
     videoSampleAvailable(MediaSampleAVFObjC::create(sample, rotation));

@@ -95,7 +95,6 @@ class TransformationMatrix;
 class UserStyleSheet;
 class URL;
 
-struct AttachmentInfo;
 struct CacheQueryOptions;
 struct CompositionUnderline;
 struct DictationAlternative;
@@ -103,6 +102,8 @@ struct DictionaryPopupInfo;
 struct EventTrackingRegions;
 struct ExceptionDetails;
 struct FileChooserSettings;
+struct ShareData;
+struct ShareDataWithParsedURL;
 struct Length;
 struct GrammarDetail;
 struct MimeClassInfo;
@@ -110,7 +111,7 @@ struct PasteboardImage;
 struct PasteboardCustomData;
 struct PasteboardURL;
 struct PluginInfo;
-struct PromisedBlobInfo;
+struct PromisedAttachmentInfo;
 struct RecentSearch;
 struct ResourceLoadStatistics;
 struct ScrollableAreaParameters;
@@ -133,6 +134,10 @@ struct Highlight;
 struct PasteboardImage;
 struct PasteboardWebContent;
 struct ViewportArguments;
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+struct DataListSuggestionInformation;
 #endif
 
 #if USE(SOUP)
@@ -267,6 +272,7 @@ template<> struct ArgumentCoder<WebCore::FloatQuad> {
 template<> struct ArgumentCoder<WebCore::ViewportArguments> {
     static void encode(Encoder&, const WebCore::ViewportArguments&);
     static bool decode(Decoder&, WebCore::ViewportArguments&);
+    static std::optional<WebCore::ViewportArguments> decode(Decoder&);
 };
 #endif // PLATFORM(IOS)
 
@@ -301,6 +307,7 @@ template<> struct ArgumentCoder<WebCore::LayoutPoint> {
 template<> struct ArgumentCoder<WebCore::Path> {
     static void encode(Encoder&, const WebCore::Path&);
     static bool decode(Decoder&, WebCore::Path&);
+    static std::optional<WebCore::Path> decode(Decoder&);
 };
 
 template<> struct ArgumentCoder<WebCore::Region> {
@@ -374,6 +381,7 @@ template<> struct ArgumentCoder<WebCore::WindowFeatures> {
 template<> struct ArgumentCoder<WebCore::Color> {
     static void encode(Encoder&, const WebCore::Color&);
     static bool decode(Decoder&, WebCore::Color&);
+    static std::optional<WebCore::Color> decode(Decoder&);
 };
 
 #if ENABLE(DRAG_SUPPORT)
@@ -412,11 +420,6 @@ template<> struct ArgumentCoder<WebCore::PasteboardWebContent> {
     static bool decode(Decoder&, WebCore::PasteboardWebContent&);
 };
 
-template<> struct ArgumentCoder<WebCore::PasteboardURL> {
-    static void encode(Encoder&, const WebCore::PasteboardURL&);
-    static bool decode(Decoder&, WebCore::PasteboardURL&);
-};
-
 template<> struct ArgumentCoder<WebCore::PasteboardImage> {
     static void encode(Encoder&, const WebCore::PasteboardImage&);
     static bool decode(Decoder&, WebCore::PasteboardImage&);
@@ -426,6 +429,11 @@ template<> struct ArgumentCoder<WebCore::PasteboardImage> {
 template<> struct ArgumentCoder<WebCore::PasteboardCustomData> {
     static void encode(Encoder&, const WebCore::PasteboardCustomData&);
     static bool decode(Decoder&, WebCore::PasteboardCustomData&);
+};
+
+template<> struct ArgumentCoder<WebCore::PasteboardURL> {
+    static void encode(Encoder&, const WebCore::PasteboardURL&);
+    static bool decode(Decoder&, WebCore::PasteboardURL&);
 };
 
 #if USE(SOUP)
@@ -452,6 +460,13 @@ template<> struct ArgumentCoder<WebCore::DatabaseDetails> {
     static bool decode(Decoder&, WebCore::DatabaseDetails&);
 };
 
+#if ENABLE(DATALIST_ELEMENT)
+template<> struct ArgumentCoder<WebCore::DataListSuggestionInformation> {
+    static void encode(Encoder&, const WebCore::DataListSuggestionInformation&);
+    static bool decode(Decoder&, WebCore::DataListSuggestionInformation&);
+};
+#endif
+
 template<> struct ArgumentCoder<WebCore::DictationAlternative> {
     static void encode(Encoder&, const WebCore::DictationAlternative&);
     static std::optional<WebCore::DictationAlternative> decode(Decoder&);
@@ -460,6 +475,16 @@ template<> struct ArgumentCoder<WebCore::DictationAlternative> {
 template<> struct ArgumentCoder<WebCore::FileChooserSettings> {
     static void encode(Encoder&, const WebCore::FileChooserSettings&);
     static bool decode(Decoder&, WebCore::FileChooserSettings&);
+};
+    
+template<> struct ArgumentCoder<WebCore::ShareData> {
+    static void encode(Encoder&, const WebCore::ShareData&);
+    static bool decode(Decoder&, WebCore::ShareData&);
+};
+    
+template<> struct ArgumentCoder<WebCore::ShareDataWithParsedURL> {
+    static void encode(Encoder&, const WebCore::ShareDataWithParsedURL&);
+    static bool decode(Decoder&, WebCore::ShareDataWithParsedURL&);
 };
 
 template<> struct ArgumentCoder<WebCore::GrammarDetail> {
@@ -685,19 +710,10 @@ template<> struct ArgumentCoder<WebCore::MediaSelectionOption> {
     static std::optional<WebCore::MediaSelectionOption> decode(Decoder&);
 };
 
-template<> struct ArgumentCoder<WebCore::PromisedBlobInfo> {
-    static void encode(Encoder&, const WebCore::PromisedBlobInfo&);
-    static bool decode(Decoder&, WebCore::PromisedBlobInfo&);
+template<> struct ArgumentCoder<WebCore::PromisedAttachmentInfo> {
+    static void encode(Encoder&, const WebCore::PromisedAttachmentInfo&);
+    static bool decode(Decoder&, WebCore::PromisedAttachmentInfo&);
 };
-
-#if ENABLE(ATTACHMENT_ELEMENT)
-
-template<> struct ArgumentCoder<WebCore::AttachmentInfo> {
-    static void encode(Encoder&, const WebCore::AttachmentInfo&);
-    static bool decode(Decoder&, WebCore::AttachmentInfo&);
-};
-
-#endif
 
 template<> struct ArgumentCoder<Vector<RefPtr<WebCore::SecurityOrigin>>> {
     static void encode(Encoder&, const Vector<RefPtr<WebCore::SecurityOrigin>>&);
@@ -748,7 +764,8 @@ template<> struct EnumTraits<WebCore::NetworkLoadPriority> {
         WebCore::NetworkLoadPriority,
         WebCore::NetworkLoadPriority::Low,
         WebCore::NetworkLoadPriority::Medium,
-        WebCore::NetworkLoadPriority::High
+        WebCore::NetworkLoadPriority::High,
+        WebCore::NetworkLoadPriority::Unknown
     >;
 };
 

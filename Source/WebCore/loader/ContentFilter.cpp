@@ -246,7 +246,7 @@ void ContentFilter::didDecide(State state)
 void ContentFilter::deliverResourceData(CachedResource& resource)
 {
     ASSERT(m_state == State::Allowed);
-    ASSERT(resource.dataBufferingPolicy() == BufferData);
+    ASSERT(resource.dataBufferingPolicy() == DataBufferingPolicy::BufferData);
     if (auto* resourceBuffer = resource.resourceBuffer())
         m_documentLoader.dataReceived(resource, resourceBuffer->data(), resourceBuffer->size());
 }
@@ -286,7 +286,7 @@ void ContentFilter::handleProvisionalLoadFailure(const ResourceError& error)
     ASSERT(m_blockedError.failingURL() == error.failingURL());
 
     RefPtr<SharedBuffer> replacementData { m_blockingContentFilter->replacementData() };
-    ResourceResponse response { URL(), ASCIILiteral("text/html"), static_cast<long long>(replacementData->size()), ASCIILiteral("UTF-8") };
+    ResourceResponse response { URL(), "text/html"_s, static_cast<long long>(replacementData->size()), "UTF-8"_s };
     SubstituteData substituteData { WTFMove(replacementData), error.failingURL(), response, SubstituteData::SessionHistoryVisibility::Hidden };
     SetForScope<bool> loadingBlockedPage { m_isLoadingBlockedPage, true };
     m_documentLoader.frameLoader()->load(FrameLoadRequest(*m_documentLoader.frame(), blockedPageURL(), ShouldOpenExternalURLsPolicy::ShouldNotAllow, substituteData));

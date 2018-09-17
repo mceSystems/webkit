@@ -38,7 +38,7 @@
 namespace WebCore {
 class AlternativeTextUIController;
 struct DragItem;
-struct PromisedBlobInfo;
+struct PromisedAttachmentInfo;
 }
 
 namespace WebKit {
@@ -91,10 +91,10 @@ private:
     void setCursorHiddenUntilMouseMoves(bool) override;
     void didChangeViewportProperties(const WebCore::ViewportAttributes&) override;
 
-    void registerEditCommand(Ref<WebEditCommandProxy>&&, WebPageProxy::UndoOrRedo) override;
+    void registerEditCommand(Ref<WebEditCommandProxy>&&, UndoOrRedo) override;
     void clearAllEditCommands() override;
-    bool canUndoRedo(WebPageProxy::UndoOrRedo) override;
-    void executeUndoRedo(WebPageProxy::UndoOrRedo) override;
+    bool canUndoRedo(UndoOrRedo) override;
+    void executeUndoRedo(UndoOrRedo) override;
     bool executeSavedCommandBySelector(const String& selector) override;
     void startDrag(const WebCore::DragItem&, const ShareableBitmap::Handle& image) override;
     void setPromisedDataForImage(const String& pasteboardName, Ref<WebCore::SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title,
@@ -103,7 +103,11 @@ private:
     void resetSecureInputState() override;
     void notifyInputContextAboutDiscardedComposition() override;
     void selectionDidChange() override;
-
+    
+#if WK_API_ENABLED
+    bool showShareSheet(const WebCore::ShareDataWithParsedURL&, WTF::CompletionHandler<void(bool)>&&) override;
+#endif
+        
     WebCore::FloatRect convertToDeviceSpace(const WebCore::FloatRect&) override;
     WebCore::FloatRect convertToUserSpace(const WebCore::FloatRect&) override;
     WebCore::IntPoint screenToRootView(const WebCore::IntPoint&) override;
@@ -129,7 +133,11 @@ private:
 #endif
 
 #if ENABLE(INPUT_TYPE_COLOR)
-    RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&) override;
+    RefPtr<WebColorPicker> createColorPicker(WebPageProxy*, const WebCore::Color& initialColor, const WebCore::IntRect&, Vector<WebCore::Color>&&) override;
+#endif
+
+#if ENABLE(DATALIST_ELEMENT)
+    RefPtr<WebDataListSuggestionsDropdown> createDataListSuggestionsDropdown(WebPageProxy&) override;
 #endif
 
     Ref<WebCore::ValidationBubble> createValidationBubble(const String& message, const WebCore::ValidationBubble::Settings&) final;
@@ -205,6 +213,7 @@ private:
     NSView *activeView() const;
     NSWindow *activeWindow() const;
 
+    void didStartProvisionalLoadForMainFrame() override;
     void didFirstVisuallyNonEmptyLayoutForMainFrame() override;
     void didFinishLoadForMainFrame() override;
     void didFailLoadForMainFrame() override;
@@ -212,7 +221,7 @@ private:
     void handleControlledElementIDResponse(const String&) override;
 
     void didPerformImmediateActionHitTest(const WebHitTestResultData&, bool contentPreventsDefault, API::Object*) override;
-    void* immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult>, uint64_t, RefPtr<API::Object>) override;
+    NSObject *immediateActionAnimationControllerForHitTestResult(RefPtr<API::HitTestResult>, uint64_t, RefPtr<API::Object>) override;
 
     void didHandleAcceptedCandidate() override;
 
@@ -226,11 +235,18 @@ private:
     NSWindow *platformWindow() override;
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
+    bool effectiveAppearanceIsDark() const override;
+
+#if ENABLE(DRAG_SUPPORT)
+    void didPerformDragOperation(bool handled) final;
+#endif
 
 #if WK_API_ENABLED
     NSView *inspectorAttachmentView() override;
     _WKRemoteObjectRegistry *remoteObjectRegistry() override;
 #endif
+
+    void didFinishProcessingAllPendingMouseEvents() final;
 
     NSView *m_view;
     WebViewImpl* m_impl { nullptr };

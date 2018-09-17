@@ -1441,6 +1441,14 @@ void AccessibilityNodeObject::helpText(Vector<AccessibilityText>& textOrder) con
     String describedBy = ariaDescribedByAttribute();
     if (!describedBy.isEmpty())
         textOrder.append(AccessibilityText(describedBy, AccessibilityTextSource::Summary));
+    else if (isControl()) {
+        // For controls, use their fieldset parent's described-by text if available.
+        auto matchFunc = [] (const AccessibilityObject& object) {
+            return object.isFieldset() && !object.ariaDescribedByAttribute().isEmpty();
+        };
+        if (const auto* parent = AccessibilityObject::matchedParent(*this, false, WTFMove(matchFunc)))
+            textOrder.append(AccessibilityText(parent->ariaDescribedByAttribute(), AccessibilityTextSource::Summary));
+    }
 
     // Summary attribute used as help text on tables.
     const AtomicString& summary = getAttribute(summaryAttr);
@@ -1736,7 +1744,7 @@ String AccessibilityNodeObject::textUnderElement(AccessibilityTextUnderElementMo
     // The Accname specification states that if the current node is hidden, and not directly
     // referenced by aria-labelledby or aria-describedby, and is not a host language text
     // alternative, the empty string should be returned.
-    if (isHidden() && !is<HTMLLabelElement>(node) && !ancestorsOfType<HTMLCanvasElement>(*node).first()) {
+    if (isHidden() && !is<HTMLLabelElement>(node) && (node && !ancestorsOfType<HTMLCanvasElement>(*node).first())) {
         AccessibilityObject::AccessibilityChildrenVector labelFor;
         AccessibilityObject::AccessibilityChildrenVector descriptionFor;
         ariaLabelledByReferencingElements(labelFor);

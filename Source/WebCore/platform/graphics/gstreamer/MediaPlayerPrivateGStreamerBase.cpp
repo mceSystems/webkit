@@ -29,6 +29,7 @@
 
 #include "GStreamerCommon.h"
 #include "GraphicsContext.h"
+#include "GraphicsContext3D.h"
 #include "ImageGStreamer.h"
 #include "ImageOrientation.h"
 #include "IntRect.h"
@@ -51,6 +52,14 @@
 #include "GStreamerEMEUtilities.h"
 #include "SharedBuffer.h"
 #include "WebKitClearKeyDecryptorGStreamer.h"
+#endif
+
+#if ENABLE(MEDIA_SOURCE)
+#include "WebKitMediaSourceGStreamer.h"
+#endif
+
+#if ENABLE(MEDIA_STREAM) && GST_CHECK_VERSION(1, 10, 0)
+#include "GStreamerMediaStreamSource.h"
 #endif
 
 #if USE(GSTREAMER_GL)
@@ -133,31 +142,30 @@ GST_DEBUG_CATEGORY(webkit_media_player_debug);
 namespace WebCore {
 using namespace std;
 
-void registerWebKitGStreamerElements()
-{
-#if ENABLE(ENCRYPTED_MEDIA)
-    if (!webkitGstCheckVersion(1, 6, 1))
-        return;
-
-    GRefPtr<GstElementFactory> clearKeyDecryptorFactory = adoptGRef(gst_element_factory_find("webkitclearkey"));
-    if (!clearKeyDecryptorFactory)
-        gst_element_register(nullptr, "webkitclearkey", GST_RANK_PRIMARY + 100, WEBKIT_TYPE_MEDIA_CK_DECRYPT);
-#endif
-}
-
 bool MediaPlayerPrivateGStreamerBase::initializeGStreamerAndRegisterWebKitElements()
 {
     if (!initializeGStreamer())
         return false;
 
-    registerWebKitGStreamerElements();
-
-    GRefPtr<GstElementFactory> srcFactory = adoptGRef(gst_element_factory_find("webkitwebsrc"));
-    if (!srcFactory) {
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
         GST_DEBUG_CATEGORY_INIT(webkit_media_player_debug, "webkitmediaplayer", 0, "WebKit media player");
-        gst_element_register(0, "webkitwebsrc", GST_RANK_PRIMARY + 100, WEBKIT_TYPE_WEB_SRC);
-    }
+#if ENABLE(ENCRYPTED_MEDIA)
+        if (webkitGstCheckVersion(1, 6, 1))
+            gst_element_register(nullptr, "webkitclearkey", GST_RANK_PRIMARY + 100, WEBKIT_TYPE_MEDIA_CK_DECRYPT);
+#endif
 
+#if ENABLE(MEDIA_STREAM) && GST_CHECK_VERSION(1, 10, 0)
+        if (webkitGstCheckVersion(1, 10, 0))
+            gst_element_register(nullptr, "mediastreamsrc", GST_RANK_PRIMARY, WEBKIT_TYPE_MEDIA_STREAM_SRC);
+#endif
+
+#if ENABLE(MEDIA_SOURCE)
+        gst_element_register(nullptr, "webkitmediasrc", GST_RANK_PRIMARY + 100, WEBKIT_TYPE_MEDIA_SRC);
+#endif
+
+        gst_element_register(0, "webkitwebsrc", GST_RANK_PRIMARY + 100, WEBKIT_TYPE_WEB_SRC);
+    });
     return true;
 }
 
@@ -192,47 +200,82 @@ static inline TextureMapperGL::Flags texMapFlagFromOrientation(const ImageOrient
 }
 #endif
 
-#if USE(GSTREAMER_GL)
+#if USE(TEXTURE_MAPPER_GL)
 class GstVideoFrameHolder : public TextureMapperPlatformLayerBuffer::UnmanagedBufferDataHolder {
 public:
-    explicit GstVideoFrameHolder(GstSample* sample, TextureMapperGL::Flags flags)
+    explicit GstVideoFrameHolder(GstSample* sample, TextureMapperGL::Flags flags, bool gstGLEnabled)
     {
         GstVideoInfo videoInfo;
         if (UNLIKELY(!getSampleVideoInfo(sample, videoInfo)))
             return;
 
         m_size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
-        m_flags = flags | (GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0) | TEXTURE_MAPPER_COLOR_CONVERT_FLAG;
-
-        GstBuffer* buffer = gst_sample_get_buffer(sample);
-        if (UNLIKELY(!gst_video_frame_map(&m_videoFrame, &videoInfo, buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL))))
+        m_hasAlphaChannel = GST_VIDEO_INFO_HAS_ALPHA(&videoInfo);
+        m_buffer = gst_sample_get_buffer(sample);
+        if (UNLIKELY(!GST_IS_BUFFER(m_buffer)))
             return;
 
-        m_textureID = *reinterpret_cast<GLuint*>(m_videoFrame.data[0]);
-        m_isValid = true;
+#if USE(GSTREAMER_GL)
+        m_flags = flags | (m_hasAlphaChannel ? TextureMapperGL::ShouldBlend : 0) | TEXTURE_MAPPER_COLOR_CONVERT_FLAG;
+
+        if (gstGLEnabled) {
+            m_isMapped = gst_video_frame_map(&m_videoFrame, &videoInfo, m_buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL));
+            if (m_isMapped)
+                m_textureID = *reinterpret_cast<GLuint*>(m_videoFrame.data[0]);
+        } else
+#endif // USE(GSTREAMER_GL)
+
+        {
+            m_textureID = 0;
+            m_isMapped = gst_video_frame_map(&m_videoFrame, &videoInfo, m_buffer, GST_MAP_READ);
+            if (m_isMapped) {
+                // Right now the TextureMapper only supports chromas with one plane
+                ASSERT(GST_VIDEO_INFO_N_PLANES(&videoInfo) == 1);
+            }
+        }
     }
 
     virtual ~GstVideoFrameHolder()
     {
-        if (UNLIKELY(!m_isValid))
+        if (UNLIKELY(!m_isMapped))
             return;
 
         gst_video_frame_unmap(&m_videoFrame);
     }
 
     const IntSize& size() const { return m_size; }
+    bool hasAlphaChannel() const { return m_hasAlphaChannel; }
     TextureMapperGL::Flags flags() const { return m_flags; }
     GLuint textureID() const { return m_textureID; }
-    bool isValid() const { return m_isValid; }
+
+    void updateTexture(BitmapTextureGL& texture)
+    {
+        ASSERT(!m_textureID);
+        GstVideoGLTextureUploadMeta* meta;
+        if ((meta = gst_buffer_get_video_gl_texture_upload_meta(m_buffer))) {
+            if (meta->n_textures == 1) { // BRGx & BGRA formats use only one texture.
+                guint ids[4] = { texture.id(), 0, 0, 0 };
+
+                if (gst_video_gl_texture_upload_meta_upload(meta, ids))
+                    return;
+            }
+        }
+
+        int stride = GST_VIDEO_FRAME_PLANE_STRIDE(&m_videoFrame, 0);
+        const void* srcData = GST_VIDEO_FRAME_PLANE_DATA(&m_videoFrame, 0);
+        texture.updateContents(srcData, WebCore::IntRect(0, 0, m_size.width(), m_size.height()), WebCore::IntPoint(0, 0), stride);
+    }
 
 private:
-    GstVideoFrame m_videoFrame;
+    GstBuffer* m_buffer;
+    GstVideoFrame m_videoFrame { };
     IntSize m_size;
-    TextureMapperGL::Flags m_flags;
-    GLuint m_textureID;
-    bool m_isValid { false };
+    bool m_hasAlphaChannel;
+    TextureMapperGL::Flags m_flags { };
+    GLuint m_textureID { 0 };
+    bool m_isMapped { false };
 };
-#endif // USE(GSTREAMER_GL)
+#endif
 
 MediaPlayerPrivateGStreamerBase::MediaPlayerPrivateGStreamerBase(MediaPlayer* player)
     : m_notifier(MainThreadNotifier<MainThreadNotification>::create())
@@ -242,13 +285,21 @@ MediaPlayerPrivateGStreamerBase::MediaPlayerPrivateGStreamerBase(MediaPlayer* pl
     , m_networkState(MediaPlayer::Empty)
     , m_drawTimer(RunLoop::main(), this, &MediaPlayerPrivateGStreamerBase::repaint)
 #if USE(TEXTURE_MAPPER_GL)
+#if USE(NICOSIA)
+    , m_nicosiaLayer(Nicosia::ContentLayer::create(Nicosia::ContentLayerTextureMapperImpl::createFactory(*this)))
+#else
     , m_platformLayerProxy(adoptRef(new TextureMapperPlatformLayerProxy()))
+#endif
 #endif
 {
 }
 
 MediaPlayerPrivateGStreamerBase::~MediaPlayerPrivateGStreamerBase()
 {
+#if USE(TEXTURE_MAPPER_GL) && USE(NICOSIA)
+    downcast<Nicosia::ContentLayerTextureMapperImpl>(m_nicosiaLayer->impl()).invalidateClient();
+#endif
+
 #if ENABLE(ENCRYPTED_MEDIA)
     m_protectionCondition.notifyAll();
 #endif
@@ -361,21 +412,20 @@ bool MediaPlayerPrivateGStreamerBase::handleSyncMessage(GstMessage* message)
             GstBuffer* data = nullptr;
             gst_event_parse_protection(event.get(), &eventKeySystemId, &data, nullptr);
 
-            GstMapInfo mapInfo;
-            if (!gst_buffer_map(data, &mapInfo, GST_MAP_READ)) {
+            GstMappedBuffer dataMapped(data, GST_MAP_READ);
+            if (!dataMapped) {
                 GST_WARNING("cannot map %s protection data", eventKeySystemId);
                 break;
             }
-            GST_TRACE("appending init data for %s of size %" G_GSIZE_FORMAT, eventKeySystemId, mapInfo.size);
-            GST_MEMDUMP("init data", reinterpret_cast<const unsigned char*>(mapInfo.data), mapInfo.size);
-            concatenatedInitDataChunks.append(mapInfo.data, mapInfo.size);
+            GST_TRACE("appending init data for %s of size %" G_GSIZE_FORMAT, eventKeySystemId, dataMapped.size());
+            GST_MEMDUMP("init data", reinterpret_cast<const unsigned char*>(dataMapped.data()), dataMapped.size());
+            concatenatedInitDataChunks.append(dataMapped.data(), dataMapped.size());
             ++concatenatedInitDataChunksNumber;
             eventKeySystemIdString = eventKeySystemId;
             if (streamEncryptionInformation.second.contains(eventKeySystemId)) {
                 GST_TRACE("considering init data handled for %s", eventKeySystemId);
                 m_handledProtectionEvents.add(GST_EVENT_SEQNUM(event.get()));
             }
-            gst_buffer_unmap(data, &mapInfo);
         }
 
         if (!concatenatedInitDataChunksNumber)
@@ -384,13 +434,13 @@ bool MediaPlayerPrivateGStreamerBase::handleSyncMessage(GstMessage* message)
         if (concatenatedInitDataChunksNumber > 1)
             eventKeySystemIdString = emptyString();
 
-        RunLoop::main().dispatch([weakThis = m_weakPtrFactory.createWeakPtr(*this), eventKeySystemIdString, initData = WTFMove(concatenatedInitDataChunks)] {
+        RunLoop::main().dispatch([weakThis = makeWeakPtr(*this), eventKeySystemIdString, initData = WTFMove(concatenatedInitDataChunks)] {
             if (!weakThis)
                 return;
 
             GST_DEBUG_OBJECT(weakThis->pipeline(), "scheduling initializationDataEncountered event for %s with concatenated init datas size of %" G_GSIZE_FORMAT, eventKeySystemIdString.utf8().data(), initData.size());
             GST_MEMDUMP("init datas", initData.data(), initData.size());
-            weakThis->m_player->initializationDataEncountered(ASCIILiteral("cenc"), ArrayBuffer::create(initData.data(), initData.size()));
+            weakThis->m_player->initializationDataEncountered("cenc"_s, ArrayBuffer::create(initData.data(), initData.size()));
         });
 
         GST_INFO_OBJECT(pipeline(), "waiting for a CDM instance");
@@ -694,33 +744,20 @@ void MediaPlayerPrivateGStreamerBase::acceleratedRenderingStateChanged()
 }
 
 #if USE(TEXTURE_MAPPER_GL)
-void MediaPlayerPrivateGStreamerBase::updateTexture(BitmapTextureGL& texture, GstVideoInfo& videoInfo)
+PlatformLayer* MediaPlayerPrivateGStreamerBase::platformLayer() const
 {
-    GstBuffer* buffer = gst_sample_get_buffer(m_sample.get());
-
-    GstVideoGLTextureUploadMeta* meta;
-    if ((meta = gst_buffer_get_video_gl_texture_upload_meta(buffer))) {
-        if (meta->n_textures == 1) { // BRGx & BGRA formats use only one texture.
-            guint ids[4] = { texture.id(), 0, 0, 0 };
-
-            if (gst_video_gl_texture_upload_meta_upload(meta, ids))
-                return;
-        }
-    }
-
-    // Right now the TextureMapper only supports chromas with one plane
-    ASSERT(GST_VIDEO_INFO_N_PLANES(&videoInfo) == 1);
-
-    GstVideoFrame videoFrame;
-    if (!gst_video_frame_map(&videoFrame, &videoInfo, buffer, GST_MAP_READ))
-        return;
-
-    int stride = GST_VIDEO_FRAME_PLANE_STRIDE(&videoFrame, 0);
-    const void* srcData = GST_VIDEO_FRAME_PLANE_DATA(&videoFrame, 0);
-    texture.updateContents(srcData, WebCore::IntRect(0, 0, GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo)), WebCore::IntPoint(0, 0), stride);
-    gst_video_frame_unmap(&videoFrame);
+#if USE(NICOSIA)
+    return m_nicosiaLayer.ptr();
+#else
+    return const_cast<MediaPlayerPrivateGStreamerBase*>(this);
+#endif
 }
 
+#if USE(NICOSIA)
+void MediaPlayerPrivateGStreamerBase::swapBuffersIfNeeded()
+{
+}
+#else
 RefPtr<TextureMapperPlatformLayerProxy> MediaPlayerPrivateGStreamerBase::proxy() const
 {
     return m_platformLayerProxy.copyRef();
@@ -729,60 +766,47 @@ RefPtr<TextureMapperPlatformLayerProxy> MediaPlayerPrivateGStreamerBase::proxy()
 void MediaPlayerPrivateGStreamerBase::swapBuffersIfNeeded()
 {
 }
+#endif
 
 void MediaPlayerPrivateGStreamerBase::pushTextureToCompositor()
 {
-#if !USE(GSTREAMER_GL)
-    class ConditionNotifier {
-    public:
-        ConditionNotifier(Lock& lock, Condition& condition)
-            : m_locker(lock), m_condition(condition)
-        {
-        }
-        ~ConditionNotifier()
-        {
-            m_condition.notifyOne();
-        }
-    private:
-        LockHolder m_locker;
-        Condition& m_condition;
-    };
-    ConditionNotifier notifier(m_drawMutex, m_drawCondition);
-#endif
-
     auto sampleLocker = holdLock(m_sampleMutex);
     if (!GST_IS_SAMPLE(m_sample.get()))
         return;
 
-    LockHolder holder(m_platformLayerProxy->lock());
+    auto proxyOperation =
+        [this](TextureMapperPlatformLayerProxy& proxy)
+        {
+            LockHolder holder(proxy.lock());
 
-    if (!m_platformLayerProxy->isActive())
-        return;
+            if (!proxy.isActive())
+                return;
 
-#if USE(GSTREAMER_GL)
-    std::unique_ptr<GstVideoFrameHolder> frameHolder = std::make_unique<GstVideoFrameHolder>(m_sample.get(), texMapFlagFromOrientation(m_videoSourceOrientation));
-    if (UNLIKELY(!frameHolder->isValid()))
-        return;
+            std::unique_ptr<GstVideoFrameHolder> frameHolder = std::make_unique<GstVideoFrameHolder>(m_sample.get(), texMapFlagFromOrientation(m_videoSourceOrientation), !m_usingFallbackVideoSink);
 
-    std::unique_ptr<TextureMapperPlatformLayerBuffer> layerBuffer = std::make_unique<TextureMapperPlatformLayerBuffer>(frameHolder->textureID(), frameHolder->size(), frameHolder->flags(), GraphicsContext3D::RGBA);
-    layerBuffer->setUnmanagedBufferDataHolder(WTFMove(frameHolder));
-    m_platformLayerProxy->pushNextBuffer(WTFMove(layerBuffer));
+            GLuint textureID = frameHolder->textureID();
+            std::unique_ptr<TextureMapperPlatformLayerBuffer> layerBuffer;
+            if (textureID) {
+                layerBuffer = std::make_unique<TextureMapperPlatformLayerBuffer>(textureID, frameHolder->size(), frameHolder->flags(), GraphicsContext3D::RGBA);
+                layerBuffer->setUnmanagedBufferDataHolder(WTFMove(frameHolder));
+            } else {
+                layerBuffer = proxy.getAvailableBuffer(frameHolder->size(), GL_DONT_CARE);
+                if (UNLIKELY(!layerBuffer)) {
+                    auto texture = BitmapTextureGL::create(TextureMapperContextAttributes::get());
+                    texture->reset(frameHolder->size(), frameHolder->hasAlphaChannel() ? BitmapTexture::SupportsAlpha : BitmapTexture::NoFlag);
+                    layerBuffer = std::make_unique<TextureMapperPlatformLayerBuffer>(WTFMove(texture));
+                }
+                frameHolder->updateTexture(layerBuffer->textureGL());
+                layerBuffer->setExtraFlags(texMapFlagFromOrientation(m_videoSourceOrientation) | (frameHolder->hasAlphaChannel() ? TextureMapperGL::ShouldBlend : 0));
+            }
+            proxy.pushNextBuffer(WTFMove(layerBuffer));
+        };
+
+#if USE(NICOSIA)
+    proxyOperation(downcast<Nicosia::ContentLayerTextureMapperImpl>(m_nicosiaLayer->impl()).proxy());
 #else
-    GstVideoInfo videoInfo;
-    if (UNLIKELY(!getSampleVideoInfo(m_sample.get(), videoInfo)))
-        return;
-
-    IntSize size = IntSize(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
-    std::unique_ptr<TextureMapperPlatformLayerBuffer> buffer = m_platformLayerProxy->getAvailableBuffer(size, GL_DONT_CARE);
-    if (UNLIKELY(!buffer)) {
-        auto texture = BitmapTextureGL::create(TextureMapperContextAttributes::get());
-        texture->reset(size, GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? BitmapTexture::SupportsAlpha : BitmapTexture::NoFlag);
-        buffer = std::make_unique<TextureMapperPlatformLayerBuffer>(WTFMove(texture));
-    }
-    updateTexture(buffer->textureGL(), videoInfo);
-    buffer->setExtraFlags(texMapFlagFromOrientation(m_videoSourceOrientation) | (GST_VIDEO_INFO_HAS_ALPHA(&videoInfo) ? TextureMapperGL::ShouldBlend : 0));
-    m_platformLayerProxy->pushNextBuffer(WTFMove(buffer));
-#endif // USE(GSTREAMER_GL)
+    proxyOperation(*m_platformLayerProxy);
+#endif
 }
 #endif // USE(TEXTURE_MAPPER_GL)
 
@@ -823,16 +847,24 @@ void MediaPlayerPrivateGStreamerBase::triggerRepaint(GstSample* sample)
     }
 
 #if USE(TEXTURE_MAPPER_GL)
-#if USE(GSTREAMER_GL)
-    pushTextureToCompositor();
-#else
-    {
+    if (m_usingFallbackVideoSink) {
         LockHolder lock(m_drawMutex);
-        if (!m_platformLayerProxy->scheduleUpdateOnCompositorThread([this] { this->pushTextureToCompositor(); }))
+        auto proxyOperation =
+            [this](TextureMapperPlatformLayerProxy& proxy)
+            {
+                return proxy.scheduleUpdateOnCompositorThread([this] { this->pushTextureToCompositor(); });
+            };
+#if USE(NICOSIA)
+        if (!proxyOperation(downcast<Nicosia::ContentLayerTextureMapperImpl>(m_nicosiaLayer->impl()).proxy()))
             return;
-        m_drawCondition.wait(m_drawMutex);
-    }
+#else
+        if (!proxyOperation(*m_platformLayerProxy))
+            return;
 #endif
+        m_drawTimer.startOneShot(0_s);
+        m_drawCondition.wait(m_drawMutex);
+    } else
+        pushTextureToCompositor();
 #endif // USE(TEXTURE_MAPPER_GL)
 }
 
@@ -883,14 +915,27 @@ void MediaPlayerPrivateGStreamerBase::flushCurrentBuffer()
 {
     GST_DEBUG_OBJECT(pipeline(), "Flushing video sample");
     auto sampleLocker = holdLock(m_sampleMutex);
-    m_sample.clear();
 
-    {
-        LockHolder locker(m_platformLayerProxy->lock());
+    // Replace by a new sample having only the caps, so this dummy sample is still useful to get the dimensions.
+    // This prevents resizing problems when the video changes its quality and a DRAIN is performed.
+    const GstStructure* info = gst_sample_get_info(m_sample.get());
+    m_sample = adoptGRef(gst_sample_new(nullptr, gst_sample_get_caps(m_sample.get()),
+        gst_sample_get_segment(m_sample.get()), info ? gst_structure_copy(info) : nullptr));
 
-        if (m_platformLayerProxy->isActive())
-            m_platformLayerProxy->dropCurrentBufferWhilePreservingTexture();
-    }
+    auto proxyOperation =
+        [](TextureMapperPlatformLayerProxy& proxy)
+        {
+            LockHolder locker(proxy.lock());
+
+            if (proxy.isActive())
+                proxy.dropCurrentBufferWhilePreservingTexture();
+        };
+
+#if USE(NICOSIA)
+    proxyOperation(downcast<Nicosia::ContentLayerTextureMapperImpl>(m_nicosiaLayer->impl()).proxy());
+#else
+    proxyOperation(*m_platformLayerProxy);
+#endif
 }
 #endif
 
@@ -919,8 +964,7 @@ void MediaPlayerPrivateGStreamerBase::paint(GraphicsContext& context, const Floa
     if (!gstImage)
         return;
 
-    if (Image* image = reinterpret_cast<Image*>(gstImage->image()))
-        context.drawImage(*image, rect, gstImage->rect(), paintingOptions);
+    context.drawImage(gstImage->image(), rect, gstImage->rect(), paintingOptions);
 }
 
 #if USE(GSTREAMER_GL)
@@ -936,28 +980,23 @@ bool MediaPlayerPrivateGStreamerBase::copyVideoTextureToPlatformTexture(Graphics
 
     auto sampleLocker = holdLock(m_sampleMutex);
 
-    GstVideoInfo videoInfo;
-    if (!getSampleVideoInfo(m_sample.get(), videoInfo))
+    if (!GST_IS_SAMPLE(m_sample.get()))
         return false;
 
-    GstBuffer* buffer = gst_sample_get_buffer(m_sample.get());
-    GstVideoFrame videoFrame;
-    if (!gst_video_frame_map(&videoFrame, &videoInfo, buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL)))
+    std::unique_ptr<GstVideoFrameHolder> frameHolder = std::make_unique<GstVideoFrameHolder>(m_sample.get(), texMapFlagFromOrientation(m_videoSourceOrientation), true);
+
+    auto textureID = frameHolder->textureID();
+    if (!textureID)
         return false;
 
-    IntSize size(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
+    auto size = frameHolder->size();
     if (m_videoSourceOrientation.usesWidthAsHeight())
         size = size.transposedSize();
-    unsigned textureID = *reinterpret_cast<unsigned*>(videoFrame.data[0]);
 
     if (!m_videoTextureCopier)
         m_videoTextureCopier = std::make_unique<VideoTextureCopierGStreamer>(TEXTURE_COPIER_COLOR_CONVERT_FLAG);
 
-    bool copied = m_videoTextureCopier->copyVideoTextureToPlatformTexture(textureID, size, outputTexture, outputTarget, level, internalFormat, format, type, flipY, m_videoSourceOrientation);
-
-    gst_video_frame_unmap(&videoFrame);
-
-    return copied;
+    return m_videoTextureCopier->copyVideoTextureToPlatformTexture(textureID, size, outputTexture, outputTarget, level, internalFormat, format, type, flipY, m_videoSourceOrientation);
 }
 
 NativeImagePtr MediaPlayerPrivateGStreamerBase::nativeImageForCurrentTime()
@@ -968,16 +1007,16 @@ NativeImagePtr MediaPlayerPrivateGStreamerBase::nativeImageForCurrentTime()
 
     auto sampleLocker = holdLock(m_sampleMutex);
 
-    GstVideoInfo videoInfo;
-    if (!getSampleVideoInfo(m_sample.get(), videoInfo))
+    if (!GST_IS_SAMPLE(m_sample.get()))
         return nullptr;
 
-    GstBuffer* buffer = gst_sample_get_buffer(m_sample.get());
-    GstVideoFrame videoFrame;
-    if (!gst_video_frame_map(&videoFrame, &videoInfo, buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL)))
+    std::unique_ptr<GstVideoFrameHolder> frameHolder = std::make_unique<GstVideoFrameHolder>(m_sample.get(), texMapFlagFromOrientation(m_videoSourceOrientation), true);
+
+    auto textureID = frameHolder->textureID();
+    if (!textureID)
         return nullptr;
 
-    IntSize size(GST_VIDEO_INFO_WIDTH(&videoInfo), GST_VIDEO_INFO_HEIGHT(&videoInfo));
+    auto size = frameHolder->size();
     if (m_videoSourceOrientation.usesWidthAsHeight())
         size = size.transposedSize();
 
@@ -987,11 +1026,7 @@ NativeImagePtr MediaPlayerPrivateGStreamerBase::nativeImageForCurrentTime()
     if (!m_videoTextureCopier)
         m_videoTextureCopier = std::make_unique<VideoTextureCopierGStreamer>(TEXTURE_COPIER_COLOR_CONVERT_FLAG);
 
-    unsigned textureID = *reinterpret_cast<unsigned*>(videoFrame.data[0]);
-    bool copied = m_videoTextureCopier->copyVideoTextureToPlatformTexture(textureID, size, 0, GraphicsContext3D::TEXTURE_2D, 0, GraphicsContext3D::RGBA, GraphicsContext3D::RGBA, GraphicsContext3D::UNSIGNED_BYTE, false, m_videoSourceOrientation);
-    gst_video_frame_unmap(&videoFrame);
-
-    if (!copied)
+    if (!m_videoTextureCopier->copyVideoTextureToPlatformTexture(textureID, size, 0, GraphicsContext3D::TEXTURE_2D, 0, GraphicsContext3D::RGBA, GraphicsContext3D::RGBA, GraphicsContext3D::UNSIGNED_BYTE, false, m_videoSourceOrientation))
         return nullptr;
 
     return adoptRef(cairo_gl_surface_create_for_texture(context->cairoDevice(), CAIRO_CONTENT_COLOR_ALPHA, m_videoTextureCopier->resultTexture(), size.width(), size.height()));
@@ -1012,11 +1047,6 @@ void MediaPlayerPrivateGStreamerBase::setVideoSourceOrientation(const ImageOrien
 bool MediaPlayerPrivateGStreamerBase::supportsFullscreen() const
 {
     return true;
-}
-
-PlatformMedia MediaPlayerPrivateGStreamerBase::platformMedia() const
-{
-    return NoPlatformMedia;
 }
 
 MediaPlayer::MovieLoadType MediaPlayerPrivateGStreamerBase::movieLoadType() const
@@ -1045,9 +1075,17 @@ GstElement* MediaPlayerPrivateGStreamerBase::createGLAppSink()
     g_signal_connect(appsink, "new-preroll", G_CALLBACK(newPrerollCallback), this);
 
     GRefPtr<GstPad> pad = adoptGRef(gst_element_get_static_pad(appsink, "sink"));
-    gst_pad_add_probe (pad.get(), GST_PAD_PROBE_TYPE_EVENT_FLUSH, [] (GstPad*, GstPadProbeInfo* info,  gpointer userData) -> GstPadProbeReturn {
-        if (GST_EVENT_TYPE (GST_PAD_PROBE_INFO_EVENT (info)) != GST_EVENT_FLUSH_START)
-            return GST_PAD_PROBE_OK;
+    gst_pad_add_probe(pad.get(), static_cast<GstPadProbeType>(GST_PAD_PROBE_TYPE_QUERY_DOWNSTREAM | GST_PAD_PROBE_TYPE_EVENT_FLUSH), [] (GstPad*, GstPadProbeInfo* info,  gpointer userData) -> GstPadProbeReturn {
+        if (info->type & GST_PAD_PROBE_TYPE_QUERY_DOWNSTREAM) {
+            if (GST_QUERY_TYPE(GST_PAD_PROBE_INFO_QUERY(info)) != GST_QUERY_DRAIN)
+                return GST_PAD_PROBE_OK;
+            GST_DEBUG("Acting upon DRAIN query");
+        }
+        if (info->type & GST_PAD_PROBE_TYPE_EVENT_FLUSH) {
+            if (GST_EVENT_TYPE(GST_PAD_PROBE_INFO_EVENT(info)) != GST_EVENT_FLUSH_START)
+                return GST_PAD_PROBE_OK;
+            GST_DEBUG("Acting upon flush-start event");
+        }
 
         auto* player = static_cast<MediaPlayerPrivateGStreamerBase*>(userData);
         player->flushCurrentBuffer();
@@ -1079,6 +1117,7 @@ GstElement* MediaPlayerPrivateGStreamerBase::createVideoSinkGL()
         if (appsink)
             gst_object_unref(appsink);
 
+        g_warning("WebKit wasn't able to find the GStreamer opengl plugin. Hardware-accelerated zero-copy video rendering can't be enabled without this plugin.");
         return nullptr;
     }
 
@@ -1133,17 +1172,14 @@ GstElement* MediaPlayerPrivateGStreamerBase::createVideoSink()
     }
 
     GstElement* videoSink = nullptr;
+#if ENABLE(MEDIA_STATISTICS)
     m_fpsSink = gst_element_factory_make("fpsdisplaysink", "sink");
     if (m_fpsSink) {
         g_object_set(m_fpsSink.get(), "silent", TRUE , nullptr);
 
-        // Turn off text overlay unless logging is enabled.
-#if LOG_DISABLED
-        g_object_set(m_fpsSink.get(), "text-overlay", FALSE , nullptr);
-#else
-        if (!isLogChannelEnabled("Media"))
+        // Turn off text overlay unless tracing is enabled.
+        if (gst_debug_category_get_threshold(webkit_media_player_debug) < GST_LEVEL_TRACE)
             g_object_set(m_fpsSink.get(), "text-overlay", FALSE , nullptr);
-#endif // LOG_DISABLED
 
         if (g_object_class_find_property(G_OBJECT_GET_CLASS(m_fpsSink.get()), "video-sink")) {
             g_object_set(m_fpsSink.get(), "video-sink", m_videoSink.get(), nullptr);
@@ -1151,6 +1187,7 @@ GstElement* MediaPlayerPrivateGStreamerBase::createVideoSink()
         } else
             m_fpsSink = nullptr;
     }
+#endif
 
     if (!m_fpsSink)
         videoSink = m_videoSink.get();
@@ -1236,25 +1273,24 @@ void MediaPlayerPrivateGStreamerBase::initializationDataEncountered(GstEvent* ev
         return;
     }
 
-    GstMapInfo mapInfo;
-    if (!gst_buffer_map(data, &mapInfo, GST_MAP_READ)) {
+    GstMappedBuffer dataMapped(data, GST_MAP_READ);
+    if (!dataMapped) {
         GST_WARNING("cannot map %s protection data", eventKeySystemUUID);
         return;
     }
 
-    GST_TRACE("init data encountered for %s of size %" G_GSIZE_FORMAT, eventKeySystemUUID, mapInfo.size);
-    GST_MEMDUMP("init data", reinterpret_cast<const uint8_t*>(mapInfo.data), mapInfo.size);
-    InitData initData(reinterpret_cast<const uint8_t*>(mapInfo.data), mapInfo.size);
-    gst_buffer_unmap(data, &mapInfo);
+    GST_TRACE("init data encountered for %s of size %" G_GSIZE_FORMAT, eventKeySystemUUID, dataMapped.size());
+    GST_MEMDUMP("init data", reinterpret_cast<const uint8_t*>(dataMapped.data()), dataMapped.size());
+    InitData initData(reinterpret_cast<const uint8_t*>(dataMapped.data()), dataMapped.size());
 
     String eventKeySystemUUIDString = eventKeySystemUUID;
-    RunLoop::main().dispatch([weakThis = m_weakPtrFactory.createWeakPtr(*this), eventKeySystemUUID = eventKeySystemUUIDString, initData] {
+    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this), eventKeySystemUUID = eventKeySystemUUIDString, initData] {
         if (!weakThis)
             return;
 
-        GST_DEBUG("scheduling initializationDataEncountered event for %s with init data size of %" G_GSIZE_FORMAT, eventKeySystemUUID.utf8().data(), initData.sizeInBytes());
+        GST_DEBUG("scheduling initializationDataEncountered event for %s with init data size of %u", eventKeySystemUUID.utf8().data(), initData.sizeInBytes());
         GST_MEMDUMP("init datas", reinterpret_cast<const uint8_t*>(initData.characters8()), initData.sizeInBytes());
-        weakThis->m_player->initializationDataEncountered(ASCIILiteral("cenc"), ArrayBuffer::create(reinterpret_cast<const uint8_t*>(initData.characters8()), initData.sizeInBytes()));
+        weakThis->m_player->initializationDataEncountered("cenc"_s, ArrayBuffer::create(reinterpret_cast<const uint8_t*>(initData.characters8()), initData.sizeInBytes()));
     });
 }
 

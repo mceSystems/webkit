@@ -29,6 +29,7 @@
 #import "AuthenticationChallenge.h"
 #import "AuthenticationMac.h"
 #import "Logging.h"
+#import "NetworkingContext.h"
 #import "ResourceHandle.h"
 #import "ResourceHandleClient.h"
 #import "ResourceRequest.h"
@@ -141,7 +142,7 @@ static bool scheduledWithCustomRunLoopMode(const std::optional<SchedulePairHashS
         }
 
         m_handle->willSendRequest(newRequest.get(), redirectResponse.get(), [self, protectedSelf = WTFMove(protectedSelf)](ResourceRequest&& request) {
-            m_requestResult = request.nsURLRequest(UpdateHTTPBody);
+            m_requestResult = request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody);
             dispatch_semaphore_signal(m_semaphore);
         });
     };
@@ -237,7 +238,7 @@ static bool scheduledWithCustomRunLoopMode(const std::optional<SchedulePairHashS
             adjustMIMETypeIfNecessary([r _CFURLResponse], isMainResourceLoad);
         }
 
-        if ([m_handle->firstRequest().nsURLRequest(DoNotUpdateHTTPBody) _propertyForKey:@"ForceHTMLMIMEType"])
+        if ([m_handle->firstRequest().nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) _propertyForKey:@"ForceHTMLMIMEType"])
             [r _setMIMEType:@"text/html"];
 
         ResourceResponse resourceResponse(r.get());

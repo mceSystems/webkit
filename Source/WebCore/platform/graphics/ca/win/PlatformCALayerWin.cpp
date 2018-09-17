@@ -132,7 +132,6 @@ static void layoutSublayersProc(CACFLayerRef caLayer)
 
 PlatformCALayerWin::PlatformCALayerWin(LayerType layerType, PlatformLayer* layer, PlatformCALayerClient* owner)
     : PlatformCALayer(layer ? LayerTypeCustom : layerType, owner)
-    , m_customAppearance(GraphicsLayer::NoCustomAppearance)
 {
     if (layer) {
         m_layer = layer;
@@ -533,6 +532,11 @@ bool PlatformCALayerWin::supportsSubpixelAntialiasedText() const
 
 void PlatformCALayerWin::setSupportsSubpixelAntialiasedText(bool)
 {
+}
+
+bool PlatformCALayerWin::hasContents() const
+{
+    return !!CACFLayerGetContents(m_layer.get());
 }
 
 CFTypeRef PlatformCALayerWin::contents() const

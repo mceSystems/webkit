@@ -249,7 +249,7 @@ private:
 #endif
 
 #if PLATFORM(COCOA)
-    void applySniffingPoliciesAndStoragePartitionIfNeeded(NSURLRequest*&, bool shouldContentSniff, bool shouldContentEncodingSniff);
+    NSURLRequest *applySniffingPoliciesIfNeeded(NSURLRequest *, bool shouldContentSniff, bool shouldContentEncodingSniff);
 #endif
 
 #if USE(CURL)
@@ -259,7 +259,7 @@ private:
     };
 
     void addCacheValidationHeaders(ResourceRequest&);
-    Ref<CurlRequest> createCurlRequest(ResourceRequest&, RequestStatus = RequestStatus::NewRequest);
+    Ref<CurlRequest> createCurlRequest(ResourceRequest&&, RequestStatus = RequestStatus::NewRequest);
 
     bool shouldRedirectAsGET(const ResourceRequest&, bool crossOrigin);
 

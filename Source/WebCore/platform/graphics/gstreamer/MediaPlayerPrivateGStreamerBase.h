@@ -37,7 +37,11 @@
 #include <wtf/WeakPtr.h>
 
 #if USE(TEXTURE_MAPPER_GL)
+#if USE(NICOSIA)
+#include "NicosiaContentLayerTextureMapperImpl.h"
+#else
 #include "TextureMapperPlatformLayerProxyProvider.h"
+#endif
 #endif
 
 typedef struct _GstStreamVolume GstStreamVolume;
@@ -61,9 +65,13 @@ class TextureMapperPlatformLayerProxy;
 
 void registerWebKitGStreamerElements();
 
-class MediaPlayerPrivateGStreamerBase : public MediaPlayerPrivateInterface
+class MediaPlayerPrivateGStreamerBase : public MediaPlayerPrivateInterface, public CanMakeWeakPtr<MediaPlayerPrivateGStreamerBase>
 #if USE(TEXTURE_MAPPER_GL)
+#if USE(NICOSIA)
+    , public Nicosia::ContentLayerTextureMapperImpl::Client
+#else
     , public PlatformLayer
+#endif
 #endif
 {
 
@@ -112,7 +120,6 @@ public:
     virtual MediaTime maxTimeLoaded() const { return MediaTime::zeroTime(); }
 
     bool supportsFullscreen() const override;
-    PlatformMedia platformMedia() const override;
 
     MediaPlayer::MovieLoadType movieLoadType() const override;
     virtual bool isLiveStream() const = 0;
@@ -127,7 +134,7 @@ public:
     void acceleratedRenderingStateChanged() override;
 
 #if USE(TEXTURE_MAPPER_GL)
-    PlatformLayer* platformLayer() const override { return const_cast<MediaPlayerPrivateGStreamerBase*>(this); }
+    PlatformLayer* platformLayer() const override;
 #if PLATFORM(WIN_CAIRO)
     // FIXME: Accelerated rendering has not been implemented for WinCairo yet.
     bool supportsAcceleratedRendering() const override { return false; }
@@ -176,10 +183,13 @@ protected:
 #endif
 
 #if USE(TEXTURE_MAPPER_GL)
-    void updateTexture(BitmapTextureGL&, GstVideoInfo&);
+    void pushTextureToCompositor();
+#if USE(NICOSIA)
+    void swapBuffersIfNeeded() override;
+#else
     RefPtr<TextureMapperPlatformLayerProxy> proxy() const override;
     void swapBuffersIfNeeded() override;
-    void pushTextureToCompositor();
+#endif
 #endif
 
     GstElement* videoSink() const { return m_videoSink.get(); }
@@ -218,7 +228,6 @@ protected:
 #endif
     };
 
-    WeakPtrFactory<MediaPlayerPrivateGStreamerBase> m_weakPtrFactory;
     Ref<MainThreadNotifier<MainThreadNotification>> m_notifier;
     MediaPlayer* m_player;
     GRefPtr<GstElement> m_pipeline;
@@ -241,7 +250,11 @@ protected:
     RunLoop::Timer<MediaPlayerPrivateGStreamerBase> m_drawTimer;
 
 #if USE(TEXTURE_MAPPER_GL)
+#if USE(NICOSIA)
+    Ref<Nicosia::ContentLayer> m_nicosiaLayer;
+#else
     RefPtr<TextureMapperPlatformLayerProxy> m_platformLayerProxy;
+#endif
 #endif
 
 #if USE(GSTREAMER_GL)

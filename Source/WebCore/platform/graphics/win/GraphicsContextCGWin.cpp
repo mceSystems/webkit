@@ -185,17 +185,12 @@ static const Color& grammarPatternColor() {
     return grammarColor;
 }
 
-void GraphicsContext::updateDocumentMarkerResources()
-{
-    // Unnecessary, since our document markers don't use resources.
-}
-
 void GraphicsContext::drawLineForDocumentMarker(const FloatPoint& point, float width, DocumentMarkerLineStyle style)
 {
     if (paintingDisabled())
         return;
 
-    if (style != DocumentMarkerSpellingLineStyle && style != DocumentMarkerGrammarLineStyle)
+    if (style != DocumentMarkerLineStyle::Spelling && style != DocumentMarkerLineStyle::Grammar)
         return;
 
     // These are the same for misspelling or bad grammar
@@ -218,7 +213,7 @@ void GraphicsContext::drawLineForDocumentMarker(const FloatPoint& point, float w
     CGContextRef context = platformContext();
     CGContextSaveGState(context);
 
-    const Color& patternColor = style == DocumentMarkerGrammarLineStyle ? grammarPatternColor() : spellingPatternColor();
+    const Color& patternColor = style == DocumentMarkerLineStyle::Grammar ? grammarPatternColor() : spellingPatternColor();
     setCGStrokeColor(context, patternColor);
 
     wkSetPatternPhaseInUserSpace(context, point);

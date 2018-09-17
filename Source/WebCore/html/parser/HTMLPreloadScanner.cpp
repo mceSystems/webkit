@@ -80,13 +80,13 @@ String TokenPreloadScanner::initiatorFor(TagId tagId)
     switch (tagId) {
     case TagId::Source:
     case TagId::Img:
-        return ASCIILiteral("img");
+        return "img"_s;
     case TagId::Input:
-        return ASCIILiteral("input");
+        return "input"_s;
     case TagId::Link:
-        return ASCIILiteral("link");
+        return "link"_s;
     case TagId::Script:
-        return ASCIILiteral("script");
+        return "script"_s;
     case TagId::Unknown:
     case TagId::Style:
     case TagId::Base:
@@ -94,10 +94,10 @@ String TokenPreloadScanner::initiatorFor(TagId tagId)
     case TagId::Meta:
     case TagId::Picture:
         ASSERT_NOT_REACHED();
-        return ASCIILiteral("unknown");
+        return "unknown"_s;
     }
     ASSERT_NOT_REACHED();
-    return ASCIILiteral("unknown");
+    return "unknown"_s;
 }
 
 class TokenPreloadScanner::StartTagScanner {
@@ -309,15 +309,15 @@ private:
     {
         switch (m_tagId) {
         case TagId::Script:
-            return CachedResource::Script;
+            return CachedResource::Type::Script;
         case TagId::Img:
         case TagId::Input:
         case TagId::Source:
             ASSERT(m_tagId != TagId::Input || m_inputIsImage);
-            return CachedResource::ImageResource;
+            return CachedResource::Type::ImageResource;
         case TagId::Link:
             if (m_linkIsStyleSheet)
-                return CachedResource::CSSStyleSheet;
+                return CachedResource::Type::CSSStyleSheet;
             if (m_linkIsPreload)
                 return LinkLoader::resourceTypeFromAsAttribute(m_asAttribute);
             break;
@@ -330,7 +330,7 @@ private:
             break;
         }
         ASSERT_NOT_REACHED();
-        return CachedResource::RawResource;
+        return CachedResource::Type::RawResource;
     }
 
     bool shouldPreload()

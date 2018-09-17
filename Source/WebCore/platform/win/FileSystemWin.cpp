@@ -330,7 +330,7 @@ String directoryName(const String& path)
 static String bundleName()
 {
     static const NeverDestroyed<String> name = [] {
-        String name { ASCIILiteral { "WebKit" } };
+        String name { "WebKit"_s };
 
 #if USE(CF)
         if (CFBundleRef bundle = CFBundleGetMainBundle()) {
@@ -544,6 +544,11 @@ std::optional<int32_t> getFileDeviceId(const CString& fsFile)
     closeFile(handle);
 
     return fileInformation.dwVolumeSerialNumber;
+}
+
+String realPath(const String& filePath)
+{
+    return getFinalPathName(filePath);
 }
 
 } // namespace FileSystem

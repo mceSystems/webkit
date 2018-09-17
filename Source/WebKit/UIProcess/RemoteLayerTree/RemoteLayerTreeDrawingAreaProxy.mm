@@ -40,9 +40,6 @@
 #import <wtf/MachSendRight.h>
 #import <wtf/SystemTracing.h>
 
-using namespace IPC;
-using namespace WebCore;
-
 // FIXME: Mac will need something similar; we should figure out how to share this with DisplayRefreshMonitor without
 // breaking WebKit1 behavior or WebKit2-WebKit1 coexistence.
 #if PLATFORM(IOS)
@@ -105,6 +102,8 @@ using namespace WebCore;
 #endif
 
 namespace WebKit {
+using namespace IPC;
+using namespace WebCore;
 
 RemoteLayerTreeDrawingAreaProxy::RemoteLayerTreeDrawingAreaProxy(WebPageProxy& webPageProxy)
     : DrawingAreaProxy(DrawingAreaTypeRemoteLayerTree, webPageProxy)
@@ -190,6 +189,7 @@ void RemoteLayerTreeDrawingAreaProxy::commitLayerTree(const RemoteLayerTreeTrans
 
     ASSERT(layerTreeTransaction.transactionID() == m_lastVisibleTransactionID + 1);
     m_transactionIDForPendingCACommit = layerTreeTransaction.transactionID();
+    m_activityStateChangeID = layerTreeTransaction.activityStateChangeID();
 
     if (layerTreeTransaction.hasEditorState())
         m_webPageProxy.editorStateChanged(layerTreeTransaction.editorState());
@@ -429,8 +429,10 @@ void RemoteLayerTreeDrawingAreaProxy::didRefreshDisplay()
     m_webPageProxy.didUpdateActivityState();
 }
 
-void RemoteLayerTreeDrawingAreaProxy::waitForDidUpdateActivityState()
+void RemoteLayerTreeDrawingAreaProxy::waitForDidUpdateActivityState(ActivityStateChangeID activityStateChangeID)
 {
+    ASSERT(activityStateChangeID != ActivityStateChangeAsynchronous);
+
     // We must send the didUpdate message before blocking on the next commit, otherwise
     // we can be guaranteed that the next commit won't come until after the waitForAndDispatchImmediately times out.
     if (m_didUpdateMessageState != DoesNotNeedDidUpdate)
@@ -446,7 +448,12 @@ void RemoteLayerTreeDrawingAreaProxy::waitForDidUpdateActivityState()
         return Seconds::fromMilliseconds(250);
 #endif
     }();
-    m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::RemoteLayerTreeDrawingAreaProxy::CommitLayerTree>(m_webPageProxy.pageID(), activityStateUpdateTimeout, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);
+
+    auto startTime = MonotonicTime::now();
+    while (m_webPageProxy.process().connection()->waitForAndDispatchImmediately<Messages::RemoteLayerTreeDrawingAreaProxy::CommitLayerTree>(m_webPageProxy.pageID(), activityStateUpdateTimeout - (MonotonicTime::now() - startTime), IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives)) {
+        if (activityStateChangeID == ActivityStateChangeAsynchronous || activityStateChangeID <= m_activityStateChangeID)
+            return;
+    }
 }
 
 void RemoteLayerTreeDrawingAreaProxy::dispatchAfterEnsuringDrawing(WTF::Function<void (CallbackBase::Error)>&& callbackFunction)
@@ -456,7 +463,7 @@ void RemoteLayerTreeDrawingAreaProxy::dispatchAfterEnsuringDrawing(WTF::Function
         return;
     }
 
-    m_webPageProxy.process().send(Messages::DrawingArea::AddTransactionCallbackID(m_callbacks.put(WTFMove(callbackFunction), nullptr)), m_webPageProxy.pageID());
+    m_webPageProxy.process().send(Messages::DrawingArea::AddTransactionCallbackID(m_callbacks.put(WTFMove(callbackFunction), m_webPageProxy.process().throttler().backgroundActivityToken())), m_webPageProxy.pageID());
 }
 
 void RemoteLayerTreeDrawingAreaProxy::hideContentUntilPendingUpdate()

@@ -36,7 +36,6 @@
 #include <wtf/text/StringBuilder.h>
 
 namespace WebKit {
-
 using namespace WebCore;
 
 static const unsigned DefaultCapacity = 100;
@@ -191,7 +190,7 @@ void WebBackForwardList::goToItem(WebBackForwardListItem& item)
 
     if (targetIndex < m_currentIndex) {
         unsigned delta = m_entries.size() - targetIndex - 1;
-        String deltaValue = delta > 10 ? ASCIILiteral("over10") : String::number(delta);
+        String deltaValue = delta > 10 ? "over10"_s : String::number(delta);
         m_page->logDiagnosticMessage(WebCore::DiagnosticLoggingKeys::backNavigationDeltaKey(), deltaValue, ShouldSample::No);
     }
 
@@ -222,7 +221,6 @@ void WebBackForwardList::goToItem(WebBackForwardListItem& item)
     m_currentIndex = targetIndex;
 
     LOG(BackForward, "(Back/Forward) WebBackForwardList %p going to item %s, is now at index %zu", this, item.itemID().logString(), targetIndex);
-
     m_page->didChangeBackForwardList(nullptr, WTFMove(removedItems));
 }
 
@@ -433,6 +431,9 @@ BackForwardListState WebBackForwardList::backForwardListState(WTF::Function<bool
 
 void WebBackForwardList::restoreFromState(BackForwardListState backForwardListState)
 {
+    if (!m_page)
+        return;
+
     Vector<Ref<WebBackForwardListItem>> items;
     items.reserveInitialCapacity(backForwardListState.items.size());
 

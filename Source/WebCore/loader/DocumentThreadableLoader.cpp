@@ -46,10 +46,12 @@
 #include "LoadTiming.h"
 #include "LoaderStrategy.h"
 #include "Performance.h"
+#include "PlatformStrategies.h"
 #include "ProgressTracker.h"
 #include "ResourceError.h"
 #include "ResourceRequest.h"
 #include "ResourceTiming.h"
+#include "RuntimeApplicationChecks.h"
 #include "RuntimeEnabledFeatures.h"
 #include "SchemeRegistry.h"
 #include "SecurityOrigin.h"
@@ -59,6 +61,10 @@
 #include "ThreadableLoaderClient.h"
 #include <wtf/Assertions.h>
 #include <wtf/Ref.h>
+
+#if PLATFORM(IOS)
+#include <wtf/spi/darwin/dyldSPI.h>
+#endif
 
 namespace WebCore {
 
@@ -141,7 +147,7 @@ DocumentThreadableLoader::DocumentThreadableLoader(Document& document, Threadabl
     if (shouldSetHTTPHeadersToKeep())
         m_options.httpHeadersToKeep = httpHeadersToKeepFromCleaning(request.httpHeaderFields());
 
-    if (document.page() && document.page()->isRunningUserScripts() && SchemeRegistry::isUserExtensionScheme(request.url().protocol().toStringWithoutCopying())) {
+    if (document.topDocument().isRunningUserScripts() && SchemeRegistry::isUserExtensionScheme(request.url().protocol().toStringWithoutCopying())) {
         m_options.mode = FetchOptions::Mode::NoCors;
         m_options.filteringPolicy = ResponseFilteringPolicy::Disable;
     }
@@ -153,7 +159,7 @@ DocumentThreadableLoader::DocumentThreadableLoader(Document& document, Threadabl
         m_sameOriginRequest = options.sameOriginDataURLFlag == SameOriginDataURLFlag::Set;
 
     if (m_sameOriginRequest || m_options.mode == FetchOptions::Mode::NoCors || m_options.mode == FetchOptions::Mode::Navigate) {
-        loadRequest(WTFMove(request), DoSecurityCheck);
+        loadRequest(WTFMove(request), SecurityCheckPolicy::DoSecurityCheck);
         return;
     }
 
@@ -179,7 +185,13 @@ void DocumentThreadableLoader::makeCrossOriginAccessRequest(ResourceRequest&& re
 {
     ASSERT(m_options.mode == FetchOptions::Mode::Cors);
 
-    if ((m_options.preflightPolicy == PreflightPolicy::Consider && isSimpleCrossOriginAccessRequest(request.httpMethod(), request.httpHeaderFields())) || m_options.preflightPolicy == PreflightPolicy::Prevent || shouldPerformSecurityChecks()) {
+#if PLATFORM(IOS)
+    bool needsPreflightQuirk = IOSApplication::isMoviStarPlus() && applicationSDKVersion() < DYLD_IOS_VERSION_12_0 && (m_options.preflightPolicy == PreflightPolicy::Consider || m_options.preflightPolicy == PreflightPolicy::Force);
+#else
+    bool needsPreflightQuirk = false;
+#endif
+
+    if ((m_options.preflightPolicy == PreflightPolicy::Consider && isSimpleCrossOriginAccessRequest(request.httpMethod(), request.httpHeaderFields())) || m_options.preflightPolicy == PreflightPolicy::Prevent || (shouldPerformSecurityChecks() && !needsPreflightQuirk)) {
         if (checkURLSchemeAsCORSEnabled(request.url()))
             makeSimpleCrossOriginAccessRequest(WTFMove(request));
     } else {
@@ -189,12 +201,12 @@ void DocumentThreadableLoader::makeCrossOriginAccessRequest(ResourceRequest&& re
                 ASSERT(!m_bypassingPreflightForServiceWorkerRequest);
                 m_bypassingPreflightForServiceWorkerRequest = WTFMove(request);
                 m_options.serviceWorkersMode = ServiceWorkersMode::Only;
-                loadRequest(ResourceRequest { m_bypassingPreflightForServiceWorkerRequest.value() }, SkipSecurityCheck);
+                loadRequest(ResourceRequest { m_bypassingPreflightForServiceWorkerRequest.value() }, SecurityCheckPolicy::SkipSecurityCheck);
                 return;
             }
         }
 #endif
-        if (!checkURLSchemeAsCORSEnabled(request.url()))
+        if (!needsPreflightQuirk && !checkURLSchemeAsCORSEnabled(request.url()))
             return;
 
         m_simpleRequest = false;
@@ -211,7 +223,7 @@ void DocumentThreadableLoader::makeSimpleCrossOriginAccessRequest(ResourceReques
     ASSERT(m_options.preflightPolicy == PreflightPolicy::Prevent || isSimpleCrossOriginAccessRequest(request.httpMethod(), request.httpHeaderFields()) || shouldPerformSecurityChecks());
 
     updateRequestForAccessControl(request, securityOrigin(), m_options.storedCredentialsPolicy);
-    loadRequest(WTFMove(request), DoSecurityCheck);
+    loadRequest(WTFMove(request), SecurityCheckPolicy::DoSecurityCheck);
 }
 
 void DocumentThreadableLoader::makeCrossOriginAccessRequestWithPreflight(ResourceRequest&& request)
@@ -319,6 +331,10 @@ void DocumentThreadableLoader::redirectReceived(CachedResource& resource, Resour
         m_options.storedCredentialsPolicy = StoredCredentialsPolicy::DoNotUse;
 
     clearResource();
+
+    m_referrer = request.httpReferrer();
+    if (m_referrer.isNull())
+        m_options.referrerPolicy = ReferrerPolicy::NoReferrer;
 
     // Let's fetch the request with the original headers (equivalent to request cloning specified by fetch algorithm).
     // Do not copy the Authorization header if removed by the network layer.
@@ -434,12 +450,14 @@ void DocumentThreadableLoader::didFinishLoading(unsigned long identifier)
 
         if (options().filteringPolicy == ResponseFilteringPolicy::Disable) {
             m_client->didReceiveResponse(identifier, response);
-            m_client->didReceiveData(m_resource->resourceBuffer()->data(), m_resource->resourceBuffer()->size());
+            if (m_resource->resourceBuffer())
+                m_client->didReceiveData(m_resource->resourceBuffer()->data(), m_resource->resourceBuffer()->size());
         } else {
             ASSERT(response.type() == ResourceResponse::Type::Default);
 
             m_client->didReceiveResponse(identifier, ResourceResponseBase::filter(response));
-            m_client->didReceiveData(m_resource->resourceBuffer()->data(), m_resource->resourceBuffer()->size());
+            if (m_resource->resourceBuffer())
+                m_client->didReceiveData(m_resource->resourceBuffer()->data(), m_resource->resourceBuffer()->size());
         }
     }
 
@@ -475,7 +493,7 @@ void DocumentThreadableLoader::preflightSuccess(ResourceRequest&& request)
     m_preflightChecker = std::nullopt;
 
     // It should be ok to skip the security check since we already asked about the preflight request.
-    loadRequest(WTFMove(actualRequest), SkipSecurityCheck);
+    loadRequest(WTFMove(actualRequest), SecurityCheckPolicy::SkipSecurityCheck);
 }
 
 void DocumentThreadableLoader::preflightFailure(unsigned long identifier, const ResourceError& error)
@@ -510,7 +528,7 @@ void DocumentThreadableLoader::loadRequest(ResourceRequest&& request, SecurityCh
         
         // If there is integrity metadata to validate, we must buffer.
         if (!m_options.integrity.isEmpty())
-            options.dataBufferingPolicy = BufferData;
+            options.dataBufferingPolicy = DataBufferingPolicy::BufferData;
 
         request.setAllowCookies(m_options.storedCredentialsPolicy == StoredCredentialsPolicy::Use);
         CachedResourceRequest newRequest(WTFMove(request), options);
@@ -657,22 +675,22 @@ const ContentSecurityPolicy& DocumentThreadableLoader::contentSecurityPolicy() c
 
 void DocumentThreadableLoader::reportRedirectionWithBadScheme(const URL& url)
 {
-    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, "Redirection to URL with a scheme that is not HTTP(S).", ResourceError::Type::AccessControl));
+    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, "Redirection to URL with a scheme that is not HTTP(S)."_s, ResourceError::Type::AccessControl));
 }
 
 void DocumentThreadableLoader::reportContentSecurityPolicyError(const URL& url)
 {
-    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, ASCIILiteral { "Blocked by Content Security Policy." }, ResourceError::Type::AccessControl));
+    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, "Blocked by Content Security Policy."_s, ResourceError::Type::AccessControl));
 }
 
 void DocumentThreadableLoader::reportCrossOriginResourceSharingError(const URL& url)
 {
-    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, "Cross-origin redirection denied by Cross-Origin Resource Sharing policy.", ResourceError::Type::AccessControl));
+    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, "Cross-origin redirection denied by Cross-Origin Resource Sharing policy."_s, ResourceError::Type::AccessControl));
 }
 
 void DocumentThreadableLoader::reportIntegrityMetadataError(const URL& url)
 {
-    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, "Failed integrity metadata check.", ResourceError::Type::General));
+    logErrorAndFail(ResourceError(errorDomainWebKitInternal, 0, url, "Failed integrity metadata check."_s, ResourceError::Type::General));
 }
 
 void DocumentThreadableLoader::logErrorAndFail(const ResourceError& error)

@@ -114,10 +114,16 @@ void CanvasCaptureMediaStreamTrack::Source::canvasResized(CanvasBase& canvas)
 {
     ASSERT_UNUSED(canvas, m_canvas == &canvas);
 
+    OptionSet<RealtimeMediaSourceSettings::Flag> changed;
+    if (m_canvas->width() != m_settings.width())
+        changed.add(RealtimeMediaSourceSettings::Flag::Width);
+    if (m_canvas->height() != m_settings.height())
+        changed.add(RealtimeMediaSourceSettings::Flag::Height);
+
     m_settings.setWidth(m_canvas->width());
     m_settings.setHeight(m_canvas->height());
 
-    settingsDidChange();
+    settingsDidChange(changed);
 }
 
 void CanvasCaptureMediaStreamTrack::Source::canvasChanged(CanvasBase& canvas, const FloatRect&)
@@ -130,7 +136,7 @@ void CanvasCaptureMediaStreamTrack::Source::canvasChanged(CanvasBase& canvas, co
     if (is<WebGLRenderingContextBase>(canvas.renderingContext())) {
         auto& context = downcast<WebGLRenderingContextBase>(*canvas.renderingContext());
         if (!context.isPreservingDrawingBuffer()) {
-            canvas.scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Warning, ASCIILiteral("Turning drawing buffer preservation for the WebGL canvas being captured"));
+            canvas.scriptExecutionContext()->addConsoleMessage(MessageSource::JS, MessageLevel::Warning, "Turning drawing buffer preservation for the WebGL canvas being captured"_s);
             context.setPreserveDrawingBuffer(true);
         }
     }

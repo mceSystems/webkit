@@ -43,8 +43,10 @@
 #include "NetworkProcessCreationParameters.h"
 #include "NetworkProcessPlatformStrategies.h"
 #include "NetworkProcessProxyMessages.h"
+#include "NetworkProximityManager.h"
 #include "NetworkResourceLoader.h"
 #include "NetworkSession.h"
+#include "NetworkSessionCreationParameters.h"
 #include "PreconnectTask.h"
 #include "RemoteNetworkingContext.h"
 #include "SessionTracker.h"
@@ -65,7 +67,6 @@
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/NetworkStateNotifier.h>
 #include <WebCore/NetworkStorageSession.h>
-#include <WebCore/PlatformCookieJar.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/RuntimeApplicationChecks.h>
 #include <WebCore/SchemeRegistry.h>
@@ -96,9 +97,8 @@
 #include "NetworkSessionCocoa.h"
 #endif
 
-using namespace WebCore;
-
 namespace WebKit {
+using namespace WebCore;
 
 NetworkProcess& NetworkProcess::singleton()
 {
@@ -114,9 +114,6 @@ NetworkProcess::NetworkProcess()
 #if PLATFORM(COCOA)
     , m_clearCacheDispatchGroup(0)
 #endif
-#if PLATFORM(IOS)
-    , m_webSQLiteDatabaseTracker(*this)
-#endif
 {
     NetworkProcessPlatformStrategies::initialize();
 
@@ -124,6 +121,9 @@ NetworkProcess::NetworkProcess()
     addSupplement<WebCookieManager>();
 #if ENABLE(LEGACY_CUSTOM_PROTOCOL_MANAGER)
     addSupplement<LegacyCustomProtocolManager>();
+#endif
+#if ENABLE(PROXIMITY_NETWORKING)
+    addSupplement<NetworkProximityManager>();
 #endif
 
     NetworkStateNotifier::singleton().addListener([this](bool isOnLine) {
@@ -135,6 +135,10 @@ NetworkProcess::NetworkProcess()
 
 NetworkProcess::~NetworkProcess()
 {
+    for (auto& callbacks : m_cacheStorageParametersCallbacks.values()) {
+        for (auto& callback : callbacks)
+            callback(String { }, 0);
+    }
 }
 
 AuthenticationManager& NetworkProcess::authenticationManager()
@@ -147,6 +151,13 @@ DownloadManager& NetworkProcess::downloadManager()
     static NeverDestroyed<DownloadManager> downloadManager(*this);
     return downloadManager;
 }
+
+#if ENABLE(PROXIMITY_NETWORKING)
+NetworkProximityManager& NetworkProcess::proximityManager()
+{
+    return *supplement<NetworkProximityManager>();
+}
+#endif
 
 void NetworkProcess::removeNetworkConnectionToWebProcess(NetworkConnectionToWebProcess* connection)
 {
@@ -190,6 +201,16 @@ void NetworkProcess::didReceiveSyncMessage(IPC::Connection& connection, IPC::Dec
     didReceiveSyncNetworkProcessMessage(connection, decoder, replyEncoder);
 }
 
+void NetworkProcess::didClose(IPC::Connection&)
+{
+    ASSERT(RunLoop::isMain());
+
+    // Make sure we flush all cookies to disk before exiting.
+    platformSyncAllCookies([this] {
+        stopRunLoop();
+    });
+}
+
 void NetworkProcess::didCreateDownload()
 {
     disableTermination();
@@ -220,7 +241,11 @@ void NetworkProcess::lowMemoryHandler(Critical critical)
 
 void NetworkProcess::initializeNetworkProcess(NetworkProcessCreationParameters&& parameters)
 {
+#if HAVE(SEC_KEY_PROXY)
+    WTF::setProcessPrivileges({ ProcessPrivilege::CanAccessRawCookies });
+#else
     WTF::setProcessPrivileges({ ProcessPrivilege::CanAccessRawCookies, ProcessPrivilege::CanAccessCredentials });
+#endif
     WebCore::NetworkStorageSession::permitProcessToUseCookieAPI(true);
     WebCore::setPresentingApplicationPID(parameters.presentingApplicationPID);
     platformInitializeNetworkProcess(parameters);
@@ -262,7 +287,11 @@ void NetworkProcess::initializeNetworkProcess(NetworkProcessCreationParameters&&
     m_logCookieInformation = parameters.logCookieInformation;
 #endif
 
-    SessionTracker::setSession(PAL::SessionID::defaultSessionID(), NetworkSession::create(WTFMove(parameters.defaultSessionParameters)));
+    SessionTracker::setSession(PAL::SessionID::defaultSessionID(), NetworkSession::create(NetworkSessionCreationParameters()));
+
+    auto* defaultSession = SessionTracker::networkSession(PAL::SessionID::defaultSessionID());
+    for (const auto& cookie : parameters.defaultSessionPendingCookies)
+        defaultSession->networkStorageSession().setCookie(cookie);
 
     for (auto& supplement : m_supplements.values())
         supplement->initialize(parameters);
@@ -287,8 +316,6 @@ void NetworkProcess::initializeNetworkProcess(NetworkProcessCreationParameters&&
 
     for (auto& scheme : parameters.urlSchemesRegisteredAsCanDisplayOnlyIfCanRequest)
         registerURLSchemeAsCanDisplayOnlyIfCanRequest(scheme);
-
-    m_tracksResourceLoadMilestones = parameters.tracksResourceLoadMilestones;
 
     RELEASE_LOG(Process, "%p - NetworkProcess::initializeNetworkProcess: Presenting process = %d", this, WebCore::presentingApplicationPID());
 }
@@ -316,7 +343,11 @@ void NetworkProcess::createNetworkConnectionToWebProcess()
     mach_port_t listeningPort = MACH_PORT_NULL;
     auto kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &listeningPort);
     if (kr != KERN_SUCCESS) {
-        LOG_ERROR("Could not allocate mach port, error %x", kr);
+        RELEASE_LOG_ERROR(Process, "NetworkProcess::createNetworkConnectionToWebProcess: Could not allocate mach port, error %x", kr);
+        CRASH();
+    }
+    if (!MACH_PORT_VALID(listeningPort)) {
+        RELEASE_LOG_ERROR(Process, "NetworkProcess::createNetworkConnectionToWebProcess: Could not allocate mach port, returned port was invalid");
         CRASH();
     }
 
@@ -328,8 +359,10 @@ void NetworkProcess::createNetworkConnectionToWebProcess()
     parentProcessConnection()->send(Messages::NetworkProcessProxy::DidCreateNetworkConnectionToWebProcess(clientPort), 0);
 #elif OS(WINDOWS)
     IPC::Connection::Identifier serverIdentifier, clientIdentifier;
-    if (!IPC::Connection::createServerAndClientIdentifiers(serverIdentifier, clientIdentifier))
-        return;
+    if (!IPC::Connection::createServerAndClientIdentifiers(serverIdentifier, clientIdentifier)) {
+        LOG_ERROR("Failed to create server and client identifiers");
+        CRASH();
+    }
 
     auto connection = NetworkConnectionToWebProcess::create(serverIdentifier);
     m_webProcessConnections.append(WTFMove(connection));
@@ -362,6 +395,7 @@ void NetworkProcess::destroySession(PAL::SessionID sessionID)
 {
     SessionTracker::destroySession(sessionID);
     m_sessionsControlledByAutomation.remove(sessionID);
+    CacheStorage::Engine::destroyEngine(sessionID);
 }
 
 void NetworkProcess::grantSandboxExtensionsToStorageProcessForBlobs(const Vector<String>& filenames, Function<void ()>&& completionHandler)
@@ -395,10 +429,11 @@ void NetworkProcess::writeBlobToFilePath(const WebCore::URL& url, const String& 
 }
 
 #if HAVE(CFNETWORK_STORAGE_PARTITIONING)
-void NetworkProcess::updatePrevalentDomainsToPartitionOrBlockCookies(PAL::SessionID sessionID, const Vector<String>& domainsToPartition, const Vector<String>& domainsToBlock, const Vector<String>& domainsToNeitherPartitionNorBlock, bool shouldClearFirst)
+void NetworkProcess::updatePrevalentDomainsToBlockCookiesFor(PAL::SessionID sessionID, const Vector<String>& domainsToBlock, bool shouldClearFirst, uint64_t contextId)
 {
     if (auto* networkStorageSession = NetworkStorageSession::storageSession(sessionID))
-        networkStorageSession->setPrevalentDomainsToPartitionOrBlockCookies(domainsToPartition, domainsToBlock, domainsToNeitherPartitionNorBlock, shouldClearFirst);
+        networkStorageSession->setPrevalentDomainsToBlockCookiesFor(domainsToBlock, shouldClearFirst);
+    parentProcessConnection()->send(Messages::NetworkProcessProxy::DidUpdateBlockCookies(contextId), 0);
 }
 
 void NetworkProcess::hasStorageAccessForFrame(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, uint64_t contextId)
@@ -430,12 +465,13 @@ void NetworkProcess::grantStorageAccess(PAL::SessionID sessionID, const String& 
     parentProcessConnection()->send(Messages::NetworkProcessProxy::StorageAccessRequestResult(isStorageGranted, contextId), 0);
 }
 
-void NetworkProcess::removeAllStorageAccess(PAL::SessionID sessionID)
+void NetworkProcess::removeAllStorageAccess(PAL::SessionID sessionID, uint64_t contextId)
 {
     if (auto* networkStorageSession = NetworkStorageSession::storageSession(sessionID))
         networkStorageSession->removeAllStorageAccess();
     else
         ASSERT_NOT_REACHED();
+    parentProcessConnection()->send(Messages::NetworkProcessProxy::DidRemoveAllStorageAccess(contextId), 0);
 }
 
 void NetworkProcess::removePrevalentDomains(PAL::SessionID sessionID, const Vector<String>& domains)
@@ -518,7 +554,7 @@ void NetworkProcess::fetchWebsiteData(PAL::SessionID sessionID, OptionSet<Websit
 
     if (websiteDataTypes.contains(WebsiteDataType::Cookies)) {
         if (auto* networkStorageSession = NetworkStorageSession::storageSession(sessionID))
-            getHostnamesWithCookies(*networkStorageSession, callbackAggregator->m_websiteData.hostNamesWithCookies);
+            networkStorageSession->getHostnamesWithCookies(callbackAggregator->m_websiteData.hostNamesWithCookies);
     }
 
     if (websiteDataTypes.contains(WebsiteDataType::Credentials)) {
@@ -531,6 +567,13 @@ void NetworkProcess::fetchWebsiteData(PAL::SessionID sessionID, OptionSet<Websit
             callbackAggregator->m_websiteData.entries.appendVector(entries);
         });
     }
+
+#if PLATFORM(COCOA)
+    if (websiteDataTypes.contains(WebsiteDataType::HSTSCache)) {
+        if (auto* networkStorageSession = NetworkStorageSession::storageSession(sessionID))
+            getHostNamesWithHSTSCache(*networkStorageSession, callbackAggregator->m_websiteData.hostNamesWithHSTSCache);
+    }
+#endif
 
     if (websiteDataTypes.contains(WebsiteDataType::DiskCache)) {
         fetchDiskCacheEntries(sessionID, fetchOptions, [callbackAggregator = WTFMove(callbackAggregator)](auto entries) mutable {
@@ -550,7 +593,7 @@ void NetworkProcess::deleteWebsiteData(PAL::SessionID sessionID, OptionSet<Websi
 
     if (websiteDataTypes.contains(WebsiteDataType::Cookies)) {
         if (auto* networkStorageSession = NetworkStorageSession::storageSession(sessionID))
-            deleteAllCookiesModifiedSince(*networkStorageSession, modifiedSince);
+            networkStorageSession->deleteAllCookiesModifiedSince(modifiedSince);
     }
 
     if (websiteDataTypes.contains(WebsiteDataType::Credentials)) {
@@ -563,7 +606,7 @@ void NetworkProcess::deleteWebsiteData(PAL::SessionID sessionID, OptionSet<Websi
     });
 
     if (websiteDataTypes.contains(WebsiteDataType::DOMCache))
-        CacheStorage::Engine::from(sessionID).clearAllCaches(clearTasksHandler);
+        CacheStorage::Engine::clearAllCaches(sessionID, [clearTasksHandler = clearTasksHandler.copyRef()] { });
 
     if (websiteDataTypes.contains(WebsiteDataType::DiskCache) && !sessionID.isEphemeral())
         clearDiskCache(modifiedSince, [clearTasksHandler = WTFMove(clearTasksHandler)] { });
@@ -594,12 +637,19 @@ static void clearDiskCacheEntries(const Vector<SecurityOriginData>& origins, Fun
     RunLoop::main().dispatch(WTFMove(completionHandler));
 }
 
-void NetworkProcess::deleteWebsiteDataForOrigins(PAL::SessionID sessionID, OptionSet<WebsiteDataType> websiteDataTypes, const Vector<SecurityOriginData>& originDatas, const Vector<String>& cookieHostNames, uint64_t callbackID)
+void NetworkProcess::deleteWebsiteDataForOrigins(PAL::SessionID sessionID, OptionSet<WebsiteDataType> websiteDataTypes, const Vector<SecurityOriginData>& originDatas, const Vector<String>& cookieHostNames, const Vector<String>& HSTSCacheHostNames, uint64_t callbackID)
 {
     if (websiteDataTypes.contains(WebsiteDataType::Cookies)) {
         if (auto* networkStorageSession = NetworkStorageSession::storageSession(sessionID))
-            deleteCookiesForHostnames(*networkStorageSession, cookieHostNames);
+            networkStorageSession->deleteCookiesForHostnames(cookieHostNames);
     }
+
+#if PLATFORM(COCOA)
+    if (websiteDataTypes.contains(WebsiteDataType::HSTSCache)) {
+        if (auto* networkStorageSession = NetworkStorageSession::storageSession(sessionID))
+            deleteHSTSCacheForHostNames(*networkStorageSession, HSTSCacheHostNames);
+    }
+#endif
 
     auto clearTasksHandler = WTF::CallbackAggregator::create([this, callbackID] {
         parentProcessConnection()->send(Messages::NetworkProcessProxy::DidDeleteWebsiteDataForOrigins(callbackID), 0);
@@ -607,7 +657,7 @@ void NetworkProcess::deleteWebsiteDataForOrigins(PAL::SessionID sessionID, Optio
 
     if (websiteDataTypes.contains(WebsiteDataType::DOMCache)) {
         for (auto& originData : originDatas)
-            CacheStorage::Engine::from(sessionID).clearCachesForOrigin(originData, clearTasksHandler);
+            CacheStorage::Engine::clearCachesForOrigin(sessionID, SecurityOriginData { originData }, [clearTasksHandler = clearTasksHandler.copyRef()] { });
     }
 
     if (websiteDataTypes.contains(WebsiteDataType::DiskCache) && !sessionID.isEphemeral())
@@ -628,45 +678,6 @@ void NetworkProcess::cancelDownload(DownloadID downloadID)
 {
     downloadManager().cancelDownload(downloadID);
 }
-    
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-static uint64_t generateCanAuthenticateIdentifier()
-{
-    static uint64_t lastLoaderID = 0;
-    return ++lastLoaderID;
-}
-
-void NetworkProcess::canAuthenticateAgainstProtectionSpace(NetworkResourceLoader& loader, const WebCore::ProtectionSpace& protectionSpace)
-{
-    uint64_t loaderID = generateCanAuthenticateIdentifier();
-    m_waitingNetworkResourceLoaders.set(loaderID, loader);
-    parentProcessConnection()->send(Messages::NetworkProcessProxy::CanAuthenticateAgainstProtectionSpace(loaderID, loader.pageID(), loader.frameID(), protectionSpace), 0);
-}
-
-#if ENABLE(SERVER_PRECONNECT)
-void NetworkProcess::canAuthenticateAgainstProtectionSpace(PreconnectTask& preconnectTask, const WebCore::ProtectionSpace& protectionSpace)
-{
-    uint64_t loaderID = generateCanAuthenticateIdentifier();
-    m_waitingPreconnectTasks.set(loaderID, preconnectTask.createWeakPtr());
-    parentProcessConnection()->send(Messages::NetworkProcessProxy::CanAuthenticateAgainstProtectionSpace(loaderID, preconnectTask.pageID(), preconnectTask.frameID(), protectionSpace), 0);
-}
-#endif
-
-void NetworkProcess::continueCanAuthenticateAgainstProtectionSpace(uint64_t loaderID, bool canAuthenticate)
-{
-    if (auto resourceLoader = m_waitingNetworkResourceLoaders.take(loaderID)) {
-        resourceLoader.value()->continueCanAuthenticateAgainstProtectionSpace(canAuthenticate);
-        return;
-    }
-#if ENABLE(SERVER_PRECONNECT)
-    if (auto preconnectTask = m_waitingPreconnectTasks.take(loaderID)) {
-        preconnectTask->continueCanAuthenticateAgainstProtectionSpace(canAuthenticate);
-        return;
-    }
-#endif
-}
-
-#endif
 
 void NetworkProcess::continueWillSendRequest(DownloadID downloadID, WebCore::ResourceRequest&& request)
 {
@@ -783,6 +794,16 @@ void NetworkProcess::terminate()
     ChildProcess::terminate();
 }
 
+void NetworkProcess::processDidTransitionToForeground()
+{
+    platformProcessDidTransitionToForeground();
+}
+
+void NetworkProcess::processDidTransitionToBackground()
+{
+    platformProcessDidTransitionToBackground();
+}
+
 // FIXME: We can remove this one by adapting RefCounter.
 class TaskCounter : public RefCounted<TaskCounter> {
 public:
@@ -795,7 +816,6 @@ private:
 
 void NetworkProcess::actualPrepareToSuspend(ShouldAcknowledgeWhenReadyToSuspend shouldAcknowledgeWhenReadyToSuspend)
 {
-    platformPrepareToSuspend();
     lowMemoryHandler(Critical::Yes);
 
     RefPtr<TaskCounter> delayedTaskCounter;
@@ -806,6 +826,9 @@ void NetworkProcess::actualPrepareToSuspend(ShouldAcknowledgeWhenReadyToSuspend 
                 parentProcessConnection()->send(Messages::NetworkProcessProxy::ProcessReadyToSuspend(), 0);
         }));
     }
+
+    platformPrepareToSuspend([delayedTaskCounter] { });
+    platformSyncAllCookies([delayedTaskCounter] { });
 
     for (auto& connection : m_webProcessConnections)
         connection->cleanupForSuspension([delayedTaskCounter] { });
@@ -830,6 +853,7 @@ void NetworkProcess::cancelPrepareToSuspend()
     // message. And NetworkProcessProxy expects to receive either a NetworkProcessProxy::ProcessReadyToSuspend-
     // or NetworkProcessProxy::DidCancelProcessSuspension- message, but not both.
     RELEASE_LOG(ProcessSuspension, "%p - NetworkProcess::cancelPrepareToSuspend()", this);
+    platformProcessDidResume();
     for (auto& connection : m_webProcessConnections)
         connection->endSuspension();
 }
@@ -847,19 +871,25 @@ void NetworkProcess::prefetchDNS(const String& hostname)
     WebCore::prefetchDNS(hostname);
 }
 
-String NetworkProcess::cacheStorageDirectory(PAL::SessionID sessionID) const
+void NetworkProcess::cacheStorageParameters(PAL::SessionID sessionID, CacheStorageParametersCallback&& callback)
 {
-    if (sessionID.isEphemeral())
-        return { };
+    m_cacheStorageParametersCallbacks.ensure(sessionID, [&] {
+        parentProcessConnection()->send(Messages::NetworkProcessProxy::RetrieveCacheStorageParameters { sessionID }, 0);
+        return Vector<CacheStorageParametersCallback> { };
+    }).iterator->value.append(WTFMove(callback));
+}
 
-    if (sessionID == PAL::SessionID::defaultSessionID())
-        return m_cacheStorageDirectory;
+void NetworkProcess::setCacheStorageParameters(PAL::SessionID sessionID, uint64_t quota, String&& cacheStorageDirectory, SandboxExtension::Handle&& handle)
+{
+    auto iterator = m_cacheStorageParametersCallbacks.find(sessionID);
+    if (iterator == m_cacheStorageParametersCallbacks.end())
+        return;
 
-    auto* session = NetworkStorageSession::storageSession(sessionID);
-    if (!session)
-        return { };
-
-    return session->cacheStorageDirectory();
+    SandboxExtension::consumePermanently(handle);
+    auto callbacks = WTFMove(iterator->value);
+    m_cacheStorageParametersCallbacks.remove(iterator);
+    for (auto& callback : callbacks)
+        callback(String { cacheStorageDirectory }, quota);
 }
 
 void NetworkProcess::preconnectTo(const WebCore::URL& url, WebCore::StoredCredentialsPolicy storedCredentialsPolicy)
@@ -876,11 +906,6 @@ void NetworkProcess::preconnectTo(const WebCore::URL& url, WebCore::StoredCreden
     UNUSED_PARAM(url);
     UNUSED_PARAM(storedCredentialsPolicy);
 #endif
-}
-
-uint64_t NetworkProcess::cacheStoragePerOriginQuota() const
-{
-    return m_cacheStoragePerOriginQuota;
 }
 
 void NetworkProcess::registerURLSchemeAsSecure(const String& scheme) const
@@ -938,6 +963,11 @@ void NetworkProcess::initializeSandbox(const ChildProcessInitializationParameter
 
 void NetworkProcess::syncAllCookies()
 {
+}
+
+void NetworkProcess::platformSyncAllCookies(CompletionHandler<void()>&& completionHandler)
+{
+    completionHandler();
 }
 
 #endif

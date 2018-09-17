@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Ericsson AB. All rights reserved.
- * Copyright (C) 2015-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,25 +41,18 @@
 #include "MediaTrackSupportedConstraints.h"
 #include "RealtimeMediaSourceSettings.h"
 #include "RuntimeEnabledFeatures.h"
+#include "UserMediaController.h"
 #include "UserMediaRequest.h"
 #include <wtf/RandomNumber.h>
 
 namespace WebCore {
 
 inline MediaDevices::MediaDevices(Document& document)
-    : ContextDestructionObserver(&document)
+    : ActiveDOMObject(&document)
     , m_scheduledEventTimer(*this, &MediaDevices::scheduledEventTimerFired)
+    , m_eventNames(eventNames())
 {
-    m_deviceChangedToken = RealtimeMediaSourceCenter::singleton().addDevicesChangedObserver([weakThis = createWeakPtr(), this]() {
-
-        if (!weakThis)
-            return;
-
-        // FIXME: We should only dispatch an event if the user has been granted access to the type of
-        // device that was added or removed.
-        if (!m_scheduledEventTimer.isActive())
-            m_scheduledEventTimer.startOneShot(Seconds(randomNumber() / 2));
-    });
+    suspendIfNeeded();
 
     static_assert(static_cast<size_t>(MediaDevices::DisplayCaptureSurfaceType::Monitor) == static_cast<size_t>(RealtimeMediaSourceSettings::DisplaySurfaceType::Monitor), "MediaDevices::DisplayCaptureSurfaceType::Monitor is not equal to RealtimeMediaSourceSettings::DisplaySurfaceType::Monitor as expected");
     static_assert(static_cast<size_t>(MediaDevices::DisplayCaptureSurfaceType::Window) == static_cast<size_t>(RealtimeMediaSourceSettings::DisplaySurfaceType::Window), "MediaDevices::DisplayCaptureSurfaceType::Window is not RealtimeMediaSourceSettings::DisplaySurfaceType::Window as expected");
@@ -67,10 +60,16 @@ inline MediaDevices::MediaDevices(Document& document)
     static_assert(static_cast<size_t>(MediaDevices::DisplayCaptureSurfaceType::Browser) == static_cast<size_t>(RealtimeMediaSourceSettings::DisplaySurfaceType::Browser), "MediaDevices::DisplayCaptureSurfaceType::Browser is not RealtimeMediaSourceSettings::DisplaySurfaceType::Browser as expected");
 }
 
-MediaDevices::~MediaDevices()
+MediaDevices::~MediaDevices() = default;
+
+void MediaDevices::stop()
 {
-    if (m_deviceChangedToken)
-        RealtimeMediaSourceCenter::singleton().removeDevicesChangedObserver(m_deviceChangedToken.value());
+    if (m_deviceChangeToken) {
+        auto* document = this->document();
+        auto* controller = document ? UserMediaController::from(document->page()) : nullptr;
+        if (document && controller)
+            controller->removeDeviceChangeObserver(m_deviceChangeToken);
+    }
 }
 
 Ref<MediaDevices> MediaDevices::create(Document& document)
@@ -157,7 +156,44 @@ MediaTrackSupportedConstraints MediaDevices::getSupportedConstraints()
 
 void MediaDevices::scheduledEventTimerFired()
 {
-    dispatchEvent(Event::create(eventNames().devicechangeEvent, false, false));
+    if (scriptExecutionContext())
+        dispatchEvent(Event::create(eventNames().devicechangeEvent, Event::CanBubble::No, Event::IsCancelable::No));
+}
+
+bool MediaDevices::hasPendingActivity() const
+{
+    return !isContextStopped() && hasEventListeners(m_eventNames.devicechangeEvent);
+}
+
+const char* MediaDevices::activeDOMObjectName() const
+{
+    return "MediaDevices";
+}
+
+bool MediaDevices::canSuspendForDocumentSuspension() const
+{
+    return true;
+}
+
+bool MediaDevices::addEventListener(const AtomicString& eventType, Ref<EventListener>&& listener, const AddEventListenerOptions& options)
+{
+    if (!m_listeningForDeviceChanges && eventType == eventNames().devicechangeEvent) {
+        auto* document = this->document();
+        auto* controller = document ? UserMediaController::from(document->page()) : nullptr;
+        if (document && controller) {
+            m_listeningForDeviceChanges = true;
+
+            m_deviceChangeToken = controller->addDeviceChangeObserver([weakThis = makeWeakPtr(*this), this]() {
+
+                if (!weakThis || m_scheduledEventTimer.isActive())
+                    return;
+
+                m_scheduledEventTimer.startOneShot(Seconds(randomNumber() / 2));
+            });
+        }
+    }
+
+    return EventTargetWithInlineData::addEventListener(eventType, WTFMove(listener), options);
 }
 
 } // namespace WebCore

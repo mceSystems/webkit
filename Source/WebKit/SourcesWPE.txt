@@ -37,6 +37,11 @@ NetworkProcess/soup/NetworkProcessSoup.cpp
 NetworkProcess/soup/NetworkSessionSoup.cpp
 NetworkProcess/soup/RemoteNetworkingContextSoup.cpp
 
+NetworkProcess/webrtc/LibWebRTCSocketClient.cpp
+NetworkProcess/webrtc/NetworkRTCMonitor.cpp
+NetworkProcess/webrtc/NetworkRTCProvider.cpp
+NetworkProcess/webrtc/NetworkRTCSocket.cpp
+
 Platform/IPC/glib/GSocketMonitor.cpp
 
 Platform/IPC/unix/AttachmentUnix.cpp
@@ -62,7 +67,6 @@ Shared/API/glib/WebKitHitTestResult.cpp @no-unify
 Shared/API/glib/WebKitURIRequest.cpp @no-unify
 Shared/API/glib/WebKitURIResponse.cpp @no-unify
 
-Shared/CoordinatedGraphics/CoordinatedBackingStore.cpp
 Shared/CoordinatedGraphics/CoordinatedGraphicsScene.cpp
 Shared/CoordinatedGraphics/SimpleViewportController.cpp
 
@@ -70,6 +74,7 @@ Shared/CoordinatedGraphics/threadedcompositor/CompositingRunLoop.cpp
 Shared/CoordinatedGraphics/threadedcompositor/ThreadedCompositor.cpp
 Shared/CoordinatedGraphics/threadedcompositor/ThreadedDisplayRefreshMonitor.cpp
 
+Shared/Plugins/Netscape/NetscapePluginModuleNone.cpp
 Shared/Plugins/Netscape/unix/NetscapePluginModuleUnix.cpp
 
 Shared/cairo/ShareableBitmapCairo.cpp
@@ -96,10 +101,13 @@ UIProcess/AcceleratedDrawingAreaProxy.cpp
 UIProcess/BackingStore.cpp
 UIProcess/DefaultUndoController.cpp
 UIProcess/LegacySessionStateCodingNone.cpp
+UIProcess/WebGrammarDetail.cpp
 UIProcess/WebResourceLoadStatisticsStore.cpp
 UIProcess/WebResourceLoadStatisticsTelemetry.cpp
+UIProcess/WebViewportAttributes.cpp
 
 UIProcess/API/C/WKGrammarDetail.cpp
+UIProcess/API/C/WKViewportAttributes.cpp
 
 UIProcess/API/C/wpe/WKView.cpp
 
@@ -168,6 +176,8 @@ UIProcess/API/wpe/WPEView.cpp @no-unify
 
 UIProcess/Automation/cairo/WebAutomationSessionCairo.cpp
 
+UIProcess/Automation/wpe/WebAutomationSessionWPE.cpp
+
 UIProcess/Launcher/glib/ProcessLauncherGLib.cpp
 
 UIProcess/Network/CustomProtocols/LegacyCustomProtocolManagerProxy.cpp
@@ -216,6 +226,8 @@ WebProcess/InjectedBundle/glib/InjectedBundleGlib.cpp
 
 WebProcess/MediaCache/WebMediaKeyStorageManager.cpp
 
+WebProcess/Plugins/Netscape/NetscapePluginNone.cpp @no-unify
+
 WebProcess/WebCoreSupport/soup/WebFrameNetworkingContext.cpp
 
 WebProcess/WebCoreSupport/wpe/WebContextMenuClientWPE.cpp
@@ -224,6 +236,7 @@ WebProcess/WebCoreSupport/wpe/WebPopupMenuWPE.cpp
 
 WebProcess/WebPage/AcceleratedDrawingArea.cpp
 WebProcess/WebPage/AcceleratedSurface.cpp
+WebProcess/WebPage/LayerTreeHost.cpp
 
 WebProcess/WebPage/CoordinatedGraphics/CompositingCoordinator.cpp
 WebProcess/WebPage/CoordinatedGraphics/CoordinatedLayerTreeHost.cpp

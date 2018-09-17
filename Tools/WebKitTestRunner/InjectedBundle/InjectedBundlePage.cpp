@@ -67,7 +67,7 @@ static JSValueRef propertyValue(JSContextRef context, JSObjectRef object, const 
 {
     if (!object)
         return 0;
-    JSRetainPtr<JSStringRef> propertyNameString(Adopt, JSStringCreateWithUTF8CString(propertyName));
+    auto propertyNameString = adopt(JSStringCreateWithUTF8CString(propertyName));
     return JSObjectGetProperty(context, object, propertyNameString.get(), 0);
 }
 
@@ -93,7 +93,7 @@ static double numericWindowPropertyValue(WKBundleFrameRef frame, const char* pro
 static WTF::String dumpPath(JSGlobalContextRef context, JSObjectRef nodeValue)
 {
     JSValueRef nodeNameValue = propertyValue(context, nodeValue, "nodeName");
-    JSRetainPtr<JSStringRef> jsStringNodeName(Adopt, JSValueToStringCopy(context, nodeNameValue, 0));
+    auto jsStringNodeName = adopt(JSValueToStringCopy(context, nodeNameValue, 0));
     WKRetainPtr<WKStringRef> nodeName = toWK(jsStringNodeName);
 
     JSValueRef parentNode = propertyValue(context, nodeValue, "parentNode");
@@ -256,12 +256,16 @@ static inline WTF::String pathSuitableForTestResult(WKURLRef fileUrl)
     return toWTFString(adoptWK(WKURLCopyLastPathComponent(fileUrl))); // We lose some information here, but it's better than exposing a full path, which is always machine specific.
 }
 
-static HashMap<uint64_t, String> assignedUrlsCache;
+static HashMap<uint64_t, String>& assignedUrlsCache()
+{
+    static NeverDestroyed<HashMap<uint64_t, String>> cache;
+    return cache.get();
+}
 
 static inline void dumpResourceURL(uint64_t identifier, StringBuilder& stringBuilder)
 {
-    if (assignedUrlsCache.contains(identifier))
-        stringBuilder.append(assignedUrlsCache.get(identifier));
+    if (assignedUrlsCache().contains(identifier))
+        stringBuilder.append(assignedUrlsCache().get(identifier));
     else
         stringBuilder.appendLiteral("<unknown>");
 }
@@ -270,8 +274,8 @@ InjectedBundlePage::InjectedBundlePage(WKBundlePageRef page)
     : m_page(page)
     , m_world(AdoptWK, WKBundleScriptWorldCreateWorld())
 {
-    WKBundlePageLoaderClientV8 loaderClient = {
-        { 8, this },
+    WKBundlePageLoaderClientV9 loaderClient = {
+        { 9, this },
         didStartProvisionalLoadForFrame,
         didReceiveServerRedirectForProvisionalLoadForFrame,
         didFailProvisionalLoadWithErrorForFrame,
@@ -308,6 +312,7 @@ InjectedBundlePage::InjectedBundlePage(WKBundlePageRef page)
         0, // willLoadDataRequest
         0, // willDestroyFrame_unavailable
         0, // userAgentForURL
+        willInjectUserScriptForFrame
     };
     WKBundlePageSetPageLoaderClient(m_page, &loaderClient.base);
 
@@ -421,6 +426,10 @@ void InjectedBundlePage::prepare()
     // Force consistent "responsive" behavior for WebPage::eventThrottlingDelay() for testing. Tests can override via internals.
     WKEventThrottlingBehavior behavior = kWKEventThrottlingBehaviorResponsive;
     WKBundlePageSetEventThrottlingBehaviorOverride(m_page, &behavior);
+    
+    // Force consistent compositing behavior, even if the test runner is under memory pressure. Tests can override via internals.
+    WKCompositingPolicy policy = kWKCompositingPolicyNormal;
+    WKBundlePageSetCompositingPolicyOverride(m_page, &policy);
 }
 
 void InjectedBundlePage::resetAfterTest()
@@ -433,12 +442,14 @@ void InjectedBundlePage::resetAfterTest()
 
     JSGlobalContextRef context = WKBundleFrameGetJavaScriptContext(frame);
     WebCoreTestSupport::resetInternalsObject(context);
-    assignedUrlsCache.clear();
+    assignedUrlsCache().clear();
 
     // User scripts need to be removed after the test and before loading about:blank, as otherwise they would run in about:blank, and potentially leak results into a subsequest test.
     WKBundlePageRemoveAllUserContent(m_page);
 
     uninstallFakeHelvetica();
+
+    InjectedBundle::singleton().resetUserScriptInjectedCount();
 }
 
 // Loader Client Callbacks
@@ -586,6 +597,11 @@ void InjectedBundlePage::didFinishLoadForFrame(WKBundlePageRef page, WKBundleFra
 void InjectedBundlePage::didFinishProgress(WKBundlePageRef, const void *clientInfo)
 {
     static_cast<InjectedBundlePage*>(const_cast<void*>(clientInfo))->didFinishProgress();
+}
+
+void InjectedBundlePage::willInjectUserScriptForFrame(WKBundlePageRef, WKBundleFrameRef, WKBundleScriptWorldRef, const void* clientInfo)
+{
+    static_cast<InjectedBundlePage*>(const_cast<void*>(clientInfo))->willInjectUserScriptForFrame();
 }
 
 void InjectedBundlePage::didFinishDocumentLoadForFrame(WKBundlePageRef page, WKBundleFrameRef frame, WKTypeRef*, const void* clientInfo)
@@ -755,6 +771,11 @@ void InjectedBundlePage::didFinishProgress()
     injectedBundle.outputText("postProgressFinishedNotification\n");
 }
 
+void InjectedBundlePage::willInjectUserScriptForFrame()
+{
+    InjectedBundle::singleton().increaseUserScriptInjectedCount();
+}
+
 enum FrameNamePolicy { ShouldNotIncludeFrameName, ShouldIncludeFrameName };
 
 static void dumpFrameScrollPosition(WKBundleFrameRef frame, StringBuilder& stringBuilder, FrameNamePolicy shouldIncludeFrameName = ShouldNotIncludeFrameName)
@@ -797,7 +818,7 @@ void InjectedBundlePage::dumpAllFrameScrollPositions(StringBuilder& stringBuilde
 
 static JSRetainPtr<JSStringRef> toJS(const char* string)
 {
-    return JSRetainPtr<JSStringRef>(Adopt, JSStringCreateWithUTF8CString(string));
+    return adopt(JSStringCreateWithUTF8CString(string));
 }
 
 static bool hasDocumentElement(WKBundleFrameRef frame)
@@ -1118,7 +1139,7 @@ void InjectedBundlePage::didInitiateLoadForResource(WKBundlePageRef page, WKBund
         return;
 
     WKRetainPtr<WKURLRef> url = adoptWK(WKURLRequestCopyURL(request));
-    assignedUrlsCache.add(identifier, pathSuitableForTestResult(url.get()));
+    assignedUrlsCache().add(identifier, pathSuitableForTestResult(url.get()));
 }
 
 // Resource Load Client Callbacks

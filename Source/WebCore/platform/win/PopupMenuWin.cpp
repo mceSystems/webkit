@@ -621,8 +621,8 @@ void PopupMenuWin::paint(const IntRect& damageRect, HDC hdc)
         Color optionBackgroundColor, optionTextColor;
         PopupMenuStyle itemStyle = client()->itemStyle(index);
         if (index == focusedIndex()) {
-            optionBackgroundColor = RenderTheme::singleton().activeListBoxSelectionBackgroundColor();
-            optionTextColor = RenderTheme::singleton().activeListBoxSelectionForegroundColor();
+            optionBackgroundColor = RenderTheme::singleton().activeListBoxSelectionBackgroundColor({ });
+            optionTextColor = RenderTheme::singleton().activeListBoxSelectionForegroundColor({ });
         } else {
             optionBackgroundColor = itemStyle.backgroundColor();
             optionTextColor = itemStyle.foregroundColor();
@@ -657,7 +657,7 @@ void PopupMenuWin::paint(const IntRect& damageRect, HDC hdc)
         // Draw the item text
         if (itemStyle.isVisible()) {
             int textX = 0;
-            if (client()->menuStyle().textDirection() == LTR) {
+            if (client()->menuStyle().textDirection() == TextDirection::LTR) {
                 textX = std::max<int>(0, client()->clientPaddingLeft() - client()->clientInsetLeft());
                 if (RenderTheme::singleton().popupOptionSupportsTextIndent())
                     textX += minimumIntValueForLength(itemStyle.textIndent(), itemRect.width());

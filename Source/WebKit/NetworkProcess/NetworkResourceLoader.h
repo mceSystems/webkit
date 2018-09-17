@@ -80,9 +80,6 @@ public:
     // Message handlers.
     void didReceiveNetworkResourceLoaderMessage(IPC::Connection&, IPC::Decoder&);
 
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    void continueCanAuthenticateAgainstProtectionSpace(bool);
-#endif
     void continueWillSendRequest(WebCore::ResourceRequest&& newRequest, bool isAllowedToAskUserForCredentials);
 
     const WebCore::ResourceResponse& response() const { return m_response; }
@@ -97,9 +94,6 @@ public:
 
     // NetworkLoadClient.
     void didSendData(unsigned long long bytesSent, unsigned long long totalBytesToBeSent) override;
-#if USE(PROTECTION_SPACE_AUTH_CALLBACK)
-    void canAuthenticateAgainstProtectionSpaceAsync(const WebCore::ProtectionSpace&) override;
-#endif
     bool isSynchronous() const override;
     bool isAllowedToAskUserForCredentials() const override { return m_isAllowedToAskUserForCredentials; }
     void willSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&&) override;
@@ -113,7 +107,7 @@ public:
     void convertToDownload(DownloadID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
 
     bool isMainResource() const { return m_parameters.request.requester() == WebCore::ResourceRequest::Requester::Main; }
-    bool isMainFrameLoad() const { return isMainResource() && m_parameters.frameAncestorOrigins.size() == 1; }
+    bool isMainFrameLoad() const { return isMainResource() && m_parameters.frameAncestorOrigins.isEmpty(); }
 
     bool isAlwaysOnLoggingAllowed() const;
 
@@ -145,6 +139,7 @@ private:
 
     enum class FirstLoad { No, Yes };
     void startNetworkLoad(WebCore::ResourceRequest&&, FirstLoad);
+    void restartNetworkLoad(WebCore::ResourceRequest&&);
     void continueDidReceiveResponse();
 
     enum class LoadResult {
@@ -177,6 +172,8 @@ private:
     void sendCSPViolationReport(WebCore::URL&&, Ref<WebCore::FormData>&&) final;
     void enqueueSecurityPolicyViolationEvent(WebCore::SecurityPolicyViolationEvent::Init&&) final;
 
+    void logSlowCacheRetrieveIfNeeded(const NetworkCache::Cache::RetrieveInfo&);
+
     const NetworkResourceLoadParameters m_parameters;
 
     Ref<NetworkConnectionToWebProcess> m_connection;
@@ -208,6 +205,7 @@ private:
     bool m_isWaitingContinueWillSendRequestForCachedRedirect { false };
     std::unique_ptr<NetworkCache::Entry> m_cacheEntryWaitingForContinueDidReceiveResponse;
     std::unique_ptr<NetworkLoadChecker> m_networkLoadChecker;
+    bool m_shouldRestartLoad { false };
 
     std::optional<NetworkActivityTracker> m_networkActivityTracker;
 };
