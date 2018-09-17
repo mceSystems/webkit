@@ -1918,7 +1918,7 @@ bool JSObject::putDirectCustomAPIValue(VM& vm, PropertyName propertyName, Custom
     PutPropertySlot slot(this);
     bool result = putDirectInternal<PutModeDefineOwnProperty>(vm, propertyName, value, attributes, slot);
 
-    // TODO: Introduce a separate setHasCustomAPIValuePropertiesWithProtoCheck?
+    // TODO(kobybo) : Introduce a separate setHasCustomAPIValuePropertiesWithProtoCheck?
     Structure* structure = this->structure(vm);
     if (attributes & PropertyAttribute::ReadOnly)
         structure->setContainsReadOnlyProperties();
