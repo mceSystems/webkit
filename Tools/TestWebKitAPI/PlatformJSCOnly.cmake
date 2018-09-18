@@ -25,3 +25,10 @@ set(test_main_SOURCES
 list(APPEND TestWTF_SOURCES
     ${TESTWEBKITAPI_DIR}/Tests/WTF/RunLoop.cpp
 )
+
+if (WIN32)
+    include_directories(SYSTEM
+        ${ICU_INCLUDE_DIRS}
+    )
+    add_definitions(-DSTATICALLY_LINKED_WITH_WTF) 
+endif ()

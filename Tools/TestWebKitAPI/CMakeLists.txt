@@ -249,7 +249,7 @@ add_executable(TestWTF
     ${TestWTF_SOURCES}
 )
 
-if (WIN32)
+if (WIN32 AND NOT "${PORT}" STREQUAL "JSCOnly")
     add_dependencies(TestWTF TestWTFLib)
 else ()
     add_dependencies(TestWTF WTF ${TestWebKitAPI_DEPENDENCIES})
