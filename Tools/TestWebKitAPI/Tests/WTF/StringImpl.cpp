@@ -30,6 +30,7 @@
 #include <wtf/text/SymbolImpl.h>
 #include <wtf/text/WTFString.h>
 #include <wtf/text/ExternalStringImpl.h>
+#include <wtf/text/SymbolRegistry.h>
 
 namespace TestWebKitAPI {
 
@@ -786,6 +787,19 @@ TEST(WTF, StringImplNotExternal)
 {
 	auto notExternal = stringFromUTF8("hello");
 	ASSERT_FALSE(notExternal->isExternal());
+}
+
+TEST(WTF, PrivateSymbolRegistry)
+{
+	WTF::SymbolRegistry symbolRegistry(true);
+
+	auto key = String::fromUTF8("hello");
+	auto symbol = symbolRegistry.symbolForKey(key);
+	ASSERT_TRUE(symbol->isSymbol());
+	ASSERT_TRUE(symbol->isPrivate());
+	ASSERT_FALSE(symbol->isStatic());
+	ASSERT_FALSE(symbol->isNullSymbol());
+	ASSERT_FALSE(symbol->isAtomic());
 }
 
 } // namespace TestWebKitAPI
