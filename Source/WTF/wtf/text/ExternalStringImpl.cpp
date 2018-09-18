@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Koby Boyango <koby.b@mce.systems>
+ * Copyright (C) 2018 mce sys Ltd. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
