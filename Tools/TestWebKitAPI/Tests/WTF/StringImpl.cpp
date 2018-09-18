@@ -29,6 +29,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/SymbolImpl.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/text/ExternalStringImpl.h>
 
 namespace TestWebKitAPI {
 
@@ -735,6 +736,56 @@ TEST(WTF, StaticPrivateSymbolImpl)
     auto& symbol = static_cast<SymbolImpl&>(staticPrivateSymbol);
     ASSERT_TRUE(symbol.isSymbol());
     ASSERT_TRUE(symbol.isPrivate());
+}
+
+TEST(WTF, ExternalStringImplCreate8bit)
+{
+	constexpr LChar buffer[] = "hello";
+	constexpr size_t bufferStringLength = sizeof(buffer) - 1;
+	bool freeFunctionCalled = false;
+
+	{
+		auto external = ExternalStringImpl::create(buffer, bufferStringLength, [&freeFunctionCalled](ExternalStringImpl * externalStringImpl, void * buffer, unsigned bufferSize) mutable {
+			freeFunctionCalled = true;
+		});
+
+		ASSERT_TRUE(external->isExternal());
+		ASSERT_TRUE(external->is8Bit());
+		ASSERT_FALSE(external->isSymbol());
+		ASSERT_FALSE(external->isAtomic());
+		ASSERT_EQ(external->length(), bufferStringLength);
+		ASSERT_TRUE(external->characters8() == buffer);
+	}
+
+	ASSERT_TRUE(freeFunctionCalled);
+}
+
+TEST(WTF, ExternalStringImplCreate16bit)
+{
+	constexpr UChar buffer[] = L"hello";
+	constexpr size_t bufferStringLength = (sizeof(buffer) - 1) / sizeof(UChar);
+	bool freeFunctionCalled = false;
+
+	{
+		auto external = ExternalStringImpl::create(buffer, bufferStringLength, [&freeFunctionCalled](ExternalStringImpl * externalStringImpl, void * buffer, unsigned bufferSize) mutable {
+			freeFunctionCalled = true;
+		});
+
+		ASSERT_TRUE(external->isExternal());
+		ASSERT_FALSE(external->is8Bit());
+		ASSERT_FALSE(external->isSymbol());
+		ASSERT_FALSE(external->isAtomic());
+		ASSERT_EQ(external->length(), bufferStringLength);
+		ASSERT_TRUE(external->characters16() == buffer);
+	}
+
+	ASSERT_TRUE(freeFunctionCalled);
+}
+
+TEST(WTF, StringImplNotExternal)
+{
+	auto notExternal = stringFromUTF8("hello");
+	ASSERT_FALSE(notExternal->isExternal());
 }
 
 } // namespace TestWebKitAPI
