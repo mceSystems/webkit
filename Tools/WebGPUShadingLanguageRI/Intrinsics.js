@@ -34,20 +34,6 @@ class Intrinsics {
         // For example, if a native function is declared using "int" rather than "int", then we must
         // use "int" here, since we don't yet know that they are the same type.
 
-        function isBitwiseEquivalent(left, right)
-        {
-            let doubleArray = new Float64Array(1);
-            let intArray = new Int32Array(doubleArray.buffer);
-            doubleArray[0] = left;
-            let leftInts = Int32Array.from(intArray);
-            doubleArray[0] = right;
-            for (let i = 0; i < 2; ++i) {
-                if (leftInts[i] != intArray[i])
-                    return false;
-            }
-            return true;
-        }
-
         this._map.set(
             "native typedef void",
             type => {
@@ -244,12 +230,16 @@ class Intrinsics {
              "native typedef atomic_int",
              type => {
                  this.atomic_int = type;
+                 type.size = 1;
+                 type.populateDefaultValue = (buffer, offset) => buffer.set(offset, 0);
              });
 
         this._map.set(
              "native typedef atomic_uint",
              type => {
                  this.atomic_uint = type;
+                 type.size = 1;
+                 type.populateDefaultValue = (buffer, offset) => buffer.set(offset, 0);
              });
 
         for (let vectorType of VectorElementTypes) {
@@ -867,6 +857,248 @@ class Intrinsics {
         for (let setter of BuiltinMatrixSetter.functions())
             this._map.set(setter.toString(), func => setter.instantiateImplementation(func));
 
+        for (let addressSpace of ["thread", "threadgroup", "device"]) {
+            this._map.set(
+                `native void InterlockedAdd(atomic_uint* ${addressSpace},uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToUint(a + b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedAdd(atomic_int* ${addressSpace},int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToInt(a + b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedAnd(atomic_uint* ${addressSpace},uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToUint(a & b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedAnd(atomic_int* ${addressSpace},int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToInt(a & b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedExchange(atomic_uint* ${addressSpace},uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(b), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedExchange(atomic_int* ${addressSpace},int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(b), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedMax(atomic_uint* ${addressSpace},uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToUint(a > b ? a : b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedMax(atomic_int* ${addressSpace},int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToInt(a > b ? a : b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedMin(atomic_uint* ${addressSpace},uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToUint(a < b ? a : b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedMin(atomic_int* ${addressSpace},int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToInt(a < b ? a : b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedOr(atomic_uint* ${addressSpace},uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToUint(a | b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedOr(atomic_int* ${addressSpace},int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToInt(a | b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedXor(atomic_uint* ${addressSpace},uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToUint(a ^ b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedXor(atomic_int* ${addressSpace},int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = value.loadValue();
+                        let result = castToInt(a ^ b);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                        atomic.loadValue().copyFrom(EPtr.box(result), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedCompareExchange(atomic_uint* ${addressSpace},uint,uint,uint* thread)`,
+                func => {
+                    func.implementation = function([atomic, compareValue, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = compareValue.loadValue();
+                        let c = value.loadValue();
+                        if (a == b)
+                            atomic.loadValue().copyFrom(EPtr.box(c), 1);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                    }
+                });
+
+            this._map.set(
+                `native void InterlockedCompareExchange(atomic_int* ${addressSpace},int,int,int* thread)`,
+                func => {
+                    func.implementation = function([atomic, compareValue, value, originalValue]) {
+                        if (!atomic.loadValue())
+                            throw new WTrapError("[Atomics]", "Null atomic pointer");
+                        let a = atomic.loadValue().loadValue();
+                        let b = compareValue.loadValue();
+                        let c = value.loadValue();
+                        if (a == b)
+                            atomic.loadValue().copyFrom(EPtr.box(c), 1);
+                        if (originalValue.loadValue())
+                            originalValue.loadValue().copyFrom(EPtr.box(a), 1);
+                    }
+                });
+        }
+
         function checkUndefined(origin, explanation, value)
         {
             if (value == undefined)
@@ -945,8 +1177,10 @@ class Intrinsics {
                             let mipID = miplevel.loadValue();
                             if (mipID >= tex.levelCount)
                                 throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                            if (numberOfLevels.loadValue())
+                                numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                         }
                     });
 
@@ -989,9 +1223,12 @@ class Intrinsics {
                             let mipID = miplevel.loadValue();
                             if (mipID >= tex.levelCount)
                                 throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                            if (elements.loadValue())
+                                elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
+                            if (numberOfLevels.loadValue())
+                                numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                         }
                     });
 
@@ -1180,9 +1417,12 @@ class Intrinsics {
                             let mipID = miplevel.loadValue();
                             if (mipID >= tex.levelCount)
                                 throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                            height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
+                            if (numberOfLevels.loadValue())
+                                numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                         }
                     });
 
@@ -1371,10 +1611,14 @@ class Intrinsics {
                             let mipID = miplevel.loadValue();
                             if (mipID >= tex.levelCount)
                                 throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                            height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
+                            if (elements.loadValue())
+                                elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
+                            if (numberOfLevels.loadValue())
+                                numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                         }
                     });
 
@@ -1417,10 +1661,14 @@ class Intrinsics {
                             let mipID = miplevel.loadValue();
                             if (mipID >= tex.levelCount)
                                 throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                            depth.loadValue().copyFrom(EPtr.box(tex.depthAtLevel(mipID)), 1);
-                            height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
+                            if (depth.loadValue())
+                                depth.loadValue().copyFrom(EPtr.box(tex.depthAtLevel(mipID)), 1);
+                            if (numberOfLevels.loadValue())
+                                numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                         }
                     });
 
@@ -1514,9 +1762,12 @@ class Intrinsics {
                                 throw new Error("Cube texture doesn't have 6 faces");
                             if (mipID >= tex.levelCount)
                                 throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                            height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
+                            if (numberOfLevels.loadValue())
+                                numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                         }
                     });
 
@@ -1524,14 +1775,16 @@ class Intrinsics {
                     `native void GetDimensions(RWTexture1D<${type}${length}>,uint* thread Width)`,
                     func => {
                         func.implementation = function([texture, width]) {
-                            width.loadValue().copyFrom(EPtr.box(texture.loadValue().width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(texture.loadValue().width), 1);
                         }
                     });
                 this._map.set(
                     `native void GetDimensions(RWTexture1D<${type}${length}>,float* thread Width)`,
                     func => {
                         func.implementation = function([texture, width]) {
-                            width.loadValue().copyFrom(EPtr.box(texture.loadValue().width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(texture.loadValue().width), 1);
                         }
                     });
                 this._map.set(
@@ -1554,8 +1807,10 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, elements]) {
                             let tex = texture.loadValue();
-                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (elements.loadValue())
+                                elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
                         }
                     });
                 this._map.set(
@@ -1563,8 +1818,10 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, elements]) {
                             let tex = texture.loadValue();
-                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (elements.loadValue())
+                                elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
                         }
                     });
                 this._map.set(
@@ -1587,8 +1844,10 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, height]) {
                             let tex = texture.loadValue();
-                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.height), 1);
                         }
                     });
                 this._map.set(
@@ -1596,8 +1855,10 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, height]) {
                             let tex = texture.loadValue();
-                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.height), 1);
                         }
                     });
                 this._map.set(
@@ -1620,9 +1881,12 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, height, elements]) {
                             let tex = texture.loadValue();
-                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.height), 1);
+                            if (elements.loadValue())
+                                elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
                         }
                     });
                 this._map.set(
@@ -1630,9 +1894,12 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, height, elements]) {
                             let tex = texture.loadValue();
-                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.height), 1);
+                            if (elements.loadValue())
+                                elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
                         }
                     });
                 this._map.set(
@@ -1655,9 +1922,12 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, height, depth]) {
                             let tex = texture.loadValue();
-                            depth.loadValue().copyFrom(EPtr.box(tex.depth), 1);
-                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.height), 1);
+                            if (depth.loadValue())
+                                depth.loadValue().copyFrom(EPtr.box(tex.depth), 1);
                         }
                     });
                 this._map.set(
@@ -1665,9 +1935,12 @@ class Intrinsics {
                     func => {
                         func.implementation = function([texture, width, height, depth]) {
                             let tex = texture.loadValue();
-                            depth.loadValue().copyFrom(EPtr.box(tex.depth), 1);
-                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (width.loadValue())
+                                width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                            if (height.loadValue())
+                                height.loadValue().copyFrom(EPtr.box(tex.height), 1);
+                            if (depth.loadValue())
+                                depth.loadValue().copyFrom(EPtr.box(tex.depth), 1);
                         }
                     });
                 this._map.set(
@@ -1884,9 +2157,12 @@ class Intrinsics {
                         let mipID = miplevel.loadValue();
                         if (mipID >= tex.levelCount)
                             throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                        height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
-                        width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                        numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                        if (width.loadValue())
+                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                        if (height.loadValue())
+                            height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
+                        if (numberOfLevels.loadValue())
+                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                     }
                 });
             this._map.set(
@@ -2085,10 +2361,14 @@ class Intrinsics {
                         let mipID = miplevel.loadValue();
                         if (mipID >= tex.levelCount)
                             throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                        height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
-                        width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                        elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                        numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                        if (width.loadValue())
+                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                        if (height.loadValue())
+                            height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
+                        if (elements.loadValue())
+                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
+                        if (numberOfLevels.loadValue())
+                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                     }
                 });
             this._map.set(
@@ -2183,9 +2463,12 @@ class Intrinsics {
                             throw new Error("Cube texture doesn't have 6 faces");
                         if (mipID >= tex.levelCount)
                             throw new WTrapError("[GetDimensions]", "Reading from nonexistant mip level of texture");
-                        height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
-                        width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
-                        numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
+                        if (width.loadValue())
+                            width.loadValue().copyFrom(EPtr.box(tex.widthAtLevel(mipID)), 1);
+                        if (height.loadValue())
+                            height.loadValue().copyFrom(EPtr.box(tex.heightAtLevel(mipID)), 1);
+                        if (numberOfLevels.loadValue())
+                            numberOfLevels.loadValue().copyFrom(EPtr.box(tex.levelCount), 1);
                     }
                 });
             this._map.set(
@@ -2193,8 +2476,10 @@ class Intrinsics {
                 func => {
                     func.implementation = function ([texture, width, height]) {
                         let tex = texture.loadValue();
-                        height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                        width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (width.loadValue())
+                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (height.loadValue())
+                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
                     }
                 });
             this._map.set(
@@ -2202,8 +2487,10 @@ class Intrinsics {
                 func => {
                     func.implementation = function ([texture, width, height]) {
                         let tex = texture.loadValue();
-                        height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                        width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (width.loadValue())
+                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (height.loadValue())
+                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
                     }
                 });
             this._map.set(
@@ -2225,9 +2512,12 @@ class Intrinsics {
                 func => {
                     func.implementation = function ([texture, width, height, elements]) {
                         let tex = texture.loadValue();
-                        elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                        height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                        width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (width.loadValue())
+                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (height.loadValue())
+                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
+                        if (elements.loadValue())
+                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
                     }
                 });
             this._map.set(
@@ -2235,9 +2525,12 @@ class Intrinsics {
                 func => {
                     func.implementation = function ([texture, width, height, elements]) {
                         let tex = texture.loadValue();
-                        elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
-                        height.loadValue().copyFrom(EPtr.box(tex.height), 1);
-                        width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (width.loadValue())
+                            width.loadValue().copyFrom(EPtr.box(tex.width), 1);
+                        if (height.loadValue())
+                            height.loadValue().copyFrom(EPtr.box(tex.height), 1);
+                        if (elements.loadValue())
+                            elements.loadValue().copyFrom(EPtr.box(tex.layerCount), 1);
                     }
                 });
             this._map.set(

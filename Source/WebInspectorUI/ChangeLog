@@ -1,3 +1,789 @@
+2018-09-21  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        REGRESSION(r236237): Web Inspector: DarkMode: white background in Elements and Timelines
+        https://bugs.webkit.org/show_bug.cgi?id=189852
+
+        Reviewed by Joseph Pecoraro.
+
+        * UserInterface/Views/Main.css:
+        (body):
+        (#main):
+
+2018-09-21  Brian Burg  <bburg@apple.com>
+
+        Web Inspector: remove unnecessary WI.Platform.version checks
+        https://bugs.webkit.org/show_bug.cgi?id=189845
+
+        Reviewed by Matt Baker.
+
+        * UserInterface/Base/Platform.js:
+        (osVersionMatch): Add name for macOS Mojave.
+
+        * UserInterface/Base/Main.js:
+        * UserInterface/Views/Popover.js:
+        Remove old logic that's no longer needed.
+
+2018-09-21  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: remove setting for Sources tab
+        https://bugs.webkit.org/show_bug.cgi?id=189817
+
+        Reviewed by Joseph Pecoraro.
+
+        * Localizations/en.lproj/localizedStrings.js:
+        * UserInterface/Base/Setting.js:
+        * UserInterface/Main.html:
+        * UserInterface/Base/Main.js:
+        (WI.contentLoaded):
+        (WI._debuggerDidPause):
+        (WI.isShowingSourcesTab): Removed.
+        (WI.showSourcesTab): Removed.
+
+        * UserInterface/Views/SourcesSidebarPanel.css: Removed.
+        * UserInterface/Views/SourcesSidebarPanel.js: Removed.
+        * UserInterface/Views/SourcesTabContentView.js: Removed.
+
+        * UserInterface/Views/ContextMenuUtilities.js:
+        (WI.appendContextMenuItemsForURL):
+
+        * UserInterface/Views/SettingsTabContentView.js:
+        (WI.SettingsTabContentView.prototype._createExperimentalSettingsView):
+
+        * UserInterface/Views/SourceCodeTextEditor.js:
+        (WI.SourceCodeTextEditor.prototype.textEditorGutterContextMenu):
+
+2018-09-20  Simon Fraser  <simon.fraser@apple.com>
+
+        Make "overflow: overlay" a synonym for "overflow: auto"
+        https://bugs.webkit.org/show_bug.cgi?id=189811
+
+        Reviewed by Zalan Bujtas.
+        
+        Remove "overlay" from the overflow values.
+
+        * UserInterface/Models/CSSKeywordCompletions.js:
+        * UserInterface/Views/VisualStyleDetailsPanel.js:
+        (WI.VisualStyleDetailsPanel.prototype._populateDisplaySection):
+
+2018-09-21  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: hide Accessibility Audit Tab setting
+        https://bugs.webkit.org/show_bug.cgi?id=189816
+
+        Reviewed by Joseph Pecoraro.
+
+        Considering that this tab doesn't exist, there's no reason to have a setting/UI for it.
+
+        * UserInterface/Base/Setting.js:
+        * UserInterface/Views/SettingsTabContentView.js:
+        (WI.SettingsTabContentView.prototype._createExperimentalSettingsView):
+
+2018-09-21  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: remove Legacy Style Editor
+        https://bugs.webkit.org/show_bug.cgi?id=189808
+
+        Reviewed by Joseph Pecoraro.
+
+        The Legacy Style Editor has been hidden behind an "experimental" setting for almost a year.
+        It's time that we remove it, especially since the new Style Editor is at a similar, if not
+        more advanced, state.
+
+        * .eslintrc:
+        * WebInspectorUI.vcxproj/WebInspectorUI.vcxproj:
+        * WebInspectorUI.vcxproj/WebInspectorUI.vcxproj.filters:
+        * Localizations/en.lproj/localizedStrings.js:
+        * Tools/PrettyPrinting/index.html:
+        * UserInterface/Main.html:
+        * UserInterface/Test.html:
+        * UserInterface/Base/Setting.js:
+
+        * UserInterface/Base/TextUtilities.js: Removed.
+        * UserInterface/Base/Utilities.js:
+
+        * UserInterface/Views/RulesStyleDetailsPanel.css: Removed.
+        * UserInterface/Views/RulesStyleDetailsPanel.js: Removed.
+        * UserInterface/Views/CSSStyleDeclarationSection.css: Removed.
+        * UserInterface/Views/CSSStyleDeclarationSection.js: Removed.
+        * UserInterface/Views/CSSStyleDeclarationTextEditor.css: Removed.
+        * UserInterface/Views/CSSStyleDeclarationTextEditor.js: Removed.
+
+        * UserInterface/Models/CSSProperty.js:
+        (WI.CSSProperty.prototype.get text):
+        (WI.CSSProperty.prototype.get synthesizedText): Deleted.
+
+        * UserInterface/Models/CSSStyleDeclaration.js:
+        (WI.CSSStyleDeclaration):
+        (WI.CSSStyleDeclaration.prototype.set text):
+        (WI.CSSStyleDeclaration.prototype.resetText): Deleted.
+        (WI.CSSStyleDeclaration.prototype.get modified): Deleted.
+        (WI.CSSStyleDeclaration.prototype.generateCSSRuleString): Deleted.
+        (WI.CSSStyleDeclaration.prototype.isInspectorRule): Deleted.
+
+        * UserInterface/Models/CSSSelector.js:
+        (WI.CSSSelector.prototype.isGreaterThan): Deleted.
+
+        * UserInterface/Models/CSSRule.js:
+        (WI.CSSRule.prototype.update):
+        (WI.CSSRule.prototype.get matchedSelectors): Deleted.
+        (WI.CSSRule.prototype.get matchedSelectorText): Deleted.
+        (WI.CSSRule.prototype.hasMatchedPseudoElementSelector): Deleted.
+        (WI.CSSRule.prototype.get mediaText): Deleted.
+        (WI.CSSRule.prototype.get mostSpecificSelector): Deleted.
+        (WI.CSSRule.prototype.selectorIsGreater): Deleted.
+        (WI.CSSRule.prototype._determineMostSpecificSelector): Deleted.
+
+        * UserInterface/Models/DOMNodeStyles.js:
+        (WI.DOMNodeStyles.prototype.changeRule.changeCompleted): Deleted.
+        (WI.DOMNodeStyles.prototype.changeRule.styleChanged): Deleted.
+        (WI.DOMNodeStyles.prototype.changeRule.changeText): Deleted.
+        (WI.DOMNodeStyles.prototype.changeRule.ruleSelectorChanged): Deleted.
+        (WI.DOMNodeStyles.prototype.changeRule): Deleted.
+
+        * UserInterface/Models/CSSCompletions.js:
+        (WI.CSSCompletions.prototype.isValidPropertyName):
+        (WI.CSSCompletions):
+        (WI.CSSCompletions.prototype.keySet): Deleted.
+        (WI.CSSCompletions.prototype.propertyRequiresWebkitPrefix): Deleted.
+        (WI.CSSCompletions.prototype.getClosestPropertyName): Deleted.
+
+        * UserInterface/Views/ComputedStyleDetailsPanel.js:
+        (WI.ComputedStyleDetailsPanel.prototype.cssStyleDeclarationTextEditorStartEditingAdjacentRule): Deleted.
+
+        * UserInterface/Views/RulesStyleDetailsSidebarPanel.js:
+        (WI.RulesStyleDetailsSidebarPanel):
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.js:
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.spreadsheetStylePropertyFocusMoved):
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationSection.js:
+        (WI.SpreadsheetCSSStyleDeclarationSection.prototype.spreadsheetCSSStyleDeclarationEditorStartEditingRuleSelector): Added.
+        (WI.SpreadsheetCSSStyleDeclarationSection.prototype.cssStyleDeclarationTextEditorStartEditingRuleSelector): Deleted.
+
+        * UserInterface/Views/SpreadsheetRulesStyleDetailsPanel.js:
+        (WI.SpreadsheetRulesStyleDetailsPanel):
+        * UserInterface/Views/SpreadsheetRulesStyleDetailsPanel.css:
+        (.sidebar > .panel.details.css-style .rules): Added.
+        (.sidebar > .panel.details.css-style > .content > .rules .section-header): Added.
+        (.sidebar > .panel.details.css-style > .content > .rules .section-header .node-link): Added.
+        (.sidebar > .panel.details.css-style > .content > .rules .section-header .node-link:hover): Added.
+        (.sidebar > .panel.details.css-style > .content > .rules > .message-text-view): Added.
+        (.sidebar > .panel.details.css-style > .content > .rules:not(.filter-non-matching) > .message-text-view): Added.
+        (@media (prefers-dark-interface)):
+        (.sidebar > .panel.details.css-style > .content > .rules .section-header): Added.
+        (.sidebar > .panel.details.css-style > .content > .rules .section-header .node-link:hover): Added.
+        (.spreadsheet-style-panel .section-header): Deleted.
+        (.spreadsheet-style-panel .section-header .node-link): Deleted.
+        (.spreadsheet-style-panel .section-header .node-link:hover): Deleted.
+        (.spreadsheet-style-panel .section-header): Deleted.
+        (.spreadsheet-style-panel .section-header .node-link:hover): Deleted.
+
+        * UserInterface/Views/CodeMirrorAdditions.js:
+        (extendedCSSRuleStartState): Removed.
+        * UserInterface/Views/CodeMirrorFormatters.js:
+        Remove "css-rule" CodeMirror mode.
+
+        * UserInterface/Views/CodeMirrorTextMarkers.js:
+        (createCodeMirrorVariableTextMarkers): Deleted.
+
+        * UserInterface/Views/SettingsTabContentView.js:
+        (WI.SettingsTabContentView.prototype._createExperimentalSettingsView):
+
+2018-09-21  Mike Gorse  <mgorse@suse.com>
+
+        Build tools should work when the /usr/bin/python is python3
+        https://bugs.webkit.org/show_bug.cgi?id=156674
+
+        Reviewed by Michael Catanzaro.
+
+        * Scripts/copy-user-interface-resources.pl: Use $PYTHON if set
+        in the environment.
+
+2018-09-20  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: remove Visual Style CSS details sidebar panel
+        https://bugs.webkit.org/show_bug.cgi?id=189807
+
+        Reviewed by Joseph Pecoraro.
+
+        The Visual Style CSS details sidebar panel has been hidden behind an "experimental" setting
+        for almost a year.  It's time that we remove it.
+
+        * Localizations/en.lproj/localizedStrings.js:
+        * UserInterface/Base/Setting.js:
+        * UserInterface/Main.html:
+
+        * UserInterface/Views/ElementsTabContentView.js:
+        (WI.ElementsTabContentView):
+        * UserInterface/Views/SettingsTabContentView.js:
+        (WI.SettingsTabContentView.prototype._createExperimentalSettingsView):
+
+        * UserInterface/Images/AnimationPlayStatePaused.svg: Removed.
+        * UserInterface/Images/AnimationPlayStateRunning.svg: Removed.
+        * UserInterface/Images/ClearBoth.svg: Removed.
+        * UserInterface/Images/ClearLeft.svg: Removed.
+        * UserInterface/Images/ClearRight.svg: Removed.
+        * UserInterface/Images/FloatLeft.svg: Removed.
+        * UserInterface/Images/FloatRight.svg: Removed.
+        * UserInterface/Images/FontStyleItalic.svg: Removed.
+        * UserInterface/Images/FontStyleNormal.svg: Removed.
+        * UserInterface/Images/ListStylePositionInside.svg: Removed.
+        * UserInterface/Images/ListStylePositionOutside.svg: Removed.
+        * UserInterface/Images/TextAlignCenter.svg: Removed.
+        * UserInterface/Images/TextAlignJustify.svg: Removed.
+        * UserInterface/Images/TextAlignLeft.svg: Removed.
+        * UserInterface/Images/TextAlignRight.svg: Removed.
+        * UserInterface/Images/TextDecorationLineThrough.svg: Removed.
+        * UserInterface/Images/TextDecorationOverline.svg: Removed.
+        * UserInterface/Images/TextDecorationUnderline.svg: Removed.
+        * UserInterface/Images/TextTransformCapitalize.svg: Removed.
+        * UserInterface/Images/TextTransformLowercase.svg: Removed.
+        * UserInterface/Images/TextTransformUppercase.svg: Removed.
+        * UserInterface/Images/VisualStyleNone.svg: Removed.
+        * UserInterface/Images/VisualStylePropertyLinked.svg: Removed.
+        * UserInterface/Images/VisualStylePropertyUnlinked.svg: Removed.
+
+        * UserInterface/Views/VisualStyleBackgroundPicker.css: Removed.
+        * UserInterface/Views/VisualStyleBackgroundPicker.js: Removed.
+        * UserInterface/Views/VisualStyleBasicInput.js: Removed.
+        * UserInterface/Views/VisualStyleColorPicker.css: Removed.
+        * UserInterface/Views/VisualStyleColorPicker.js: Removed.
+        * UserInterface/Views/VisualStyleCommaSeparatedKeywordEditor.css: Removed.
+        * UserInterface/Views/VisualStyleCommaSeparatedKeywordEditor.js: Removed.
+        * UserInterface/Views/VisualStyleDetailsPanel.css: Removed.
+        * UserInterface/Views/VisualStyleDetailsPanel.js: Removed.
+        * UserInterface/Views/VisualStyleDetailsSidebarPanel.js: Removed.
+        * UserInterface/Views/VisualStyleFontFamilyListEditor.js: Removed.
+        * UserInterface/Views/VisualStyleFontFamilyTreeElement.js: Removed.
+        * UserInterface/Views/VisualStyleKeywordCheckbox.css: Removed.
+        * UserInterface/Views/VisualStyleKeywordCheckbox.js: Removed.
+        * UserInterface/Views/VisualStyleKeywordIconList.css: Removed.
+        * UserInterface/Views/VisualStyleKeywordIconList.js: Removed.
+        * UserInterface/Views/VisualStyleKeywordPicker.js: Removed.
+        * UserInterface/Views/VisualStyleNumberInputBox.css: Removed.
+        * UserInterface/Views/VisualStyleNumberInputBox.js: Removed.
+        * UserInterface/Views/VisualStylePropertyCombiner.js: Removed.
+        * UserInterface/Views/VisualStylePropertyEditor.css: Removed.
+        * UserInterface/Views/VisualStylePropertyEditor.js: Removed.
+        * UserInterface/Views/VisualStylePropertyEditorLink.css: Removed.
+        * UserInterface/Views/VisualStylePropertyEditorLink.js: Removed.
+        * UserInterface/Views/VisualStylePropertyNameInput.js: Removed.
+        * UserInterface/Views/VisualStyleRelativeNumberSlider.css: Removed.
+        * UserInterface/Views/VisualStyleRelativeNumberSlider.js: Removed.
+        * UserInterface/Views/VisualStyleSelectorSection.css: Removed.
+        * UserInterface/Views/VisualStyleSelectorSection.js: Removed.
+        * UserInterface/Views/VisualStyleSelectorTreeItem.css: Removed.
+        * UserInterface/Views/VisualStyleSelectorTreeItem.js: Removed.
+        * UserInterface/Views/VisualStyleTabbedPropertiesRow.css: Removed.
+        * UserInterface/Views/VisualStyleTabbedPropertiesRow.js: Removed.
+        * UserInterface/Views/VisualStyleTimingEditor.css: Removed.
+        * UserInterface/Views/VisualStyleTimingEditor.js: Removed.
+        * UserInterface/Views/VisualStyleURLInput.js: Removed.
+        * UserInterface/Views/VisualStyleUnitSlider.css: Removed.
+        * UserInterface/Views/VisualStyleUnitSlider.js: Removed.
+
+        * UserInterface/Controllers/VisualStyleCompletionsController.js: Removed.
+
+2018-09-20  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: Styles Redesign: rework Computed panel to use Spreadsheet classes
+        https://bugs.webkit.org/show_bug.cgi?id=183627
+
+        Reviewed by Joseph Pecoraro.
+
+        * UserInterface/Views/ComputedStyleDetailsPanel.js:
+        (WI.ComputedStyleDetailsPanel):
+        (WI.ComputedStyleDetailsPanel.prototype.refresh):
+        (WI.ComputedStyleDetailsPanel.prototype.applyFilter):
+        (WI.ComputedStyleDetailsPanel.prototype.spreadsheetCSSStyleDeclarationEditorShowProperty):
+        (WI.ComputedStyleDetailsPanel.prototype.initialLayout):
+        (WI.ComputedStyleDetailsPanel.prototype.filterDidChange):
+        (WI.ComputedStyleDetailsPanel.prototype._computedStyleShowAllCheckboxValueChanged):
+        (WI.ComputedStyleDetailsPanel.prototype._handlePropertiesSectionCollapsedStateChanged):
+        (WI.ComputedStyleDetailsPanel.prototype._handleVariablesSectionCollapsedStateChanged):
+        (WI.ComputedStyleDetailsPanel.prototype._handleEditorFilterApplied):
+        (WI.ComputedStyleDetailsPanel.prototype.cssStyleDeclarationTextEditorShowProperty.delegateShowProperty): Deleted.
+        (WI.ComputedStyleDetailsPanel.prototype.cssStyleDeclarationTextEditorShowProperty): Deleted.
+        Replace CSSStyleDeclarationTextEditor with SpreadsheetCSSStyleDeclarationEditor.
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.js:
+        (WI.SpreadsheetCSSStyleDeclarationEditor):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.initialLayout):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.layout):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.set showsImplicitProperties):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.set alwaysShowPropertyNames):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.set propertyVisibilityMode):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.set hideFilterNonMatchingProperties):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.set sortPropertiesByName): Added.
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.get propertiesToRender):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.highlightProperty):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.applyFilter):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.spreadsheetStylePropertyShowProperty):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype._updateStyleLock):
+        (WI.SpreadsheetCSSStyleDeclarationEditor.prototype.get _propertiesToRender): Deleted.
+        Create setters for the "special" functionality required by the Computed panel and tie them
+        into the logic that determines what properties are rendered.
+
+        * UserInterface/Views/SpreadsheetStyleProperty.js:
+        (WI.SpreadsheetStyleProperty.prototype._update):
+        Create go-to arrow if the property has a shorthand version or a source code location.
+
+        * UserInterface/Views/GeneralStyleDetailsSidebarPanel.js:
+        (WI.GeneralStyleDetailsSidebarPanel.prototype.initialLayout):
+        Don't reapply the filter after refreshing, as the current panel will handle applying it.
+
+        * UserInterface/Views/ComputedStyleDetailsPanel.css:
+        (.details-section:matches(.computed-style-properties, .computed-style-box-model):not(.collapsed) > :matches(.header, .content)):
+        (.computed-style-properties .property .go-to-arrow):
+        (.computed-style-properties .property:hover .go-to-arrow):
+        (.computed-style-properties.details-section): Deleted.
+        (.details-section > .content > .group > .row .CodeMirror-code pre .go-to-arrow): Deleted.
+        (.details-section > .content > .group > .row .CodeMirror-code pre:hover .go-to-arrow): Deleted.
+        (.details-section.style-box-model:not(.collapsed) > :matches(.header, .content)): Deleted.
+        * UserInterface/Views/DetailsSection.css:
+        (.details-section.computed-style-properties:not(.collapsed) > .header): Deleted.
+        Consolidate Computed panel styles to it's respective CSS file.
+
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.css:
+        (.spreadsheet-style-declaration-editor):
+        (.spreadsheet-style-declaration-editor .property:matches(.implicit, .not-inherited) .content > *):
+        (.spreadsheet-style-declaration-editor .property.not-inherited .content > *): Deleted.
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationSection.css:
+        (.spreadsheet-css-declaration):
+        * UserInterface/Views/Variables.css:
+        (:root):
+        Move `css-declaration` padding variables so they can be used by SpreadsheetCSSStyleDeclarationEditor
+        without a parent SpreadsheetCSSStyleDeclarationSection.
+
+        * UserInterface/Views/SpreadsheetRulesStyleDetailsPanel.css:
+        (.style-spreadsheet .style-rule): Deleted.
+        (.style-spreadsheet .selector-line): Deleted.
+        (.style-spreadsheet .selector): Deleted.
+        (.style-spreadsheet :matches(.selector .matched, .selector:focus)): Deleted.
+        (.style-spreadsheet .name): Deleted.
+        (.style-spreadsheet .value): Deleted.
+        (.style-spreadsheet :matches(.selector, .name, .value)): Deleted.
+        (.style-spreadsheet :matches(.selector, .name, .value):focus): Deleted.
+        (.style-spreadsheet .selector-inline): Deleted.
+        (.style-spreadsheet .property): Deleted.
+        (.style-spreadsheet .property-disabled,): Deleted.
+        (.style-spreadsheet .property-disabled :matches(.name, .value)): Deleted.
+        (.style-spreadsheet .styles-source): Deleted.
+        (.style-spreadsheet :matches(a, .node-link)): Deleted.
+        (.style-spreadsheet :matches(a, .node-link):hover): Deleted.
+        (.style-spreadsheet .declarations): Deleted.
+        (.style-spreadsheet input[type="checkbox"]): Deleted.
+        (.style-spreadsheet input[type="checkbox"]:not(:checked)): Deleted.
+        (.style-spreadsheet .declarations:hover input[type="checkbox"]): Deleted.
+        Drive-by fix: remove styles that don't apply to anything.
+
+2018-09-19  Nikita Vasilyev  <nvasilyev@apple.com>
+
+        Web Inspector: move DarkMode.css rules into appropriate CSS files
+        https://bugs.webkit.org/show_bug.cgi?id=189673
+
+        Reviewed by Matt Baker.
+
+        * UserInterface/Main.html:
+        * UserInterface/Views/BezierEditor.css:
+        (@media (prefers-dark-interface)):
+        (.bezier-editor > .bezier-preview-timing):
+        (.bezier-editor > .bezier-container .bezier-curve):
+        (.bezier-editor > .bezier-container .linear-curve):
+        (.bezier-editor > .bezier-preview):
+        (.bezier-editor > .bezier-preview > div):
+        (.bezier-editor > .bezier-container .control-handle):
+        (.bezier-editor > .bezier-container .control-line):
+        * UserInterface/Views/BreakpointActionView.css:
+        (@media (prefers-dark-interface)):
+        (.breakpoint-action-block-body):
+        (.breakpoint-action-block-body > .description):
+        (.breakpoint-action-append-button,):
+        (.breakpoint-action-eval-editor):
+        * UserInterface/Views/BreakpointPopoverController.css:
+        (@media (prefers-dark-interface)):
+        (.popover .edit-breakpoint-popover-content > label.toggle):
+        (.popover .edit-breakpoint-popover-content > table > tr > th):
+        (.edit-breakpoint-popover-condition):
+        * UserInterface/Views/ButtonNavigationItem.css:
+        (@media (prefers-dark-interface)):
+        (.navigation-bar .item.button):
+        * UserInterface/Views/ButtonToolbarItem.css:
+        (@media (prefers-dark-interface)):
+        (.toolbar .item.button):
+        (.toolbar .item.button:not(.disabled):active):
+        (.toolbar .item.button:not(.disabled):matches(:focus, .activate.activated)):
+        (.toolbar .item.button:not(.disabled):active:matches(:focus, .activate.activated)):
+        * UserInterface/Views/CallFrameView.css:
+        (@media (prefers-dark-interface)):
+        (.call-frame .subtitle,):
+        (.call-frame:hover .subtitle .source-link,):
+        (.call-frame .separator):
+        * UserInterface/Views/CanvasContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.canvas:not(.tab)):
+        * UserInterface/Views/CanvasOverviewContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.canvas-overview):
+        (.content-view.canvas-overview .content-view.canvas):
+        (.content-view.canvas-overview .content-view.canvas.is-recording):
+        (.content-view.canvas-overview .content-view.canvas.is-recording > header):
+        (.content-view.canvas-overview .content-view.canvas > header > .titles > .title):
+        (.content-view.canvas-overview .content-view.canvas > header > .titles > .subtitle,):
+        (.content-view.canvas-overview .content-view.canvas > footer > .recordings::before):
+        (.content-view.canvas-overview .content-view.canvas.is-recording > header > .titles > .subtitle):
+        * UserInterface/Views/CanvasTabContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.tab.canvas .navigation-bar > .item .canvas-overview .icon):
+        (.content-view.tab.canvas .navigation-bar > .item .canvas.canvas-2d .icon,):
+        (.content-view.canvas > .preview > img,):
+        * UserInterface/Views/CodeMirrorOverrides.css:
+        (@media (prefers-dark-interface)):
+        (.CodeMirror-cursor):
+        (.CodeMirror .CodeMirror-gutters):
+        (.cm-s-default .cm-link):
+        (.CodeMirror .CodeMirror-lines .CodeMirror-matchingbracket):
+        * UserInterface/Views/CompletionSuggestionsView.css:
+        (@media (prefers-dark-interface)):
+        (.completion-suggestions):
+        (.completion-suggestions-container > .item):
+        * UserInterface/Views/ComputedStyleDetailsPanel.css:
+        (@media (prefers-dark-interface)):
+        (.computed-style-properties.details-section):
+        (.details-section.style-box-model:not(.collapsed) > :matches(.header, .content)):
+        * UserInterface/Views/ConsoleMessageView.css:
+        (@media (prefers-dark-interface)):
+        (.console-message .syntax-highlighted):
+        (.console-warning-level .console-message-text):
+        (.console-error-level .console-message-text):
+        (.console-user-command > .console-message-text):
+        (.console-message .repeat-count):
+        * UserInterface/Views/ConsolePrompt.css:
+        (@media (prefers-dark-interface)):
+        (.console-prompt):
+        * UserInterface/Views/DOMNodeDetailsSidebarPanel.css:
+        (@media (prefers-dark-interface)):
+        (.sidebar > .panel.dom-node-details .details-section.dom-node-event-listeners > .header > .filter:hover):
+        * UserInterface/Views/DOMTreeOutline.css:
+        (@media (prefers-dark-interface)):
+        (.tree-outline.dom):
+        (.tree-outline.dom li.elements-drag-over .selection-area):
+        (.tree-outline.dom li.selected .selection-area):
+        (.tree-outline.dom:focus li.selected .selection-area):
+        (.tree-outline.dom li.selected + ol.children.expanded):
+        (.tree-outline.dom .shadow):
+        (.tree-outline.dom li.parent.shadow + ol.children.expanded,):
+        (.showing-find-banner .tree-outline.dom .search-highlight):
+        * UserInterface/Views/DarkMode.css: Removed.
+        * UserInterface/Views/DataGrid.css:
+        (@media (prefers-dark-interface)):
+        (.data-grid th):
+        (.data-grid td .subtitle):
+        (.data-grid:matches(:focus, .force-focus) tr.selected td .subtitle):
+        (body:not(.window-inactive, .window-docked-inactive) .data-grid:matches(:focus, .force-focus) tr.editable.selected .cell-content > input):
+        (.data-grid tr.editable .cell-content > input):
+        (.data-grid td.spanning):
+        * UserInterface/Views/DebuggerDashboardView.css:
+        (@media (prefers-dark-interface)):
+        (.toolbar .dashboard.debugger):
+        (.dashboard.debugger .navigation-bar .item.button > .glyph):
+        (.dashboard.debugger > .location .function-name):
+        (.dashboard.debugger > .location .go-to-link):
+        (.dashboard.debugger > .divider):
+        * UserInterface/Views/DefaultDashboardView.css:
+        (@media (prefers-dark-interface)):
+        (.toolbar .dashboard.default > .item > div):
+        (.toolbar .dashboard.default > .item.enabled > div):
+        (.toolbar .dashboard.default > .item.enabled:hover):
+        (.toolbar .dashboard.default > .item.enabled:hover > div):
+        (.toolbar .dashboard.default > .resourcesCount > img,):
+        (body.latest-mac .toolbar .dashboard .item.button):
+        (.dashboard-container .advance-arrow):
+        * UserInterface/Views/DetailsSection.css:
+        (@media (prefers-dark-interface)):
+        (.details-section > .header):
+        (.details-section > .header > label):
+        (.details-section .details-section,):
+        (.details-section .details-section:not(.collapsed) > .header):
+        (.details-section > .content > .group > .row.simple > .label):
+        (.details-section > .content > .group:nth-child(even)):
+        (.details-section > .content > .group > .row:matches(.empty, .text)):
+        * UserInterface/Views/DividerNavigationItem.css:
+        (@media (prefers-dark-interface)):
+        (.navigation-bar .item.divider):
+        * UserInterface/Views/Editing.css:
+        (@media (prefers-dark-interface)):
+        (.editing):
+        (.editing, .editing *):
+        * UserInterface/Views/FindBanner.css:
+        (@media (prefers-dark-interface)):
+        (.find-banner > input[type="search"]):
+        (.find-banner.console-find-banner > input[type=search]:not(:placeholder-shown)):
+        * UserInterface/Views/FontResourceContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.resource.font .preview > .line):
+        (.content-view.resource.font .metric.top):
+        (.content-view.resource.font .metric.baseline):
+        (.content-view.resource.font .metric.middle):
+        (.content-view.resource.font .metric.xheight):
+        (.content-view.resource.font .metric.bottom):
+        * UserInterface/Views/FormattedValue.css:
+        (@media (prefers-dark-interface)):
+        (.formatted-object,):
+        (.formatted-null,):
+        * UserInterface/Views/GeneralStyleDetailsSidebarPanel.css:
+        (@media (prefers-dark-interface)):
+        (.sidebar > .panel.details.css-style > .content > .pseudo-classes > .group > label):
+        (.sidebar > .panel.details.css-style > .content ~ .options-container > .new-rule):
+        (.sidebar > .panel.details.css-style > .content ~ .options-container > .toggle-class-toggle):
+        * UserInterface/Views/HoverMenu.css:
+        (@media (prefers-dark-interface)):
+        (.hover-menu > svg > :matches(path, rect)):
+        * UserInterface/Views/ImageResourceContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.resource.image):
+        * UserInterface/Views/InlineSwatch.css:
+        (@media (prefers-dark-interface)):
+        (.inline-swatch):
+        * UserInterface/Views/LogContentView.css:
+        (@media (prefers-dark-interface)):
+        (.console-messages):
+        (.console-item):
+        (.console-messages:focus .console-item.selected):
+        (.console-messages:focus .console-item.selected + .console-item):
+        (.console-session:first-of-type .console-session-header):
+        (.console-session:not(:first-of-type) .console-session-header):
+        (.console-messages a):
+        (.console-messages a:hover):
+        (.console-messages:focus .console-item.selected::after):
+        (.console-error-level):
+        (.console-error-level:not(.filtered-out, .filtered-out-by-search), .console-error-level:not(.filtered-out, .filtered-out-by-search) + .console-item):
+        (.console-warning-level):
+        (.console-warning-level:not(.filtered-out, .filtered-out-by-search), .console-warning-level:not(.filtered-out, .filtered-out-by-search) + .console-item):
+        (.search-in-progress .console-item:not(.filtered-out-by-search) .highlighted):
+        (.search-in-progress .console-item:not(.filtered-out-by-search) .highlighted.selected):
+        * UserInterface/Views/Main.css:
+        (#main):
+        (@media (prefers-dark-interface)):
+        (.go-to-arrow):
+        (.resource-link,):
+        (.expand-list-button):
+        (:matches(img, canvas).show-grid):
+        * UserInterface/Views/NetworkResourceDetailView.css:
+        (@media (prefers-dark-interface)):
+        (.network-resource-detail):
+        (.network-resource-detail .item.close > .glyph):
+        (.network .network-resource-detail .navigation-bar .item.radio.button.text-only.selected):
+        (.resource-headers .value):
+        * UserInterface/Views/NetworkTableContentView.css:
+        (@media (prefers-dark-interface)):
+        (.network-table .cell.domain > .lock):
+        * UserInterface/Views/NewTabContentView.css:
+        (@media (prefers-dark-interface)):
+        (.new-tab.tab.content-view):
+        * UserInterface/Views/ObjectTreePropertyTreeElement.css:
+        (@media (prefers-dark-interface)):
+        (.object-tree-property .getter,):
+        (.item.object-tree-property.prototype-property):
+        (.object-tree-property.prototype-property:hover,):
+        (.object-tree-property .value.error):
+        * UserInterface/Views/ObjectTreeView.css:
+        (@media (prefers-dark-interface)):
+        (.object-tree,):
+        (.object-preview .name):
+        (.object-preview > .size):
+        * UserInterface/Views/OpenResourceDialog.css:
+        (@media (prefers-dark-interface)):
+        (.open-resource-dialog):
+        (.open-resource-dialog > .field > input):
+        (.open-resource-dialog > .field > input::placeholder):
+        (.open-resource-dialog > .tree-outline .item.selected):
+        (.open-resource-dialog > .field::before):
+        * UserInterface/Views/ProgressView.css:
+        (@media (prefers-dark-interface)):
+        (.progress-view > .titles > .title):
+        (.progress-view > .titles > .subtitle):
+        (.indeterminate-progress-spinner):
+        * UserInterface/Views/QuickConsole.css:
+        (@media (prefers-dark-interface)):
+        (.quick-console):
+        (.CodeMirror .jump-to-symbol-highlight,):
+        (.quick-console.showing-log):
+        * UserInterface/Views/RecordingActionTreeElement.css:
+        (@media (prefers-dark-interface)):
+        (.item.action:not(.initial-state)::before):
+        (.tree-outline .item.action.visual:not(.selected, .invalid)):
+        (.item.action:not(.initial-state) > .icon):
+        (.tree-outline:not(.hide-disclosure-buttons) .item.action:not(.initial-state, .parent) > .icon):
+        * UserInterface/Views/RecordingContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view:not(.tab).recording):
+        (.content-view:not(.tab).recording > header > .slider-container):
+        (.content-view:not(.tab).recording > header > .slider-container > input[type=range]):
+        * UserInterface/Views/RecordingStateDetailsSidebarPanel.css:
+        (@media (prefers-dark-interface)):
+        (.sidebar > .panel.details.recording-state > .content > .data-grid tr.modified):
+        * UserInterface/Views/ResourceHeadersContentView.css:
+        (@media (prefers-dark-interface)):
+        (.resource-headers .value):
+        * UserInterface/Views/ResourceSizesContentView.css:
+        (@media (prefers-dark-interface)):
+        (.resource-sizes > .content .label):
+        * UserInterface/Views/ResourceTimingBreakdownView.css:
+        (@media (prefers-dark-interface)):
+        (.popover.waterfall-popover):
+        (.resource-timing-breakdown > table > tr.header:not(.total-row) > td):
+        (.resource-timing-breakdown > table > tr > td.label,):
+        (.resource-timing-breakdown > table hr):
+        * UserInterface/Views/ScopeBar.css:
+        (@media (prefers-dark-interface)):
+        (.scope-bar > li):
+        * UserInterface/Views/SearchBar.css:
+        (@media (prefers-dark-interface)):
+        (:matches(.search-bar, .filter-bar) > input[type="search"],):
+        (:matches(.search-bar, .filter-bar) > input[type="search"]::placeholder):
+        (:matches(.search-bar, .filter-bar) > input[type="search"]:focus):
+        * UserInterface/Views/SearchSidebarPanel.css:
+        (@media all):
+        * UserInterface/Views/SettingsTabContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.settings .navigation-bar):
+        (.content-view.settings .navigation-bar .item.radio.button.text-only.selected):
+        * UserInterface/Views/ShaderProgramContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.shader-program > .text-editor.shader):
+        (.content-view.shader-program > .text-editor.shader > .type-title):
+        * UserInterface/Views/ShaderProgramTreeElement.css:
+        (@media (prefers-dark-interface)):
+        (.item.shader-program .status > img):
+        * UserInterface/Views/SourceCodeTextEditor.css:
+        (@media (prefers-dark-interface)):
+        (.source-code.text-editor > .CodeMirror .error):
+        (.source-code.text-editor > .CodeMirror .warning):
+        (.source-code.text-editor > .CodeMirror .issue-widget):
+        (.source-code.text-editor > .CodeMirror .issue-widget.warning,):
+        (.source-code.text-editor > .CodeMirror .issue-widget.error,):
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationEditor.css:
+        (@media (prefers-dark-interface)):
+        (.spreadsheet-style-declaration-editor .property:not(.disabled) .value):
+        (.spreadsheet-style-declaration-editor :matches(.name, .value).editing):
+        (.spreadsheet-style-declaration-editor .property.has-warning):
+        (.spreadsheet-style-declaration-editor .property.has-warning .warning):
+        (.spreadsheet-style-declaration-editor .property:matches(.invalid-name, .other-vendor, .overridden):not(.disabled) .content > *):
+        * UserInterface/Views/SpreadsheetCSSStyleDeclarationSection.css:
+        (@media (prefers-dark-interface)):
+        (.spreadsheet-css-declaration):
+        (.spreadsheet-css-declaration.locked):
+        (.spreadsheet-css-declaration .selector.style-attribute):
+        (.spreadsheet-css-declaration .selector:focus,):
+        (.spreadsheet-css-declaration.locked .origin::after):
+        (.spreadsheet-css-declaration .origin .go-to-link,):
+        (.spreadsheet-css-declaration .media-label):
+        * UserInterface/Views/SpreadsheetRulesStyleDetailsPanel.css:
+        (@media (prefers-dark-interface)):
+        (.spreadsheet-style-panel .section-header):
+        (.spreadsheet-style-panel .section-header .node-link:hover):
+        * UserInterface/Views/SyntaxHighlightingDefaultTheme.css:
+        (@media (prefers-dark-interface)):
+        (.syntax-highlighted,):
+        (.cm-s-default,):
+        (.cm-s-default .cm-attribute):
+        (.cm-s-default .cm-m-xml.cm-attribute,):
+        (.cm-s-default .cm-meta):
+        (.cm-s-default .cm-variable-3):
+        (.cm-s-default .cm-builtin):
+        * UserInterface/Views/TabBar.css:
+        (@media (prefers-dark-interface)):
+        (.tab-bar):
+        (.tab-bar > .item):
+        (.tab-bar > .item > .title):
+        (.tab-bar > .item:not(.disabled).selected):
+        (.tab-bar:not(.animating) > .item:not(.selected):hover):
+        (.tab-bar > .item > .close,):
+        (body.window-inactive .tab-bar):
+        (body.window-inactive .tab-bar > .item):
+        (body.window-inactive .tab-bar > .item.selected):
+        (body.window-inactive .tab-bar > .item > .title):
+        * UserInterface/Views/Table.css:
+        (@media (prefers-dark-interface)):
+        (.table,):
+        (.table > .header > .sortable:active):
+        (.table > .header > :matches(.sort-ascending, .sort-descending)):
+        (.table > .header > :matches(.sort-ascending, .sort-descending)::after):
+        * UserInterface/Views/TextEditor.css:
+        (@media (prefers-dark-interface)):
+        (.text-editor > .CodeMirror .execution-line):
+        (.text-editor > .CodeMirror .execution-range-highlight:not(.CodeMirror-selectedtext),):
+        * UserInterface/Views/TimelineDataGrid.css:
+        (@media (prefers-dark-interface)):
+        (.data-grid th:matches(.sort-ascending, .sort-descending)):
+        * UserInterface/Views/TimelineIcons.css:
+        (@media (prefers-dark-interface)):
+        (.time-icon .icon):
+        * UserInterface/Views/TimelineOverview.css:
+        (@media (prefers-dark-interface)):
+        (.timeline-overview > .navigation-bar.timelines):
+        (.timeline-overview:not(.frames) > .graphs-container > .timeline-overview-graph:nth-child(even)):
+        (.timeline-overview.edit-instruments > .tree-outline.timelines .item:not(:first-child),):
+        * UserInterface/Views/TimelineRecordingContentView.css:
+        (@media (prefers-dark-interface)):
+        (.content-view.timeline-recording > .content-browser > .navigation-bar > .item.scope-bar.default-item-selected > .multiple):
+        (.content-view.timeline-recording > .content-browser > .navigation-bar > .item.scope-bar.default-item-selected > .multiple .arrows):
+        * UserInterface/Views/Toolbar.css:
+        (@media (prefers-dark-interface)):
+        (body .toolbar):
+        (body.window-inactive .toolbar):
+        (body.latest-mac .toolbar .item.button,):
+        (body.latest-mac .toolbar .search-bar > input[type="search"]):
+        (body.latest-mac .toolbar .search-bar > input[type="search"]:focus):
+        (body.latest-mac .toolbar .search-bar > input[type="search"]::placeholder):
+        (body.latest-mac.window-inactive .toolbar .search-bar > input[type="search"]::placeholder):
+        (body.latest-mac.window-inactive .toolbar .search-bar > input[type="search"]::-webkit-search-results-button):
+        (body.latest-mac .toolbar .dashboard-container):
+        (body.latest-mac .toolbar .item.button:active):
+        (body.latest-mac.window-inactive .toolbar .item.button,):
+        * UserInterface/Views/TreeOutline.css:
+        (@media (prefers-dark-interface)):
+        (.tree-outline .item .subtitle):
+        * UserInterface/Views/Variables.css:
+        (@media (prefers-dark-interface)):
+        (:root):
+        (body.window-inactive):
+        (body.window-inactive *):
+        * UserInterface/Views/WebSocketContentView.css:
+        (@media (prefers-dark-interface)):
+        (.web-socket.content-view .data-grid table.data tr.revealed):
+        (.web-socket.content-view .data-grid.variable-height-rows table.data tr.outgoing):
+        (.web-socket.content-view .data-grid.variable-height-rows table.data tr.non-text-frame):
+        * UserInterface/Views/XHRBreakpointPopover.css:
+        (@media (prefers-dark-interface)):
+        (.popover .xhr-breakpoint-content > .editor-wrapper > .editor):
+
+2018-09-17  Devin Rousso  <drousso@apple.com>
+
+        Web Inspector: generate CSSKeywordCompletions from backend values
+        https://bugs.webkit.org/show_bug.cgi?id=189041
+
+        Reviewed by Joseph Pecoraro.
+
+        Moves the longhands map to `WI.CSSKeywordCompletions` for more global access. Creates an
+        aliases map to support completions on aliases with the same values as the non-alias name.
+        Removes all keyword-only properties from `WI.CSSKeywordCompletions._propertyKeywordMap` as
+        they are now generated by the backend (kept for compatibility).
+
+        * UserInterface/Models/CSSCompletions.js:
+        (WI.CSSCompletions):
+        (WI.CSSCompletions.requestCSSCompletions.propertyNamesCallback):
+        (WI.CSSCompletions.prototype.isShorthandPropertyName):
+
+        * UserInterface/Models/CSSKeywordCompletions.js:
+        (WI.CSSKeywordCompletions.forProperty.addKeywordsForName): Added.
+        (WI.CSSKeywordCompletions.forProperty):
+        (WI.CSSKeywordCompletions.addCustomCompletions):
+
+        * UserInterface/Models/CSSProperty.js:
+        (WI.CSSProperty.isInheritedPropertyName):
+
 2018-09-15  Devin Rousso  <drousso@apple.com>
 
         Web Inspector: REGRESSION: breakpoint context menu appears twice in DOM tree

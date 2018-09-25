@@ -83,6 +83,8 @@ public:
     void getAllStorageAccessEntries(PAL::SessionID, CompletionHandler<void(Vector<String>&& domains)>&&);
     void grantStorageAccess(PAL::SessionID, const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, CompletionHandler<void(bool)>&& callback);
     void removeAllStorageAccess(PAL::SessionID, CompletionHandler<void()>&&);
+    void setCacheMaxAgeCapForPrevalentResources(PAL::SessionID, Seconds, CompletionHandler<void()>&&);
+    void resetCacheMaxAgeCapForPrevalentResources(PAL::SessionID, CompletionHandler<void()>&&);
 #endif
 
     void writeBlobToFilePath(const WebCore::URL&, const String& path, CompletionHandler<void(bool)>&& callback);
@@ -139,7 +141,6 @@ private:
     void didDeleteWebsiteData(uint64_t callbackID);
     void didDeleteWebsiteDataForOrigins(uint64_t callbackID);
     void didWriteBlobToFilePath(bool success, uint64_t callbackID);
-    void grantSandboxExtensionsToStorageProcessForBlobs(uint64_t requestID, const Vector<String>& paths);
     void logDiagnosticMessage(uint64_t pageID, const String& message, const String& description, WebCore::ShouldSample);
     void logDiagnosticMessageWithResult(uint64_t pageID, const String& message, const String& description, uint32_t result, WebCore::ShouldSample);
     void logDiagnosticMessageWithValue(uint64_t pageID, const String& message, const String& description, double value, unsigned significantFigures, WebCore::ShouldSample);
@@ -148,11 +149,17 @@ private:
     void storageAccessRequestResult(bool wasGranted, uint64_t contextId);
     void allStorageAccessEntriesResult(Vector<String>&& domains, uint64_t contextId);
     void didRemoveAllStorageAccess(uint64_t contextId);
+    void didSetCacheMaxAgeCapForPrevalentResources(uint64_t contextId);
+    void didResetCacheMaxAgeCapForPrevalentResources(uint64_t contextId);
 #endif
     void retrieveCacheStorageParameters(PAL::SessionID);
 
 #if ENABLE(CONTENT_EXTENSIONS)
     void contentExtensionRules(UserContentControllerIdentifier);
+#endif
+
+#if ENABLE(SANDBOX_EXTENSIONS)
+    void getSandboxExtensionsForBlobFiles(uint64_t requestID, const Vector<String>& paths);
 #endif
 
     // ProcessLauncher::Client
@@ -182,6 +189,8 @@ private:
     HashMap<uint64_t, CompletionHandler<void(bool wasGranted)>> m_storageAccessResponseCallbackMap;
     HashMap<uint64_t, CompletionHandler<void()>> m_removeAllStorageAccessCallbackMap;
     HashMap<uint64_t, CompletionHandler<void(Vector<String>&& domains)>> m_allStorageAccessEntriesCallbackMap;
+
+    HashMap<uint64_t, CompletionHandler<void()>> m_updateRuntimeSettingsCallbackMap;
 
 #if ENABLE(CONTENT_EXTENSIONS)
     HashSet<WebUserContentControllerProxy*> m_webUserContentControllerProxies;

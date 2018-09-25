@@ -125,10 +125,6 @@ public:
     void scheduleLayerFlush(bool canThrottle);
     void flushPendingLayerChanges(bool isFlushRoot = true);
     
-    // flushPendingLayerChanges() flushes the entire GraphicsLayer tree, which can cross frame boundaries.
-    // This call returns the rootmost compositor that is being flushed (including self).
-    RenderLayerCompositor* enclosingCompositorFlushingLayers() const;
-
     // Called when the GraphicsLayer for the given RenderLayer has flushed changes inside of flushPendingLayerChanges().
     void didFlushChangesForLayer(RenderLayer&, const GraphicsLayer*);
 
@@ -407,7 +403,6 @@ private:
 
     void notifyIFramesOfCompositingChange();
 
-    bool isFlushingLayers() const { return m_flushingLayers; }
     void updateScrollCoordinatedLayersAfterFlushIncludingSubframes();
     void updateScrollCoordinatedLayersAfterFlush();
 
@@ -437,11 +432,7 @@ private:
     bool requiresCompositingForIndirectReason(RenderLayerModelObject&, bool hasCompositedDescendants, bool has3DTransformedDescendants, RenderLayer::IndirectCompositingReason&) const;
     static bool styleChangeMayAffectIndirectCompositingReasons(const RenderLayerModelObject& renderer, const RenderStyle& oldStyle);
 
-#if PLATFORM(IOS)
-    bool requiresCompositingForScrolling(const RenderLayer&) const;
-
     void updateCustomLayersAfterFlush();
-#endif
 
     void updateScrollCoordinationForThisFrame(ScrollingNodeID);
     ScrollingNodeID attachScrollingNode(RenderLayer&, ScrollingNodeType, ScrollingNodeID parentNodeID);
@@ -580,3 +571,8 @@ WTF::TextStream& operator<<(WTF::TextStream&, CompositingUpdateType);
 WTF::TextStream& operator<<(WTF::TextStream&, CompositingPolicy);
 
 } // namespace WebCore
+
+#if ENABLE(TREE_DEBUGGING)
+// Outside the WebCore namespace for ease of invocation from the debugger.
+void showGraphicsLayerTreeForCompositor(WebCore::RenderLayerCompositor&);
+#endif

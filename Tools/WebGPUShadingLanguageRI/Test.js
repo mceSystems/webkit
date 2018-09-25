@@ -55,32 +55,37 @@ function doLex(code)
 
 function makeInt(program, value)
 {
-    return TypedValue.box(program.intrinsics.int, value);
+    return TypedValue.box(program.intrinsics.int, castAndCheckValue(castToInt, value));
 }
 
 function makeUint(program, value)
 {
-    return TypedValue.box(program.intrinsics.uint, value);
+    return TypedValue.box(program.intrinsics.uint, castAndCheckValue(castToUint, value));
 }
 
 function makeUchar(program, value)
 {
-    return TypedValue.box(program.intrinsics.uchar, value);
+    return TypedValue.box(program.intrinsics.uchar, castAndCheckValue(castToUchar, value));
 }
 
 function makeBool(program, value)
 {
-    return TypedValue.box(program.intrinsics.bool, value);
+    return TypedValue.box(program.intrinsics.bool, castAndCheckValue(castToBool, value));
 }
 
 function makeFloat(program, value)
 {
-    return TypedValue.box(program.intrinsics.float, value);
+    return TypedValue.box(program.intrinsics.float, castAndCheckValue(castToFloat, value));
+}
+
+function makeCastedFloat(program, value)
+{
+    return TypedValue.box(program.intrinsics.float, castToFloat(value));
 }
 
 function makeHalf(program, value)
 {
-    return TypedValue.box(program.intrinsics.half, value);
+    return TypedValue.box(program.intrinsics.half, castAndCheckValue(castToHalf, value));
 }
 
 function makeEnum(program, enumName, value)
@@ -221,19 +226,12 @@ function makeRW2DDepthTextureArray(program, array, elementType)
     return TypedValue.box(program.intrinsics[`RWTextureDepth2DArray<${elementType}>`], new TextureDepth2DArrayRW(elementType, array));
 }
 
-function checkNumber(program, result, expected)
-{
-    if (!result.type.unifyNode.isNumber)
-        throw new Error("Wrong result type; result: " + result);
-    if (result.value != expected)
-        throw new Error("Wrong result: " + result.value + " (expected " + expected + ")");
-}
-
 function checkInt(program, result, expected)
 {
     if (!result.type.equals(program.intrinsics.int))
         throw new Error("Wrong result type; result: " + result);
-    checkNumber(program, result, expected);
+    if (result.value != expected)
+        throw new Error(`Wrong result: ${result.value} (expected ${expected})`);
 }
 
 function checkEnum(program, result, expected)
@@ -316,6 +314,16 @@ function checkFail(callback, predicate)
     }
 }
 
+function checkTrap(program, callback, checkFunction)
+{
+    const result = callback();
+    // FIXME: Rewrite tests so that they return non-zero values in the case that they didn't trap.
+    // The check function is optional in the case of a void return type.
+    checkFunction(program, result, 0);
+    if (!Evaluator.lastInvocationDidTrap)
+        throw new Error("Did not trap");
+}
+
 let tests;
 let okToTest = false;
 
@@ -335,13 +343,6 @@ tests.ternaryExpression = function() {
         {
             return x < 3 ? 4 : 5;
         }
-        test int bar(int x)
-        {
-            int y = 1;
-            int z = 2;
-            (x < 3 ? y : z) = 7;
-            return y;
-        }
         test int baz(int x)
         {
             return x < 10 ? 11 : x < 12 ? 14 : 15;
@@ -353,8 +354,6 @@ tests.ternaryExpression = function() {
     `);
     checkInt(program, callFunction(program, "foo", [makeInt(program, 767)]), 5);
     checkInt(program, callFunction(program, "foo", [makeInt(program, 2)]), 4);
-    checkInt(program, callFunction(program, "bar", [makeInt(program, 2)]), 7);
-    checkInt(program, callFunction(program, "bar", [makeInt(program, 8)]), 1);
     checkInt(program, callFunction(program, "baz", [makeInt(program, 8)]), 11);
     checkInt(program, callFunction(program, "baz", [makeInt(program, 9)]), 11);
     checkInt(program, callFunction(program, "baz", [makeInt(program, 10)]), 14);
@@ -376,6 +375,39 @@ tests.ternaryExpression = function() {
             int foo()
             {
                 int x;
+                int y;
+                (0 < 1 ? x : y) = 42;
+                return x;
+            }
+        `),
+        (e) => e instanceof WTypeError && e.message.indexOf("not an LValue") != -1);
+    checkFail(
+        () => doPrep(`
+            int foo()
+            {
+                int x;
+                int y;
+                thread int* z = &(0 < 1 ? x : y);
+                return *z;
+            }
+        `),
+        (e) => e instanceof WTypeError && e.message.indexOf("not an LValue") != -1);
+    checkFail(
+        () => doPrep(`
+            int foo()
+            {
+                int x;
+                int y;
+                thread int[] z = @(0 < 1 ? x : y);
+                return *z;
+            }
+        `),
+        (e) => e instanceof WTypeError && e.message.indexOf("not an LValue") != -1);
+    checkFail(
+        () => doPrep(`
+            int foo()
+            {
+                int x;
                 float y;
                 return 4 < 5 ? x : y;
             }
@@ -389,29 +421,6 @@ tests.ternaryExpression = function() {
             }
         `),
         (e) => e instanceof WTypeError);
-}
-
-tests.ternaryExpressionIsLValue = function() {
-    function ternaryExpressionIsLValue(node)
-    {
-        let isLValue;
-        class TernaryExpressionVisitor extends Visitor {
-            visitTernaryExpression(node)
-            {
-                isLValue = node.isLValue;
-            }
-        }
-        node.visit(new TernaryExpressionVisitor());
-        return isLValue;
-    }
-
-    let program = doPrep(`int foo() { return 0 < 1 ? 0 : 1; }`);
-    if (ternaryExpressionIsLValue(program))
-        throw new Error(`r-value ternary expression incorrectly parsed as l-value`);
-
-    program = doPrep(`void foo() { int x; int y; (0 < 1 ? x : y) = 1; }`);
-    if (!ternaryExpressionIsLValue(program))
-        throw new Error(`l-value ternary expression incorrectly parsed as r-value`);
 }
 
 tests.literalBool = function() {
@@ -437,6 +446,27 @@ tests.intSimpleMath = function() {
     program = doPrep("test int foo(int x, int y) { return x / y; }");
     checkInt(program, callFunction(program, "foo", [makeInt(program, 7), makeInt(program, 2)]), 3);
     checkInt(program, callFunction(program, "foo", [makeInt(program, 7), makeInt(program, -2)]), -3);
+}
+
+tests.incrementAndDecrement = function() {
+    let program = doPrep(`
+    test int foo1() { int x = 0; return x++; }
+    test int foo2() { int x = 0; x++; return x; }
+    test int foo3() { int x = 0; return ++x; }
+    test int foo4() { int x = 0; ++x; return x; }
+    test int foo5() { int x = 0; return x--; }
+    test int foo6() { int x = 0; x--; return x; }
+    test int foo7() { int x = 0; return --x; }
+    test int foo8() { int x = 0; --x; return x; }
+    `);
+    checkInt(program, callFunction(program, "foo1", []), 0);
+    checkInt(program, callFunction(program, "foo2", []), 1);
+    checkInt(program, callFunction(program, "foo3", []), 1);
+    checkInt(program, callFunction(program, "foo4", []), 1);
+    checkInt(program, callFunction(program, "foo5", []), 0);
+    checkInt(program, callFunction(program, "foo6", []), -1);
+    checkInt(program, callFunction(program, "foo7", []), -1);
+    checkInt(program, callFunction(program, "foo8", []), -1);
 }
 
 tests.uintSimpleMath = function() {
@@ -908,9 +938,7 @@ tests.dereferenceDefaultNull = function()
             return *p;
         }
     `);
-    checkFail(
-        () => callFunction(program, "foo", []),
-        (e) => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
 }
 
 tests.defaultInitializedNull = function()
@@ -922,9 +950,7 @@ tests.defaultInitializedNull = function()
             return *p;
         }
     `);
-    checkFail(
-        () => callFunction(program, "foo", []),
-        (e) => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
 }
 
 tests.passNullToPtrMonomorphic = function()
@@ -939,9 +965,7 @@ tests.passNullToPtrMonomorphic = function()
             return foo(null);
         }
     `);
-    checkFail(
-        () => callFunction(program, "bar", []),
-        (e) => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "bar", []), checkInt);
 }
 
 tests.loadNullArrayRef = function()
@@ -986,9 +1010,7 @@ tests.dereferenceDefaultNullArrayRef = function()
             return p[0u];
         }
     `);
-    checkFail(
-        () => callFunction(program, "foo", []),
-        (e) => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
 }
 
 tests.defaultInitializedNullArrayRef = function()
@@ -1000,9 +1022,7 @@ tests.defaultInitializedNullArrayRef = function()
             return p[0u];
         }
     `);
-    checkFail(
-        () => callFunction(program, "foo", []),
-        (e) => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
 }
 
 tests.defaultInitializedNullArrayRefIntLiteral = function()
@@ -1014,9 +1034,7 @@ tests.defaultInitializedNullArrayRefIntLiteral = function()
             return p[0];
         }
     `);
-    checkFail(
-        () => callFunction(program, "foo", []),
-        (e) => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
 }
 
 tests.passNullToPtrMonomorphicArrayRef = function()
@@ -1031,21 +1049,19 @@ tests.passNullToPtrMonomorphicArrayRef = function()
             return foo(null);
         }
     `);
-    checkFail(
-        () => callFunction(program, "bar", []),
-        (e) => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "bar", []), checkInt);
 }
 
 tests.returnIntLiteralUint = function()
 {
     let program = doPrep("test uint foo() { return 42; }");
-    checkNumber(program, callFunction(program, "foo", []), 42);
+    checkUint(program, callFunction(program, "foo", []), 42);
 }
 
 tests.returnIntLiteralFloat = function()
 {
     let program = doPrep("test float foo() { return 42; }");
-    checkNumber(program, callFunction(program, "foo", []), 42);
+    checkFloat(program, callFunction(program, "foo", []), 42);
 }
 
 tests.badIntLiteralForInt = function()
@@ -2355,6 +2371,149 @@ tests.nestedSubscriptLValueEmulationSimple = function()
     checkInt(program, callFunction(program, "testSetValuesMutateValuesAndSum", []), 5565);
 }
 
+tests.nestedSubscriptWithArraysInStructs = function()
+{
+    let program = doPrep(`
+        struct Foo {
+            int[7] array;
+        }
+        int sum(Foo foo)
+        {
+            int result = 0;
+            for (uint i = 0; i < foo.array.length; i++)
+                result += foo.array[i];
+            return result;
+        }
+        struct Bar {
+            Foo[6] array;
+        }
+        int sum(Bar bar)
+        {
+            int result = 0;
+            for (uint i = 0; i < bar.array.length; i++)
+                result += sum(bar.array[i]);
+            return result;
+        }
+        struct Baz {
+            Bar[5] array;
+        }
+        int sum(Baz baz)
+        {
+            int result = 0;
+            for (uint i = 0; i < baz.array.length; i++)
+                result += sum(baz.array[i]);
+            return result;
+        }
+        void setValues(thread Baz* baz)
+        {
+            for (uint i = 0; i < baz->array.length; i++) {
+                for (uint j = 0; j < baz->array[i].array.length; j++) {
+                    for (uint k = 0; k < baz->array[i].array[j].array.length; k++)
+                        baz->array[i].array[j].array[k] = int(i + j + k);
+                }
+            }
+        }
+        test int testSetValuesAndSum()
+        {
+            Baz baz;
+            setValues(&baz);
+            return sum(baz);
+        }
+        test int testSetValuesMutateValuesAndSum()
+        {
+            Baz baz;
+            setValues(&baz);
+            for (uint i = baz.array.length; i--;) {
+                for (uint j = baz.array[i].array.length; j--;) {
+                    for (uint k = baz.array[i].array[j].array.length; k--;)
+                        baz.array[i].array[j].array[k] = baz.array[i].array[j].array[k] * int(k);
+                }
+            }
+            return sum(baz);
+        }
+    `);
+    checkInt(program, callFunction(program, "testSetValuesAndSum", []), 1575);
+    checkInt(program, callFunction(program, "testSetValuesMutateValuesAndSum", []), 5565);
+}
+
+tests.nestedSubscript = function()
+{
+    let program = doPrep(`
+        int sum(int[7] array)
+        {
+            int result = 0;
+            for (uint i = array.length; i--;)
+                result += array[i];
+            return result;
+        }
+        int sum(int[6][7] array)
+        {
+            int result = 0;
+            for (uint i = array.length; i--;)
+                result += sum(array[i]);
+            return result;
+        }
+        int sum(int[5][6][7] array)
+        {
+            int result = 0;
+            for (uint i = array.length; i--;)
+                result += sum(array[i]);
+            return result;
+        }
+        void setValues(thread int[][6][7] array)
+        {
+            for (uint i = array.length; i--;) {
+                for (uint j = array[i].length; j--;) {
+                    for (uint k = array[i][j].length; k--;)
+                        array[i][j][k] = int(i + j + k);
+                }
+            }
+        }
+        test int testSetValuesAndSum()
+        {
+            int[5][6][7] array;
+            setValues(@array);
+            return sum(array);
+        }
+        test int testSetValuesMutateValuesAndSum()
+        {
+            int[5][6][7] array;
+            setValues(@array);
+            for (uint i = array.length; i--;) {
+                for (uint j = array[i].length; j--;) {
+                    for (uint k = array[i][j].length; k--;)
+                        array[i][j][k] = array[i][j][k] * int(k);
+                }
+            }
+            return sum(array);
+        }
+    `);
+    checkInt(program, callFunction(program, "testSetValuesAndSum", []), 1575);
+    checkInt(program, callFunction(program, "testSetValuesMutateValuesAndSum", []), 5565);
+}
+
+tests.lotsOfLocalVariables = function()
+{
+    let src = "test int sum() {\n";
+    src += "    int i = 0;\n";
+    let target = 0;
+    const numVars = 50;
+    for (let i = 0; i < numVars; i++) {
+        const value = i * 3;
+        src += `   i = ${i};\n`;
+        src += `   int V${i} = (i + 3) * (i + 3);\n`;
+        target += (i + 3) * (i + 3);
+    }
+    src += "    int result = 0;\n";
+    for (let i = 0; i < numVars; i++) {
+        src += `    result += V${i};\n`;
+    }
+    src += "    return result;\n";
+    src += "}";
+    let program = doPrep(src);
+    checkInt(program, callFunction(program, "sum", []), target);
+}
+
 tests.operatorBool = function()
 {
     let program = doPrep(`
@@ -2552,7 +2711,7 @@ tests.uintBitAnd = function()
     `);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 1), makeUint(program, 7)]), 1);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 65535), makeUint(program, 42)]), 42);
-    checkUint(program, callFunction(program, "foo", [makeUint(program, -1), makeUint(program, -7)]), 4294967289);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, Math.pow(2, 32) - 1), makeUint(program, Math.pow(2, 32) - 7)]), 4294967289);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 0), makeUint(program, 85732)]), 0);
 }
 
@@ -2566,7 +2725,7 @@ tests.uintBitOr = function()
     `);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 1), makeUint(program, 7)]), 7);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 65535), makeUint(program, 42)]), 65535);
-    checkUint(program, callFunction(program, "foo", [makeUint(program, -1), makeUint(program, -7)]), 4294967295);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, Math.pow(2, 32) - 1), makeUint(program, Math.pow(2, 32)  - 7)]), 4294967295);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 0), makeUint(program, 85732)]), 85732);
 }
 
@@ -2580,7 +2739,7 @@ tests.uintBitXor = function()
     `);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 1), makeUint(program, 7)]), 6);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 65535), makeUint(program, 42)]), 65493);
-    checkUint(program, callFunction(program, "foo", [makeUint(program, -1), makeUint(program, -7)]), 6);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, Math.pow(2, 32) - 1), makeUint(program, Math.pow(2, 32) - 7)]), 6);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 0), makeUint(program, 85732)]), 85732);
 }
 
@@ -2594,7 +2753,7 @@ tests.uintBitNot = function()
     `);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 1)]), 4294967294);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 65535)]), 4294901760);
-    checkUint(program, callFunction(program, "foo", [makeUint(program, -1)]), 0);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, Math.pow(2, 32) - 1)]), 0);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 0)]), 4294967295);
 }
 
@@ -2608,7 +2767,7 @@ tests.uintLShift = function()
     `);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 1), makeUint(program, 7)]), 128);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 65535), makeUint(program, 2)]), 262140);
-    checkUint(program, callFunction(program, "foo", [makeUint(program, -1), makeUint(program, 5)]), 4294967264);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, Math.pow(2, 32) - 1), makeUint(program, 5)]), 4294967264);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 0), makeUint(program, 3)]), 0);
 }
 
@@ -2622,7 +2781,7 @@ tests.uintRShift = function()
     `);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 1), makeUint(program, 7)]), 0);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 65535), makeUint(program, 2)]), 16383);
-    checkUint(program, callFunction(program, "foo", [makeUint(program, -1), makeUint(program, 5)]), 134217727);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, Math.pow(2, 32) - 1), makeUint(program, 5)]), 134217727);
     checkUint(program, callFunction(program, "foo", [makeUint(program, 0), makeUint(program, 3)]), 0);
 }
 
@@ -2635,9 +2794,8 @@ tests.ucharBitAnd = function()
         }
     `);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 1), makeUchar(program, 7)]), 1);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 65535), makeUchar(program, 42)]), 42);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, -1), makeUchar(program, -7)]), 249);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUchar(program, 85732)]), 0);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 255), makeUchar(program, 42)]), 42);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUchar(program, 255)]), 0);
 }
 
 tests.ucharBitOr = function()
@@ -2649,9 +2807,8 @@ tests.ucharBitOr = function()
         }
     `);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 1), makeUchar(program, 7)]), 7);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 65535), makeUchar(program, 42)]), 255);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, -1), makeUchar(program, -7)]), 255);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUchar(program, 85732)]), 228);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 255), makeUchar(program, 42)]), 255);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUchar(program, 228)]), 228);
 }
 
 tests.ucharBitXor = function()
@@ -2663,9 +2820,8 @@ tests.ucharBitXor = function()
         }
     `);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 1), makeUchar(program, 7)]), 6);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 65535), makeUchar(program, 42)]), 213);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, -1), makeUchar(program, -7)]), 6);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUchar(program, 85732)]), 228);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 255), makeUchar(program, 42)]), 213);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUchar(program, 255)]), 255);
 }
 
 tests.ucharBitNot = function()
@@ -2677,8 +2833,7 @@ tests.ucharBitNot = function()
         }
     `);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 1)]), 254);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 65535)]), 0);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, -1)]), 0);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 255)]), 0);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0)]), 255);
 }
 
@@ -2691,8 +2846,7 @@ tests.ucharLShift = function()
         }
     `);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 1), makeUint(program, 7)]), 128);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 65535), makeUint(program, 2)]), 252);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, -1), makeUint(program, 5)]), 224);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 255), makeUint(program, 2)]), 252);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUint(program, 3)]), 0);
 }
 
@@ -2705,8 +2859,8 @@ tests.ucharRShift = function()
         }
     `);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 1), makeUint(program, 7)]), 0);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 65535), makeUint(program, 2)]), 255);
-    checkUchar(program, callFunction(program, "foo", [makeUchar(program, -1), makeUint(program, 5)]), 255);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 255), makeUint(program, 2)]), 63);
+    checkUchar(program, callFunction(program, "foo", [makeUchar(program, 255), makeUint(program, 5)]), 7);
     checkUchar(program, callFunction(program, "foo", [makeUchar(program, 0), makeUint(program, 3)]), 0);
 }
 
@@ -3722,16 +3876,15 @@ tests.trap = function()
             trap;
         }
     `);
-    checkFail(
-        () => callFunction(program, "foo", []),
-        e => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
     checkInt(program, callFunction(program, "foo2", [makeInt(program, 1)]), 4);
-    checkFail(
-        () => callFunction(program, "foo2", [makeInt(program, 3)]),
-        e => e instanceof WTrapError);
-    checkFail(
-        () => callFunction(program, "foo3", []),
-        e => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo2", [makeInt(program, 3)]), checkInt);
+    checkTrap(program, () => callFunction(program, "foo3", []), (progam, result, expected) => {
+        for (let i = 0; i < 4; i++) {
+            if (result.ePtr.get(i) != expected)
+                throw new Error(`Non-zero return value at offset ${i}`);
+        }
+    });
 }
 
 /*
@@ -4493,9 +4646,7 @@ tests.mutuallyRecursiveStructWithPointersBroken = function()
             return foo.bar->bar - bar.foo->foo;
         }
     `);
-    checkFail(
-        () => checkInt(program, callFunction(program, "foo", []), -511),
-        e => e instanceof WTrapError);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
 }
 
 tests.mutuallyRecursiveStructWithPointers = function()
@@ -5646,6 +5797,710 @@ tests.casts = function()
     checkInt(program, callFunction(program, "baz", [makeInt(program, 6)]), 14);
 }
 
+tests.atomics = function()
+{
+    let program = doPrep(`
+        test int foo(int z) {
+            atomic_int x;
+            int result;
+            InterlockedAdd(&x, z, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 6)]), 0);
+    program = doPrep(`
+        test int foo(int z) {
+            atomic_int x;
+            int result;
+            InterlockedAdd(&x, z, &result);
+            InterlockedAdd(&x, z, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 6)]), 6);
+    program = doPrep(`
+        test int foo(int z) {
+            atomic_int x;
+            int result;
+            InterlockedAdd(&x, z, &result);
+            return int(x);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 6)]), 6);
+    program = doPrep(`
+        test int foo(int z) {
+            atomic_int x;
+            int result;
+            InterlockedAdd(&x, z, &result);
+            InterlockedAdd(&x, z, &result);
+            return int(x);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 6)]), 12);
+    program = doPrep(`
+        test uint foo(uint z) {
+            atomic_uint x;
+            uint result;
+            InterlockedAdd(&x, z, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 6)]), 0);
+    program = doPrep(`
+        test uint foo(uint z) {
+            atomic_uint x;
+            uint result;
+            InterlockedAdd(&x, z, &result);
+            InterlockedAdd(&x, z, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 6)]), 6);
+    program = doPrep(`
+        test uint foo(uint z) {
+            atomic_uint x;
+            uint result;
+            InterlockedAdd(&x, z, &result);
+            return uint(x);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 6)]), 6);
+    program = doPrep(`
+        test uint foo(uint z) {
+            atomic_uint x;
+            uint result;
+            InterlockedAdd(&x, z, &result);
+            InterlockedAdd(&x, z, &result);
+            return uint(x);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 6)]), 12);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedAnd(&z, y, &result);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 1);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedAnd(&z, y, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedAnd(&z, y, &result);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 1);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedAnd(&z, y, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedExchange(&z, y, &result);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 5);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedExchange(&z, y, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedExchange(&z, y, &result);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 5);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedExchange(&z, y, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMax(&z, y, &result);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 5);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 5), makeUint(program, 3)]), 5);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMax(&z, y, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 5), makeUint(program, 3)]), 5);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMax(&z, y, &result);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 5);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 5), makeInt(program, 3)]), 5);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMax(&z, y, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 5), makeInt(program, 3)]), 5);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMin(&z, y, &result);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 5), makeUint(program, 3)]), 3);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMin(&z, y, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 5), makeUint(program, 3)]), 5);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMin(&z, y, &result);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 5), makeInt(program, 3)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedMin(&z, y, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 5), makeInt(program, 3)]), 5);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedOr(&z, y, &result);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 7);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedOr(&z, y, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedOr(&z, y, &result);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 7);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedOr(&z, y, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedXor(&z, y, &result);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 6);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            uint result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedXor(&z, y, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedXor(&z, y, &result);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 6);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            int result;
+            InterlockedAdd(&z, x, &result);
+            InterlockedXor(&z, y, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    program = doPrep(`
+        test uint foo(uint x, uint y, uint z) {
+            atomic_uint w;
+            uint result;
+            InterlockedAdd(&w, x, &result);
+            InterlockedCompareExchange(&w, y, z, &result);
+            return uint(w);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 3), makeUint(program, 5)]), 5);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 4), makeUint(program, 5)]), 3);
+    program = doPrep(`
+        test uint foo(uint x, uint y, uint z) {
+            atomic_uint w;
+            uint result;
+            InterlockedAdd(&w, x, &result);
+            InterlockedCompareExchange(&w, y, z, &result);
+            return result;
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 3), makeUint(program, 5)]), 3);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 4), makeUint(program, 5)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y, int z) {
+            atomic_int w;
+            int result;
+            InterlockedAdd(&w, x, &result);
+            InterlockedCompareExchange(&w, y, z, &result);
+            return int(w);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 3), makeInt(program, 5)]), 5);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 4), makeInt(program, 5)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y, int z) {
+            atomic_int w;
+            int result;
+            InterlockedAdd(&w, x, &result);
+            InterlockedCompareExchange(&w, y, z, &result);
+            return result;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 3), makeInt(program, 5)]), 3);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 4), makeInt(program, 5)]), 3);
+}
+
+tests.atomicsNull = function()
+{
+    let program = doPrep(`
+        test int foo(int z) {
+            atomic_int x;
+            InterlockedAdd(&x, z, null);
+            return int(x);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 6)]), 6);
+    program = doPrep(`
+        test int foo(int z) {
+            atomic_int x;
+            InterlockedAdd(&x, z, null);
+            InterlockedAdd(&x, z, null);
+            return int(x);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 6)]), 12);
+    program = doPrep(`
+        test uint foo(uint z) {
+            atomic_uint x;
+            InterlockedAdd(&x, z, null);
+            return uint(x);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 6)]), 6);
+    program = doPrep(`
+        test uint foo(uint z) {
+            atomic_uint x;
+            InterlockedAdd(&x, z, null);
+            InterlockedAdd(&x, z, null);
+            return uint(x);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 6)]), 12);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            InterlockedAdd(&z, x, null);
+            InterlockedAnd(&z, y, null);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 1);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            InterlockedAdd(&z, x, null);
+            InterlockedAnd(&z, y, null);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 1);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            InterlockedAdd(&z, x, null);
+            InterlockedExchange(&z, y, null);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 5);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            InterlockedAdd(&z, x, null);
+            InterlockedExchange(&z, y, null);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 5);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            InterlockedAdd(&z, x, null);
+            InterlockedMax(&z, y, null);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 5);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 5), makeUint(program, 3)]), 5);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            InterlockedAdd(&z, x, null);
+            InterlockedMax(&z, y, null);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 5);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 5), makeInt(program, 3)]), 5);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            InterlockedAdd(&z, x, null);
+            InterlockedMin(&z, y, null);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 3);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 5), makeUint(program, 3)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            InterlockedAdd(&z, x, null);
+            InterlockedMin(&z, y, null);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 3);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 5), makeInt(program, 3)]), 3);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            InterlockedAdd(&z, x, null);
+            InterlockedOr(&z, y, null);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 7);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            InterlockedAdd(&z, x, null);
+            InterlockedOr(&z, y, null);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 7);
+    program = doPrep(`
+        test uint foo(uint x, uint y) {
+            atomic_uint z;
+            InterlockedAdd(&z, x, null);
+            InterlockedXor(&z, y, null);
+            return uint(z);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 5)]), 6);
+    program = doPrep(`
+        test int foo(int x, int y) {
+            atomic_int z;
+            InterlockedAdd(&z, x, null);
+            InterlockedXor(&z, y, null);
+            return int(z);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 5)]), 6);
+    program = doPrep(`
+        test uint foo(uint x, uint y, uint z) {
+            atomic_uint w;
+            InterlockedAdd(&w, x, null);
+            InterlockedCompareExchange(&w, y, z, null);
+            return uint(w);
+        }
+    `);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 3), makeUint(program, 5)]), 5);
+    checkUint(program, callFunction(program, "foo", [makeUint(program, 3), makeUint(program, 4), makeUint(program, 5)]), 3);
+    program = doPrep(`
+        test int foo(int x, int y, int z) {
+            atomic_int w;
+            InterlockedAdd(&w, x, null);
+            InterlockedCompareExchange(&w, y, z, null);
+            return int(w);
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 3), makeInt(program, 5)]), 5);
+    checkInt(program, callFunction(program, "foo", [makeInt(program, 3), makeInt(program, 4), makeInt(program, 5)]), 3);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedAdd(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedAdd(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedAnd(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedAnd(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedExchange(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedExchange(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedMax(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedMax(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedMin(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedMin(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedOr(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedOr(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedXor(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedXor(x, 1, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_int* x = null;
+            InterlockedCompareExchange(x, 1, 2, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+
+    program = doPrep(`
+        test int foo() {
+            thread atomic_uint* x = null;
+            InterlockedCompareExchange(x, 1, 2, null);
+            return 1;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+}
+
+tests.selfCasts = function()
+{
+    let program = doPrep(`
+        struct Foo {
+            int x;
+        }
+        test int foo()
+        {
+            Foo foo;
+            foo.x = 21;
+            Foo bar = Foo(foo);
+            bar.x = 42;
+            return foo.x + bar.x;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", []), 21 + 42);
+}
+
 tests.pointerToMember = function()
 {
     checkFail(
@@ -5905,6 +6760,120 @@ tests.arrayIndex = function() {
     checkInt(program, callFunction(program, "arrayIndexing", [ makeUint(program, 1), makeUint(program, 0) ]), 4);
     checkInt(program, callFunction(program, "arrayIndexing", [ makeUint(program, 1), makeUint(program, 1) ]), 5);
     checkInt(program, callFunction(program, "arrayIndexing", [ makeUint(program, 1), makeUint(program, 2) ]), 6);
+}
+
+tests.numThreads = function() {
+    let program = doPrep(`
+        [numthreads(3, 4, 5)]
+        compute void foo() {
+        }
+
+        [numthreads(6, 7, 8)]
+        compute void bar() {
+        }
+
+        [numthreads(9, 10, 11)]
+        compute void bar(device float[] buffer) {
+        }
+
+        struct R {
+            float4 position;
+        }
+        vertex R baz() {
+            R r;
+            r.position = float4(1, 2, 3, 4);
+            return r;
+        }
+    `);
+
+    if (program.functions.get("foo").length != 1)
+        throw new Error("Cannot find function named 'foo'");
+    let foo = program.functions.get("foo")[0];
+    if (foo.attributeBlock.length != 1)
+        throw new Error("'foo' doesn't have numthreads attribute");
+    if (foo.attributeBlock[0].x != 3)
+        throw new Error("'foo' numthreads x is not 3");
+    if (foo.attributeBlock[0].y != 4)
+        throw new Error("'foo' numthreads y is not 4");
+    if (foo.attributeBlock[0].z != 5)
+        throw new Error("'foo' numthreads z is not 5");
+
+    if (program.functions.get("bar").length != 2)
+        throw new Error("Cannot find function named 'bar'");
+    let bar1 = null;
+    let bar2 = null;
+    for (let bar of program.functions.get("bar")) {
+        if (bar.parameters.length == 0)
+            bar1 = bar;
+        else if (bar.parameters.length == 1)
+            bar2 = bar;
+        else
+            throw new Error("Unexpected 'bar' function.");
+    }
+    if (!bar1)
+        throw new Error("Could not find appropriate 'bar' function");
+    if (!bar2)
+        throw new Error("Could not find appropriate 'bar' function");
+
+    if (bar1.attributeBlock.length != 1)
+        throw new Error("'bar1' doesn't have numthreads attribute");
+    if (bar1.attributeBlock[0].x != 6)
+        throw new Error("'bar1' numthreads x is not 6");
+    if (bar1.attributeBlock[0].y != 7)
+        throw new Error("'bar1' numthreads y is not 7");
+    if (bar1.attributeBlock[0].z != 8)
+        throw new Error("'bar1' numthreads z is not 8");
+
+    if (bar2.attributeBlock.length != 1)
+        throw new Error("'bar2' doesn't have numthreads attribute");
+    if (bar2.attributeBlock[0].x != 9)
+        throw new Error("'bar2' numthreads x is not 9");
+    if (bar2.attributeBlock[0].y != 10)
+        throw new Error("'bar2' numthreads y is not 10");
+    if (bar2.attributeBlock[0].z != 11)
+        throw new Error("'bar2' numthreads z is not 11");
+
+    if (program.functions.get("baz").length != 1)
+        throw new Error("Cannot find function named 'baz'");
+    let baz = program.functions.get("baz")[0];
+    if (baz.attributeBlock != null)
+        throw new Error("'baz' has attribute block");
+
+    checkFail(() => doPrep(`
+        [numthreads(3, 4)]
+        compute void foo() {
+        }
+    `), e => e instanceof WSyntaxError);
+
+    checkFail(() => doPrep(`
+        []
+        compute void foo() {
+        }
+    `), e => e instanceof WSyntaxError);
+
+    checkFail(() => doPrep(`
+        [numthreads(3, 4, 5), numthreads(3, 4, 5)]
+        compute void foo() {
+        }
+    `), e => e instanceof WSyntaxError);
+
+    checkFail(() => doPrep(`
+        compute void foo() {
+        }
+    `), e => e instanceof WSyntaxError);
+
+
+    checkFail(() => doPrep(`
+        struct R {
+            float4 position;
+        }
+        [numthreads(3, 4, 5)]
+        vertex R baz() {
+            R r;
+            r.position = float4(1, 2, 3, 4);
+            return r;
+        }
+    `), e => e instanceof WSyntaxError);
 }
 
 function createTexturesForTesting(program)
@@ -6469,6 +7438,99 @@ tests.textureDimensions = function() {
     checkUint(program, callFunction(program, "foo43", [rwTextureDepth2DArray]), 8);
     checkUint(program, callFunction(program, "foo44", [rwTextureDepth2DArray]), 4);
     checkUint(program, callFunction(program, "foo45", [rwTextureDepth2DArray]), 2);
+}
+
+tests.textureDimensionsNull = function() {
+    let program = doPrep(`
+        test bool foo1(Texture1D<float> texture) {
+            GetDimensions(texture, 0, null, null);
+            return true;
+        }
+        test bool foo2(Texture1DArray<float> texture) {
+            GetDimensions(texture, 0, null, null, null);
+            return true;
+        }
+        test bool foo3(Texture2D<float> texture) {
+            GetDimensions(texture, 0, null, null, null);
+            return true;
+        }
+        test bool foo4(Texture2DArray<float> texture) {
+            GetDimensions(texture, 0, null, null, null, null);
+            return true;
+        }
+        test bool foo5(Texture3D<float> texture) {
+            GetDimensions(texture, 0, null, null, null, null);
+            return true;
+        }
+        test bool foo6(TextureCube<float> texture) {
+            GetDimensions(texture, 0, null, null, null);
+            return true;
+        }
+        test bool foo7(RWTexture1D<float> texture) {
+            thread float* ptr = null;
+            GetDimensions(texture, ptr);
+            return true;
+        }
+        test bool foo8(RWTexture1DArray<float> texture) {
+            thread uint* ptr = null;
+            GetDimensions(texture, ptr, ptr);
+            return true;
+        }
+        test bool foo9(RWTexture2D<float> texture) {
+            thread uint* ptr = null;
+            GetDimensions(texture, ptr, ptr);
+            return true;
+        }
+        test bool foo10(RWTexture2DArray<float> texture) {
+            thread uint* ptr = null;
+            GetDimensions(texture, ptr, ptr, ptr);
+            return true;
+        }
+        test bool foo11(RWTexture3D<float> texture) {
+            thread uint* ptr = null;
+            GetDimensions(texture, ptr, ptr, ptr);
+            return true;
+        }
+        test bool foo12(TextureDepth2D<float> texture) {
+            GetDimensions(texture, 0, null, null, null);
+            return true;
+        }
+        test bool foo13(TextureDepth2DArray<float> texture) {
+            GetDimensions(texture, 0, null, null, null, null);
+            return true;
+        }
+        test bool foo14(TextureDepthCube<float> texture) {
+            GetDimensions(texture, 0, null, null, null);
+            return true;
+        }
+        test bool foo15(RWTextureDepth2D<float> texture) {
+            thread uint* ptr = null;
+            GetDimensions(texture, ptr, ptr);
+            return true;
+        }
+        test bool foo16(RWTextureDepth2DArray<float> texture) {
+            thread uint* ptr = null;
+            GetDimensions(texture, ptr, ptr, ptr);
+            return true;
+        }
+    `);
+    let [texture1D, texture1DArray, texture2D, texture2DArray, texture3D, textureCube, rwTexture1D, rwTexture1DArray, rwTexture2D, rwTexture2DArray, rwTexture3D, textureDepth2D, textureDepth2DArray, textureDepthCube, rwTextureDepth2D, rwTextureDepth2DArray] = createTexturesForTesting(program);
+    checkBool(program, callFunction(program, "foo1", [texture1D]), true);
+    checkBool(program, callFunction(program, "foo2", [texture1DArray]), true);
+    checkBool(program, callFunction(program, "foo3", [texture2D]), true);
+    checkBool(program, callFunction(program, "foo4", [texture2DArray]), true);
+    checkBool(program, callFunction(program, "foo5", [texture3D]), true);
+    checkBool(program, callFunction(program, "foo6", [textureCube]), true);
+    checkBool(program, callFunction(program, "foo7", [rwTexture1D]), true);
+    checkBool(program, callFunction(program, "foo8", [rwTexture1DArray]), true);
+    checkBool(program, callFunction(program, "foo9", [rwTexture2D]), true);
+    checkBool(program, callFunction(program, "foo10", [rwTexture2DArray]), true);
+    checkBool(program, callFunction(program, "foo11", [rwTexture3D]), true);
+    checkBool(program, callFunction(program, "foo12", [textureDepth2D]), true);
+    checkBool(program, callFunction(program, "foo13", [textureDepth2DArray]), true);
+    checkBool(program, callFunction(program, "foo14", [textureDepthCube]), true);
+    checkBool(program, callFunction(program, "foo15", [rwTextureDepth2D]), true);
+    checkBool(program, callFunction(program, "foo16", [rwTextureDepth2DArray]), true);
 }
 
 tests.textureLoad = function() {
@@ -7293,14 +8355,14 @@ tests.textureSample = function() {
     checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height)]), (34 + 35 + 38 + 39) / 4);
-    checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
-    checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
+    checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 0), makeInt(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (35 + 36 + 39 + 40) / 4);
-    checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
-    checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
+    checkFloat(program, callFunction(program, "foo15", [texture2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo16", [texture2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo16", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1)]), (34 + 35 + 38 + 39) / 4);
     checkFloat(program, callFunction(program, "foo16", [texture2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0.5)]), (12 + 13 + 20 + 21) / 4);
@@ -7326,25 +8388,25 @@ tests.textureSample = function() {
     checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height)]), (34 + 35 + 38 + 39) / 4);
-    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
-    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
+    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0)]), (54 + 55 + 62 + 63) / 4);
     checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height)]), (54 + 55 + 62 + 63) / 4);
     checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height)]), (76 + 77 + 80 + 81) / 4);
-    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (54 + 55 + 62 + 63) / 4);
-    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((54 + 55 + 62 + 63) / 4) + ((76 + 77 + 80 + 81) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (54 + 55 + 62 + 63) / 4);
+    checkFloat(program, callFunction(program, "foo20", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((54 + 55 + 62 + 63) / 4) + ((76 + 77 + 80 + 81) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 0), makeInt(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (35 + 36 + 39 + 40) / 4);
-    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
-    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
+    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 0), makeInt(program, 0)]), (54 + 55 + 62 + 63) / 4);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
     checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (77 + 78 + 81 + 82) / 4);
-    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
-    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((55 + 56 + 63 + 64) / 4) + ((77 + 78 + 81 + 82) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
+    checkFloat(program, callFunction(program, "foo21", [texture2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((55 + 56 + 63 + 64) / 4) + ((77 + 78 + 81 + 82) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo22", [texture2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo22", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 1)]), (34 + 35 + 38 + 39) / 4);
     checkFloat(program, callFunction(program, "foo22", [texture2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0.5)]), (12 + 13 + 20 + 21) / 4);
@@ -7372,7 +8434,7 @@ tests.textureSample = function() {
     checkFloat(program, callFunction(program, "foo16", [texture2D, makeSampler(program, {minFilter: "linear", lodMinClamp: 1, lodMaxClamp: 1}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 2)]), (34 + 35 + 38 + 39) / 4);
     checkFloat(program, callFunction(program, "foo16", [texture2D, makeSampler(program, {minFilter: "linear", lodMinClamp: 1, lodMaxClamp: 1}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0)]), (34 + 35 + 38 + 39) / 4);
     checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height)]), (34 + 35 + 38 + 39) / 4);
-    checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear", maxAnisotropy: 2}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 4 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, (4/3) / texture2D.ePtr.loadValue().height)]), (34 + 35 + 38 + 39) / 4);
+    checkFloat(program, callFunction(program, "foo14", [texture2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear", maxAnisotropy: 2}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 4 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, (4/3) / texture2D.ePtr.loadValue().height)]), (34 + 35 + 38 + 39) / 4);
     let texture1DInt4 = make1DTexture(program, [[[1, 2, 3, 4], [100, 200, 300, 400], [101, 202, 301, 401], [13, 14, 15, 16]], [[17, 18, 19, 20], [21, 22, 23, 24]], [[25, 26, 27, 28]]], "int4");
     checkInt(program, callFunction(program, "foo24", [texture1DInt4, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5)]), 100);
     checkInt(program, callFunction(program, "foo25", [texture1DInt4, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5)]), 201);
@@ -7414,14 +8476,14 @@ tests.textureSample = function() {
     checkFloat(program, callFunction(program, "foo35", [textureDepth2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo35", [textureDepth2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo35", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height)]), (34 + 35 + 38 + 39) / 4);
-    checkFloat(program, callFunction(program, "foo35", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
-    checkFloat(program, callFunction(program, "foo35", [textureDepth2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo35", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
+    checkFloat(program, callFunction(program, "foo35", [textureDepth2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 0), makeInt(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (35 + 36 + 39 + 40) / 4);
-    checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
-    checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
+    checkFloat(program, callFunction(program, "foo36", [textureDepth2D, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo37", [textureDepth2D, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo37", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1)]), (34 + 35 + 38 + 39) / 4);
     checkFloat(program, callFunction(program, "foo37", [textureDepth2D, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0.5)]), (12 + 13 + 20 + 21) / 4);
@@ -7447,25 +8509,25 @@ tests.textureSample = function() {
     checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height)]), (34 + 35 + 38 + 39) / 4);
-    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
-    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (12 + 13 + 20 + 21) / 4);
+    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((12 + 13 + 20 + 21) / 4) + ((34 + 35 + 38 + 39) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0)]), (54 + 55 + 62 + 63) / 4);
     checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height)]), (54 + 55 + 62 + 63) / 4);
     checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height)]), (76 + 77 + 80 + 81) / 4);
-    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (54 + 55 + 62 + 63) / 4);
-    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((54 + 55 + 62 + 63) / 4) + ((76 + 77 + 80 + 81) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height)]), (54 + 55 + 62 + 63) / 4);
+    checkFloat(program, callFunction(program, "foo41", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height)]), (((54 + 55 + 62 + 63) / 4) + ((76 + 77 + 80 + 81) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 0), makeInt(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (35 + 36 + 39 + 40) / 4);
-    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
-    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (13 + 14 + 21 + 22) / 4);
+    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((13 + 14 + 21 + 22) / 4) + ((35 + 36 + 39 + 40) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 0), makeInt(program, 0)]), (54 + 55 + 62 + 63) / 4);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 0), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 1 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 1 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
     checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, 2 / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, 2 / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (77 + 78 + 81 + 82) / 4);
-    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
-    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((55 + 56 + 63 + 64) / 4) + ((77 + 78 + 81 + 82) / 4)) / 2);
+    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.25) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (55 + 56 + 63 + 64) / 4);
+    checkFloat(program, callFunction(program, "foo42", [textureDepth2DArray, makeSampler(program, {minFilter: "linear", mipmapFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 1), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().width), makeFloat(program, 0), makeFloat(program, 0), makeCastedFloat(program, Math.pow(2, 0.5) / texture2D.ePtr.loadValue().height), makeInt(program, 1), makeInt(program, 0)]), (((55 + 56 + 63 + 64) / 4) + ((77 + 78 + 81 + 82) / 4)) / 2);
     checkFloat(program, callFunction(program, "foo43", [textureDepth2DArray, makeSampler(program, {magFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0)]), (12 + 13 + 20 + 21) / 4);
     checkFloat(program, callFunction(program, "foo43", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 1)]), (34 + 35 + 38 + 39) / 4);
     checkFloat(program, callFunction(program, "foo43", [textureDepth2DArray, makeSampler(program, {minFilter: "linear"}), makeFloat(program, 0.5), makeFloat(program, 0.5), makeFloat(program, 0), makeFloat(program, 0.5)]), (12 + 13 + 20 + 21) / 4);
@@ -7924,6 +8986,266 @@ tests.inliningDoesntProduceAliasingIssues = () => {
     checkInt(program, callFunction(program, "foo", []), 20);
 }
 
+tests.returnReferenceToParameter = () => {
+    let program = doPrep(`
+        test int foo(bool condition)
+        {
+            return *bar(condition, 1, 2);
+        }
+
+        thread int* bar(bool condition, int a, int b)
+        {
+            return condition ? &a : &b;
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", [ makeBool(program, true) ]), 1);
+    checkInt(program, callFunction(program, "foo", [ makeBool(program, false) ]), 2);
+}
+
+tests.returnReferenceToParameterWithDifferentFunctions = () => {
+    let program = doPrep(`
+        test int foo()
+        {
+            return *bar(10) + *baz(20);
+        }
+
+        thread int* bar(int x)
+        {
+            return &x;
+        }
+
+        thread int* baz(int y)
+        {
+            return &y;
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", []), 30);
+}
+
+tests.returnReferenceToSameParameter = () => {
+    let program = doPrep(`
+        test int foo()
+        {
+            return plus(bar(5), bar(7));
+        }
+
+        int plus(thread int* x, thread int* y)
+        {
+            return *x + *y;
+        }
+
+        thread int* bar(int x)
+        {
+            return &x;
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", []), 10);
+}
+
+tests.returnReferenceToLocalVariable = () => {
+    let program = doPrep(`
+        test int foo()
+        {
+            return *bar();
+        }
+
+        thread int* bar()
+        {
+            int a = 42;
+            return &a;
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", []), 42);
+}
+
+tests.returnReferenceToLocalVariableWithNesting = () => {
+    let program = doPrep(`
+        test int foo()
+        {
+            return *bar() + *baz();
+        }
+
+        thread int* bar()
+        {
+            int a = 20;
+            return &a;
+        }
+
+        thread int* baz()
+        {
+            int a = 22;
+            return &a;
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", []), 42);
+}
+
+tests.convertPtrToArrayRef = () => {
+    let program = doPrep(`
+        test int foo()
+        {
+            return bar()[0];
+        }
+
+        thread int[] bar()
+        {
+            int x = 42;
+            return @(&x);
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", []), 42);
+}
+
+tests.convertLocalVariableToArrayRef = () => {
+    let program = doPrep(`
+        test int foo()
+        {
+            return bar()[0];
+        }
+
+        thread int[] bar()
+        {
+            int x = 42;
+            return @x;
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", []), 42);
+}
+
+tests.referenceTakenToLocalVariableInEntryPointShouldntMoveAnything = () => {
+    let program = doPrep(`
+        test int foo()
+        {
+            int a = 42;
+            thread int* b = &a;
+            return *b;
+        }
+    `);
+
+    checkInt(program, callFunction(program, "foo", []), 42);
+};
+
+tests.passingArrayToFunction = function()
+{
+    let program = doPrep(`
+        test int foo()
+        {
+            int[10] arr;
+            for (uint i = 0; i < arr.length; i++)
+                arr[i] = int(i) + 1;
+            return sum(arr);
+        }
+
+        int sum(int[10] xs)
+        {
+            int t = 0;
+            for (uint i = 0; i < xs.length; i++)
+                t = t + xs[i];
+            return t;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", []), 55);
+}
+
+tests.returnAnArrayFromAFunction = function()
+{
+    let program = doPrep(`
+        test int foo()
+        {
+            int[5] ys = bar();
+            return ys[0] + ys[1] + ys[2] + ys[3] + ys[4];
+        }
+
+        int[5] bar()
+        {
+            int[5] xs;
+            xs[0] = 1;
+            xs[1] = 2;
+            xs[2] = 3;
+            xs[3] = 4;
+            xs[4] = 5;
+            return xs;
+        }
+    `);
+}
+
+tests.copyArray = function()
+{
+    let program = doPrep(`
+        test int foo()
+        {
+            int[10] xs;
+            for (uint i = 0; i < xs.length; i++)
+                xs[i] = int(i) + 1;
+            int[10] ys = xs;
+            for (uint i = 0; i < xs.length; i++)
+                xs[i] = 0;
+            int sum = 0;
+            for (uint i = 0; i < ys.length; i++)
+                sum = sum + ys[i];
+            return sum;
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", []), 55);
+}
+
+tests.settingAnArrayInsideAStruct = function()
+{
+    let program = doPrep(`
+        struct Foo {
+            int[1] array;
+        }
+        test int foo()
+        {
+            Foo foo;
+            thread Foo* bar = &foo;
+            bar->array[0] = 21;
+            return foo.array[0];
+        }
+    `);
+    checkInt(program, callFunction(program, "foo", []), 21);
+}
+
+tests.trapBecauseOfIndexAcesss = () => {
+    const program = doPrep(`
+        test int foo()
+        {
+            int[5] array;
+            array[6] = 42;
+            return array[6];
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+}
+
+tests.trapTransitively = () => {
+    const program = doPrep(`
+        test int foo()
+        {
+            willTrapTransitively();
+            return 42;
+        }
+
+        void willTrapTransitively()
+        {
+            doTrap();
+        }
+
+        void doTrap()
+        {
+            trap;
+        }
+    `);
+    checkTrap(program, () => callFunction(program, "foo", []), checkInt);
+};
+
 okToTest = true;
 
 let testFilter = /.*/; // run everything by default
@@ -7945,13 +9267,6 @@ function* doTest(testFilter)
     if (!okToTest)
         throw new Error("Test setup is incomplete.");
     let before = preciseTime();
-
-    print("Compiling standard library...");
-    const compileBefore = preciseTime();
-    yield;
-    prepare();
-    const compileAfter = preciseTime();
-    print(`    OK, took ${Math.round((compileAfter - compileBefore) * 1000)} ms`);
 
     let names = [];
     for (let s in tests)

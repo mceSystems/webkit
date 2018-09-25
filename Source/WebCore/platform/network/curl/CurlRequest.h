@@ -34,6 +34,7 @@
 #include "CurlSSLVerifier.h"
 #include "FileSystem.h"
 #include "NetworkLoadMetrics.h"
+#include "ProtectionSpace.h"
 #include "ResourceRequest.h"
 #include <wtf/MessageQueue.h>
 #include <wtf/MonotonicTime.h>
@@ -59,14 +60,20 @@ public:
         Yes = true
     };
 
-    static Ref<CurlRequest> create(const ResourceRequest& request, CurlRequestClient& client, ShouldSuspend shouldSuspend = ShouldSuspend::No, EnableMultipart enableMultipart = EnableMultipart::No, MessageQueue<Function<void()>>* messageQueue = nullptr)
+    enum class CaptureNetworkLoadMetrics : uint8_t {
+        Basic,
+        Extended
+    };
+
+    static Ref<CurlRequest> create(const ResourceRequest& request, CurlRequestClient& client, ShouldSuspend shouldSuspend = ShouldSuspend::No, EnableMultipart enableMultipart = EnableMultipart::No, CaptureNetworkLoadMetrics captureMetrics = CaptureNetworkLoadMetrics::Basic, MessageQueue<Function<void()>>* messageQueue = nullptr)
     {
-        return adoptRef(*new CurlRequest(request, &client, shouldSuspend == ShouldSuspend::Yes, enableMultipart == EnableMultipart::Yes, messageQueue));
+        return adoptRef(*new CurlRequest(request, &client, shouldSuspend, enableMultipart, captureMetrics, messageQueue));
     }
 
     virtual ~CurlRequest() = default;
 
     void invalidateClient();
+    WEBCORE_EXPORT void setAuthenticationScheme(ProtectionSpaceAuthenticationScheme);
     WEBCORE_EXPORT void setUserPass(const String&, const String&);
     void setStartTime(const MonotonicTime& startTime) { m_requestStartTime = startTime; }
 
@@ -102,7 +109,7 @@ private:
         FinishTransfer
     };
 
-    CurlRequest(const ResourceRequest&, CurlRequestClient*, bool, bool, MessageQueue<Function<void()>>*);
+    CurlRequest(const ResourceRequest&, CurlRequestClient*, ShouldSuspend, EnableMultipart, CaptureNetworkLoadMetrics, MessageQueue<Function<void()>>*);
 
     void retain() override { ref(); }
     void release() override { deref(); }
@@ -165,6 +172,7 @@ private:
     ResourceRequest m_request;
     String m_user;
     String m_password;
+    unsigned long m_authType { CURLAUTH_ANY };
     bool m_shouldSuspend { false };
     bool m_enableMultipart { false };
 
@@ -198,6 +206,7 @@ private:
     FileSystem::PlatformFileHandle m_downloadFileHandle { FileSystem::invalidPlatformFileHandle };
 
     CertificateInfo m_certificateInfo;
+    bool m_captureExtraMetrics;
     NetworkLoadMetrics m_networkLoadMetrics;
     MonotonicTime m_requestStartTime { MonotonicTime::nan() };
     MonotonicTime m_performStartTime;

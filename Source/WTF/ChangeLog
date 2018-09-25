@@ -1,3 +1,196 @@
+2018-09-24  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        Rename WTF_COMPILER_GCC_OR_CLANG to WTF_COMPILER_GCC_COMPATIBLE
+        https://bugs.webkit.org/show_bug.cgi?id=189733
+
+        Reviewed by Michael Catanzaro.
+
+        Clang for Windows build enables WTF_COMPILER_CLANG and
+        WTF_COMPILER_MSVC, but disables WTF_COMPILER_GCC_OR_CLANG. It is
+        strange WTF_COMPILER_GCC_OR_CLANG is not enabled even though
+        WTF_COMPILER_CLANG is enabled. However, Clang for Windows imitates
+        MSVC, and codes for COMPILER(GCC_OR_CLANG) are for non MSVC. At
+        least at the moment, it is not feasible to define
+        WTF_COMPILER_GCC_OR_CLANG for Clang for Windows.
+
+        To solve the issue, this change renames WTF_COMPILER_GCC_OR_CLANG
+        to WTF_COMPILER_GCC_COMPATIBLE.
+
+        As an exception, I'd like to use IGNORE_WARNINGS_* macros even in
+        Clang for Windows builds.
+
+        * wtf/Assertions.cpp: Replaced COMPILER(GCC_OR_CLANG) with COMPILER(GCC_COMPATIBLE).
+        * wtf/Assertions.h: Ditto.
+        * wtf/Atomics.h: Ditto.
+        * wtf/CheckedArithmetic.h: Ditto.
+        * wtf/FastMalloc.h: Ditto.
+        * wtf/MathExtras.h: Ditto.
+        * wtf/Platform.h: Ditto.
+        * wtf/StdLibExtras.h: Ditto.
+        * wtf/Vector.h: Ditto.
+        * wtf/text/ASCIIFastPath.h: Ditto.
+        * wtf/Compiler.h:  Ditto. Replaced "COMPILER(GCC_OR_CLANG)" with "COMPILER(GCC) || COMPILER(CLANG)" of IGNORE_WARNINGS_* macros.
+
+2018-09-21  Yusuke Suzuki  <yusukesuzuki@slowstart.org>
+
+        [JSC] Enable LLInt ASM interpreter on X64 and ARM64 in non JIT configuration
+        https://bugs.webkit.org/show_bug.cgi?id=189778
+
+        Reviewed by Keith Miller.
+
+        This patch adds ENABLE(C_LOOP) which indicates we use CLoop as the interpreter.
+        Previously, we used !ENABLE(JIT) for this configuration. But now, we have
+        a build configuration that has LLInt ASM interpreter (not CLoop) and !ENABLE(JIT).
+
+        We enable LLInt ASM interpreter for non JIT environment in X86_64 and ARM64 architectures.
+        And we enable ENABLE(ASSEMBLER) for non JIT environment since it offers machine register
+        information which is used for LLInt and SamplingProfiler.
+
+        * wtf/Platform.h:
+
+2018-09-21  Keith Miller  <keith_miller@apple.com>
+
+        Add Promise SPI
+        https://bugs.webkit.org/show_bug.cgi?id=189809
+
+        Reviewed by Saam Barati.
+
+        Fix issue where creating a JSContextRef off the main thread before
+        creating initializing the main thread would cause an assertion
+        failure.
+
+        * wtf/MainThread.cpp:
+        (WTF::isMainThreadIfInitialized):
+        * wtf/MainThread.h:
+        * wtf/mac/MainThreadMac.mm:
+        (WTF::isMainThreadIfInitialized):
+        * wtf/text/cf/StringImplCF.cpp:
+        (WTF::StringImpl::createCFString):
+
+2018-09-21  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, rolling out r236359.
+
+        Broke the Windows build.
+
+        Reverted changeset:
+
+        "Add Promise SPI"
+        https://bugs.webkit.org/show_bug.cgi?id=189809
+        https://trac.webkit.org/changeset/236359
+
+2018-09-21  Keith Miller  <keith_miller@apple.com>
+
+        Add Promise SPI
+        https://bugs.webkit.org/show_bug.cgi?id=189809
+
+        Reviewed by Saam Barati.
+
+        Fix issue where creating a JSContextRef off the main thread before
+        creating initializing the main thread would cause an assertion
+        failure.
+
+        * wtf/MainThread.cpp:
+        (WTF::isMainThreadIfInitialized):
+        * wtf/MainThread.h:
+        * wtf/mac/MainThreadMac.mm:
+        (WTF::isMainThreadIfInitialized):
+        * wtf/text/cf/StringImplCF.cpp:
+        (WTF::StringImpl::createCFString):
+
+2018-09-20  Fujii Hironori  <Hironori.Fujii@sony.com>
+
+        [Win][Clang] UNUSED_PARAM(this) causes compilation error of "cannot take the address of an rvalue of type"
+        https://bugs.webkit.org/show_bug.cgi?id=189732
+
+        Reviewed by Per Arne Vollan.
+
+        Clang for Windows can't compile the MSVC workaround of
+        UNUSED_PARAM which has been introduced for Windows CE and Visual
+        Studio 10. I think it's safe just to remove it.
+
+        * wtf/Compiler.h: Removed the code for COMPILER(MSVC).
+
+2018-09-20  Alex Christensen  <achristensen@webkit.org>
+
+        Unreviewed, rolling out r235976.
+
+        Broke ARM
+
+        Reverted changeset:
+
+        "Use a Variant instead of a union in CSSSelector"
+        https://bugs.webkit.org/show_bug.cgi?id=188559
+        https://trac.webkit.org/changeset/235976
+
+2018-09-17  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [WTF] Use Semaphore and BinarySemaphore instead of dispatch_semaphore_t
+        https://bugs.webkit.org/show_bug.cgi?id=185339
+
+        Reviewed by Mark Lam.
+
+        This patch adds WTF::Semaphore, which is based on WTF::Lock and WTF::Condition.
+
+        * WTF.xcodeproj/project.pbxproj:
+        * wtf/CMakeLists.txt:
+        * wtf/Semaphore.h: Added.
+        (WTF::Semaphore::Semaphore):
+        (WTF::Semaphore::signal):
+        (WTF::Semaphore::waitUntil):
+        (WTF::Semaphore::waitFor):
+        (WTF::Semaphore::wait):
+        * wtf/generic/WorkQueueGeneric.cpp:
+        (WorkQueue::platformInitialize):
+        * wtf/threads/BinarySemaphore.cpp:
+        (WTF::BinarySemaphore::waitUntil):
+        (WTF::BinarySemaphore::wait): Deleted.
+        * wtf/threads/BinarySemaphore.h:
+        (WTF::BinarySemaphore::waitFor):
+        (WTF::BinarySemaphore::wait):
+        Align the names of the functions to WTF::Condition.
+        Add BinarySemaphore::wait(), which is the same to waitUntil(WallTime::infinity()).
+
+2018-09-17  Jer Noble  <jer.noble@apple.com>
+
+        Add support for HEVC codec types in Media Capabilities
+        https://bugs.webkit.org/show_bug.cgi?id=189565
+
+        Reviewed by Eric Carlson.
+
+        Extract the toIntegralType template into its own header.
+
+        * wtf/CMakeLists.txt:
+        * wtf/text/StringConversion.h: Added.
+        (isCharacterAllowedInBase):
+        (toIntegralType):
+        * wtf/text/WTFString.cpp:
+
+2018-09-17  Jer Noble  <jer.noble@apple.com>
+
+        Enable USE_MEDIAREMOTE on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=189096
+
+        Reviewed by Eric Carlson.
+
+        * wtf/Platform.h:
+
+2018-09-17  Frederic Wang  <fwang@igalia.com>
+
+        Build error in ImageBufferCG when compiled with IOSurfacePool
+        https://bugs.webkit.org/show_bug.cgi?id=189579
+
+        Reviewed by Tim Horton.
+
+        IOSurface.h might be included with different value of IOSURFACE_CANVAS_BACKING_STORE, causing
+        compilation errors when files in the same unified source do not agree on the definition.
+        This patch moves the definition of IOSURFACE_CANVAS_BACKING_STORE from ImageBufferDataCG.h
+        to Platform.h so that IOSURFACE_CANVAS_BACKING_STORE is set to the same value in all files.
+        Finally some minors changes to explicitly declare/define ImageBuffer are performed in order
+        to prevent future issues with Unified build rotating.
+
+        * wtf/Platform.h: Move definition from ImageBufferDataCG.h.
+
 2018-09-14  Ryan Haddad  <ryanhaddad@apple.com>
 
         Unreviewed, rolling out r235990.

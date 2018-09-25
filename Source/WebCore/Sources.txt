@@ -620,6 +620,7 @@ css/CSSValuePool.cpp
 css/CSSVariableData.cpp
 css/CSSVariableReferenceValue.cpp
 css/DOMCSSNamespace.cpp
+css/DOMCSSRegisterCustomProperty.cpp
 css/DOMMatrix.cpp
 css/DOMMatrixReadOnly.cpp
 css/DeprecatedCSSOMPrimitiveValue.cpp
@@ -784,6 +785,7 @@ dom/NodeTraversal.cpp
 dom/OverflowEvent.cpp
 dom/PageTransitionEvent.cpp
 dom/PendingScript.cpp
+dom/PointerEvent.cpp
 dom/PopStateEvent.cpp
 dom/Position.cpp
 dom/PositionIterator.cpp
@@ -814,6 +816,7 @@ dom/SpectreGadget.cpp
 dom/StaticNodeList.cpp
 dom/StaticRange.cpp
 dom/StringCallback.cpp
+dom/GCReachableRef.cpp
 dom/StyledElement.cpp
 dom/TagCollection.cpp
 dom/TemplateContentDocumentFragment.cpp
@@ -1622,6 +1625,7 @@ platform/graphics/GraphicsLayer.cpp
 platform/graphics/GraphicsLayerTransform.cpp
 platform/graphics/GraphicsLayerUpdater.cpp
 platform/graphics/GraphicsTypes.cpp
+platform/graphics/HEVCUtilities.cpp
 platform/graphics/Image.cpp
 platform/graphics/ImageBuffer.cpp
 platform/graphics/ImageDecoder.cpp
@@ -2512,6 +2516,8 @@ JSDocumentTimeline.cpp
 JSDocumentTimelineOptions.cpp
 JSDOMApplicationCache.cpp
 JSDOMCSSNamespace.cpp
+JSDOMCSSRegisterCustomProperty.cpp
+JSDOMCSSCustomPropertyDescriptor.cpp
 JSDOMCache.cpp
 JSDOMCacheStorage.cpp
 JSDOMException.cpp
@@ -2764,7 +2770,6 @@ JSMediaStreamTrackEvent.cpp
 JSMediaTrackConstraints.cpp
 JSMediaTrackSupportedConstraints.cpp
 JSMerchantValidationEvent.cpp
-JSMerchantValidationEventInit.cpp
 JSMessageChannel.cpp
 JSMessageEvent.cpp
 JSMessagePort.cpp
@@ -2844,6 +2849,7 @@ JSPerformanceServerTiming.cpp
 JSPerformanceTiming.cpp
 JSPeriodicWave.cpp
 JSPlaybackDirection.cpp
+JSPointerEvent.cpp
 JSPopStateEvent.cpp
 JSPositionCallback.cpp
 JSPositionError.cpp
@@ -2878,6 +2884,7 @@ JSRTCPeerConnectionIceEvent.cpp
 JSRTCPeerConnectionState.cpp
 JSRTCPriorityType.cpp
 JSRTCRtpCodecParameters.cpp
+JSRTCRtpContributingSource.cpp
 JSRTCRtpEncodingParameters.cpp
 JSRTCRtpFecParameters.cpp
 JSRTCRtpHeaderExtensionParameters.cpp
@@ -2886,6 +2893,7 @@ JSRTCRtpRtxParameters.cpp
 JSRTCRtpReceiver.cpp
 JSRTCRtpSendParameters.cpp
 JSRTCRtpSender.cpp
+JSRTCRtpSynchronizationSource.cpp
 JSRTCRtpTransceiver.cpp
 JSRTCRtpTransceiverDirection.cpp
 JSRTCSessionDescription.cpp

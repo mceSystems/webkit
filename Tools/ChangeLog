@@ -1,3 +1,757 @@
+2018-09-24  Thomas Denney  <tdenney@apple.com>
+
+        [WHLSL] Implement trap statements in Metal code generation
+        https://bugs.webkit.org/show_bug.cgi?id=189615
+
+        Reviewed by Myles C. Maxfield.
+
+        Each function called by an entry point now receives an additional
+        boolean pointer parameter, which is set to false if the function traps.
+        After each function call (to a non-native function) this trap parameter
+        is checked. The behavior of the interpreter has also been updated so
+        that a function entry point catches the trap and instead returns zero,
+        matching the behavior of compiled code.
+
+        * WebGPUShadingLanguageRI/Evaluator.js: Adds a new flag to allow the
+        test suite to check for traps and also returns zero from entry points
+        whose invocation trapped.
+        * WebGPUShadingLanguageRI/Metal/MSLBackend.js: Pass program to function
+        declarations.
+        * WebGPUShadingLanguageRI/Metal/MSLCodegenAll.js: Update dependencies.
+        * WebGPUShadingLanguageRI/Metal/MSLFunctionDeclaration.js: Add program
+        property.
+        * WebGPUShadingLanguageRI/Metal/MSLFunctionDefinition.js: Ditto.
+        * WebGPUShadingLanguageRI/Metal/MSLInsertTrapParameter.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLStatementEmitter.js: Conforms to the
+        new trapping behavior.
+        * WebGPUShadingLanguageRI/Test.js: Update tests that trap.
+
+2018-09-24  Thomas Denney  <tdenney@apple.com>
+
+        [WHLSL] It shouldn’t be possible to use ternary expressions as l-values
+        https://bugs.webkit.org/show_bug.cgi?id=189290
+
+        Reviewed by Myles C. Maxfield.
+
+        It is no longer possible for a ternary expression to be treated as an
+        l-value. This patch adds several test cases to verify that this is the
+        case.
+
+        * WebGPUShadingLanguageRI/Checker.js:
+        (Checker.prototype.visitTernaryExpression): No longer check isLValue.
+        * WebGPUShadingLanguageRI/NormalUsePropertyResolver:
+        (NormalUsePropertyResolver.visitTernaryExpression): Deleted.
+        * WebGPUShadingLanguageRI/Rewriter.js:
+        (Rewriter.prototype.visitTernaryExpression): No longer copy isLValue.
+        * WebGPUShadingLanguageRI/TernaryExpression.js:
+        (TernaryExpression):
+        (TernaryExpression.prototype.get elseExpression):
+        (TernaryExpression.prototype.get isLValue): Deleted.
+        (TernaryExpression.prototype.set isLValue): Deleted.
+        * WebGPUShadingLanguageRI/Test.js:
+        (tests.ternaryExpression): Add checks for failure if a failure is used
+        as an l-value.
+        (ternaryExpressionIsLValue.node.TernaryExpressionVisitor.prototype.visitTernaryExpression): Deleted.
+        (ternaryExpressionIsLValue.node.TernaryExpressionVisitor): Deleted.
+        (tests.ternaryExpressionIsLValue): Deleted.
+
+2018-09-24  Jer Noble  <jer.noble@apple.com>
+
+        SharedBuffer should have an equality test
+        https://bugs.webkit.org/show_bug.cgi?id=189919
+
+        Reviewed by Alex Christensen.
+
+        * TestWebKitAPI/Tests/WebCore/SharedBuffer.cpp:
+        (TestWebKitAPI::TEST_F):
+
+2018-09-24  Alex Christensen  <achristensen@webkit.org>
+
+        Prepare to replace WKBundleFileHandleCreateWithPath with a version that takes a WKBundlePageRef
+        https://bugs.webkit.org/show_bug.cgi?id=189929
+
+        Reviewed by Andy Estes.
+
+        * TestWebKitAPI/Tests/WebKit/WKBundleFileHandle_Bundle.cpp:
+
+2018-09-24  Thomas Denney  <tdenney@apple.com>
+
+        [WHLSL] Casting user-created types to themselves should always work
+        https://bugs.webkit.org/show_bug.cgi?id=189113
+
+        Reviewed by Myles C. Maxfield.
+
+        Casting user-defined types to themselves worked already, but we didn't
+        test it anywhere.
+
+        * WebGPUShadingLanguageRI/Test.js:
+        (tests.selfCasts):
+
+2018-09-24  Zan Dobersek  <zdobersek@igalia.com>
+
+        Unreviewed build fix for Jhbuild-using ports.
+
+        * gstreamer/patches/gst-plugins-good-0010-matroskademux-Emit-no-more-pads-after-parsing-Tracks.patch:
+        Adjust the patch so it applies cleanly on the 1.14.3 version of the
+        gst-plugins-good package.
+
+2018-09-24  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Update flakiness dashboard configuration for iOS 12 queues
+        https://bugs.webkit.org/show_bug.cgi?id=189688
+
+        Reviewed by Alexey Proskuryakov.
+
+        * TestResultServer/static-dashboards/builders.jsonp:
+
+2018-09-24  Alicia Boya García  <aboya@igalia.com>
+
+        [GStreamer] Unreviewed build fix.
+
+        A GStreamer patch was not applying cleanly on 1.14.3.
+
+        * gstreamer/patches/gst-plugins-good-0008-matroskademux-Refactor-track-parsing-out-from-adding.patch:
+
+2018-09-24  Alicia Boya García  <aboya@igalia.com>
+
+        [MSE][GStreamer] Use no-more-pads event for noticing initialization segments
+        https://bugs.webkit.org/show_bug.cgi?id=189868
+
+        Reviewed by Xabier Rodriguez-Calvar.
+
+        Added patch from https://bugzilla.gnome.org/show_bug.cgi?id=797187
+
+        * gstreamer/jhbuild.modules:
+        * gstreamer/patches/gst-plugins-good-0010-matroskademux-Emit-no-more-pads-after-parsing-Tracks.patch: Added.
+
+2018-09-24  Alicia Boya García  <aboya@igalia.com>
+        [MSE][GStreamer] Add patch to jhbuild: matroskademux: Allow Matroska headers to be read more than once
+        https://bugs.webkit.org/show_bug.cgi?id=185731
+
+        Reviewed by Xabier Rodriguez-Calvar.
+
+        Upstream bug in GStreamer: https://bugzilla.gnome.org/show_bug.cgi?id=793333
+
+        This fixes YTTV 35. AppendMultipleInitOpusAudio (and any other use
+        case where two WebM initialization segments are appended on a row).
+
+        * gstreamer/jhbuild.modules:
+        * gstreamer/patches/gst-plugins-good-0007-matroskademux-Allow-Matroska-headers-to-be-read-more.patch: Added.
+        * gstreamer/patches/gst-plugins-good-0008-matroskademux-Refactor-track-parsing-out-from-adding.patch: Added.
+        * gstreamer/patches/gst-plugins-good-0009-matroskademux-Parse-successive-Tracks-elements.patch: Added.
+
+2018-09-22  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [WHSL] Need grammar to specify kernel group size
+        https://bugs.webkit.org/show_bug.cgi?id=189108
+
+        Reviewed by Dean Jackson.
+
+        In HLSL, compute functions are annotated with their workgroup size.
+        For example,
+
+        [numthreads(3, 4, 5)] compute void foo(...) { ... }
+
+        * WebGPUShadingLanguageRI/All.js:
+        * WebGPUShadingLanguageRI/Func.js:
+        (Func):
+        (Func.prototype.get attributeBlock):
+        * WebGPUShadingLanguageRI/FuncAttribute.js: Copied from Tools/WebGPUShadingLanguageRI/FuncDef.js.
+        (FuncAttribute):
+        * WebGPUShadingLanguageRI/FuncDef.js:
+        (FuncDef):
+        * WebGPUShadingLanguageRI/FuncNumThreadsAttribute.js: Copied from Tools/WebGPUShadingLanguageRI/FuncDef.js.
+        (FuncNumThreadsAttribute):
+        (FuncNumThreadsAttribute.prototype.get x):
+        (FuncNumThreadsAttribute.prototype.get y):
+        (FuncNumThreadsAttribute.prototype.get z):
+        * WebGPUShadingLanguageRI/LateChecker.js:
+        (LateChecker.prototype._checkShaderType):
+        * WebGPUShadingLanguageRI/Parse.js:
+        (parseAttributeBlock):
+        (parseFuncDecl):
+        (parseFuncDef):
+        (parseNativeFunc):
+        * WebGPUShadingLanguageRI/SPIRV.html:
+        * WebGPUShadingLanguageRI/StatementCloner.js:
+        (StatementCloner.prototype.visitFuncDef):
+        (StatementCloner.prototype.visitFuncNumThreadsAttribute):
+        (StatementCloner):
+        * WebGPUShadingLanguageRI/Test.html:
+        * WebGPUShadingLanguageRI/Test.js:
+        (tests.numThreads):
+        * WebGPUShadingLanguageRI/Visitor.js:
+        (Visitor.prototype.visitFunc):
+        (Visitor.prototype.visitFuncNumThreadsAttribute):
+        (Visitor):
+        * WebGPUShadingLanguageRI/index.html:
+
+2018-09-22  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        Native functions which accept pointers need to do null checks
+        https://bugs.webkit.org/show_bug.cgi?id=189883
+
+        Reviewed by Dean Jackson.
+
+        Simply guard all the places where we write through an author-provided pointer.
+
+        * WebGPUShadingLanguageRI/Intrinsics.js:
+        (Intrinsics.):
+        * WebGPUShadingLanguageRI/Test.js:
+        (tests.textureDimensionsNull):
+
+2018-09-22  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [WHLSL] Implement atomic operations and barriers
+        https://bugs.webkit.org/show_bug.cgi?id=189025
+
+        Reviewed by Dean Jackson.
+
+        In the interpreter, atomic operations don't need to be atomic.
+
+        * WebGPUShadingLanguageRI/Intrinsics.js:
+        (Intrinsics.):
+        * WebGPUShadingLanguageRI/StandardLibrary.js:
+        (let.standardLibrary):
+        * WebGPUShadingLanguageRI/Test.js:
+        (tests.atomics):
+
+2018-09-22  Thibault Saunier  <tsaunier@igalia.com>
+
+        [WPE] Be very permissive in the MiniBrowser.
+        https://bugs.webkit.org/show_bug.cgi?id=189800
+
+        This is just a test tool and we should make
+        it just work, security and privacy is not really
+        a primary focus here.
+
+        Reviewed by Žan Doberšek.
+
+        * MiniBrowser/wpe/main.cpp:
+        (decidePermissionRequest):
+        (main):
+
+2018-09-21  Thomas Denney  <tdenney@apple.com>
+
+        [WHLSL] Local variables should be statically allocated
+        https://bugs.webkit.org/show_bug.cgi?id=188402
+
+        Reviewed by Myles C. Maxfield.
+
+        An additional preparation stage is now performed so that all local
+        variables and function parameters are allocated in a single struct at
+        entry points. A pointer to this struct is then passed for function
+        calls.
+
+        * WebGPUShadingLanguageRI/All.js: Update dependencies.
+        * WebGPUShadingLanguageRI/AllocateAtEntryPoints.js: Added new stage.
+        * WebGPUShadingLanguageRI/CallExpression.js:
+        (CallExpression.prototype.set argumentList): Add setter because
+        allocateAtEntryPoints needs to change this.
+        * WebGPUShadingLanguageRI/EBufferBuilder.js: Remove a redundant
+        constructor that wasn't used anywhere.
+        * WebGPUShadingLanguageRI/Func.js:
+        (Func.prototype.set parameters): Add setter.
+        * WebGPUShadingLanguageRI/FuncDef.js:
+        (FuncDef.prototype.set body): Ditto.
+        * WebGPUShadingLanguageRI/Prepare.js:
+        (let.prepare): Add call to allocateAtEntryPoints. This call cannot
+        happen any earlier because it depends on having types for call
+        arguments.
+        * WebGPUShadingLanguageRI/Rewriter.js:
+        (Rewriter.prototype.visitReturn): Resolve issue where the return
+        statement's function wasn't copied. A null check is required as the
+        Rewriter might be used before this property is set.
+        * WebGPUShadingLanguageRI/SPIRV.html: Update dependencies.
+        * WebGPUShadingLanguageRI/SynthesizeStructAccessors.js: Abstracted logic
+        into a separate function so that allocateAtEntryPoints can create the
+        accessors for the struct type it introduces.
+        * WebGPUShadingLanguageRI/Test.html: Update dependencies.
+        * WebGPUShadingLanguageRI/Test.js: Add new tests to verify the static
+        allocation transform works safely.
+        * WebGPUShadingLanguageRI/index.html: Update dependencies.
+
+2018-09-21  Jonathan Bedard  <jbedard@apple.com>
+
+        Bring up queues for iOS 12 (Build fix)
+        https://bugs.webkit.org/show_bug.cgi?id=189683
+
+        Unreviewed build fix.
+
+        We should not build ImageDiff as x86 by default since 32 bit projects are
+        deprecated in Xcode. ImageDiff should only be built once.
+
+        * Scripts/build-webkit:
+        * Scripts/webkitdirs.pm:
+        (argumentsForConfiguration):
+
+2018-09-21  Adrian Perez de Castro  <aperez@igalia.com>
+
+        [WPE] Built RPM of WPE webkit fails to install with "nothing provides libWPEToolingBackends.so()"
+        https://bugs.webkit.org/show_bug.cgi?id=189797
+
+        Reviewed by Žan Doberšek.
+
+        * wpe/backends/CMakeLists.txt: Make libWPEToolingBackends a static library to avoid
+        the need for installing it. This works fine because the library only contains utility
+        code intended to be reused from other various components (MiniBrowser, WebKitTestRunner).
+
+2018-09-20  Daniel Bates  <dabates@apple.com>
+
+        Move IOKitSPI.h from TestRunnerShared to PAL
+        https://bugs.webkit.org/show_bug.cgi?id=189804
+
+        Reviewed by Wenson Hsieh.
+
+        Towards fixing <https://bugs.webkit.org/show_bug.cgi?id=189604> move the IOKit SPI forward
+        declarations to PAL so that they can be shared by WebKit, DumpRenderTree and WebKitTestRunner.
+
+        No functionality changed. So, no new tests.
+
+        * TestRunnerShared/EventSerialization/mac/EventSerializerMac.mm:
+        * TestRunnerShared/spi/UIKitTestSPI.h:
+        * WebKitTestRunner/WebKitTestRunner.xcodeproj/project.pbxproj:
+        * WebKitTestRunner/ios/HIDEventGenerator.mm:
+
+2018-09-20  Thomas Denney  <tdenney@apple.com>
+
+        [WHLSL] Metal code generation
+        https://bugs.webkit.org/show_bug.cgi?id=187735
+
+        Reviewed by Myles C. Maxfield.
+
+        Adds support for generating Metal Shading Language from WHLSL. Clients
+        should include the file MetalCodegenAll.js and then call whlslToMsl
+        with their program source code to compile to Metal.
+
+        * WebGPUShadingLanguageRI/ArrayType.js:
+        (ArrayType.prototype.get arrayRefType): Adds the arrayRefType method to
+        all types to find the type of that expression when it is used in a
+        MakeArrayRefExpression.
+        * WebGPUShadingLanguageRI/MakeArrayRefExpression.js:
+        (MakeArrayRefExpression):
+        (MakeArrayRefExpression.prototype.get type): Uses the new arrayRefType
+        getter on all types to find the type of the expression.
+        * WebGPUShadingLanguageRI/Metal/MSLBackend.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLCodegenAll.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLCompileResult.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLConstexprEmitter.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLFunctionDeclaration.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLFunctionDefinition.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLFunctionForwardDeclaration.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLNameMangler.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLNativeFunctionCall.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLStatementEmitter.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLTypeAttributes.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLTypeAttributesMap.js: Added.
+        * WebGPUShadingLanguageRI/Metal/MSLTypeUnifier.js: Added.
+        * WebGPUShadingLanguageRI/Metal/TypeOf.js: Added.
+        * WebGPUShadingLanguageRI/Metal/WhlslToMsl.js: Added.
+        * WebGPUShadingLanguageRI/PropertyResolver.js:
+        * WebGPUShadingLanguageRI/SynthesizeStructAccessors.js:
+        * WebGPUShadingLanguageRI/Test.js: Added awkward tests for the compiler
+        to generate code for.
+        (tests.incrementAndDecrement):
+        (tests.returnIntLiteralUint):
+        (tests.returnIntLiteralFloat):
+        (tests.nestedSubscriptWithArraysInStructs):
+        (tests.nestedSubscript):
+        (tests.lotsOfLocalVariables):
+        * WebGPUShadingLanguageRI/Type.js:
+        (Type.prototype.get arrayRefType): See above.
+
+2018-09-20  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Bring up queues for iOS 12
+        https://bugs.webkit.org/show_bug.cgi?id=189683
+
+        Unreviewed infrastructure fix.
+
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Images/IOS12@2x.png: Renamed from Tools/BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Images/iOS12@2x.png.
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Scripts/BubbleQueueServer.js:
+        (BubbleQueueServer): Move EWS bubbles to the iOS 12 section of the dashboard.
+
+2018-09-20  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Bring up queues for iOS 12
+        https://bugs.webkit.org/show_bug.cgi?id=189683
+
+        Reviewed by Aakash Jain.
+
+        * BuildSlaveSupport/build.webkit.org-config/config.json:
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Images/IOS12.png: Added.
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Images/IOS12Simulator.png: Added.
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Images/IOS12Simulator@2x.png: Added.
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Images/iOS12@2x.png: Added.
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Scripts/Dashboard.js:
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Scripts/WebKitBuildbot.js:
+        (WebKitBuildbot):
+        * BuildSlaveSupport/build.webkit.org-config/public_html/dashboard/Styles/Main.css:
+        (table.queue-grid tr.platform.ios-simulator-12 img.logo):
+        (table.queue-grid tr.platform.ios-12 img.logo):
+        (table.queue-grid tr.platform.ios-simulator-11 img.logo): Deleted.
+        (table.queue-grid tr.platform.ios-11 img.logo): Deleted.
+        * BuildSlaveSupport/build.webkit.org-config/steps_unittest.py:
+        * BuildSlaveSupport/build.webkit.org-config/wkbuild.py:
+        (_should_file_trigger_build):
+        * BuildSlaveSupport/build.webkit.org-config/wkbuild_unittest.py:
+        (ShouldBuildTest):
+        (ShouldBuildTest.test_should_build):
+
+2018-09-20  Basuke Suzuki  <Basuke.Suzuki@sony.com>
+
+        [Win] TestRunner::queueLoad() fails to generate correct url for some urls.
+        https://bugs.webkit.org/show_bug.cgi?id=189679
+
+        Reviewed by Fujii Hironori.
+
+        Replace the implementation with correct API call.
+
+        * DumpRenderTree/win/TestRunnerWin.cpp:
+        (TestRunner::queueLoad): Call UrlCombineW.
+
+2018-09-20  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE] fails to build on ARM arches complaining about undefined reference to `epoxy_eglMakeCurrent'
+        https://bugs.webkit.org/show_bug.cgi?id=189556
+
+        Reviewed by Konstantin Tokarev.
+
+        This is only a speculative build fix as I didn't attempt to reproduce. Explicitly link to
+        libepoxy.
+
+        * wpe/backends/CMakeLists.txt:
+
+2018-09-20  Daniel Bates  <dabates@apple.com>
+
+        [iOS] Support testing more hardware special keys
+        https://bugs.webkit.org/show_bug.cgi?id=189793
+
+        Reviewed by Simon Fraser.
+
+        * TestRunnerShared/spi/IOKitSPI.h: Add more SPI constants.
+        * WebKitTestRunner/ios/HIDEventGenerator.mm:
+        (keyCodeForDOMFunctionKey): Extracted out logic from hidUsageCodeForCharacter() to return the
+        key code for the F1, F2, ..., F12 keys and extended the code to compute the key code for the
+        F13, F14, ..., F24 keys.
+        (hidUsageCodeForCharacter): Modified to call keyCodeForDOMFunctionKey().
+
+2018-09-20  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        Unreviewed, remove accidentally-committed debugging changes from flatpakutils script
+
+        Aaaaaah maybe this is why changes are supposed to be reviewed.
+
+        * flatpak/flatpakutils.py:
+        (WebkitFlatpak.clean_args):
+
+2018-09-20  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        Unreviewed, manually rollout our switch to master runtime
+
+        Phil wants html5-codecs, which aren't available yet here. Let's switch back to 3.28 in the
+        meantime, where we were already building GStreamer ourselves anyway. But use an updated
+        SDK revision.
+
+        * flatpak/files/httpd-autogen.sh: Added.
+        * flatpak/flatpakutils.py:
+        (WebkitFlatpak.clean_args):
+        * flatpak/org.webkit.GTK.yaml:
+        * flatpak/org.webkit.WebKit.yaml:
+        * flatpak/patches/httpd-0001-configure-use-pkg-config-for-PCRE-detection.patch: Added.
+        * flatpak/patches/libgcrypt-0001-Use-pkg-config-to-detect-gpg-error.patch: Added.
+
+2018-09-20  Thibault Saunier  <tsaunier@igalia.com>
+
+        [WPE][GTK] webkit-flatpak intercepts --help for other commands
+        https://bugs.webkit.org/show_bug.cgi?id=189058
+
+        The approach of run_in_sandbox_if_available is that we basically have the
+        same set of arguments to setup the sandbox (ie. port name, build type, etc...)
+        and we can pass those args first to setup the flatpak launcher object
+        and then to the underlying script. That doesn't work well with the `--help` argument
+        as once processed it 1. prints the help (which make no sense to the user of the calling script)
+        2. exits the app - The solution is to just make sure that `--help` is not used when using
+        flatpakutils from any script that is not `webkit-flatpak` itself.
+
+        Reviewed by Michael Catanzaro.
+
+        * flatpak/flatpakutils.py:
+        (WebkitFlatpak.load_from_args):
+        (run_in_sandbox_if_available):
+
+2018-09-20  Xabier Rodriguez Calvar  <calvaris@igalia.com>
+
+        Unreviewed. Add W3C imported tests to the MSEEME watchlist.
+
+        * Scripts/webkitpy/common/config/watchlist:
+
+2018-09-20  Xabier Rodriguez Calvar  <calvaris@igalia.com>
+
+        Unreviewed. Fix the Streams API watchlist.
+
+        * Scripts/webkitpy/common/config/watchlist:
+
+2018-09-19  Chris Dumez  <cdumez@apple.com>
+
+        Crash under WebProcessProxy::suspendedPageWasDestroyed(WebKit::SuspendedPageProxy&)
+        https://bugs.webkit.org/show_bug.cgi?id=189721
+        <rdar://problem/44359788>
+
+        Reviewed by Geoffrey Garen.
+
+        Add API test coverage.
+
+        * TestWebKitAPI/Tests/WebKitCocoa/ProcessSwapOnNavigation.mm:
+
+2018-09-19  Thomas Denney  <tdenney@apple.com>
+
+        [WHLSL] Improve test suite type safety
+        https://bugs.webkit.org/show_bug.cgi?id=189502
+
+        Reviewed by Myles C. Maxfield.
+
+        Each of the 'makeT' functions now call the relevant cast function on the
+        value before hand. The checkNumber function has also been removed and
+        its uses have been replaced with functions that also check the type.
+        Some of the arithmetic checks have been updated to reflect that the
+        casts happen outside of WHLSL evaluation. Other tests have also been
+        updated to reflect that some values cannot be precisely expressed in
+        32-bit floating point.
+
+        * WebGPUShadingLanguageRI/Casts.js:
+        (castToBool): Added.
+        (castAndCheckValue): Added.
+        (isBitwiseEquivalent): Moved from Intrinsics.js.
+        * WebGPUShadingLanguageRI/Intrinsics.js: Ditto.
+        * WebGPUShadingLanguageRI/SPIRV.html: Update depdencies.
+        * WebGPUShadingLanguageRI/Test.html: Ditto.
+        * WebGPUShadingLanguageRI/Test.js: Update makeT functions to do a cast
+        and check the result. Some tests were also updated to reflect the change
+        in the behavior of these functions.
+        * WebGPUShadingLanguageRI/index.html: Update dependencies.
+
+2018-09-19  John Wilander  <wilander@apple.com>
+
+        Resource Load Statistics: Add optional cap on partitioned cache max age
+        https://bugs.webkit.org/show_bug.cgi?id=189711
+        <rdar://problem/39246837>
+
+        Reviewed by Antti Koivisto and Chris Dumez.
+
+        This change adds infrastructure for layout tests of capped cache max age.
+
+        * WebKitTestRunner/InjectedBundle/Bindings/TestRunner.idl:
+        * WebKitTestRunner/InjectedBundle/TestRunner.cpp:
+        (WTR::TestRunner::setStatisticsCacheMaxAgeCap):
+        * WebKitTestRunner/InjectedBundle/TestRunner.h:
+        * WebKitTestRunner/TestController.cpp:
+        (WTR::TestController::setStatisticsCacheMaxAgeCap):
+        * WebKitTestRunner/TestController.h:
+        * WebKitTestRunner/TestInvocation.cpp:
+        (WTR::TestInvocation::didReceiveSynchronousMessageFromInjectedBundle):
+
+2018-09-19  Dawei Fenton  <realdawei@apple.com>
+
+       Unreviewed. Update my email and alias in list of contributors.
+
+        * Scripts/webkitpy/common/config/contributors.json:
+
+2018-09-19  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE][GTK] Unreviewed, try #3 to fix a typo
+
+        I feel like Charlie Brown, how hard this has been for me....
+
+        * Scripts/run-minibrowser:
+        * Scripts/webkitdirs.pm:
+        (runInFlatpakIfAvailable):
+        (runInFlatpakIfAvailible): Deleted.
+
+2018-09-19  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE][GTK] Unreviewed, fix that typo in more places
+
+        It got copied into webkitdirs.pm!
+
+        * Scripts/webkitdirs.pm:
+        (runInFlatpakIfAvailible):
+        (runInFlatpakIfAvalaible): Deleted.
+
+2018-09-19  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE][GTK] Unreviewed, fix a pervasive typo in the webkit-flatpak script
+
+        * flatpak/flatpakutils.py:
+        (WebkitFlatpak.load_from_args):
+        (WebkitFlatpak.__init__):
+        (WebkitFlatpak.run):
+
+2018-09-19  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        [WPE][GTK] Unreviewed, update to latest GNOME SDK
+
+        * flatpak/org.webkit.WebKit.yaml:
+
+2018-09-19  Michael Catanzaro  <mcatanzaro@igalia.com>
+
+        Unreviewed, rolling out r235500.
+
+        Time to switch back to master runtime
+
+        Reverted changeset:
+
+        "Unreviewed, rolling out r235114."
+        https://bugs.webkit.org/show_bug.cgi?id=188731
+        https://trac.webkit.org/changeset/235500
+
+2018-09-19  Adrian Perez de Castro  <aperez@igalia.com>
+
+        Unreviewed. Add Pablo Saavedra to the list of contributors.
+
+        * Scripts/webkitpy/common/config/contributors.json:
+
+2018-09-19  Philippe Normand  <pnormand@igalia.com>
+
+        [GStreamer] Add support for AV1 decoding
+        https://bugs.webkit.org/show_bug.cgi?id=189647
+
+        Reviewed by Žan Doberšek.
+
+        Add patches required for AV1 decoding support. They're all
+        upstream already and will be shipped in GStreamer 1.16. The aom
+        GStreamer plugin depends on the aom library for which there's no
+        official release yet.
+
+        * gstreamer/jhbuild.modules:
+        * gstreamer/patches/gst-plugins-bad-0001-aomenc-Add-support-for-10-12bit-decoding.patch: Added.
+        * gstreamer/patches/gst-plugins-bad-0002-aomenc-Handle-8-bit_depth-images-with-AOM_IMG_FMT_HI.patch: Added.
+        * gstreamer/patches/gst-plugins-good-0001-qtdemux-Detect-and-expose-CEA-608-708-Closed-Caption.patch: Added. This one is unrelated but an implicit dependency of the next one.
+        * gstreamer/patches/gst-plugins-good-0004-qtdemux-Add-initial-support-for-AV1-demuxing.patch: Added.
+        * gstreamer/patches/gst-plugins-good-0005-qtdemux-Extract-AV1-codec_data-and-put-it-in-the-cap.patch: Added.
+        * gstreamer/patches/gst-plugins-good-0006-qtdemux-Recognize-more-AV1-atoms.patch: Added.
+
+2018-09-18  Jonathan Bedard  <jbedard@apple.com>
+
+        webkitpy: Clobbering and building occurs multiple times for iOS Simulator ports
+        https://bugs.webkit.org/show_bug.cgi?id=189702
+        <rdar://problem/44541704>
+
+        Reviewed by Aakash Jain.
+
+        * Scripts/webkitpy/layout_tests/controllers/manager.py:
+        (Manager._set_up_run): Move build check and clobbering to run, since set up is
+        run multiple times for iOS simulator.
+        (Manager.run):
+
+2018-09-18  Chris Dumez  <cdumez@apple.com>
+
+        "DidFirstVisuallyNonEmptyLayout" callback does not get called when restoring a page from PageCache
+        https://bugs.webkit.org/show_bug.cgi?id=189681
+        <rdar://problem/44526171>
+
+        Reviewed by Alex Christensen and Zalan Bujtas.
+
+        Add API test coverage.
+
+        * TestWebKitAPI/Tests/WebKit/LayoutMilestonesWithAllContentInFrame.cpp:
+        (TestWebKitAPI::didFinishNavigation):
+        (TestWebKitAPI::TEST):
+
+2018-09-18  Claudio Saavedra  <csaavedra@igalia.com>
+
+        [WPE] Implement mouse event modifiers
+        https://bugs.webkit.org/show_bug.cgi?id=189697
+
+        Reviewed by Carlos Garcia Campos.
+
+        * WebKitTestRunner/wpe/EventSenderProxyWPE.cpp:
+        (WTR::wkEventModifiersToWPE):
+        (WTR::EventSenderProxy::mouseDown):
+        (WTR::EventSenderProxy::mouseUp):
+
+2018-09-17  Yusuke Suzuki  <utatane.tea@gmail.com>
+
+        [WTF] Use Semaphore and BinarySemaphore instead of dispatch_semaphore_t
+        https://bugs.webkit.org/show_bug.cgi?id=185339
+
+        Reviewed by Mark Lam.
+
+        * TestWebKitAPI/Tests/WTF/SynchronizedFixedQueue.cpp:
+        (TestWebKitAPI::ToUpperConverter::stopProducing):
+        (TestWebKitAPI::ToUpperConverter::stopConsuming):
+
+2018-09-17  Simon Fraser  <simon.fraser@apple.com>
+
+        Many modern media control tests leak documents in testing
+        https://bugs.webkit.org/show_bug.cgi?id=189437
+
+        Reviewed by Darin Adler.
+        
+        In order to accurately detect leaks in media controls tests which use lots of
+        SVGImages, we have to:
+        - Fire a zero-delay timer after the postTask, in order for ImagesLoader's m_derefElementTimer
+          to clear references to elements.
+        - Have releaseCriticalMemory() call CachedResourceLoader's garbageCollectDocumentResources()
+          to drop the last handle to the CachedResource for an SVGImage.
+        - Call WKBundleReleaseMemory() after the GC and timer, since we need garbageCollectDocumentResources()
+          to run again after that timer has fired.
+        
+        This should fix most of the spurious leak reports involving SVGImage documents.
+
+        * WebKitTestRunner/InjectedBundle/InjectedBundle.cpp:
+        (WTR::InjectedBundle::reportLiveDocuments):
+        (WTR::InjectedBundle::didReceiveMessageToPage):
+
+2018-09-17  Chris Dumez  <cdumez@apple.com>
+
+        PSON: window.open() with 'noopener' should only process-swap cross-site, not cross-origin
+        https://bugs.webkit.org/show_bug.cgi?id=189602
+        <rdar://problem/44430549>
+
+        Reviewed by Geoff Garen.
+
+        Add API test coverage.
+
+        * TestWebKitAPI/Tests/WebKitCocoa/ProcessSwapOnNavigation.mm:
+
+2018-09-17  Philippe Normand  <pnormand@igalia.com>
+
+        [JHBuild] Update to GStreamer 1.14.3
+        https://bugs.webkit.org/show_bug.cgi?id=189450
+
+        Reviewed by Xabier Rodriguez-Calvar.
+
+        * gstreamer/jhbuild.modules: Bump GStreamer modules from 1.14.1 to 1.14.3.
+
+2018-09-17  Philippe Normand  <pnormand@igalia.com>
+
+        [JHBuild] Doesn't check sha256 sums
+        https://bugs.webkit.org/show_bug.cgi?id=189646
+
+        Reviewed by Michael Catanzaro.
+
+        * gstreamer/jhbuild.modules: Properly set the sha256: prefix on hashes.
+
+2018-09-17  Sihui Liu  <sihui_liu@apple.com>
+
+        Move IndexedDB to Network Process
+        https://bugs.webkit.org/show_bug.cgi?id=189415
+        <rdar://problem/44396973>
+
+        Reviewed by Chris Dumez.
+
+        * TestWebKitAPI/Tests/WebKitCocoa/IDBDeleteRecovery.mm:
+        (TEST):
+        * TestWebKitAPI/Tests/WebKitCocoa/IDBIndexUpgradeToV2.mm:
+        (TEST):
+        * TestWebKitAPI/Tests/WebKitCocoa/IndexedDBDatabaseProcessKill.mm:
+        (TEST):
+        * TestWebKitAPI/Tests/WebKitCocoa/IndexedDBMultiProcess.mm:
+        (TEST):
+        * TestWebKitAPI/Tests/WebKitCocoa/IndexedDBPersistence.mm:
+        (TEST):
+
 2018-09-08  Darin Adler  <darin@apple.com>
 
         Streamline JSRetainPtr, fix leaks of JSString and JSGlobalContext

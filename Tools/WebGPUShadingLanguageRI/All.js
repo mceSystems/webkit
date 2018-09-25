@@ -37,6 +37,7 @@ load("PropertyAccessExpression.js");
 load("NativeType.js");
 
 load("AddressSpace.js");
+load("AllocateAtEntryPoints.js");
 load("AnonymousVariable.js");
 load("ArrayRefType.js");
 load("ArrayType.js");
@@ -89,7 +90,9 @@ load("FloatLiteralType.js");
 load("FoldConstexprs.js");
 load("ForLoop.js");
 load("Func.js");
+load("FuncAttribute.js");
 load("FuncDef.js");
+load("FuncNumThreadsAttribute.js");
 load("FuncParameter.js");
 load("FunctionLikeBlock.js");
 load("HighZombieFinder.js");

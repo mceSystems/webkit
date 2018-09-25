@@ -432,10 +432,6 @@ ShowsURLsInToolTipsEnabled:
   defaultValue: false
   webcoreName: showsURLsInToolTips
 
-AcceleratedCompositingForOverflowScrollEnabled:
-  type: bool
-  defaultValue: false
-
 HiddenPageDOMTimerThrottlingEnabled:
   type: bool
   defaultValue: DEFAULT_HIDDEN_PAGE_DOM_TIMER_THROTTLING_ENABLED
@@ -496,7 +492,7 @@ PeerConnectionEnabled:
 
 WebRTCUnifiedPlanEnabled:
   type: bool
-  defaultValue: false
+  defaultValue: DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
   webcoreBinding: RuntimeEnabledFeatures
   condition: ENABLE(WEB_RTC)
   humanReadableName: "WebRTC Unified Plan"
@@ -1130,6 +1126,12 @@ SourceBufferChangeTypeEnabled:
   defaultValue: true
   condition: ENABLE(MEDIA_SOURCE)
 
+EncryptedMediaAPIEnabled:
+  type: bool
+  defaultValue: true
+  webcoreBinding: RuntimeEnabledFeatures
+  condition: ENABLE(ENCRYPTED_MEDIA)
+
 # For experimental features:
 # The type should be boolean.
 # You must provide a humanReadableName and humanReadableDescription for all experimental features. They
@@ -1175,6 +1177,14 @@ VisualViewportAPIEnabled:
   defaultValue: DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
   humanReadableName: "Visual Viewport API"
   humanReadableDescription: "Enable Visual Viewport API"
+  category: experimental
+
+PointerEventsEnabled:
+  type: bool
+  defaultValue: false
+  humanReadableName: "Pointer Events"
+  humanReadableDescription: "Enable Pointer Events"
+  webcoreBinding: RuntimeEnabledFeatures
   category: experimental
 
 CSSOMViewScrollingAPIEnabled:
@@ -1243,15 +1253,6 @@ ServerTimingEnabled:
   category: experimental
   webcoreBinding: RuntimeEnabledFeatures
   webcoreName: serverTimingEnabled
-
-EncryptedMediaAPIEnabled:
-  type: bool
-  defaultValue: DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
-  humanReadableName: "Modern Encrypted Media API"
-  humanReadableDescription: "Enable Modern Encrypted Media API"
-  webcoreBinding: RuntimeEnabledFeatures
-  category: experimental
-  condition: ENABLE(ENCRYPTED_MEDIA)
 
 # For internal features:
 # The type should be boolean.
@@ -1350,3 +1351,11 @@ WebAPIStatisticsEnabled:
   humanReadableDescription: "Enable Web API Statistics"
   webcoreBinding: RuntimeEnabledFeatures
   category: internal
+
+CSSCustomPropertiesAndValuesEnabled:
+  type: bool
+  defaultValue: false
+  humanReadableName: "CSS Custom Properties and Values API"
+  humanReadableDescription: "Enable CSS Custom Properties and Values API"
+  webcoreBinding: RuntimeEnabledFeatures
+  category: experimental

@@ -33,8 +33,6 @@ messages -> NetworkProcessProxy LegacyReceiver {
 
     DidWriteBlobToFilePath(bool success, uint64_t callbackID)
 
-    GrantSandboxExtensionsToStorageProcessForBlobs(uint64_t requestID, Vector<String> paths)
-
     ProcessReadyToSuspend()
     SetIsHoldingLockedFiles(bool isHoldingLockedFiles)
 
@@ -48,10 +46,16 @@ messages -> NetworkProcessProxy LegacyReceiver {
     StorageAccessRequestResult(bool wasGranted, uint64_t contextId)
     AllStorageAccessEntriesResult(Vector<String> domains, uint64_t contextId)
     DidRemoveAllStorageAccess(uint64_t contextId)
+    DidSetCacheMaxAgeCapForPrevalentResources(uint64_t contextId)
+    DidResetCacheMaxAgeCapForPrevalentResources(uint64_t contextId)
 #endif
 #if ENABLE(CONTENT_EXTENSIONS)
     ContentExtensionRules(WebKit::UserContentControllerIdentifier identifier)
 #endif
 
     RetrieveCacheStorageParameters(PAL::SessionID sessionID)
+
+#if ENABLE(SANDBOX_EXTENSIONS)
+    GetSandboxExtensionsForBlobFiles(uint64_t requestID, Vector<String> paths)
+#endif
 }

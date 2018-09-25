@@ -28,6 +28,7 @@
 
 #if WK_API_ENABLED
 
+#import "AuthenticationChallengeDisposition.h"
 #import "AuthenticationChallengeProxy.h"
 #import "AuthenticationDecisionListener.h"
 #import "CompletionHandlerCallChecker.h"
@@ -122,7 +123,7 @@ void DownloadClient::didReceiveAuthenticationChallenge(WebProcessPool&, Download
 {
     // FIXME: System Preview needs code here.
     if (!m_delegateMethods.downloadDidReceiveAuthenticationChallengeCompletionHandler) {
-        authenticationChallenge.listener()->performDefaultHandling();
+        authenticationChallenge.listener().completeChallenge(WebKit::AuthenticationChallengeDisposition::PerformDefaultHandling);
         return;
     }
 
@@ -131,25 +132,19 @@ void DownloadClient::didReceiveAuthenticationChallenge(WebProcessPool&, Download
             return;
         checker->didCallCompletionHandler();
         switch (disposition) {
-        case NSURLSessionAuthChallengeUseCredential: {
-            RefPtr<WebCredential> webCredential;
-            if (credential)
-                webCredential = WebCredential::create(WebCore::Credential(credential));
-            
-            authenticationChallenge->listener()->useCredential(webCredential.get());
+        case NSURLSessionAuthChallengeUseCredential:
+            authenticationChallenge->listener().completeChallenge(AuthenticationChallengeDisposition::UseCredential, credential ? WebCore::Credential(credential) : WebCore::Credential());
             break;
-        }
-            
         case NSURLSessionAuthChallengePerformDefaultHandling:
-            authenticationChallenge->listener()->performDefaultHandling();
+            authenticationChallenge->listener().completeChallenge(AuthenticationChallengeDisposition::PerformDefaultHandling);
             break;
             
         case NSURLSessionAuthChallengeCancelAuthenticationChallenge:
-            authenticationChallenge->listener()->cancel();
+            authenticationChallenge->listener().completeChallenge(AuthenticationChallengeDisposition::Cancel);
             break;
             
         case NSURLSessionAuthChallengeRejectProtectionSpace:
-            authenticationChallenge->listener()->rejectProtectionSpaceAndContinue();
+            authenticationChallenge->listener().completeChallenge(AuthenticationChallengeDisposition::RejectProtectionSpaceAndContinue);
             break;
             
         default:

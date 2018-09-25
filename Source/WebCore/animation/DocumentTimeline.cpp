@@ -31,10 +31,13 @@
 #include "DOMWindow.h"
 #include "DeclarativeAnimation.h"
 #include "Document.h"
+#include "GraphicsLayer.h"
 #include "KeyframeEffect.h"
 #include "Microtasks.h"
 #include "Page.h"
 #include "RenderElement.h"
+#include "RenderLayer.h"
+#include "RenderLayerBacking.h"
 
 static const Seconds defaultAnimationInterval { 15_ms };
 static const Seconds throttledAnimationInterval { 30_ms };
@@ -95,14 +98,14 @@ void DocumentTimeline::suspendAnimations()
     if (animationsAreSuspended())
         return;
 
-    m_isSuspended = true;
-
     m_invalidationTaskQueue.cancelAllTasks();
     if (m_animationScheduleTimer.isActive())
         m_animationScheduleTimer.stop();
 
     for (const auto& animation : animations())
         animation->setSuspended(true);
+
+    m_isSuspended = true;
 
     applyPendingAcceleratedAnimations();
 }
@@ -138,7 +141,7 @@ unsigned DocumentTimeline::numberOfActiveAnimationsForTesting() const
 
 std::optional<Seconds> DocumentTimeline::currentTime()
 {
-    if (m_paused || m_isSuspended || !m_document || !m_document->domWindow())
+    if (m_paused || !m_document || !m_document->domWindow())
         return AnimationTimeline::currentTime();
 
     if (auto* mainDocumentTimeline = m_document->existingTimeline()) {
@@ -213,9 +216,11 @@ void DocumentTimeline::scheduleInvalidationTaskIfNeeded()
 void DocumentTimeline::performInvalidationTask()
 {
     // Now that the timing model has changed we can see if there are DOM events to dispatch for declarative animations.
-    for (auto& animation : animations()) {
-        if (is<DeclarativeAnimation>(animation))
-            downcast<DeclarativeAnimation>(*animation).invalidateDOMEvents();
+    if (!m_isSuspended) {
+        for (auto& animation : animations()) {
+            if (is<DeclarativeAnimation>(animation))
+                downcast<DeclarativeAnimation>(*animation).invalidateDOMEvents();
+        }
     }
 
     applyPendingAcceleratedAnimations();
@@ -288,6 +293,8 @@ void DocumentTimeline::animationResolutionTimerFired()
 
 void DocumentTimeline::updateAnimations()
 {
+    m_numberOfAnimationTimelineInvalidationsForTesting++;
+
     for (const auto& animation : animations())
         animation->runPendingTasks();
 
@@ -483,6 +490,22 @@ void DocumentTimeline::performEventDispatchTask()
     std::stable_sort(pendingAnimationEvents.begin(), pendingAnimationEvents.end(), compareAnimationPlaybackEvents);
     for (auto& pendingEvent : pendingAnimationEvents)
         pendingEvent->target()->dispatchEvent(pendingEvent);
+}
+
+Vector<std::pair<String, double>> DocumentTimeline::acceleratedAnimationsForElement(Element& element) const
+{
+    auto* renderer = element.renderer();
+    if (renderer && renderer->isComposited()) {
+        auto* compositedRenderer = downcast<RenderBoxModelObject>(renderer);
+        if (auto* graphicsLayer = compositedRenderer->layer()->backing()->graphicsLayer())
+            return graphicsLayer->acceleratedAnimationsForTesting();
+    }
+    return { };
+}
+
+unsigned DocumentTimeline::numberOfAnimationTimelineInvalidationsForTesting() const
+{
+    return m_numberOfAnimationTimelineInvalidationsForTesting;
 }
 
 } // namespace WebCore

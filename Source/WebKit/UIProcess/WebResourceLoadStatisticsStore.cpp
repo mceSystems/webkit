@@ -158,7 +158,7 @@ void WebResourceLoadStatisticsStore::flushAndDestroyPersistentStore()
         m_memoryStore = nullptr;
         semaphore.signal();
     });
-    semaphore.wait(WallTime::infinity());
+    semaphore.wait();
 }
 
 void WebResourceLoadStatisticsStore::setResourceLoadStatisticsDebugMode(bool value, CompletionHandler<void()>&& completionHandler)
@@ -759,41 +759,30 @@ void WebResourceLoadStatisticsStore::scheduleCookieBlockingStateReset()
 }
 #endif
 
-void WebResourceLoadStatisticsStore::scheduleClearInMemory(CompletionHandler<void()>&& completionHandler)
-{
-    ASSERT(RunLoop::isMain());
-    postTask([this, completionHandler = WTFMove(completionHandler)]() mutable {
-
-        CompletionHandler<void()> callCompletionHandlerOnMainThread = [completionHandler = WTFMove(completionHandler)]() mutable {
-            postTaskReply(WTFMove(completionHandler));
-        };
-
-        if (!m_memoryStore) {
-            callCompletionHandlerOnMainThread();
-            return;
-        }
-
-        m_memoryStore->clear(WTFMove(callCompletionHandlerOnMainThread));
-    });
-}
-
 void WebResourceLoadStatisticsStore::scheduleClearInMemoryAndPersistent(ShouldGrandfather shouldGrandfather, CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(RunLoop::isMain());
-    postTask([this, shouldGrandfather, completionHandler = WTFMove(completionHandler)] () mutable {
-        if (m_memoryStore)
-            m_memoryStore->clear([] { });
+    postTask([this, protectedThis = makeRef(*this), shouldGrandfather, completionHandler = WTFMove(completionHandler)] () mutable {
         if (m_persistentStorage)
             m_persistentStorage->clear();
-        
-        CompletionHandler<void()> callCompletionHandlerOnMainThread = [completionHandler = WTFMove(completionHandler)]() mutable {
-            postTaskReply(WTFMove(completionHandler));
-        };
 
-        if (shouldGrandfather == ShouldGrandfather::Yes && m_memoryStore)
-            m_memoryStore->grandfatherExistingWebsiteData(WTFMove(callCompletionHandlerOnMainThread));
-        else
-            callCompletionHandlerOnMainThread();
+        CompletionHandlerCallingScope completionHandlerCaller([completionHandler = WTFMove(completionHandler)]() mutable {
+            postTaskReply(WTFMove(completionHandler));
+        });
+
+        if (m_memoryStore) {
+            m_memoryStore->clear([this, protectedThis = protectedThis.copyRef(), shouldGrandfather, completionHandlerCaller = WTFMove(completionHandlerCaller)] () mutable {
+                if (shouldGrandfather == ShouldGrandfather::Yes) {
+                    if (m_memoryStore)
+                        m_memoryStore->grandfatherExistingWebsiteData(completionHandlerCaller.release());
+                    else
+                        RELEASE_LOG(ResourceLoadStatistics, "WebResourceLoadStatisticsStore::scheduleClearInMemoryAndPersistent After being cleared, m_memoryStore is null when trying to grandfather data.");
+                }
+            });
+        } else {
+            if (shouldGrandfather == ShouldGrandfather::Yes)
+                RELEASE_LOG(ResourceLoadStatistics, "WebResourceLoadStatisticsStore::scheduleClearInMemoryAndPersistent Before being cleared, m_memoryStore is null when trying to grandfather data.");
+        }
     });
 }
 
@@ -831,6 +820,20 @@ void WebResourceLoadStatisticsStore::setGrandfatheringTime(Seconds seconds)
         if (m_memoryStore)
             m_memoryStore->setGrandfatheringTime(seconds);
     });
+}
+
+void WebResourceLoadStatisticsStore::setCacheMaxAgeCap(Seconds seconds, CompletionHandler<void()>&& completionHandler)
+{
+    ASSERT(RunLoop::isMain());
+    ASSERT(seconds >= 0_s);
+    
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+    if (m_websiteDataStore) {
+        m_websiteDataStore->setCacheMaxAgeCapForPrevalentResources(seconds, WTFMove(completionHandler));
+        return;
+    }
+#endif
+    completionHandler();
 }
 
 void WebResourceLoadStatisticsStore::callUpdatePrevalentDomainsToBlockCookiesForHandler(const Vector<String>& domainsToBlock, ShouldClearFirst shouldClearFirst, CompletionHandler<void()>&& completionHandler)

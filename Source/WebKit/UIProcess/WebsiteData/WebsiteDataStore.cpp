@@ -223,6 +223,9 @@ static ProcessAccessType computeNetworkProcessAccessTypeForDataFetch(OptionSet<W
 
     if (dataTypes.contains(WebsiteDataType::DOMCache))
         processAccessType = std::max(processAccessType, ProcessAccessType::Launch);
+    
+    if (dataTypes.contains(WebsiteDataType::IndexedDBDatabases) && !isNonPersistentStore)
+        processAccessType = std::max(processAccessType, ProcessAccessType::Launch);
 
     return processAccessType;
 }
@@ -510,11 +513,8 @@ void WebsiteDataStore::fetchDataAndApply(OptionSet<WebsiteDataType> dataTypes, O
         });
     }
 
-    if ((dataTypes.contains(WebsiteDataType::IndexedDBDatabases)
 #if ENABLE(SERVICE_WORKER)
-        || dataTypes.contains(WebsiteDataType::ServiceWorkerRegistrations)
-#endif
-        ) && isPersistent()) {
+    if (dataTypes.contains(WebsiteDataType::ServiceWorkerRegistrations) && isPersistent()) {
         for (auto& processPool : processPools()) {
             processPool->ensureStorageProcessAndWebsiteDataStore(this);
 
@@ -524,6 +524,7 @@ void WebsiteDataStore::fetchDataAndApply(OptionSet<WebsiteDataType> dataTypes, O
             });
         }
     }
+#endif
 
     if (dataTypes.contains(WebsiteDataType::MediaKeys) && isPersistent()) {
         callbackAggregator->addPendingCallback();
@@ -654,6 +655,9 @@ static ProcessAccessType computeNetworkProcessAccessTypeForDataRemoval(OptionSet
         processAccessType = std::max(processAccessType, ProcessAccessType::Launch);
 
     if (dataTypes.contains(WebsiteDataType::DOMCache))
+        processAccessType = std::max(processAccessType, ProcessAccessType::Launch);
+
+    if (dataTypes.contains(WebsiteDataType::IndexedDBDatabases) && !isNonPersistentStore)
         processAccessType = std::max(processAccessType, ProcessAccessType::Launch);
 
     return processAccessType;
@@ -820,11 +824,8 @@ void WebsiteDataStore::removeData(OptionSet<WebsiteDataType> dataTypes, WallTime
         });
     }
 
-    if ((dataTypes.contains(WebsiteDataType::IndexedDBDatabases)
 #if ENABLE(SERVICE_WORKER)
-        || dataTypes.contains(WebsiteDataType::ServiceWorkerRegistrations)
-#endif
-        ) && isPersistent()) {
+    if (dataTypes.contains(WebsiteDataType::ServiceWorkerRegistrations) && isPersistent()) {
         for (auto& processPool : processPools()) {
             processPool->ensureStorageProcessAndWebsiteDataStore(this);
 
@@ -834,6 +835,7 @@ void WebsiteDataStore::removeData(OptionSet<WebsiteDataType> dataTypes, WallTime
             });
         }
     }
+#endif
 
     if (dataTypes.contains(WebsiteDataType::MediaKeys) && isPersistent()) {
         callbackAggregator->addPendingCallback();
@@ -1121,11 +1123,8 @@ void WebsiteDataStore::removeData(OptionSet<WebsiteDataType> dataTypes, const Ve
         });
     }
 
-    if ((dataTypes.contains(WebsiteDataType::IndexedDBDatabases)
 #if ENABLE(SERVICE_WORKER)
-        || dataTypes.contains(WebsiteDataType::ServiceWorkerRegistrations)
-#endif
-        ) && isPersistent()) {
+    if (dataTypes.contains(WebsiteDataType::ServiceWorkerRegistrations) && isPersistent()) {
         for (auto& processPool : processPools()) {
             processPool->ensureStorageProcessAndWebsiteDataStore(this);
 
@@ -1135,6 +1134,7 @@ void WebsiteDataStore::removeData(OptionSet<WebsiteDataType> dataTypes, const Ve
             });
         }
     }
+#endif
 
     if (dataTypes.contains(WebsiteDataType::MediaKeys) && isPersistent()) {
         HashSet<WebCore::SecurityOriginData> origins;
@@ -1255,7 +1255,7 @@ void WebsiteDataStore::updatePrevalentDomainsToBlockCookiesFor(const Vector<Stri
 
     for (auto& processPool : processPools()) {
         if (auto* process = processPool->networkProcess())
-            process->updatePrevalentDomainsToBlockCookiesFor(m_sessionID, domainsToBlock, shouldClearFirst, [callbackAggregator = callbackAggregator.copyRef()] { });
+            process->updatePrevalentDomainsToBlockCookiesFor(m_sessionID, domainsToBlock, shouldClearFirst, [processPool, callbackAggregator = callbackAggregator.copyRef()] { });
     }
 }
 
@@ -1301,7 +1301,7 @@ void WebsiteDataStore::removeAllStorageAccessHandler(CompletionHandler<void()>&&
     
     for (auto& processPool : processPools()) {
         if (auto networkProcess = processPool->networkProcess())
-            networkProcess->removeAllStorageAccess(m_sessionID, [callbackAggregator = callbackAggregator.copyRef()] { });
+            networkProcess->removeAllStorageAccess(m_sessionID, [processPool, callbackAggregator = callbackAggregator.copyRef()] { });
     }
 }
 
@@ -1341,6 +1341,35 @@ void WebsiteDataStore::grantStorageAccess(String&& subFrameHost, String&& topFra
     m_resourceLoadStatistics->grantStorageAccess(WTFMove(subFrameHost), WTFMove(topFrameHost), frameID, pageID, userWasPrompted, WTFMove(completionHandler));
 }
 #endif
+
+void WebsiteDataStore::setCacheMaxAgeCapForPrevalentResources(Seconds seconds, CompletionHandler<void()>&& completionHandler)
+{
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+    auto callbackAggregator = CallbackAggregator::create(WTFMove(completionHandler));
+    
+    for (auto& processPool : processPools()) {
+        if (auto* networkProcess = processPool->networkProcess())
+            networkProcess->setCacheMaxAgeCapForPrevalentResources(m_sessionID, seconds, [callbackAggregator = callbackAggregator.copyRef()] { });
+    }
+#else
+    UNUSED_PARAM(seconds);
+    completionHandler();
+#endif
+}
+
+void WebsiteDataStore::resetCacheMaxAgeCapForPrevalentResources(CompletionHandler<void()>&& completionHandler)
+{
+#if HAVE(CFNETWORK_STORAGE_PARTITIONING)
+    auto callbackAggregator = CallbackAggregator::create(WTFMove(completionHandler));
+    
+    for (auto& processPool : processPools()) {
+        if (auto* networkProcess = processPool->networkProcess())
+            networkProcess->resetCacheMaxAgeCapForPrevalentResources(m_sessionID, [callbackAggregator = callbackAggregator.copyRef()] { });
+    }
+#else
+    completionHandler();
+#endif
+}
 
 void WebsiteDataStore::networkProcessDidCrash()
 {
@@ -1596,11 +1625,6 @@ StorageProcessCreationParameters WebsiteDataStore::storageProcessParameters()
 
     parameters.sessionID = m_sessionID;
 
-#if ENABLE(INDEXED_DATABASE)
-    parameters.indexedDatabaseDirectory = resolvedIndexedDatabaseDirectory();
-    if (!parameters.indexedDatabaseDirectory.isEmpty())
-        SandboxExtension::createHandleForReadWriteDirectory(parameters.indexedDatabaseDirectory, parameters.indexedDatabaseDirectoryExtensionHandle);
-#endif
 #if ENABLE(SERVICE_WORKER)
     parameters.serviceWorkerRegistrationDirectory = resolvedServiceWorkerRegistrationDirectory();
     if (!parameters.serviceWorkerRegistrationDirectory.isEmpty())
@@ -1636,6 +1660,15 @@ WebsiteDataStoreParameters WebsiteDataStore::parameters()
     // FIXME: Implement cookies.
     WebsiteDataStoreParameters parameters;
     parameters.networkSessionParameters.sessionID = m_sessionID;
+
+    resolveDirectoriesIfNecessary();
+
+#if ENABLE(INDEXED_DATABASE)
+    parameters.indexedDatabaseDirectory = resolvedIndexedDatabaseDirectory();
+    if (!parameters.indexedDatabaseDirectory.isEmpty())
+        SandboxExtension::createHandleForReadWriteDirectory(parameters.indexedDatabaseDirectory, parameters.indexedDatabaseDirectoryExtensionHandle);
+#endif
+
     return parameters;
 }
 #endif

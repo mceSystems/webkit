@@ -1527,8 +1527,12 @@
       "status" : "committer"
    },
    "David Fenton" : {
+    "aliases" : [
+        "Dawei Fenton"
+     ],
       "emails" : [
-         "david_fenton@apple.com"
+         "david_fenton@apple.com",
+         "realdawei@apple.com"
       ],
       "nicks" : [
          "realdawei"
@@ -4531,6 +4535,11 @@
          "pablof"
       ],
       "status" : "committer"
+   },
+   "Pablo Saavedra Rodi\u00F1o" : {
+      "emails" : [
+         "psaavedra@igalia.com"
+      ]
    },
    "Pam Greene" : {
       "emails" : [

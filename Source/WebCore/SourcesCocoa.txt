@@ -79,6 +79,8 @@ editing/SmartReplaceCF.cpp
 editing/cocoa/DataDetection.mm
 editing/cocoa/EditorCocoa.mm
 editing/cocoa/FontAttributeChangesCocoa.mm
+editing/cocoa/FontAttributesCocoa.mm
+editing/cocoa/FontShadowCocoa.mm
 editing/cocoa/HTMLConverter.mm @no-unify
 editing/cocoa/WebArchiveResourceFromNSAttributedString.mm
 editing/cocoa/WebArchiveResourceWebResourceHandler.mm
@@ -159,7 +161,7 @@ page/scrolling/mac/ScrollingTreeStickyNode.mm
 
 platform/audio/AudioSession.cpp
 
-platform/audio/cocoa/MediaSessionManagerCocoa.cpp
+platform/audio/cocoa/MediaSessionManagerCocoa.mm
 platform/audio/cocoa/WebAudioBufferList.cpp
 
 platform/audio/ios/AudioDestinationIOS.cpp @no-unify
@@ -176,7 +178,6 @@ platform/audio/mac/AudioHardwareListenerMac.cpp
 platform/audio/mac/AudioSessionMac.cpp
 platform/audio/mac/CARingBuffer.cpp
 platform/audio/mac/FFTFrameMac.cpp
-platform/audio/mac/MediaSessionManagerMac.mm
 
 platform/cf/CFURLExtras.cpp
 platform/cf/FileSystemCF.cpp
@@ -294,6 +295,7 @@ platform/graphics/cg/SubimageCacheWithTimer.cpp
 platform/graphics/cg/TransformationMatrixCG.cpp
 platform/graphics/cg/UTIRegistry.cpp
 
+platform/graphics/cocoa/ColorCocoa.mm
 platform/graphics/cocoa/GraphicsContext3DCocoa.mm
 platform/graphics/cocoa/GraphicsContextCocoa.mm
 platform/graphics/cocoa/FontCacheCoreText.cpp
@@ -302,8 +304,10 @@ platform/graphics/cocoa/FontCocoa.mm
 platform/graphics/cocoa/FontDescriptionCocoa.cpp
 platform/graphics/cocoa/FontFamilySpecificationCoreText.cpp
 platform/graphics/cocoa/FontPlatformDataCocoa.mm
+platform/graphics/cocoa/HEVCUtilitiesCocoa.cpp
 platform/graphics/cocoa/IOSurface.mm
 platform/graphics/cocoa/IOSurfacePoolCocoa.mm
+platform/graphics/cocoa/MediaEngineConfigurationFactoryCocoa.cpp
 platform/graphics/cocoa/WebActionDisablingCALayerDelegate.mm
 platform/graphics/cocoa/WebCoreCALayerExtras.mm
 platform/graphics/cocoa/WebCoreDecompressionSession.mm

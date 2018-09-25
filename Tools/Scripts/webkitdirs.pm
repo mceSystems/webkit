@@ -488,7 +488,7 @@ sub argumentsForConfiguration()
     push(@args, '--release') if ($configuration =~ "^Release");
     push(@args, '--ios-device') if (defined $xcodeSDK && $xcodeSDK =~ /^iphoneos/);
     push(@args, '--ios-simulator') if (defined $xcodeSDK && $xcodeSDK =~ /^iphonesimulator/);
-    push(@args, '--32-bit') if ($architecture ne "x86_64" and !isWin64());
+    push(@args, '--32-bit') if ($architecture eq "x86" and !isWin64());
     push(@args, '--64-bit') if (isWin64());
     push(@args, '--gtk') if isGtk();
     push(@args, '--wpe') if isWPE();
@@ -2078,14 +2078,14 @@ sub runInFlatpak(@)
     exec @command, argumentsForConfiguration(), "--command", @_, argumentsForConfiguration(), @ARGV or die;
 }
 
-sub runInFlatpakIfAvalaible(@)
+sub runInFlatpakIfAvailable(@)
 {
     if (inFlatpakSandbox()) {
         return 0;
     }
 
     my @command = (File::Spec->catfile(sourceDir(), "Tools", "Scripts", "webkit-flatpak"));
-    if (system(@command, "--avalaible") != 0) {
+    if (system(@command, "--available") != 0) {
         return 0;
     }
 

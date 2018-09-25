@@ -265,6 +265,14 @@ void NetworkProcessProxy::didClose(IPC::Connection&)
         callback(false);
     m_writeBlobToFilePathCallbackMap.clear();
 
+    for (auto& callback : m_removeAllStorageAccessCallbackMap.values())
+        callback();
+    m_removeAllStorageAccessCallbackMap.clear();
+
+    for (auto& callback : m_updateBlockCookiesCallbackMap.values())
+        callback();
+    m_updateBlockCookiesCallbackMap.clear();
+    
     // This may cause us to be deleted.
     networkProcessCrashed();
 }
@@ -294,7 +302,7 @@ void NetworkProcessProxy::didReceiveAuthenticationChallenge(uint64_t pageID, uin
 {
 #if ENABLE(SERVICE_WORKER)
     if (auto* serviceWorkerProcessProxy = m_processPool.serviceWorkerProcessProxyFromPageID(pageID)) {
-        auto authenticationChallenge = AuthenticationChallengeProxy::create(WTFMove(coreChallenge), challengeID, connection());
+        auto authenticationChallenge = AuthenticationChallengeProxy::create(WTFMove(coreChallenge), challengeID, makeRef(*connection()), nullptr);
         serviceWorkerProcessProxy->didReceiveAuthenticationChallenge(pageID, frameID, WTFMove(authenticationChallenge));
         return;
     }
@@ -303,7 +311,7 @@ void NetworkProcessProxy::didReceiveAuthenticationChallenge(uint64_t pageID, uin
     WebPageProxy* page = WebProcessProxy::webPage(pageID);
     MESSAGE_CHECK(page);
 
-    auto authenticationChallenge = AuthenticationChallengeProxy::create(WTFMove(coreChallenge), challengeID, connection());
+    auto authenticationChallenge = AuthenticationChallengeProxy::create(WTFMove(coreChallenge), challengeID, makeRef(*connection()), page->secKeyProxyStore(coreChallenge));
     page->didReceiveAuthenticationChallengeProxy(frameID, WTFMove(authenticationChallenge));
 }
 
@@ -323,21 +331,6 @@ void NetworkProcessProxy::didDeleteWebsiteDataForOrigins(uint64_t callbackID)
 {
     auto callback = m_pendingDeleteWebsiteDataForOriginsCallbacks.take(callbackID);
     callback();
-}
-
-void NetworkProcessProxy::grantSandboxExtensionsToStorageProcessForBlobs(uint64_t requestID, const Vector<String>& paths)
-{
-#if ENABLE(SANDBOX_EXTENSIONS)
-    SandboxExtension::HandleArray extensions;
-    extensions.allocate(paths.size());
-    for (size_t i = 0; i < paths.size(); ++i) {
-        // ReadWrite is required for creating hard links as well as deleting the temporary file, which the StorageProcess will do.
-        SandboxExtension::createHandle(paths[i], SandboxExtension::Type::ReadWrite, extensions[i]);
-    }
-
-    m_processPool.sendToStorageProcessRelaunchingIfNecessary(Messages::StorageProcess::GrantSandboxExtensionsForBlobs(paths, extensions));
-#endif
-    connection()->send(Messages::NetworkProcess::DidGrantSandboxExtensionsToStorageProcessForBlobs(requestID), 0);
 }
 
 void NetworkProcessProxy::didFinishLaunching(ProcessLauncher* launcher, IPC::Connection::Identifier connectionIdentifier)
@@ -407,7 +400,7 @@ void NetworkProcessProxy::updatePrevalentDomainsToBlockCookiesFor(PAL::SessionID
     }
     
     auto callbackId = generateCallbackID();
-    auto addResult = m_updateBlockCookiesCallbackMap.add(callbackId, [protectedThis = makeRef(*this), token = throttler().backgroundActivityToken(), completionHandler = WTFMove(completionHandler)]() mutable {
+    auto addResult = m_updateBlockCookiesCallbackMap.add(callbackId, [protectedProcessPool = makeRef(m_processPool), token = throttler().backgroundActivityToken(), completionHandler = WTFMove(completionHandler)]() mutable {
         completionHandler();
     });
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
@@ -419,15 +412,9 @@ void NetworkProcessProxy::didUpdateBlockCookies(uint64_t callbackId)
     m_updateBlockCookiesCallbackMap.take(callbackId)();
 }
 
-static uint64_t nextRequestStorageAccessContextId()
-{
-    static uint64_t nextContextId = 0;
-    return ++nextContextId;
-}
-
 void NetworkProcessProxy::hasStorageAccessForFrame(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, uint64_t frameID, uint64_t pageID, WTF::CompletionHandler<void(bool)>&& callback)
 {
-    auto contextId = nextRequestStorageAccessContextId();
+    auto contextId = generateCallbackID();
     auto addResult = m_storageAccessResponseCallbackMap.add(contextId, WTFMove(callback));
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
     send(Messages::NetworkProcess::HasStorageAccessForFrame(sessionID, resourceDomain, firstPartyDomain, frameID, pageID, contextId), 0);
@@ -435,7 +422,7 @@ void NetworkProcessProxy::hasStorageAccessForFrame(PAL::SessionID sessionID, con
 
 void NetworkProcessProxy::grantStorageAccess(PAL::SessionID sessionID, const String& resourceDomain, const String& firstPartyDomain, std::optional<uint64_t> frameID, uint64_t pageID, WTF::CompletionHandler<void(bool)>&& callback)
 {
-    auto contextId = nextRequestStorageAccessContextId();
+    auto contextId = generateCallbackID();
     auto addResult = m_storageAccessResponseCallbackMap.add(contextId, WTFMove(callback));
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
     send(Messages::NetworkProcess::GrantStorageAccess(sessionID, resourceDomain, firstPartyDomain, frameID, pageID, contextId), 0);
@@ -454,7 +441,7 @@ void NetworkProcessProxy::removeAllStorageAccess(PAL::SessionID sessionID, Compl
         return;
     }
 
-    auto contextId = nextRequestStorageAccessContextId();
+    auto contextId = generateCallbackID();
     auto addResult = m_removeAllStorageAccessCallbackMap.add(contextId, WTFMove(completionHandler));
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
     send(Messages::NetworkProcess::RemoveAllStorageAccess(sessionID, contextId), 0);
@@ -468,7 +455,7 @@ void NetworkProcessProxy::didRemoveAllStorageAccess(uint64_t contextId)
 
 void NetworkProcessProxy::getAllStorageAccessEntries(PAL::SessionID sessionID, CompletionHandler<void(Vector<String>&& domains)>&& callback)
 {
-    auto contextId = nextRequestStorageAccessContextId();
+    auto contextId = generateCallbackID();
     auto addResult = m_allStorageAccessEntriesCallbackMap.add(contextId, WTFMove(callback));
     ASSERT_UNUSED(addResult, addResult.isNewEntry);
     send(Messages::NetworkProcess::GetAllStorageAccessEntries(sessionID, contextId), 0);
@@ -478,6 +465,44 @@ void NetworkProcessProxy::allStorageAccessEntriesResult(Vector<String>&& domains
 {
     auto callback = m_allStorageAccessEntriesCallbackMap.take(contextId);
     callback(WTFMove(domains));
+}
+
+void NetworkProcessProxy::setCacheMaxAgeCapForPrevalentResources(PAL::SessionID sessionID, Seconds seconds, CompletionHandler<void()>&& completionHandler)
+{
+    if (!canSendMessage()) {
+        completionHandler();
+        return;
+    }
+    
+    auto contextId = generateCallbackID();
+    auto addResult = m_updateRuntimeSettingsCallbackMap.add(contextId, WTFMove(completionHandler));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+    send(Messages::NetworkProcess::SetCacheMaxAgeCapForPrevalentResources(sessionID, seconds, contextId), 0);
+}
+
+void NetworkProcessProxy::didSetCacheMaxAgeCapForPrevalentResources(uint64_t contextId)
+{
+    auto completionHandler = m_updateRuntimeSettingsCallbackMap.take(contextId);
+    completionHandler();
+}
+
+void NetworkProcessProxy::resetCacheMaxAgeCapForPrevalentResources(PAL::SessionID sessionID, CompletionHandler<void()>&& completionHandler)
+{
+    if (!canSendMessage()) {
+        completionHandler();
+        return;
+    }
+    
+    auto contextId = generateCallbackID();
+    auto addResult = m_updateRuntimeSettingsCallbackMap.add(contextId, WTFMove(completionHandler));
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+    send(Messages::NetworkProcess::ResetCacheMaxAgeCapForPrevalentResources(sessionID, contextId), 0);
+}
+
+void NetworkProcessProxy::didResetCacheMaxAgeCapForPrevalentResources(uint64_t contextId)
+{
+    auto completionHandler = m_updateRuntimeSettingsCallbackMap.take(contextId);
+    completionHandler();
 }
 #endif
 
@@ -644,6 +669,20 @@ void NetworkProcessProxy::sendProcessDidTransitionToBackground()
 {
     send(Messages::NetworkProcess::ProcessDidTransitionToBackground(), 0);
 }
+
+#if ENABLE(SANDBOX_EXTENSIONS)
+void NetworkProcessProxy::getSandboxExtensionsForBlobFiles(uint64_t requestID, const Vector<String>& paths)
+{
+    SandboxExtension::HandleArray extensions;
+    extensions.allocate(paths.size());
+    for (size_t i = 0; i < paths.size(); ++i) {
+        // ReadWrite is required for creating hard links, which is something that might be done with these extensions.
+        SandboxExtension::createHandle(paths[i], SandboxExtension::Type::ReadWrite, extensions[i]);
+    }
+    
+    send(Messages::NetworkProcess::DidGetSandboxExtensionsForBlobFiles(requestID, extensions), 0);
+}
+#endif
 
 } // namespace WebKit
 

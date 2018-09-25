@@ -514,15 +514,11 @@ void CurlHandle::enableAllowedProtocols()
     curl_easy_setopt(m_handle, CURLOPT_PROTOCOLS, allowedProtocols);
 }
 
-void CurlHandle::enableHttpAuthentication(long option)
-{
-    curl_easy_setopt(m_handle, CURLOPT_HTTPAUTH, option);
-}
-
-void CurlHandle::setHttpAuthUserPass(const String& user, const String& password)
+void CurlHandle::setHttpAuthUserPass(const String& user, const String& password, long authType)
 {
     curl_easy_setopt(m_handle, CURLOPT_USERNAME, user.utf8().data());
     curl_easy_setopt(m_handle, CURLOPT_PASSWORD, password.utf8().data());
+    curl_easy_setopt(m_handle, CURLOPT_HTTPAUTH, authType);
 }
 
 void CurlHandle::setCACertPath(const char* path)
@@ -737,13 +733,6 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(const WTF::S
     double connect = 0.0;
     double appConnect = 0.0;
     double startTransfer = 0.0;
-    long requestHeaderSize = 0;
-    curl_off_t requestBodySize = 0;
-    long responseHeaderSize = 0;
-    curl_off_t responseBodySize = 0;
-    long version = 0;
-    char* ip = nullptr;
-    long port = 0;
 
     if (!m_handle)
         return std::nullopt;
@@ -764,35 +753,6 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(const WTF::S
     if (errorCode != CURLE_OK)
         return std::nullopt;
 
-    // FIXME: Gets total request size not just headers https://bugs.webkit.org/show_bug.cgi?id=188363
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_REQUEST_SIZE, &requestHeaderSize);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_UPLOAD_T, &requestBodySize);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_HEADER_SIZE, &responseHeaderSize);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_DOWNLOAD_T, &responseBodySize);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_IP, &ip);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_PORT, &port);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_HTTP_VERSION, &version);
-    if (errorCode != CURLE_OK)
-        return std::nullopt;
-
     NetworkLoadMetrics networkLoadMetrics;
 
     networkLoadMetrics.domainLookupStart = domainLookupStart;
@@ -807,6 +767,48 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(const WTF::S
 
     networkLoadMetrics.requestStart = networkLoadMetrics.connectEnd;
     networkLoadMetrics.responseStart = domainLookupStart + Seconds(startTransfer);
+
+    return networkLoadMetrics;
+}
+
+void CurlHandle::addExtraNetworkLoadMetrics(NetworkLoadMetrics& networkLoadMetrics)
+{
+    long requestHeaderSize = 0;
+    curl_off_t requestBodySize = 0;
+    long responseHeaderSize = 0;
+    curl_off_t responseBodySize = 0;
+    long version = 0;
+    char* ip = nullptr;
+    long port = 0;
+
+    // FIXME: Gets total request size not just headers https://bugs.webkit.org/show_bug.cgi?id=188363
+    CURLcode errorCode = curl_easy_getinfo(m_handle, CURLINFO_REQUEST_SIZE, &requestHeaderSize);
+    if (errorCode != CURLE_OK)
+        return;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_UPLOAD_T, &requestBodySize);
+    if (errorCode != CURLE_OK)
+        return;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_HEADER_SIZE, &responseHeaderSize);
+    if (errorCode != CURLE_OK)
+        return;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_DOWNLOAD_T, &responseBodySize);
+    if (errorCode != CURLE_OK)
+        return;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_IP, &ip);
+    if (errorCode != CURLE_OK)
+        return;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_PORT, &port);
+    if (errorCode != CURLE_OK)
+        return;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_HTTP_VERSION, &version);
+    if (errorCode != CURLE_OK)
+        return;
 
     networkLoadMetrics.requestHeaderBytesSent = requestHeaderSize;
     networkLoadMetrics.requestBodyBytesSent = requestBodySize;
@@ -825,8 +827,6 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(const WTF::S
         networkLoadMetrics.protocol = httpVersion11;
     else if (version == CURL_HTTP_VERSION_2)
         networkLoadMetrics.protocol = httpVersion2;
-
-    return networkLoadMetrics;
 }
 
 std::optional<CertificateInfo> CurlHandle::certificateInfo() const

@@ -28,7 +28,9 @@
 
 #include "CSSComputedStyleDeclaration.h"
 #include "ContextDestructionObserver.h"
+#include "Cookie.h"
 #include "ExceptionOr.h"
+#include "HEVCUtilities.h"
 #include "JSDOMPromiseDeferred.h"
 #include "OrientationNotifier.h"
 #include "PageConsoleClient.h"
@@ -198,6 +200,14 @@ public:
     // CSS Transition testing.
     ExceptionOr<bool> pauseTransitionAtTimeOnElement(const String& propertyName, double pauseTime, Element&);
     ExceptionOr<bool> pauseTransitionAtTimeOnPseudoElement(const String& property, double pauseTime, Element&, const String& pseudoId);
+
+    // Web Animations testing.
+    struct AcceleratedAnimation {
+        String property;
+        double speed;
+    };
+    Vector<AcceleratedAnimation> acceleratedAnimationsForElement(Element&);
+    unsigned numberOfAnimationTimelineInvalidations() const;
 
     // For animations testing, we need a way to get at pseudo elements.
     ExceptionOr<RefPtr<Element>> pseudoElement(Element&, const String&);
@@ -735,7 +745,44 @@ public:
     void notifyResourceLoadObserver();
 
     unsigned primaryScreenDisplayID();
+
+    bool supportsVCPEncoder();
         
+    using HEVCParameterSet = WebCore::HEVCParameterSet;
+    std::optional<HEVCParameterSet> parseHEVCCodecParameters(const String& codecString);
+
+    struct CookieData {
+        String name;
+        String value;
+        String domain;
+        // Expiration dates are expressed as milliseconds since the UNIX epoch.
+        double expires { 0 };
+        bool isHttpOnly { false };
+        bool isSecure { false };
+        bool isSession { false };
+        bool isSameSiteLax { false };
+        bool isSameSiteStrict { false };
+
+        CookieData(Cookie cookie)
+            : name(cookie.name)
+            , value(cookie.value)
+            , domain(cookie.domain)
+            , expires(cookie.expires)
+            , isHttpOnly(cookie.httpOnly)
+            , isSecure(cookie.secure)
+            , isSession(cookie.session)
+            , isSameSiteLax(cookie.sameSite == Cookie::SameSitePolicy::Lax)
+            , isSameSiteStrict(cookie.sameSite == Cookie::SameSitePolicy::Strict)
+        {
+            ASSERT(!(isSameSiteLax && isSameSiteStrict));
+        }
+
+        CookieData()
+        {
+        }
+    };
+    Vector<CookieData> getCookies() const;
+
 private:
     explicit Internals(Document&);
     Document* contextDocument() const;

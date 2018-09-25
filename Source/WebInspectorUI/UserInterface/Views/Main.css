@@ -49,7 +49,7 @@ body {
 
     -webkit-font-smoothing: subpixel-antialiased;
 
-    background-color: white;
+    background-color: var(--background-color-content);
 }
 
 body.docked.bottom {
@@ -133,7 +133,7 @@ input[type=range]::-webkit-slider-runnable-track {
     display: flex;
     flex-direction: column;
 
-    background-color: white;
+    background-color: var(--background-color-content);
 
     /* The position and z-index are needed to make negative z-index work in the DOM tree. */
     z-index: 0;
@@ -379,4 +379,25 @@ body[dir=rtl] .go-to-arrow {
                       linear-gradient(45deg, hsl(0, 0%, 95%) 25%, transparent 25%);
     background-size: 20px 20px;
     background-position: 10px 10px, 10px 0px, 0 0, 0 10px;
+}
+
+@media (prefers-dark-interface) {
+    .go-to-arrow {
+        filter: invert();
+    }
+
+    .resource-link,
+    .go-to-link {
+        color: var(--text-color-secondary);
+    }
+
+    .expand-list-button {
+        color: inherit;
+    }
+
+    :matches(img, canvas).show-grid {
+        background-color: white;
+        --checkerboard-dark-square: hsl(0, 0%, 80%);
+        background-image: linear-gradient(315deg, transparent 75%, var(--checkerboard-dark-square) 75%), linear-gradient(45deg, transparent 75%, var(--checkerboard-dark-square) 75%), linear-gradient(315deg, var(--checkerboard-dark-square) 25%, transparent 25%), linear-gradient(45deg, var(--checkerboard-dark-square) 25%, transparent 25%);
+    }
 }

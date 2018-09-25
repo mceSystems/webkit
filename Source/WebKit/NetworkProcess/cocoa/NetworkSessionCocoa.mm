@@ -26,6 +26,7 @@
 #import "config.h"
 #import "NetworkSessionCocoa.h"
 
+#import "AuthenticationChallengeDisposition.h"
 #import "AuthenticationManager.h"
 #import "DataReference.h"
 #import "Download.h"
@@ -78,7 +79,7 @@ static NSURLSessionAuthChallengeDisposition toNSURLSessionAuthChallengeDispositi
         return NSURLSessionAuthChallengePerformDefaultHandling;
     case WebKit::AuthenticationChallengeDisposition::Cancel:
         return NSURLSessionAuthChallengeCancelAuthenticationChallenge;
-    case WebKit::AuthenticationChallengeDisposition::RejectProtectionSpace:
+    case WebKit::AuthenticationChallengeDisposition::RejectProtectionSpaceAndContinue:
         return NSURLSessionAuthChallengeRejectProtectionSpace;
     }
 }

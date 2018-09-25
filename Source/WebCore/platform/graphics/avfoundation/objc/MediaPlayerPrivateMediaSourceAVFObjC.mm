@@ -80,20 +80,6 @@ SOFT_LINK_CONSTANT(AVFoundation, AVAudioTimePitchAlgorithmVarispeed, NSString*)
 #define AVAudioTimePitchAlgorithmVarispeed getAVAudioTimePitchAlgorithmVarispeed()
 
 #pragma mark -
-#pragma mark AVVideoPerformanceMetrics
-
-@interface AVVideoPerformanceMetrics : NSObject
-- (unsigned long)totalNumberOfVideoFrames;
-- (unsigned long)numberOfDroppedVideoFrames;
-- (unsigned long)numberOfCorruptedVideoFrames;
-- (double)totalFrameDelay;
-@end
-
-@interface AVSampleBufferDisplayLayer (WebCoreAVSampleBufferDisplayLayerPrivate)
-- (AVVideoPerformanceMetrics *)videoPerformanceMetrics;
-@end
-
-#pragma mark -
 #pragma mark AVStreamSession
 
 @interface AVStreamSession : NSObject
@@ -969,6 +955,7 @@ void MediaPlayerPrivateMediaSourceAVFObjC::attemptToDecryptWithInstance(CDMInsta
 void MediaPlayerPrivateMediaSourceAVFObjC::initializationDataEncountered(const String& initDataType, RefPtr<ArrayBuffer>&& initData)
 {
     m_player->initializationDataEncountered(initDataType, WTFMove(initData));
+    m_player->waitingForKey();
 }
 #endif
 
